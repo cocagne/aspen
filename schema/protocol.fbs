@@ -1,0 +1,181 @@
+namespace com.ibm.aspen.protocol;
+
+
+//---------------------------------------------------------------------------
+//- Object
+//---------------------------------------------------------------------------
+table Replication {
+  width: int;
+  write_threshold: int;
+}
+
+table ReedSolomon {
+  width: int;
+  read_threshold: int;
+  write_threshold: int;
+}
+
+union IDA { Replication, ReedSolomon }
+
+struct ObjectRevision {
+  overwrite_count: uint;
+  current_size: uint;
+}
+
+struct ObjectRefcount {
+  update_serial: uint;
+  refcount: uint;
+}
+
+table StorePointer {
+  store_index: ubyte;
+  data: [ubyte];
+}
+
+table ObjectPointer {
+  uuid: [ubyte];
+  pool_uuid: [ubyte];
+  size: uint;
+  store_pointers: [StorePointer];
+  ida: IDA;
+}
+
+//---------------------------------------------------------------------------
+//- Transaction Description
+//---------------------------------------------------------------------------
+enum TransactionStatus:byte { 
+    Unresolved,
+    Committed,
+    Aborted 
+}
+
+enum UpdateType:byte {
+    Data,
+    Refcount
+}
+
+enum TransactionDisposition:byte {
+    Undetermined,
+    Collision,
+    VoteCommit,
+    VoteAbort
+}
+
+enum UpdateError:byte
+{
+    MissingUpdateData, 
+    ObjectMismatch,    
+    InvalidLocalPointer,
+    RevisionMismatch,
+    RefcountMismatch,
+    Collision,
+    CorruptedObject
+}
+
+enum DataUpdateOperation:byte {
+  Append,
+  Overwrite
+}
+
+table DataUpdate {
+  pool_uuid: [ubyte];
+  object_pointer: ObjectPointer;
+  required_revision: ObjectRevision;
+  operation: DataUpdateOperation;
+}
+
+table RefcountUpdate {
+  pool_uuid: [ubyte];
+  object_pointer: ObjectPointer;
+  required_refcount: ObjectRefcount;
+  new_refcount: ObjectRefcount;
+}
+
+table TransactionDescription {
+  transaction_uuid: [ubyte];
+  start_timestamp: long;
+  designated_leader_uid: ubyte;
+  data_updates: [DataUpdate];
+  refcount_updates: [RefcountUpdate];
+  finalization_actions: [ubyte];
+}
+
+table UpdateErrorResponse {
+  update_type: UpdateType;
+  update_index: ubyte;
+  update_error: UpdateError;
+  current_revision: ObjectRevision;
+  current_refcount: ObjectRefcount;
+  colliding_transaction: TransactionDescription;
+}
+
+//---------------------------------------------------------------------------
+//- Transaction Messages
+//---------------------------------------------------------------------------
+struct ProposalID {
+  number: uint;
+  uid: ubyte;
+}
+
+table DataStoreID {
+  storage_pool_uuid: [ubyte];
+  storage_pool_index: ubyte;
+}
+
+table TxPrepare {
+  from: DataStoreID;
+  txd: TransactionDescription;
+  proposal_id: ProposalID;
+}
+
+table TxNack {
+  from: DataStoreID;
+  transaction_uuid: [ubyte];
+  pax_to: ubyte;
+  proposal_id: ProposalID;
+  promised_id: ProposalID;
+}
+
+table TxPromise {
+  from: DataStoreID;
+  transaction_uuid: [ubyte];
+  proposal_id: ProposalID;
+  last_accepted_id: ProposalID;
+  last_accepted_value: ubyte;
+  disposition: TransactionDisposition;
+  errors: [UpdateErrorResponse];
+}
+
+table TxAccept {
+  from: DataStoreID;
+  transaction_uuid: [ubyte];
+  proposal_id: ProposalID;
+  value: ubyte;
+}
+
+table TxAccepted {
+  from: DataStoreID;
+  transaction_uuid: [ubyte];
+  proposal_id: ProposalID;
+  accepted_value: ubyte;
+}
+
+table TxFinalized {
+  transaction_uuid: [ubyte];
+  committed: bool;
+}
+//---------------------------------------------------------------------------
+//- Root Message
+//---------------------------------------------------------------------------
+table Message {
+  object_pointer: ObjectPointer;
+  transaction_description: TransactionDescription;
+  prepare: TxPrepare;
+  nack: TxNack;
+  promise: TxPromise;
+  accept: TxAccept;
+  accepted: TxAccepted;
+  finalized: TxFinalized;
+}
+
+root_type Message;
