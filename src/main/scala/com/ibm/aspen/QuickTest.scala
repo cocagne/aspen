@@ -1,7 +1,7 @@
 
 package com.ibm.aspen
 
-import com.ibm.aspen.network.protocol._
+import com.ibm.aspen.core.network.protocol._
 import com.google.flatbuffers.FlatBufferBuilder
 
 object QuickTest {

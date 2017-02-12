@@ -1,3 +1,3 @@
-package com.ibm.aspen.objects
+package com.ibm.aspen.core.objects
 
 case class ObjectRevision(overwriteCount: Int, currentSize: Int)

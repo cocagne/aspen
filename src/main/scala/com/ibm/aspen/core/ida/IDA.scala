@@ -1,4 +1,4 @@
-package com.ibm.aspen.ida
+package com.ibm.aspen.core.ida
 
 sealed abstract class IDA {
   

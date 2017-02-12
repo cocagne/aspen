@@ -1,14 +1,14 @@
-package com.ibm.aspen.network
+package com.ibm.aspen.core.network
 
-import com.ibm.aspen.network.{protocol => P}
+import com.ibm.aspen.core.network.{protocol => P}
 import com.google.flatbuffers.FlatBufferBuilder
-import com.ibm.aspen.objects.ObjectRevision
-import com.ibm.aspen.objects.ObjectRefcount
-import com.ibm.aspen.ida.IDA
-import com.ibm.aspen.ida.Replication
-import com.ibm.aspen.ida.ReedSolomon
-import com.ibm.aspen.objects.StorePointer
-import com.ibm.aspen.objects.ObjectPointer
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.ida.Replication
+import com.ibm.aspen.core.ida.ReedSolomon
+import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 
 

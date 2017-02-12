@@ -31,7 +31,7 @@ lazy val root = (project in file(".")).
 
 sourceGenerators in Compile += Def.task {
   val base = (sourceManaged in Compile).value
-  val out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "network" / "protocol"
+  val out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "core" / "network" / "protocol"
 
   val schema = file("schema") / "protocol.fbs"
 

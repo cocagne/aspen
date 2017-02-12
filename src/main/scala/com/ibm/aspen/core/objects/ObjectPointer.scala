@@ -1,7 +1,7 @@
-package com.ibm.aspen.objects
+package com.ibm.aspen.core.objects
 
 import java.util.UUID
-import com.ibm.aspen.ida.IDA
+import com.ibm.aspen.core.ida.IDA
 
 class ObjectPointer(
     val uuid: UUID,
@@ -9,6 +9,4 @@ class ObjectPointer(
     val size: Option[Int],
     val ida: IDA,
     val storePointers: Array[StorePointer]
-    ) {
-  
-}
+  ) {}
