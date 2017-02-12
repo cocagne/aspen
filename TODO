@@ -1,0 +1,6 @@
+* Finish creating message classes and add Codec support
+
+* Transaction messages go into 'aspen.transaction'
+* Paxos module as 'aspen.transaction.paxos'
+* Rewrite Paxos in terms of integer network id and boolean value
+*   |-> Copy code & tests, then revise

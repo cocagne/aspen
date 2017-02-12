@@ -1,9 +1,14 @@
-namespace com.ibm.aspen.protocol;
+namespace com.ibm.aspen.network.protocol;
 
 
 //---------------------------------------------------------------------------
 //- Object
 //---------------------------------------------------------------------------
+struct UUID {
+  mostSigBits: long;
+  leastSigBits: long;
+}
+
 table Replication {
   width: int;
   write_threshold: int;
@@ -18,24 +23,24 @@ table ReedSolomon {
 union IDA { Replication, ReedSolomon }
 
 struct ObjectRevision {
-  overwrite_count: uint;
-  current_size: uint;
+  overwrite_count: int;
+  current_size: int;
 }
 
 struct ObjectRefcount {
-  update_serial: uint;
-  refcount: uint;
+  update_serial: int;
+  refcount: int;
 }
 
 table StorePointer {
-  store_index: ubyte;
-  data: [ubyte];
+  store_index: byte;
+  data: [byte];
 }
 
 table ObjectPointer {
-  uuid: [ubyte];
-  pool_uuid: [ubyte];
-  size: uint;
+  uuid: UUID;
+  pool_uuid: UUID;
+  size: int;
   store_pointers: [StorePointer];
   ida: IDA;
 }
@@ -78,31 +83,31 @@ enum DataUpdateOperation:byte {
 }
 
 table DataUpdate {
-  pool_uuid: [ubyte];
+  pool_uuid: UUID;
   object_pointer: ObjectPointer;
   required_revision: ObjectRevision;
   operation: DataUpdateOperation;
 }
 
 table RefcountUpdate {
-  pool_uuid: [ubyte];
+  pool_uuid: UUID;
   object_pointer: ObjectPointer;
   required_refcount: ObjectRefcount;
   new_refcount: ObjectRefcount;
 }
 
 table TransactionDescription {
-  transaction_uuid: [ubyte];
+  transaction_uuid: UUID;
   start_timestamp: long;
-  designated_leader_uid: ubyte;
+  designated_leader_uid: byte;
   data_updates: [DataUpdate];
   refcount_updates: [RefcountUpdate];
-  finalization_actions: [ubyte];
+  finalization_actions: [byte];
 }
 
 table UpdateErrorResponse {
   update_type: UpdateType;
-  update_index: ubyte;
+  update_index: byte;
   update_error: UpdateError;
   current_revision: ObjectRevision;
   current_refcount: ObjectRefcount;
@@ -113,13 +118,13 @@ table UpdateErrorResponse {
 //- Transaction Messages
 //---------------------------------------------------------------------------
 struct ProposalID {
-  number: uint;
-  uid: ubyte;
+  number: int;
+  uid: byte;
 }
 
 table DataStoreID {
-  storage_pool_uuid: [ubyte];
-  storage_pool_index: ubyte;
+  storage_pool_uuid: UUID;
+  storage_pool_index: byte;
 }
 
 table TxPrepare {
@@ -130,38 +135,38 @@ table TxPrepare {
 
 table TxNack {
   from: DataStoreID;
-  transaction_uuid: [ubyte];
-  pax_to: ubyte;
+  transaction_uuid: UUID;
+  pax_to: byte;
   proposal_id: ProposalID;
   promised_id: ProposalID;
 }
 
 table TxPromise {
   from: DataStoreID;
-  transaction_uuid: [ubyte];
+  transaction_uuid: UUID;
   proposal_id: ProposalID;
   last_accepted_id: ProposalID;
-  last_accepted_value: ubyte;
+  last_accepted_value: byte;
   disposition: TransactionDisposition;
   errors: [UpdateErrorResponse];
 }
 
 table TxAccept {
   from: DataStoreID;
-  transaction_uuid: [ubyte];
+  transaction_uuid: UUID;
   proposal_id: ProposalID;
-  value: ubyte;
+  value: byte;
 }
 
 table TxAccepted {
   from: DataStoreID;
-  transaction_uuid: [ubyte];
+  transaction_uuid: UUID;
   proposal_id: ProposalID;
-  accepted_value: ubyte;
+  accepted_value: byte;
 }
 
 table TxFinalized {
-  transaction_uuid: [ubyte];
+  transaction_uuid: UUID;
   committed: bool;
 }
 //---------------------------------------------------------------------------
