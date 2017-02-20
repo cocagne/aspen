@@ -20,6 +20,13 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.SerializedFinalizationAction
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.transaction.UpdateErrorResponse
+import com.ibm.aspen.core.transaction.paxos.ProposalID
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.transaction.TxPrepare
+import com.ibm.aspen.core.transaction.TxPrepareResponse
+import com.ibm.aspen.core.transaction.TxAccept
+import com.ibm.aspen.core.transaction.TxAccepted
+import com.ibm.aspen.core.transaction.TxFinalized
 
 
 
@@ -27,7 +34,7 @@ object Codec {
   
   //-----------------------------------------------------------------------------------------------
   // Objects
-  //
+  //-----------------------------------------------------------------------------------------------
   def encode(builder:FlatBufferBuilder, u: UUID): Int = {
     P.UUID.createUUID(builder, u.getMostSignificantBits, u.getLeastSignificantBits)
   }
@@ -100,7 +107,7 @@ object Codec {
   
   //-----------------------------------------------------------------------------------------------
   // IDA
-  //
+  //-----------------------------------------------------------------------------------------------
   def idaType(ida:IDA): Byte = ida match {
     case x: Replication => P.IDA.Replication
     case x: ReedSolomon => P.IDA.ReedSolomon
@@ -114,8 +121,8 @@ object Codec {
     
   
   //-----------------------------------------------------------------------------------------------
-  // Transaction
-  //
+  // Transaction Description
+  //-----------------------------------------------------------------------------------------------
   def encodeTransactionStatus(e:TransactionStatus.Value): Byte = e match {
     case TransactionStatus.Unresolved => P.TransactionStatus.Unresolved
     case TransactionStatus.Committed  => P.TransactionStatus.Committed
@@ -287,7 +294,34 @@ object Codec {
         
   }
   
-
+  //-----------------------------------------------------------------------------------------------
+  // Transaction Description
+  //-----------------------------------------------------------------------------------------------
+  
+  def encode(builder:FlatBufferBuilder, o:ProposalID): Int = {
+    P.ProposalID.createProposalID(builder, o.number, o.peer)
+  }
+  def decode(o: P.ProposalID): ProposalID = {
+    ProposalID(o.number(), o.uid())
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:DataStoreID): Int = {
+    val poolUUID = encode(builder, o.poolUUID)
+    
+    P.DataStoreID.startDataStoreID(builder)
+    P.DataStoreID.addStoragePoolUuid(builder, poolUUID)
+    P.DataStoreID.addStoragePoolIndex(builder, o.poolIndex)
+    P.DataStoreID.endDataStoreID(builder)
+  }
+  def decode(n: P.DataStoreID): DataStoreID = {
+    val poolUUID = decode(n.storagePoolUuid())
+    val poolIndex = n.storagePoolIndex()
+    
+    new DataStoreID(poolUUID, poolIndex)
+  }
+  
+  
   def encode(builder:FlatBufferBuilder, o:UpdateErrorResponse): Int = {
     val updateType = encodeUpdateType(o.updateType)
     val updateError = encodeUpdateError(o.updateError)
@@ -313,5 +347,145 @@ object Codec {
     val collidingTx = decode(n.collidingTransaction())
     
     UpdateErrorResponse(updateType, updateIndex, updateError, currentRev, currentRef, collidingTx)
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxPrepare): Int = {
+    val from = encode(builder, o.from)
+    val txd = encode(builder, o.txd)
+    val proposalId = encode(builder, o.proposalId)
+    
+    P.TxPrepare.startTxPrepare(builder)
+    P.TxPrepare.addFrom(builder, from)
+    P.TxPrepare.addTxd(builder, txd)
+    P.TxPrepare.addProposalId(builder, proposalId)
+    P.TxPrepare.endTxPrepare(builder)
+  }
+  def decode(n: P.TxPrepare): TxPrepare = {
+    val from = decode(n.from())
+    val txd = decode(n.txd())
+    val proposalId = decode(n.proposalId())
+    
+    TxPrepare(from, txd, proposalId)
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxPrepareResponse): Int = {
+    val from = encode(builder, o.from)
+    val transactionUUID = encode(builder, o.transactionUUID)
+    var promisedId = -1
+    var lastAcceptedId = -1 
+    var lastAcceptedValue = false
+    val responseType = o.response match {
+      case Right(p) =>
+        p.lastAccepted.foreach(tpl => {
+          lastAcceptedId = encode(builder, tpl._1)
+          lastAcceptedValue = tpl._2
+        })
+        P.TxPrepareResponseType.Promise
+      case Left(n) => 
+        promisedId = encode(builder, n.promisedId)
+        P.TxPrepareResponseType.Nack
+    }
+    val proposalId = encode(builder, o.proposalId)
+    val disposition = encodeTransactionDisposition(o.disposition)
+    val errors = P.TxPrepareResponse.createErrorsVector(builder, o.errors.map(ue => encode(builder, ue)).toArray)
+    
+    P.TxPrepareResponse.startTxPrepareResponse(builder)
+    P.TxPrepareResponse.addFrom(builder, from)
+    P.TxPrepareResponse.addTransactionUuid(builder, transactionUUID)
+    P.TxPrepareResponse.addResponseType(builder, responseType)
+    P.TxPrepareResponse.addProposalId(builder, proposalId)
+    if (promisedId != -1) P.TxPrepareResponse.addPromisedId(builder, promisedId)
+    if (lastAcceptedId != -1) {
+      P.TxPrepareResponse.addLastAcceptedId(builder, lastAcceptedId)
+      P.TxPrepareResponse.addLastAcceptedValue(builder, lastAcceptedValue)
+    }
+    P.TxPrepareResponse.addDisposition(builder, disposition)
+    P.TxPrepareResponse.addErrors(builder, errors)
+    P.TxPrepareResponse.endTxPrepareResponse(builder)
+  }
+  def decode(n: P.TxPrepareResponse): TxPrepareResponse = {
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    val response = n.responseType() match {
+      case P.TxPrepareResponseType.Promise =>
+        val lastAcceptedId = decode(n.lastAcceptedId())
+        val opt = if (lastAcceptedId == null) None else Some((lastAcceptedId, n.lastAcceptedValue()))
+        Right(TxPrepareResponse.Promise(opt))
+      case P.TxPrepareResponseType.Nack => Left(TxPrepareResponse.Nack(decode(n.promisedId())))
+    }
+    
+    val proposalId = decode(n.proposalId())
+    val disposition = decodeTransactionDispositione(n.disposition())
+   
+    def errors(idx: Int, l:List[UpdateErrorResponse]): List[UpdateErrorResponse] = if (idx == -1) 
+        l
+      else 
+        errors(idx-1, decode(n.errors(idx)) :: l)
+        
+    TxPrepareResponse(from, transactionUUID, response, proposalId, disposition, errors(n.errorsLength()-1, Nil))
+  }
+  
+
+  def encode(builder:FlatBufferBuilder, o:TxAccept): Int = {
+    val from = encode(builder, o.from)
+    val transactionUUID = encode(builder, o.transactionUUID)
+    val proposalId = encode(builder, o.proposalId)
+    
+    P.TxAccept.startTxAccept(builder)
+    P.TxAccept.addFrom(builder, from)
+    P.TxAccept.addTransactionUuid(builder, transactionUUID)
+    P.TxAccept.addProposalId(builder, proposalId)
+    P.TxAccept.addValue(builder, o.value)
+    P.TxAccept.endTxAccept(builder)
+  }
+  def decode(n: P.TxAccept): TxAccept = {
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    val proposalId = decode(n.proposalId())
+    val value = n.value()
+    
+    TxAccept(from, transactionUUID, proposalId, value)
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxAccepted): Int = {
+    val from = encode(builder, o.from)
+    val transactionUUID = encode(builder, o.transactionUUID)
+    val proposalId = encode(builder, o.proposalId)
+    
+    P.TxAccepted.startTxAccepted(builder)
+    P.TxAccepted.addFrom(builder, from)
+    P.TxAccepted.addTransactionUuid(builder, transactionUUID)
+    P.TxAccepted.addProposalId(builder, proposalId)
+    P.TxAccepted.addValue(builder, o.value)
+    P.TxAccepted.endTxAccepted(builder)
+  }
+  def decode(n: P.TxAccepted): TxAccepted = {
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    val proposalId = decode(n.proposalId())
+    val value = n.value()
+    
+    TxAccepted(from, transactionUUID, proposalId, value)
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxFinalized): Int = {
+    val from = encode(builder, o.from)
+    val transactionUUID = encode(builder, o.transactionUUID)
+    
+    P.TxFinalized.startTxFinalized(builder)
+    P.TxFinalized.addFrom(builder, from)
+    P.TxFinalized.addTransactionUuid(builder, transactionUUID)
+    P.TxFinalized.addCommitted(builder, o.committed)
+    P.TxFinalized.endTxFinalized(builder)
+  }
+  def decode(n: P.TxFinalized): TxFinalized = {
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    
+    TxFinalized(from, transactionUUID, n.committed())
   }
 }

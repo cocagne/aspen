@@ -1,6 +1,4 @@
-* Finish creating message classes and add Codec support
 
-* Transaction messages go into 'aspen.core.transaction.messages' case classes w/ sealed abstract base
 
 * Core package is message-handling centric.
   * only generated messages are in response to other messages and Tx driving process

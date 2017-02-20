@@ -109,15 +109,6 @@ table TransactionDescription {
   finalization_actions: [SerializedFinalizationAction];
 }
 
-table UpdateErrorResponse {
-  update_type: UpdateType;
-  update_index: byte;
-  update_error: UpdateError;
-  current_revision: ObjectRevision;
-  current_refcount: ObjectRefcount;
-  colliding_transaction: TransactionDescription;
-}
-
 //---------------------------------------------------------------------------
 //- Transaction Messages
 //---------------------------------------------------------------------------
@@ -131,26 +122,34 @@ table DataStoreID {
   storage_pool_index: byte;
 }
 
+enum TxPrepareResponseType:byte {
+  Promise,
+  Nack
+}
+
+table UpdateErrorResponse {
+  update_type: UpdateType;
+  update_index: byte;
+  update_error: UpdateError;
+  current_revision: ObjectRevision;
+  current_refcount: ObjectRefcount;
+  colliding_transaction: TransactionDescription;
+}
+
 table TxPrepare {
   from: DataStoreID;
   txd: TransactionDescription;
   proposal_id: ProposalID;
 }
 
-table TxNack {
+table TxPrepareResponse {
   from: DataStoreID;
   transaction_uuid: UUID;
-  pax_to: byte;
+  response_type: TxPrepareResponseType;
   proposal_id: ProposalID;
-  promised_id: ProposalID;
-}
-
-table TxPromise {
-  from: DataStoreID;
-  transaction_uuid: UUID;
-  proposal_id: ProposalID;
-  last_accepted_id: ProposalID;
-  last_accepted_value: byte;
+  promised_id: ProposalID;      // Valid for Nack responses
+  last_accepted_id: ProposalID; // Valid for Promise responses
+  last_accepted_value: bool;    // Valid for Promise responses
   disposition: TransactionDisposition;
   errors: [UpdateErrorResponse];
 }
@@ -159,17 +158,18 @@ table TxAccept {
   from: DataStoreID;
   transaction_uuid: UUID;
   proposal_id: ProposalID;
-  value: byte;
+  value: bool;
 }
 
 table TxAccepted {
   from: DataStoreID;
   transaction_uuid: UUID;
   proposal_id: ProposalID;
-  accepted_value: byte;
+  value: bool;
 }
 
 table TxFinalized {
+  from: DataStoreID;
   transaction_uuid: UUID;
   committed: bool;
 }
@@ -180,8 +180,7 @@ table Message {
   object_pointer: ObjectPointer;
   transaction_description: TransactionDescription;
   prepare: TxPrepare;
-  nack: TxNack;
-  promise: TxPromise;
+  prepare_response: TxPrepareResponse;
   accept: TxAccept;
   accepted: TxAccepted;
   finalized: TxFinalized;
