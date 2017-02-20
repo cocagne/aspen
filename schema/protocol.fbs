@@ -83,26 +83,30 @@ enum DataUpdateOperation:byte {
 }
 
 table DataUpdate {
-  pool_uuid: UUID;
   object_pointer: ObjectPointer;
   required_revision: ObjectRevision;
   operation: DataUpdateOperation;
 }
 
 table RefcountUpdate {
-  pool_uuid: UUID;
   object_pointer: ObjectPointer;
   required_refcount: ObjectRefcount;
   new_refcount: ObjectRefcount;
 }
 
+table SerializedFinalizationAction {
+  type_uuid: UUID;
+  data: [byte];
+}
+
 table TransactionDescription {
   transaction_uuid: UUID;
   start_timestamp: long;
+  primary_pool_uuid: UUID;
   designated_leader_uid: byte;
   data_updates: [DataUpdate];
   refcount_updates: [RefcountUpdate];
-  finalization_actions: [byte];
+  finalization_actions: [SerializedFinalizationAction];
 }
 
 table UpdateErrorResponse {

@@ -1,6 +1,9 @@
 *.class
 *.log
 
+# Scalatest
+.cache-tests
+
 # sbt
 .cache
 .history
