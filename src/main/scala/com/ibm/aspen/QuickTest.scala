@@ -7,7 +7,7 @@ import com.google.flatbuffers.FlatBufferBuilder
 object QuickTest {
   def main(args: Array[String]): Unit = {
     println("Hello, world2!")
-    for (i <- (5-1) to 0 by -1)
+    for (i <- 0 until 5)
       println(s"Index $i")
   }
 }

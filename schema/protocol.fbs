@@ -177,8 +177,6 @@ table TxFinalized {
 //- Root Message
 //---------------------------------------------------------------------------
 table Message {
-  object_pointer: ObjectPointer;
-  transaction_description: TransactionDescription;
   prepare: TxPrepare;
   prepare_response: TxPrepareResponse;
   accept: TxAccept;

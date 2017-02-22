@@ -2,7 +2,7 @@ package com.ibm.aspen.core.transaction
 
 import java.util.UUID
 
-case class SerializedFinalizationAction(
+final case class SerializedFinalizationAction(
     /** Identifies the type of the serialized FinalizationAction
      *  
      *  UUIDs are used instead of an enumeration in order to support the definition of arbitrary,
@@ -11,4 +11,9 @@ case class SerializedFinalizationAction(
     typeUUID: UUID,
     
     /** Serialized FinalizationAction */
-    data: Array[Byte])
+    data: Array[Byte]) {
+  override def equals(other: Any): Boolean = other match {
+    case rhs: SerializedFinalizationAction => typeUUID == rhs.typeUUID && java.util.Arrays.equals(data, rhs.data)
+    case _ => false
+  }
+}

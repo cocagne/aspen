@@ -6,12 +6,12 @@ import java.util.UUID
 
 sealed abstract class Message
 
-case class TxPrepare(
+final case class TxPrepare(
     from: DataStoreID,
     txd: TransactionDescription,
     proposalId: ProposalID)
     
-case class TxPrepareResponse(
+final case class TxPrepareResponse(
     from: DataStoreID,
     transactionUUID: UUID,
     response: Either[TxPrepareResponse.Nack, TxPrepareResponse.Promise],
@@ -24,19 +24,19 @@ object TxPrepareResponse {
   case class Promise(lastAccepted: Option[(ProposalID,Boolean)])
 }
 
-case class TxAccept(
+final case class TxAccept(
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
     value: Boolean)
   
-case class TxAccepted(
+final case class TxAccepted(
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
     value: Boolean)
     
-case class TxFinalized(
+final case class TxFinalized(
     from: DataStoreID,
     transactionUUID: UUID,
     committed: Boolean)

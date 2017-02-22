@@ -2,7 +2,7 @@ package com.ibm.aspen.core.transaction
 
 import java.util.UUID
 
-case class TransactionDescription(
+final case class TransactionDescription(
     
     /** Uniquely identifies this transaction */
     transactionUUID: UUID,
@@ -36,4 +36,5 @@ case class TransactionDescription(
     
     dataUpdates: List[DataUpdate],
     refcountUpdates: List[RefcountUpdate],
-    finalizationActions: List[SerializedFinalizationAction])
+    finalizationActions: List[SerializedFinalizationAction]) {
+}
