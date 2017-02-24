@@ -30,8 +30,8 @@ object CodecSuite {
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
     
-    (TransactionDescription(txuuid, startTs, poolUUID, leader, dataUpdates, Nil, finalz),
-        TransactionDescription(java.util.UUID.randomUUID(), startTs, poolUUID, leader, Nil, refcountUpdates, finalz))
+    (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, Nil, finalz),
+        TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz))
         
   }
 }
@@ -42,7 +42,7 @@ class CodecSuite extends FunSuite with Matchers {
   
   test("TxPrepare Encoding") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
     val prep = TxPrepare(ds, txd, pid)
@@ -67,12 +67,12 @@ class CodecSuite extends FunSuite with Matchers {
   
   test("TxPrepareResponse Encoding") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     val pid2 = ProposalID(1, 0)
     
-    val e1 = UpdateErrorResponse(UpdateType.Data, 0, UpdateError.Collision, ObjectRevision(1,150), ObjectRefcount(1,1), txd2)
-    val e2 = UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, ObjectRevision(1,150), ObjectRefcount(1,1), txd2)
+    val e1 = UpdateErrorResponse(UpdateType.Data, 0, UpdateError.Collision, Some(ObjectRevision(1,150)), Some(ObjectRefcount(1,1)), Some(txd2))
+    val e2 = UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, None, None, None)
     
     val prep = TxPrepareResponse(
         ds, 
@@ -102,7 +102,7 @@ class CodecSuite extends FunSuite with Matchers {
   
   test("TxPrepareResponse Encoding2") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     val pid2 = ProposalID(1, 0)
     
@@ -134,7 +134,7 @@ class CodecSuite extends FunSuite with Matchers {
 
   test("TxAccept Encoding") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
     val a = TxAccept(ds, txd.transactionUUID, pid, true)
@@ -159,7 +159,7 @@ class CodecSuite extends FunSuite with Matchers {
   
   test("TxAccepted Encoding") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
     val a = TxAccepted(ds, txd.transactionUUID, pid, true)
@@ -184,7 +184,7 @@ class CodecSuite extends FunSuite with Matchers {
   
   test("TxFinalized Encoding") {
     
-    val ds = DataStoreID(txd.primaryPoolUUID, 3)
+    val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
     val a = TxFinalized(ds, txd.transactionUUID, true)

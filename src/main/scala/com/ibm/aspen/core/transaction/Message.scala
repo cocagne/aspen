@@ -9,7 +9,7 @@ sealed abstract class Message
 final case class TxPrepare(
     from: DataStoreID,
     txd: TransactionDescription,
-    proposalId: ProposalID)
+    proposalId: ProposalID) extends Message
     
 final case class TxPrepareResponse(
     from: DataStoreID,
@@ -17,7 +17,7 @@ final case class TxPrepareResponse(
     response: Either[TxPrepareResponse.Nack, TxPrepareResponse.Promise],
     proposalId: ProposalID,
     disposition: TransactionDisposition.Value,
-    errors: List[UpdateErrorResponse])
+    errors: List[UpdateErrorResponse]) extends Message
     
 object TxPrepareResponse {
   case class Nack(promisedId: ProposalID)
@@ -28,15 +28,15 @@ final case class TxAccept(
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
-    value: Boolean)
+    value: Boolean) extends Message
   
 final case class TxAccepted(
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
-    value: Boolean)
+    value: Boolean) extends Message
     
 final case class TxFinalized(
     from: DataStoreID,
     transactionUUID: UUID,
-    committed: Boolean)
+    committed: Boolean) extends Message

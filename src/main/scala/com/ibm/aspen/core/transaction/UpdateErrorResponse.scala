@@ -8,6 +8,6 @@ case class UpdateErrorResponse(
     updateType: UpdateType.Value,
     updateIndex: Byte,
     updateError: UpdateError.Value,
-    currentRevision: ObjectRevision,
-    currentRefcount: ObjectRefcount,
-    conflictingTransaction: TransactionDescription)
+    currentRevision: Option[ObjectRevision],
+    currentRefcount: Option[ObjectRefcount],
+    conflictingTransaction: Option[TransactionDescription])

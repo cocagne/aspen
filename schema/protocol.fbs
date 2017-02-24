@@ -61,7 +61,6 @@ enum UpdateType:byte {
 
 enum TransactionDisposition:byte {
     Undetermined,
-    Collision,
     VoteCommit,
     VoteAbort
 }
@@ -102,7 +101,7 @@ table SerializedFinalizationAction {
 table TransactionDescription {
   transaction_uuid: UUID;
   start_timestamp: long;
-  primary_pool_uuid: UUID;
+  primary_object: ObjectPointer;
   designated_leader_uid: byte;
   data_updates: [DataUpdate];
   refcount_updates: [RefcountUpdate];

@@ -146,13 +146,11 @@ object Codec {
   
   def encodeTransactionDisposition(e:TransactionDisposition.Value): Byte = e match {
     case TransactionDisposition.Undetermined => P.TransactionDisposition.Undetermined
-    case TransactionDisposition.Collision    => P.TransactionDisposition.Collision
     case TransactionDisposition.VoteCommit   => P.TransactionDisposition.VoteCommit
     case TransactionDisposition.VoteAbort    => P.TransactionDisposition.VoteAbort
   }
   def decodeTransactionDispositione(e: Byte): TransactionDisposition.Value = e match {
     case P.TransactionDisposition.Undetermined => TransactionDisposition.Undetermined
-    case P.TransactionDisposition.Collision    => TransactionDisposition.Collision
     case P.TransactionDisposition.VoteCommit   => TransactionDisposition.VoteCommit
     case P.TransactionDisposition.VoteAbort    => TransactionDisposition.VoteAbort
   }
@@ -241,6 +239,7 @@ object Codec {
   
   
   def encode(builder:FlatBufferBuilder, o:TransactionDescription): Int = {
+    val primaryObject = encode(builder, o.primaryObject)
     val dataUpdates = P.TransactionDescription.createDataUpdatesVector(builder, o.dataUpdates.map(du => encode(builder, du)).toArray)
     val refcountUpdates = P.TransactionDescription.createRefcountUpdatesVector(builder, o.refcountUpdates.map(ru => encode(builder, ru)).toArray)
     val finalizationActions = P.TransactionDescription.createFinalizationActionsVector(builder, o.finalizationActions.map(fa => encode(builder, fa)).toArray)
@@ -248,7 +247,7 @@ object Codec {
     P.TransactionDescription.startTransactionDescription(builder)
     P.TransactionDescription.addTransactionUuid(builder, encode(builder, o.transactionUUID))
     P.TransactionDescription.addStartTimestamp(builder, o.startTimestamp)
-    P.TransactionDescription.addPrimaryPoolUuid(builder, encode(builder, o.primaryPoolUUID))
+    P.TransactionDescription.addPrimaryObject(builder, primaryObject)
     P.TransactionDescription.addDesignatedLeaderUid(builder, o.designatedLeaderUID)
     P.TransactionDescription.addDataUpdates(builder, dataUpdates)
     P.TransactionDescription.addRefcountUpdates(builder, refcountUpdates)
@@ -258,7 +257,7 @@ object Codec {
   def decode(n: P.TransactionDescription): TransactionDescription = {
     val transactionUUID = decode(n.transactionUuid())
     val startTimestamp = n.startTimestamp()
-    val primaryPoolUUID = decode(n.primaryPoolUuid())
+    val primaryObject = decode(n.primaryObject())
     val designatedLeaderUID = n.designatedLeaderUid()
       
     def dataUpdates(idx: Int, l:List[DataUpdate]): List[DataUpdate] = if (idx == -1) 
@@ -279,7 +278,7 @@ object Codec {
     TransactionDescription(
         transactionUUID,
         startTimestamp,
-        primaryPoolUUID,
+        primaryObject,
         designatedLeaderUID,
         dataUpdates(n.dataUpdatesLength()-1, Nil),
         refcountUpdates(n.refcountUpdatesLength()-1, Nil),
@@ -316,24 +315,30 @@ object Codec {
   def encode(builder:FlatBufferBuilder, o:UpdateErrorResponse): Int = {
     val updateType = encodeUpdateType(o.updateType)
     val updateError = encodeUpdateError(o.updateError)
-    val collidingTx = encode(builder, o.conflictingTransaction)
+    var collidingTx = -1
+    
+    if (o.conflictingTransaction.isDefined)
+      collidingTx = encode(builder, o.conflictingTransaction.get)
     
     P.UpdateErrorResponse.startUpdateErrorResponse(builder)
     P.UpdateErrorResponse.addUpdateType(builder, updateType)
     P.UpdateErrorResponse.addUpdateIndex(builder, o.updateIndex)
     P.UpdateErrorResponse.addUpdateError(builder, updateError)
-    P.UpdateErrorResponse.addCurrentRevision(builder, encode(builder, o.currentRevision))
-    P.UpdateErrorResponse.addCurrentRefcount(builder, encode(builder, o.currentRefcount))
-    P.UpdateErrorResponse.addCollidingTransaction(builder, collidingTx)
+    if (o.currentRevision.isDefined)
+      P.UpdateErrorResponse.addCurrentRevision(builder, encode(builder, o.currentRevision.get))
+    if (o.currentRefcount.isDefined)
+      P.UpdateErrorResponse.addCurrentRefcount(builder, encode(builder, o.currentRefcount.get))
+    if (collidingTx != -1)
+      P.UpdateErrorResponse.addCollidingTransaction(builder, collidingTx)
     P.UpdateErrorResponse.endUpdateErrorResponse(builder)
   }
   def decode(n: P.UpdateErrorResponse): UpdateErrorResponse = {
     val updateType =  decodeUpdateType(n.updateType())
     val updateIndex = n.updateIndex()
     val updateError = decodeUpdateErrore(n.updateError())
-    val currentRev = decode(n.currentRevision())
-    val currentRef = decode(n.currentRefcount())
-    val collidingTx = decode(n.collidingTransaction())
+    val currentRev = if(n.currentRevision() == null) None else Some(decode(n.currentRevision()))
+    val currentRef = if(n.currentRefcount() == null) None else Some(decode(n.currentRefcount()))
+    val collidingTx = if(n.collidingTransaction() == null) None else Some(decode(n.collidingTransaction()))
     
     UpdateErrorResponse(updateType, updateIndex, updateError, currentRev, currentRef, collidingTx)
   }

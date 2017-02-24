@@ -2,3 +2,10 @@
 
 * Core package is message-handling centric.
   * only generated messages are in response to other messages and Tx driving process
+
+  
+* How to handle the data?
+  * Want to allow it to live off-heap
+  * No need to split it up in memory
+  * LocalUpdates could be a BufferPointer,
+      * Constructor reads buffer header to generate: List[(DataUpdateIndex,BufferOffset,Length)]

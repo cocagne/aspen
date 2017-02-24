@@ -1,6 +1,7 @@
 package com.ibm.aspen.core.transaction
 
 import java.util.UUID
+import com.ibm.aspen.core.objects.ObjectPointer
 
 final case class TransactionDescription(
     
@@ -15,14 +16,14 @@ final case class TransactionDescription(
      */
     startTimestamp: Long,
     
-    /** Defines the pool responsible for resolving the transaction.
+    /** Defines the primary object which is used for identifying the peers and quorum threshold used to resolve the transaction.
      *
      * Multiple objects in different pools may be modified by the transaction but only one
-     * pool is used to define the Paxos quorum used to actually resolve the commit/abort
-     * decision. This must be set to the pool with the strictest reliability constraints
-     * from amongst all of the objects modified by the transaction
+     * object is used to define the Paxos quorum used to actually resolve the commit/abort
+     * decision. This must be set to the object with the strictest reliability constraints
+     * from amongst all of the objects modified by the transaction.
      */
-    primaryPoolUUID: UUID,
+    primaryObject: ObjectPointer,
     
     /** Specifies the peer within the primary pool responsible for driving the transaction to closure 
      * 
