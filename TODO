@@ -9,3 +9,8 @@
   * No need to split it up in memory
   * LocalUpdates could be a BufferPointer,
       * Constructor reads buffer header to generate: List[(DataUpdateIndex,BufferOffset,Length)]
+      
+BackLog
+* Add special messages for "PartiallyAccepted" and "SuccessfullyCommitted"
+   |-> Use these in lieu of the normal messages if the crash recovery log is down. Peers use these to avoid
+       adding recovery entries for transactions successfully processed.

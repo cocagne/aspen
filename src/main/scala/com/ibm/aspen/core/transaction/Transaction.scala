@@ -33,40 +33,24 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     }
     
     response match {
-      case Left(nack) => messenger.send(prepare.from, TxPrepareResponse(
+      case Left(nack) => 
+        val response = TxPrepareResponse(
             store.storeId, 
             txd.transactionUUID, 
             Left(TxPrepareResponse.Nack(nack.promisedProposalId)), 
             prepare.proposalId,
             disposition,
-            Nil))
+            Nil)
+            
+        messenger.send(prepare.from, response)
             
       case Right(promise) =>
         
         store.getCurrentObjectState(txd).onSuccess({ case currentState => 
-          val errs = checkUpdates(currentState) match {
-            case Nil => store.lockOrCollide(txd) match {
-              case None => Nil
-              
-              case Some(collisions) =>
-                
-                val duerrs = txd.dataUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
-                  case None => l
-                  case Some(collidingTxd) => 
-                    val e = UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
-                    e :: l
-                })
-                
-                val ruerrs = txd.refcountUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
-                  case None => l
-                  case Some(collidingTxd) => 
-                    val e = UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
-                    e :: l
-                })
-                
-                duerrs ++ ruerrs
-            }
-            case errList => errList
+          
+          val errs = getUpdateErrors(currentState) match {
+            case Nil => lockObjectsToTransaction(currentState)
+            case errs => errs
           }
           
           val recoveryState = synchronized {
@@ -75,10 +59,15 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
                 txdisposition = if (errs.isEmpty) TransactionDisposition.VoteCommit else TransactionDisposition.VoteAbort
                 
               case TransactionDisposition.VoteAbort => 
+                // We can change our vote from Abort to Commit. An example scenario is two conflicting transactions. If
+                // one of them aborts, the conflict will be resolved so the next Prepare message for the remaining
+                // transaction will successfully lock our local objects to the transaction, thereby allowing us to
+                // change our vote.
                 if (errs.isEmpty) 
                   txdisposition = TransactionDisposition.VoteCommit
                 
               case TransactionDisposition.VoteCommit =>
+                // Once we've voted to commit, we're committed to committing :-)
             }
             
             TransactionRecoveryState(store, txd, localUpdates, txdisposition, txstatus, acceptor.persistentState)
@@ -92,12 +81,17 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
               recoveryState.disposition,
               errs)
               
+          // Note: Saving the state can fail and in that event we cannot send the message since it would violate the
+          //       Paxos safety requirements. Logging the failure here probably isn't a good idea as it is likely 
+          //       that the node will be in this state for a significant period of time. Leave it to the 
+          //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
+          //       everything normally. We'll just be a non-voting Transaction participant
           crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => messenger.send(prepare.from, response)})
         })
     }
   }
 
-  private def checkUpdates(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): List[UpdateErrorResponse] = {
+  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): List[UpdateErrorResponse] = {
     var errs: List[UpdateErrorResponse] = Nil
     
     def convertErr(e: ObjectError.Value) = e match {
@@ -136,6 +130,30 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     }))
     
     errs
+  }
+  
+  private[this] def lockObjectsToTransaction(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): List[UpdateErrorResponse] = { 
+    store.lockOrCollide(txd) match {
+      case None => Nil
+      
+      case Some(collisions) =>
+        
+        val duerrs = txd.dataUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
+          case None => l
+          case Some(collidingTxd) => 
+            val e = UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+            e :: l
+        })
+        
+        val ruerrs = txd.refcountUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
+          case None => l
+          case Some(collidingTxd) => 
+            val e = UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+            e :: l
+        })
+        
+        duerrs ++ ruerrs
+    }
   }
 }
 
