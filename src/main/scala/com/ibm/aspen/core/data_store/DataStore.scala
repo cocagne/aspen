@@ -3,6 +3,7 @@ package com.ibm.aspen.core.data_store
 import java.util.UUID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.concurrent.Future
+import com.ibm.aspen.core.transaction.LocalUpdateContent
 
 trait DataStore {
   
@@ -18,4 +19,12 @@ trait DataStore {
   
   /** Locks all objects referenced by the transaction or returns a map of collisions */
   def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, TransactionDescription]]
+  
+  
+  /** Commits the transaction changes and returns a Future to the completion of the commit operation.
+   *  
+   *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
+   *  that occur after the commit decision has been made. 
+   */
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit]
 }

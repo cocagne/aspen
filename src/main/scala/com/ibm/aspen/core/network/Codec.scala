@@ -25,7 +25,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.TxPrepareResponse
 import com.ibm.aspen.core.transaction.TxAccept
-import com.ibm.aspen.core.transaction.TxAccepted
+import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxFinalized
 
 
@@ -439,23 +439,35 @@ object Codec {
   }
   
   
-  def encode(builder:FlatBufferBuilder, o:TxAccepted): Int = {
+  def encode(builder:FlatBufferBuilder, o:TxAcceptResponse): Int = {
     val from = encode(builder, o.from)
     
-    P.TxAccepted.startTxAccepted(builder)
-    P.TxAccepted.addFrom(builder, from)
-    P.TxAccepted.addTransactionUuid(builder, encode(builder, o.transactionUUID))
-    P.TxAccepted.addProposalId(builder, encode(builder, o.proposalId))
-    P.TxAccepted.addValue(builder, o.value)
-    P.TxAccepted.endTxAccepted(builder)
+    P.TxAcceptResponse.startTxAcceptResponse(builder)
+    P.TxAcceptResponse.addFrom(builder, from)
+    P.TxAcceptResponse.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxAcceptResponse.addProposalId(builder, encode(builder, o.proposalId))
+    
+    o.response match {
+      case Left(nack) => 
+        P.TxAcceptResponse.addIsNack(builder, true)
+        P.TxAcceptResponse.addPromisedId(builder, encode(builder, nack.promisedId))
+        
+      case Right(accepted) =>
+        P.TxAcceptResponse.addIsNack(builder, false)
+        P.TxAcceptResponse.addValue(builder, accepted.value)    
+    }
+    
+    P.TxAcceptResponse.endTxAcceptResponse(builder)
   }
-  def decode(n: P.TxAccepted): TxAccepted = {
+  def decode(n: P.TxAcceptResponse): TxAcceptResponse = {
     val from = decode(n.from())
     val transactionUUID = decode(n.transactionUuid())
     val proposalId = decode(n.proposalId())
-    val value = n.value()
     
-    TxAccepted(from, transactionUUID, proposalId, value)
+    if (n.isNack())
+      TxAcceptResponse(from, transactionUUID, proposalId, Left(TxAcceptResponse.Nack(decode(n.promisedId()))))
+    else
+      TxAcceptResponse(from, transactionUUID, proposalId, Right(TxAcceptResponse.Accepted(n.value())))
   }
   
   

@@ -160,11 +160,13 @@ table TxAccept {
   value: bool;
 }
 
-table TxAccepted {
+table TxAcceptResponse {
   from: DataStoreID;
   transaction_uuid: UUID;
   proposal_id: ProposalID;
-  value: bool;
+  is_nack: bool;
+  promised_id: ProposalID;      // Valid for Nack responses
+  value: bool;                  // Valid for Accepted responses
 }
 
 table TxFinalized {
@@ -179,7 +181,7 @@ table Message {
   prepare: TxPrepare;
   prepare_response: TxPrepareResponse;
   accept: TxAccept;
-  accepted: TxAccepted;
+  accept_response: TxAcceptResponse;
   finalized: TxFinalized;
 }
 

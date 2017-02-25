@@ -30,11 +30,16 @@ final case class TxAccept(
     proposalId: ProposalID,
     value: Boolean) extends Message
   
-final case class TxAccepted(
+final case class TxAcceptResponse(
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
-    value: Boolean) extends Message
+    response: Either[TxAcceptResponse.Nack, TxAcceptResponse.Accepted]) extends Message
+    
+object TxAcceptResponse {
+  case class Nack(promisedId: ProposalID)
+  case class Accepted(value: Boolean)
+}
     
 final case class TxFinalized(
     from: DataStoreID,

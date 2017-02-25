@@ -162,14 +162,14 @@ class CodecSuite extends FunSuite with Matchers {
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
-    val a = TxAccepted(ds, txd.transactionUUID, pid, true)
+    val a = TxAcceptResponse(ds, txd.transactionUUID, pid, Left(TxAcceptResponse.Nack(pid)))
     
 	  val builder = new FlatBufferBuilder(1024)
     
     val o = Codec.encode(builder, a)
     
     P.Message.startMessage(builder)
-    P.Message.addAccepted(builder, o)
+    P.Message.addAcceptResponse(builder, o)
     
     val m =  P.Message.endMessage(builder)
     builder.finish(m)
@@ -177,7 +177,7 @@ class CodecSuite extends FunSuite with Matchers {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val a2 = Codec.decode(m2.accepted())
+    val a2 = Codec.decode(m2.acceptResponse())
     
     a2 should be(a)
 	}
