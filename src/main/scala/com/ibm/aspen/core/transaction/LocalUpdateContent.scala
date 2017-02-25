@@ -6,7 +6,7 @@ package com.ibm.aspen.core.transaction
  * transaction description will apply to every node so the number of contained update entries
  * will not always match the length of the updates list.
  */
-class LocalUpdateContent {
+trait LocalUpdateContent {
   
-  def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
+  def haveDataForUpdateIndex(updateIndex: Int): Boolean
 }

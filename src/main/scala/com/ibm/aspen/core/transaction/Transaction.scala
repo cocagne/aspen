@@ -144,7 +144,7 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     if (errs.isEmpty)
       None
     else
-      Some(errs)
+      Some(errs.reverse)
   }
   
   private[this] def lockObjectsToTransaction(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = { 
