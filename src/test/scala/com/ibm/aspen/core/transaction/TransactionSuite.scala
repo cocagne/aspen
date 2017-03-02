@@ -392,4 +392,241 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
     }
 	}
+  
+  //-----------------------------------------------------------------------------------------------
+  // Accept Handling
+  //-----------------------------------------------------------------------------------------------
+  
+  test("Nack accept message") {
+    val store = new NullDataStore(DataStoreID(poolUUID,0))
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val promisedId = ProposalID(5,1)
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
+    
+    val futureResponse = messenger.futureMessage
+    
+    val pid = ProposalID(1,0)
+    
+    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
+    
+    val response = TxAcceptResponse(
+            store.storeId, 
+            txd.transactionUUID,
+            pid,
+            Left(TxAcceptResponse.Nack(promisedId)))
+            
+    futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 0), response)) }
+	}
+  
+  test("Accept accept message") {
+    val store = new NullDataStore(DataStoreID(poolUUID,0))
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val promisedId = ProposalID(5,1)
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
+    
+    val futureResponse = messenger.futureMessage
+    
+    val pid = ProposalID(6,0)
+    
+    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
+    
+    val response = TxAcceptResponse(
+            store.storeId, 
+            txd.transactionUUID,
+            pid,
+            Right(TxAcceptResponse.Accepted(false)))
+            
+    futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 0), response)) }
+	}
+  
+  test("Verify state persisted before accepted response send") {
+    var stateSavedBeforeMessageSent = false
+    var crlStateSaved = false
+    
+    val store = new NullDataStore(DataStoreID(poolUUID,0))
+    val crl = new NullCRL {
+      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[LocalUpdateContent]): Future[Unit] = {
+        crlStateSaved = true
+        super.saveTransactionRecoveryState(state, dataUpdateContent)
+      }
+    }
+    val messenger = new TMessenger {
+      override def send(toStore: DataStoreID, message: Message): Unit = {
+        stateSavedBeforeMessageSent = crlStateSaved
+        super.send(toStore, message)
+      }
+    }
+    
+    val txd = mktxd(Nil, Nil)
+    
+    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    
+    val futureResponse = messenger.futureMessage
+    
+    val pid = ProposalID(6,2)
+    
+    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,2), txd.transactionUUID, pid, false))
+    
+    val response = TxAcceptResponse(
+            store.storeId, 
+            txd.transactionUUID,
+            pid,
+            Right(TxAcceptResponse.Accepted(false)))
+            
+    futureResponse map { 
+      msg => 
+        msg should be ((DataStoreID(poolUUID, 2), response))
+        stateSavedBeforeMessageSent should be (true)
+    }
+	}
+  
+  test("Receive Accept Response - discard state on transaction abort") {
+    var stateDiscarded = false
+    
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      override def discardTransaction(txd: TransactionDescription): Unit = {
+        stateDiscarded = true
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,0), 
+            txd.transactionUUID,
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false)))) should be (None)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,1), 
+            txd.transactionUUID,
+            ProposalID(6,0),
+            Left(TxAcceptResponse.Nack(ProposalID(2,2))))) should be (None)    
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,0), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(false)))) should be (None)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,0), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(false)))) should be (None)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,1), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(false)))) should be (Some(false))
+            
+    stateDiscarded should be (true)
+	}
+  
+  test("Receive Accept Response - commit state on transaction commit") {
+    var stateCommitted = false
+    
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+        stateCommitted = true
+        Future.successful(())
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,0), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(true)))) should be (None)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,1), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(true)))) should be (Some(true))
+            
+    stateCommitted should be (true)
+	}
+  
+  test("Receive Accept Response - single call to commit") {
+    var calls = 0
+    
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+        calls += 1
+        Future.successful(())
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,0), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(true)))) should be (None)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,1), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(true)))) should be (Some(true))
+            
+    calls should be (1)
+    
+    tx.receiveAcceptResponse(TxAcceptResponse(
+            DataStoreID(poolUUID,2), 
+            txd.transactionUUID,
+            ProposalID(3,0),
+            Right(TxAcceptResponse.Accepted(true)))) should be (Some(true))
+            
+    calls should be (1)
+	}
+  
+  test("Receive Finalized - commit state on finalize if not already committed") {
+    var stateCommitted = false
+    
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+        stateCommitted = true
+        Future.successful(())
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val txd = mktxd(Nil, Nil)
+    
+    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    
+    tx.receiveFinalized(TxFinalized(
+            DataStoreID(poolUUID,1), 
+            txd.transactionUUID,
+            true)) 
+            
+    stateCommitted should be (true)
+	}
 }

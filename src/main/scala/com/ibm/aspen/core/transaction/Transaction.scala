@@ -21,19 +21,22 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
   val localUpdates: LocalUpdateContent = trs.localUpdates
   
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
-  private[this] var txstatus: TransactionStatus.Value = trs.status
   private[this] var commitFuture: Option[Future[Unit]] = None
-  
-  def disposition: TransactionDisposition.Value = txdisposition
-  def status: TransactionStatus.Value = txstatus
   
   private[this] val acceptor = new Acceptor(store.storeId.poolIndex, trs.paxosAcceptorState)
   private[this] val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
   
+  // NOTE: Call these methods only within synchronized{} blocks
+  private[this] def transactionStatus = learner.finalValue match {
+    case None => TransactionStatus.Unresolved
+    case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
+  }
+  private[this] def isResolved = learner.finalValue.isDefined
+  
   def receivePrepare(prepare: TxPrepare): Unit = {
     
-    val (response, acceptorState) = synchronized {
-       (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState)
+    val (response, acceptorState, originalDisposition) = synchronized {
+       (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition)
     }
     
     response match {
@@ -43,7 +46,7 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
             txd.transactionUUID, 
             Left(TxPrepareResponse.Nack(nack.promisedProposalId)), 
             prepare.proposalId,
-            disposition,
+            originalDisposition,
             Nil)
             
         messenger.send(prepare.from, response)
@@ -79,7 +82,7 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
               case TransactionDisposition.VoteCommit => TransactionDisposition.VoteCommit
             }
             
-            TransactionRecoveryState(store, txd, localUpdates, txdisposition, txstatus, acceptorState)
+            TransactionRecoveryState(store, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
           }
 
           val response = TxPrepareResponse(
@@ -185,7 +188,7 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
         
       case Right(accept) =>
         val recoveryState = synchronized {
-          TransactionRecoveryState(store, txd, localUpdates, txdisposition, txstatus, acceptorState)
+          TransactionRecoveryState(store, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
         }
 
         val response = TxAcceptResponse(
@@ -199,24 +202,24 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     }
   }
   
-  def receiveAcceptResponse(msg: TxAcceptResponse): Unit = msg.response match {
-    case Left(nack) => // Nothing to do
-    case Right(accepted) =>
+  def receiveAcceptResponse(msg: TxAcceptResponse): Option[Boolean] = msg.response match {
+    case Left(nack) => None
+    
+    case Right(accepted) => synchronized {
+      val previouslyResolved = isResolved
       
-      synchronized {
-        learner.receiveAccepted(Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
-        
-        if (txstatus == TransactionStatus.Unresolved && learner.finalValue.isDefined) {
-          txstatus = if (learner.finalValue.get) {
-            commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
-            TransactionStatus.Committed 
-          }
-          else {
-            crl.discardTransactionState(txd)
-            TransactionStatus.Aborted
-          }
-        }
+      learner.receiveAccepted(Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
+      
+      if (!previouslyResolved && isResolved) {
+        if (learner.finalValue.get) 
+          commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
+          
+        else 
+          discardTransactionState()
       }
+      
+      learner.finalValue
+    }
   }
   
   def receiveFinalized(msg: TxFinalized): Unit = synchronized {
@@ -224,22 +227,19 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     // If we missed some of the AcceptResponse messages, we may see the Finalized message before realizing
     // that the commit decision was made. If so, we'll want to commit our local changes before discarding 
     // the transaction state
-    if (txstatus == TransactionStatus.Unresolved) {
-      txstatus = if (learner.finalValue.get) {
+    if (learner.finalValue.isEmpty && msg.committed) 
         commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
-        TransactionStatus.Committed 
-      }
-      else 
-        TransactionStatus.Aborted 
-    }
   
     commitFuture match {
-      case Some(f) => f onSuccess({case _ => crl.discardTransactionState(txd)})
-      case None => crl.discardTransactionState(txd)
+      case Some(f) => f onSuccess({case _ => discardTransactionState()})
+      case None => discardTransactionState()
     }
   }
-    
   
+  private[this] def discardTransactionState(): Unit = {
+    crl.discardTransactionState(txd)
+    store.discardTransaction(txd)
+  }
 }
 
 object Transaction {

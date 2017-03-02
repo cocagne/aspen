@@ -27,4 +27,12 @@ trait DataStore {
    *  that occur after the commit decision has been made. 
    */
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit]
+  
+  /** Called at the end of each transaction to ensure all object locks are released.
+   *  
+   *  For successful transactions, commitTransactionUpdates will be called first and it should release the
+   *  locks while the finalization actions run. Both committed and aborted transactions call this method.
+   * 
+   */
+  def discardTransaction(txd: TransactionDescription): Unit
 }
