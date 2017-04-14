@@ -17,6 +17,8 @@ class Proposer(
   
   def prepareQuorumReached = promisesReceived.cardinality() >= quorumSize 
   
+  def haveLocalProposal = localProposal.isDefined
+  
   def numPromises = promisesReceived.cardinality()
   def numNacks = nacksReceived.cardinality()
   

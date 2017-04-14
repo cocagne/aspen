@@ -26,7 +26,6 @@ abstract class TransactionDriver(
   protected var finalized = false
   protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
   protected var acceptedPeers = Set[DataStoreID]()
-  protected var decision: Option[Boolean] = None
   protected var finalizer: Option[TransactionFinalizer] = None
   
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == initialPrepare.txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
@@ -56,8 +55,8 @@ abstract class TransactionDriver(
         
         if (isValidAcceptor(msg.from))
           proposer.receivePromise(paxos.Promise(msg.from.poolIndex, msg.proposalId, promise.lastAccepted))
-        
-        if (proposer.maySendAccept && decision.isEmpty) {
+            
+        if (proposer.prepareQuorumReached && !proposer.haveLocalProposal) {
           
           var canCommitTransaction = true
           
@@ -85,9 +84,8 @@ abstract class TransactionDriver(
           }
           
           // If we get here, we've made our decision
-          decision = Some(canCommitTransaction)
           
-          proposer.setLocalProposal(decision.get)
+          proposer.setLocalProposal(canCommitTransaction)
           
           sendAcceptMessages()
         }
@@ -110,21 +108,20 @@ abstract class TransactionDriver(
       case Right(accepted) => 
         acceptedPeers += msg.from
         
+        val alreadyResolved = learner.finalValue.isDefined
+        
         learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value)) match {
           case None => 
-          case Some(committed) => 
-            if (committed) { 
-              if (finalizer.isEmpty) {
-                // TODO: Wait a bit for additional responses before finalizing. This approach always shows only write-threshold
-                //       peers successfully processed the transaction
-                finalizer = Some(finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger))
-              }
-            } else {
-              // Transaction Aborted
+          case Some(committed) => if (!alreadyResolved) {
+            // TODO: Wait a bit for additional responses before finalizing. This approach always shows only write-threshold
+            //       peers successfully processed the transaction
+            if (committed)  
+              finalizer = Some(finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger))
+            else
               complete()
-            }
             
             onResolution(committed)
+          }
         }   
     }
   }
@@ -171,7 +168,7 @@ abstract class TransactionDriver(
     nextRound()
   }
   
-  protected def onResolution(committed: Boolean): Unit
+  protected def onResolution(committed: Boolean): Unit = {}
 }
 
 object TransactionDriver {
