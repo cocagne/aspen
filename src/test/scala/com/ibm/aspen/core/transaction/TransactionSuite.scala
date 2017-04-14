@@ -42,7 +42,7 @@ object TransactionSuite {
     
     def futureMessage = p.future
     
-    override def send(toStore: DataStoreID, message: Message): Unit = {
+    override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
       val t = p
       p = Promise[(DataStoreID,Message)]()
       t success (toStore, message)
@@ -60,7 +60,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
@@ -84,7 +84,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -113,7 +113,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message): Unit = {
+      override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(toStore, message)
       }
@@ -121,7 +121,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val txd = mktxd(Nil, Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -151,7 +151,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -177,7 +177,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, LackContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, LackContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -212,7 +212,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -247,7 +247,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -282,7 +282,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -317,7 +317,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
           Map[UUID, TransactionDescription]((op.uuid -> collidingTxd)))
     }
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -356,7 +356,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         None
     }
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -404,7 +404,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
@@ -429,7 +429,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
@@ -459,7 +459,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message): Unit = {
+      override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(toStore, message)
       }
@@ -467,7 +467,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val txd = mktxd(Nil, Nil)
     
-    val tx = Transaction(crl, messenger, store, txd, HaveContent)
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
     val futureResponse = messenger.futureMessage
     
@@ -500,7 +500,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
@@ -549,7 +549,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
@@ -580,7 +580,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
@@ -619,7 +619,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, TransactionRecoveryState(
+    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
         store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveFinalized(TxFinalized(

@@ -54,6 +54,8 @@ class Proposer(
     nacksReceived.clear()
   }
   
+  def currentProposalId = proposalId
+  
   def currentPrepareMessage(): Prepare = Prepare(proposalId)
   
   /** Return value contains an Accept message only if we have reached the quorum threshold and we

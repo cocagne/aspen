@@ -15,7 +15,11 @@ import com.ibm.aspen.core.transaction.paxos.Accept
 import com.ibm.aspen.core.transaction.paxos.Accepted
 import scala.concurrent.Future
 
-class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
+class Transaction(
+    val crl: CrashRecoveryLog, 
+    val messenger: Messenger,
+    val onDiscard: (Transaction) => Unit,
+    trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   val store: DataStore = trs.store
   val txd: TransactionDescription = trs.txd
   val localUpdates: LocalUpdateContent = trs.localUpdates
@@ -32,6 +36,7 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
     case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
   }
   private[this] def isResolved = learner.finalValue.isDefined
+  
   
   def receivePrepare(prepare: TxPrepare): Unit = {
     
@@ -239,17 +244,19 @@ class Transaction(val crl: CrashRecoveryLog, val messenger: Messenger, trs: Tran
   private[this] def discardTransactionState(): Unit = {
     crl.discardTransactionState(txd)
     store.discardTransaction(txd)
+    onDiscard(this)
   }
 }
 
 object Transaction {
   def apply(
       crl: CrashRecoveryLog,
-      messenger: Messenger, 
+      messenger: Messenger,
+      onDiscard: (Transaction) => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
       localUpdates: LocalUpdateContent)(implicit ec: ExecutionContext): Transaction = {
-    new Transaction(crl, messenger, TransactionRecoveryState(
+    new Transaction(crl, messenger, onDiscard, TransactionRecoveryState(
         store,
         txd, 
         localUpdates, 
@@ -261,5 +268,6 @@ object Transaction {
   def apply(
       crl: CrashRecoveryLog, 
       messenger: Messenger, 
-      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, trs)
+      onDiscard: (Transaction) => Unit,
+      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, trs)
 }

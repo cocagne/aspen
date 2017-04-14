@@ -15,4 +15,6 @@ final case class ObjectPointer(
      ida == rhs.ida && java.util.Arrays.equals(storePointers.asInstanceOf[Array[Object]], rhs.storePointers.asInstanceOf[Array[Object]])
     case _ => false
   }
+  
+  override def hashCode: Int = uuid.hashCode()
 }
