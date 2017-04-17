@@ -47,10 +47,15 @@ object TransactionDriverSuite {
   class TFinalizer extends TransactionFinalizer with TransactionFinalizer.Factory {
     var cancelled = false
     var created = false
+    var peers = Set[DataStoreID]()
     
     override def cancel(): Unit = cancelled = true
     
-    override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: Messenger): TransactionFinalizer = this
+    override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: Messenger): TransactionFinalizer = {
+      created = true
+      peers = acceptedPeers
+      this
+    }
   }
   
 }
@@ -199,5 +204,167 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),true)
     
     messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+  }
+  
+  test("Multi-object PrepareResponse Handling - Abort") {
+    val otherPool = java.util.UUID.randomUUID()
+    val otherObj = ObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
+                                Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
+                                
+    val ods0 = DataStoreID(otherPool, 0)
+    val ods1 = DataStoreID(otherPool, 1)
+    
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
+    val prep = mkprep(1, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+    
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil))
+            
+    messenger.messages should be (Nil)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds1, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil))
+            
+    messenger.messages should be (Nil)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ods0, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil))
+            
+    messenger.messages should be (Nil)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ods1, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteAbort,
+            Nil))
+            
+    val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),false)
+    
+    messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+  }
+  
+  test("Simple AcceptResponse Handling - Abort") {
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val prep = mkprep(1, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+    
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false)))) 
+            
+    driver.mayBeDiscarded should be (false)
+    completed should be (false)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds1, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false))))
+            
+    driver.mayBeDiscarded should be (true)
+    completed should be (true)
+  }
+  
+  test("Simple AcceptResponse Handling - Commit") {
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val prep = mkprep(1, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+    
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(true)))) 
+            
+    driver.mayBeDiscarded should be (false)
+    completed should be (false)
+    finalizer.created should be (false)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds1, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(true))))
+            
+    driver.mayBeDiscarded should be (false)
+    completed should be (false)
+    finalizer.created should be (true)
+    finalizer.cancelled should be (false)
+    
+    driver.receiveTxFinalized(TxFinalized(ds0, txd.transactionUUID, true))
+    
+    driver.mayBeDiscarded should be (true)
+    completed should be (true)
+    finalizer.cancelled should be (true)
+    finalizer.peers should be (Set(ds0, ds1))
+  }
+  
+  test("Simple AcceptResponse Handling - Ignore invalid acceptor") {
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val prep = mkprep(1, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+    
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false)))) 
+            
+    driver.mayBeDiscarded should be (false)
+    completed should be (false)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds3, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false)))) 
+            
+    driver.mayBeDiscarded should be (false)
+    completed should be (false)
+    
+    driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds1, 
+            txd.transactionUUID, 
+            ProposalID(1,0),
+            Right(TxAcceptResponse.Accepted(false))))
+            
+    driver.mayBeDiscarded should be (true)
+    completed should be (true)
   }
 }
