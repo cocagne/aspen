@@ -1,20 +1,29 @@
 
 
 * Core package is message-handling centric.
-  * only generated messages are in response to other messages and Tx driving process
+  * only generated messages are in response to other messages
+      |-> TransactionDriver subclasses are the only classes that generate messages and these will still
+          generally only be responses. The only truly "generated" messages are from Paxos error recovery
+          e.g. lost messages, leadership collisions, etc
+          
   * network.MessageReceiver instance
      - dispatches messages to appropriate store.TransactionManager
          - dispatches to appropriate Transaction/TransactionDriver
-   
-* Need a TransactionDriver
-   - Fills Proposer role.
+  
+* Transaction
+   - Fills the Acceptor & Learner Paxos roles
+   - Interacts with a DataStore to vote on whether or not a transaction should be committed
+   - Interacts with the CrashRecovery Handler to ensure transaction state is not lost
+   - Locks the object(s) to the Transaction if voting for commit
+   - Ensures DataStore can CRL state is cleaned up when the transaction completes
+    
+* TransactionDriver
+   - Fills Proposer & Learner roles Paxos.
    - Receives TxPrepared, TxAccepted and sends Prepare/Accept msgs
    - Created for designatedLeader nodes
    - Created for recovery of Tx with failed leader
-   - Create via factory method passed to TxManager
-   		* abstract class
-   		* call schedulePrepareRetransmit() & scheduleAcceptRetransmit()
-   		* want to isolate implementation. go super simple on first pass
+   - Create via factory object passed to TxManager
+   - Totally encapsulates the retransmit/retry logic
    		
 
   
@@ -27,8 +36,14 @@
 Mid-Term Enhancements:
 * Add support for PrepareResponse messages received before corresponding Prepare message
       
+      
 BackLog
 * Add detection & handling of leader failure
+
+* Add detection and handling for Transaction recovery
+   - While Tx is still in progress
+   - After Tx commit/abort
+   - After one or more objects have been updated *after* the Tx committed/aborted
 
 * Add special messages for "PartiallyAccepted" and "SuccessfullyCommitted"
    |-> Use these in lieu of the normal messages if the crash recovery log is down. Peers use these to avoid

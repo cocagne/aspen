@@ -22,7 +22,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
     Future.successful(m)
   }
   
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, TransactionDescription]] = None
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = None
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = Future.successful(())
   

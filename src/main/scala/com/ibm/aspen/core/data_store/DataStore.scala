@@ -17,8 +17,9 @@ trait DataStore {
    */
   def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] 
   
-  /** Locks all objects referenced by the transaction or returns a map of collisions */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, TransactionDescription]]
+  
+  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors */
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.
@@ -27,6 +28,7 @@ trait DataStore {
    *  that occur after the commit decision has been made. 
    */
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit]
+  
   
   /** Called at the end of each transaction to ensure all object locks are released.
    *  

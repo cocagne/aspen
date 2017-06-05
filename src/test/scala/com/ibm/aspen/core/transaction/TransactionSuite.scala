@@ -313,8 +313,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, TransactionDescription]] = Some(
-          Map[UUID, TransactionDescription]((op.uuid -> collidingTxd)))
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = Some(
+          Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -336,6 +336,41 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
   
+  test("Vote abort on object error") {
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    val op = mkobj
+    val collidingTxd = mktxd(Nil, Nil)
+    val txd = mktxd(
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
+        
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      import NullDataStore._
+      
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = Some(
+          Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Left(ObjectError.InvalidLocalPointer))))
+    }
+    
+    val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
+    
+    val futureResponse = messenger.futureMessage
+    
+    tx.receivePrepare(mkprep(1, 2, txd))
+    
+    val response = TxPrepareResponse(
+            store.storeId, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,2),
+            TransactionDisposition.VoteAbort,
+            List(
+                UpdateErrorResponse(UpdateType.Data, 0, UpdateError.InvalidLocalPointer, None, None, None),
+                UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.InvalidLocalPointer, None, None, None)))
+            
+    futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
+	}
+  
   test("Vote abort on collision then vote commit after collision clears") {
     val messenger = new TMessenger
     val crl = new NullCRL
@@ -348,9 +383,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       var ncalls = 0
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, TransactionDescription]] = if (ncalls == 0){
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = if (ncalls == 0){
         ncalls += 1
-        Some(Map[UUID, TransactionDescription]((op.uuid -> collidingTxd)))
+        Some(Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
       }
       else
         None

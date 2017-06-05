@@ -37,6 +37,7 @@ class Transaction(
   }
   private[this] def isResolved = learner.finalValue.isDefined
   
+  import Transaction._
   
   def receivePrepare(prepare: TxPrepare): Unit = {
     
@@ -159,15 +160,21 @@ class Transaction(
     store.lockOrCollide(txd).map(collisions => {  
       val duerrs = txd.dataUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
         case None => l
-        case Some(collidingTxd) => 
-          val e = UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+        case Some(err) => 
+          val e = err match {
+            case Left(objErr) => UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, objectErrorToUpdateError(objErr), None, None, None)
+            case Right(collidingTxd) => UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+          }
           e :: l
       })
       
       val ruerrs = txd.refcountUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
         case None => l
-        case Some(collidingTxd) => 
-          val e = UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+        case Some(err) =>
+          val e = err match {
+            case Left(objErr) => UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, objectErrorToUpdateError(objErr), None, None, None)
+            case Right(collidingTxd) => UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
+          }
           e :: l
       })
       
@@ -270,4 +277,10 @@ object Transaction {
       messenger: Messenger, 
       onDiscard: (Transaction) => Unit,
       trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, trs)
+  
+  def objectErrorToUpdateError(objErr: ObjectError.Value): UpdateError.Value = objErr match {
+    case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
+    case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
+    case ObjectError.CorruptedObject => UpdateError.CorruptedObject
+  }
 }
