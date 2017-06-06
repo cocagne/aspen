@@ -2,42 +2,19 @@ package com.ibm.aspen.core.data_store
 
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.transaction.LocalUpdateContent
+import com.ibm.aspen.core.transaction.DataUpdateOperation
 import scala.concurrent.Future
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import java.nio.ByteBuffer
 
+// TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
+
 class MemoryOnlyDataStore(
     override val storeId: DataStoreID) extends DataStore {
   
   import MemoryOnlyDataStore._
-  /*
-   case class CurrentObjectState(
-    uuid: UUID,
-    revision: ObjectRevision,
-    refcount: ObjectRefcount)
-    
-    object ObjectError extends Enumeration {
-      
-      /** Supplied LocalPointer is not understood by this store or points to an invalid location */
-      val InvalidLocalPointer = Value("InvalidLocalPointer")
-      
-      /** The local pointer is valid but the UUID of the stored object (if any) does not match that of the read request.
-       *  
-       *  This can occur if the original object is deleted and its storage location has been reassigned to a
-       *  new object.
-       */
-      val ObjectMismatch = Value("ObjectMismatch")
-      
-      /** Checksum stored with the object does not match the read content. 
-       *  
-       *  This should be due to media errors 
-       */
-      val CorruptedObject = Value("CorruptedObject")
-      
-}
-   */
   
   private [this] var objects:Map[Int, Object] = Map()
   private [this] var nextLocalPointerId = 1
@@ -76,8 +53,10 @@ class MemoryOnlyDataStore(
     Future.successful(m.toMap)
   }
   
-  /** Locks all objects referenced by the transaction or returns a map of collisions */
+  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors */
   def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
+    var localObjects = Set[Object]()
+    
     val errs = for {
       op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
       spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
@@ -85,18 +64,27 @@ class MemoryOnlyDataStore(
       
       result: Option[Either[ObjectError.Value, TransactionDescription]] = getObject(spo.get.data) match {
         case None => Some(Left(ObjectError.InvalidLocalPointer))
-        case Some(obj) => if (op.uuid == obj.uuid) 
-          obj.lock.map(Right(_))
-        else  
-          Some(Left(ObjectError.ObjectMismatch))
+        case Some(obj) =>
+          if (op.uuid == obj.uuid) 
+            obj.lock match {
+            case None => 
+              localObjects += obj
+              None
+            case Some(txd) => Some(Right(txd))
+          }
+          else  
+            Some(Left(ObjectError.ObjectMismatch))
       }
       if result.isDefined
     } yield (op.uuid -> result.get)
     
-    if (errs.isEmpty)
+    if (errs.isEmpty) {
+      val lock = Some(txd)
+      localObjects.foreach(_.lock = lock)
       None
-    else
+    } else {
       Some(errs.toMap)
+    }
   }
   
   
@@ -105,7 +93,52 @@ class MemoryOnlyDataStore(
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = Future.successful(())
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = synchronized {
+    val localSet = for {
+      op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
+      spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
+      if spo.isDefined
+      
+      obj = getObject(spo.get.data) 
+      
+      if obj.isDefined
+    } yield (op.uuid -> obj.get)
+    
+    val localObjects = localSet.toMap
+    
+    // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
+    
+    for ((du, idx) <- txd.dataUpdates.zipWithIndex) {
+      localObjects.get(du.objectPointer.uuid).foreach(obj => {
+        if (du.requiredRevision == obj.revision) {
+          obj.revision = du.operation match {
+            case DataUpdateOperation.Append => 
+              obj.data ++ localUpdates.getDataForUpdateIndex(idx)
+              ObjectRevision(obj.revision.overwriteCount, obj.data.length)
+              
+            case DataUpdateOperation.Overwrite => 
+              obj.data = localUpdates.getDataForUpdateIndex(idx)
+              ObjectRevision(obj.revision.overwriteCount+1, obj.data.length)
+          }
+        }
+      })  
+    }
+    
+    for ((ru, idx) <- txd.refcountUpdates.zipWithIndex) {
+      localObjects.get(ru.objectPointer.uuid).foreach(obj => {
+        if (ru.requiredRefcount == obj.refcount)
+          obj.refcount = ru.newRefcount
+      })  
+    }
+    
+    // It is possible for transactions to commit even if the objects are currently locked to some other
+    // transaction. Only clear locks with matching transaction UUIDs.
+    for (t <- localSet) {
+      t._2.lock.foreach( lockedTxd => if (lockedTxd.transactionUUID == txd.transactionUUID) t._2.lock = None )
+    }
+    
+    Future.successful(())
+  }
   
   /** Called at the end of each transaction to ensure all object locks are released.
    *  
@@ -113,7 +146,17 @@ class MemoryOnlyDataStore(
    *  locks while the finalization actions run. Both committed and aborted transactions call this method.
    * 
    */
-  def discardTransaction(txd: TransactionDescription): Unit = ()
+  def discardTransaction(txd: TransactionDescription): Unit = synchronized {
+    for {
+      op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
+      spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
+      if spo.isDefined
+      
+      optObj = getObject(spo.get.data)
+    }{
+      optObj.foreach(obj => obj.lock.foreach(lockedTxd => if (lockedTxd.transactionUUID == txd.transactionUUID) obj.lock = None))
+    }
+  }
 }
 
 object MemoryOnlyDataStore {

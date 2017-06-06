@@ -31,10 +31,12 @@ object TransactionSuite {
   
   object HaveContent extends LocalUpdateContent {
     def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
+    def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = throw new Exception("should not be called")
   }
   
   object LackContent extends LocalUpdateContent {
     def haveDataForUpdateIndex(updateIndex: Int): Boolean = false
+    def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = throw new Exception("should not be called")
   }
   
   class TMessenger extends NullMessenger {

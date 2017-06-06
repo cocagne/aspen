@@ -9,4 +9,6 @@ package com.ibm.aspen.core.transaction
 trait LocalUpdateContent {
   
   def haveDataForUpdateIndex(updateIndex: Int): Boolean
+  
+  def getDataForUpdateIndex(updateIndex: Int): Array[Byte]
 }
