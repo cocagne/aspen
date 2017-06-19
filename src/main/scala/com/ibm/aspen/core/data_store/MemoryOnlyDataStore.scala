@@ -8,6 +8,8 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.objects.StorePointer
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -19,13 +21,41 @@ class MemoryOnlyDataStore(
   private [this] var objects:Map[Int, Object] = Map()
   private [this] var nextLocalPointerId = 1
   
-  private def nextLocalPointer = {
+  private def nextLocalPointer() = {
     val lp = nextLocalPointerId
     nextLocalPointerId += 1
-    ByteBuffer.allocate(4).putInt(lp).array()
+    (lp, ByteBuffer.allocate(4).putInt(lp).array())
   }
   
   private def getObject(ba: Array[Byte]) = objects.get(ByteBuffer.wrap(ba).getInt)
+  
+  /** Allocates a new Object on the store */
+  def allocateNewObject(objectUUID: UUID, 
+                        size: Option[Int], 
+                        initialContent: Array[Byte],
+                        initialRefcount: ObjectRefcount,
+                        allocationTransactionUUID: UUID,
+                        allocatingObject: ObjectPointer,
+                        allocatingObjectRevision: ObjectRevision): Future[Either[ObjectAllocationError.Value, StorePointer]] = synchronized {
+    val (objId, lpArray) = nextLocalPointer()
+    
+    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.length), initialRefcount, initialContent, None))
+    
+    Future.successful(Right(StorePointer(storeId.poolIndex, lpArray)))
+  }
+  
+  /** Reads an object on the store */
+  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]] = synchronized {
+    if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
+      return Future.successful(Left(ObjectError.InvalidLocalPointer))
+      
+    getObject(storePointer.data) match {
+      case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
+      case Some(obj) =>
+        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount)
+        Future.successful(Right( (cstate, obj.data) ))
+    }
+  }
   
   /** Returns a future to a map of the current object state for all hosted objects referenced by the TransactionDescription
    *  

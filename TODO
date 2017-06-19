@@ -1,4 +1,10 @@
-
+Add DataStore test class
+  * Test MemoryOnlyDataStore
+Add support for Allocation message + TODO for recovering from failure
+Add support for Read Object
+Add DSL/STM support for Tx building
+  
+Figure out the allocation/bootstrapping issues
 
 * Core package is message-handling centric.
   * only generated messages are in response to other messages

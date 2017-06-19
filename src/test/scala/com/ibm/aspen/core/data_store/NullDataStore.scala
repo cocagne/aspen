@@ -7,13 +7,29 @@ import java.util.UUID
 import com.ibm.aspen.core.transaction.LocalUpdateContent
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.objects.StorePointer
 
-/* A do-nothing store that simply returns empty successes. Use this as a base class for 
- * mock stores used in tests. The "stored" objects have ObjectRevision(1,10
+/* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
+ * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
  */
 class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   import NullDataStore._
+  
+  def allocateNewObject(objectUUID: UUID, 
+                        size: Option[Int], 
+                        initialContent: Array[Byte],
+                        initialRefcount: ObjectRefcount,
+                        allocationTransactionUUID: UUID,
+                        allocatingObject: ObjectPointer,
+                        allocatingObjectRevision: ObjectRevision): Future[Either[ObjectAllocationError.Value, StorePointer]] = {
+    Future.successful(Left(ObjectAllocationError.OutOfSpace))
+  }
+  
+  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]] = {
+    Future.successful(Left(ObjectError.InvalidLocalPointer))
+  }
   
   def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
     var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
