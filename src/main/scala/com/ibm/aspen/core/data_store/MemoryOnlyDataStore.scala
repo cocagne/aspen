@@ -67,6 +67,7 @@ class MemoryOnlyDataStore(
     val m = synchronized {
       for {
         op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
+         
         spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
         if spo.isDefined
         
@@ -87,6 +88,9 @@ class MemoryOnlyDataStore(
   def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
     var localObjects = Set[Object]()
     
+    val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
+    val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
+    
     val errs = for {
       op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
       spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
@@ -98,8 +102,23 @@ class MemoryOnlyDataStore(
           if (op.uuid == obj.uuid) 
             obj.lock match {
             case None => 
-              localObjects += obj
-              None
+              val revision_ok = requiredRevisions.get(obj.uuid) match {
+                case Some(required) => obj.revision == required
+                case None => true
+              }
+              val refcount_ok = requiredRefcounts.get(obj.uuid) match {
+                case Some(required) => obj.refcount == required
+                case None => true
+              }
+              if (revision_ok && refcount_ok) {
+                localObjects += obj
+                None
+              } else {
+                if (!revision_ok)
+                  Some(Left(ObjectError.RevisionMismatch))
+                else
+                  Some(Left(ObjectError.RefcountMismatch))
+              }
             case Some(txd) => Some(Right(txd))
           }
           else  

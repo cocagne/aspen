@@ -18,4 +18,16 @@ object ObjectError extends Enumeration {
    */
   val CorruptedObject = Value("CorruptedObject")
   
+  /** Returned during DataStore.lockOrCollide if the revision of the object changed between the initial state
+   *  query and the time at which the lock operation was preformed
+   * 
+   */
+  val RevisionMismatch = Value("RevisionMismatch")
+  
+  /** Returned during DataStore.lockOrCollide if the refcount of the object changed between the initial state
+   *  query and the time at which the lock operation was preformed
+   * 
+   */
+  val RefcountMismatch = Value("RefcountMismatch")
+  
 }

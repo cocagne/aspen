@@ -1,6 +1,7 @@
 package com.ibm.aspen.core.data_store
 
 import scala.concurrent._
+import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import org.scalatest._
 import java.util.UUID
@@ -9,8 +10,16 @@ import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.transaction.DataUpdate
+import com.ibm.aspen.core.transaction.DataUpdateOperation
+import com.ibm.aspen.core.transaction.RefcountUpdate
+import com.ibm.aspen.core.transaction.TransactionDescription
+import scala.util.Success
+import scala.util.Failure
+import com.ibm.aspen.core.transaction.LocalUpdateContent
 
 object DataStoreSuite {
+  val awaitDuration = Duration(100, MILLISECONDS)
   val uuid0 = new UUID(0,0)
   val uuid1 = new UUID(0,1)
   val poolUUID = new UUID(0,2)
@@ -20,7 +29,15 @@ object DataStoreSuite {
   val allocRev = ObjectRevision(0,1)
   val oneRef = ObjectRefcount(0,1)
   
+  def mkObjPtr(objUUID:UUID, sp:StorePointer) = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
+  
+  def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = TransactionDescription(txdUUID, 100, allocObj, 0, du, ru, Nil)
+  
   val storeId = DataStoreID(poolUUID, 1)
+  
+  val icontent0 = List[Byte](1,2,3).toArray
+  val icontent1 = List[Byte](4,5,6).toArray
+  val irev = ObjectRevision(0,3)
 }
 
 abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
@@ -28,16 +45,238 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   
   def newStore: DataStore
   
+  // Helper method that creates a store and adds two objects. Returns (DataStore, Obj0StorePointer, Obj1StorePointer)
+  def initObjects(): (DataStore, StorePointer, StorePointer) = {
+    val ds = newStore
+            
+    val expected = (CurrentObjectState(uuid0, irev, oneRef), icontent0)
+    
+    val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, txUUID, allocObj, allocRev) flatMap { either => either match {
+      case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, txUUID, allocObj, allocRev).flatMap(er => er match {
+        case Right(sp1) => Future.successful((ds, sp0, sp1))
+        case Left(err) => fail("Returned failure instead of object content")
+      })
+      case Left(err) => fail("Returned failure instead of store pointer")
+    }}
+    
+    Await.result(f, awaitDuration)
+  }
+  
+  test("Discard Locked Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+    
+    ds.discardTransaction(txd)
+    
+    // Ensure new Tx can lock against unmodified objects
+    val tx2UUID = new UUID(99,99)
+    
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
+                    
+    ds.lockOrCollide(txd2) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+  }
+  
+  test("Commit Locked Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+    
+    val newContent = List[Byte](7,8,9,10).toArray
+    
+    object lu extends LocalUpdateContent {
+      def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
+  
+      def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = newContent
+    }
+    
+    Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
+    
+    val newRev = ObjectRevision(1,4)
+    
+    val expected0 = Right((CurrentObjectState(uuid0, newRev, oneRef), newContent))
+    val expected1 = Right((CurrentObjectState(uuid1, ObjectRevision(0,3), newRef), icontent1))
+    
+    val cs0 = Await.result(ds.getObject(op0), awaitDuration)
+    val cs1 = Await.result(ds.getObject(op1), awaitDuration)
+    
+    cs0 should be (expected0)
+    cs1 should be (expected1)
+    
+    // Ensure new Tx can lock against updated attributes
+    val tx2UUID = new UUID(99,99)
+    
+    
+    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+                    
+    ds.lockOrCollide(txd2) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+  }
+  
+  test("Lock With Collision and Error") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+    
+    val tx2UUID = new UUID(99,99)
+    
+    val op3 = mkObjPtr(uuid1, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
+    
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
+        
+    ds.lockOrCollide(txd2) match {
+      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid1 -> Left(ObjectError.InvalidLocalPointer))))
+      case None => fail("Shouldn't have succeeded")
+    }
+  }
+  
+  test("Lock With Revision and Refcount Errors") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    
+    val badRev = ObjectRevision(3,4)
+    val badRef = ObjectRefcount(5,6)
+    
+    val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, badRef, oneRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => m should be (Map((uuid0->Left(ObjectError.RevisionMismatch)),(uuid1->Left(ObjectError.RefcountMismatch))))
+      case None => fail("Should have encountered errors")
+    }
+    
+  }
+  
+  test("Lock With Collisions") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+    
+    val tx2UUID = new UUID(99,99)
+    
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
+        
+    ds.lockOrCollide(txd2) match {
+      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid1 -> Right(txd))))
+      case None => fail("Shouldn't have encountered errors")
+    }
+  }
+  
+  test("Lock No Collisions") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    ds.lockOrCollide(txd) match {
+      case Some(m) => fail("Shouldn't have encountered errors")
+      case None => succeed
+    }
+  }
+  
+  test("Get Object State") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
+    m.size should be (2)
+    m.contains(uuid0) should be (true)
+    m.contains(uuid1) should be (true)
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef)))
+    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef)))
+  }
+  
+  test("Get Invalid Object State") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
+    m.size should be (2)
+    m.contains(uuid0) should be (true)
+    m.contains(uuid1) should be (true)
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef)))
+    m(uuid1) should be (Left(ObjectError.InvalidLocalPointer))
+  }
+  
+  test("Get Object State With Object Mistmatch") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val badUUID = new UUID(99,99)
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(badUUID, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
+                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
+    m.size should be (2)
+    m.contains(uuid0) should be (true)
+    m.contains(badUUID) should be (true)
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef)))
+    m(badUUID) should be (Left(ObjectError.ObjectMismatch))
+  }
+  
   test("Allocate New Object") {
     val ds = newStore
-    
-    /* def allocateNewObject(objectUUID: UUID, 
-                        size: Option[Int], 
-                        initialContent: Array[Byte],
-                        initialRefcount: ObjectRefcount,
-                        allocationTransactionUUID: UUID,
-                        allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[ObjectAllocationError.Value, StorePointer]]*/
     
     val icontent = List[Byte](1,2,3).toArray
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)

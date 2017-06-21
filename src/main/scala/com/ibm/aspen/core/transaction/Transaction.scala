@@ -282,5 +282,7 @@ object Transaction {
     case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
     case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
     case ObjectError.CorruptedObject => UpdateError.CorruptedObject
+    case ObjectError.RevisionMismatch => UpdateError.RevisionMismatch
+    case ObjectError.RefcountMismatch => UpdateError.RefcountMismatch
   }
 }

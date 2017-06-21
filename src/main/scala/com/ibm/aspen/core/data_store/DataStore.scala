@@ -35,6 +35,15 @@ trait DataStore {
   def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]]
   
   
+  /** Reads an object on the store */
+  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]] = {
+    objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
+      case Some(sp) => getObject(sp)
+      case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
+    }
+  }
+  
+  
   /** Returns a future to a map of the current object state for all hosted objects referenced by the TransactionDescription
    *  
    *  This method always returns a Success(). Any errors encountered along the way are noted within the CurrentObjectState
@@ -43,7 +52,10 @@ trait DataStore {
   def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectError.Value, CurrentObjectState]]] 
   
   
-  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors */
+  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors. Note that this method
+   *  must detect Revision and Refcount mismatch errors. getCurrentObjectState is used by transactions to do initial error
+   *  checking on the refcount and revision but it is possible for those values to change between that call and this call.
+   */
   def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]]
   
   
