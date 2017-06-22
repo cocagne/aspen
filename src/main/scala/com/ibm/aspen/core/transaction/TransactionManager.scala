@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.transaction
 
 import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.core.network.Messenger
+import com.ibm.aspen.core.network.TransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
@@ -10,7 +10,7 @@ import scala.concurrent.ExecutionContext
 
 class TransactionManager(
     val crl: CrashRecoveryLog, 
-    val messenger: Messenger,
+    val messenger: TransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
     val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) {
  

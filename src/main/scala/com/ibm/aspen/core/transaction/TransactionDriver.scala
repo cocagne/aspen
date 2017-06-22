@@ -1,6 +1,6 @@
 package com.ibm.aspen.core.transaction
 
-import com.ibm.aspen.core.network.Messenger
+import com.ibm.aspen.core.network.TransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.Proposer
@@ -9,7 +9,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
-    val messenger:Messenger, 
+    val messenger:TransactionMessenger, 
     initialPrepare: TxPrepare, 
     private val finalizerFactory: TransactionFinalizer.Factory,
     private val onComplete: (UUID) => Unit) {
@@ -175,7 +175,7 @@ object TransactionDriver {
   trait Factory {
     def create(
         storeId: DataStoreID,
-        messenger:Messenger, 
+        messenger:TransactionMessenger, 
         initialPrepare: TxPrepare, 
         finalizerFactory: TransactionFinalizer.Factory,
         onComplete: (UUID) => Unit): TransactionDriver

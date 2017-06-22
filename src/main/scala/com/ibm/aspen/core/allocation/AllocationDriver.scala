@@ -1,6 +1,6 @@
 package com.ibm.aspen.core.allocation
 
-import com.ibm.aspen.core.network.Messenger
+import com.ibm.aspen.core.network.TransactionMessenger
 import java.util.UUID
 import scala.concurrent.Promise
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -8,7 +8,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
 
 abstract class AllocationDriver (
-    val messenger: Messenger,
+    val messenger: TransactionMessenger,
     val poolUUID: UUID,
     val newObjectUUID: UUID,
     val objectSize: Option[Int],

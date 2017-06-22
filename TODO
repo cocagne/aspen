@@ -1,5 +1,4 @@
 
-** Rename Messenger & MessageReceiver to TransactionMessenger & TransactionMessageReceiver
 ** Create AllocationMessenger
 
 Add support for Allocation message + TODO for recovering from failure

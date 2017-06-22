@@ -7,7 +7,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.network.NullMessenger
-import com.ibm.aspen.core.network.Messenger
+import com.ibm.aspen.core.network.TransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 
@@ -39,7 +39,7 @@ object TransactionDriverSuite {
   }
   
   class TTD (storeId: DataStoreID,
-    messenger:Messenger, 
+    messenger:TransactionMessenger, 
     initialPrepare: TxPrepare, 
     finalizerFactory: TransactionFinalizer.Factory,
     onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete)
@@ -51,7 +51,7 @@ object TransactionDriverSuite {
     
     override def cancel(): Unit = cancelled = true
     
-    override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: Messenger): TransactionFinalizer = {
+    override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: TransactionMessenger): TransactionFinalizer = {
       created = true
       peers = acceptedPeers
       this
