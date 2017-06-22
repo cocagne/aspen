@@ -23,5 +23,6 @@ final case class Allocate(
     
 final case class AllocateResponse(
     fromStoreId: DataStoreID,
+    allocationTransactionUUID: UUID,
     result: Either[AllocationError.Value, StorePointer]) extends Message
     

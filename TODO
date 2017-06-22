@@ -1,3 +1,5 @@
+Array of StorePointer isn't going to cut it since we can't use the index as the pool index (couldn't NOT allocate from store0)
+Probably easiest to fix by putting the pool index in the StorePointer
 
 ** Create AllocationMessenger
 
