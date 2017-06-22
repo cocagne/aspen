@@ -1,4 +1,7 @@
 
+** Rename Messenger & MessageReceiver to TransactionMessenger & TransactionMessageReceiver
+** Create AllocationMessenger
+
 Add support for Allocation message + TODO for recovering from failure
   * Add com.ibm.aspen.core.allocation package
   * Add AllocationManager to drive the process
