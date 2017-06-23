@@ -10,7 +10,14 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.IDA
 
-abstract class AllocationDriver (
+/** Handles the sending and receiving of messages used to allocate a new object. 
+ *  
+ *  This class provides no error handling or message retransmissions so it is suitable for direct use
+ *  only in unit/integration tests where message loss is not an issue. Subclasses should be used to
+ *  provide error-handling strategies.
+ * 
+ */
+class AllocationDriver (
     val messenger: AllocationMessenger,
     val poolUUID: UUID,
     val newObjectUUID: UUID,
@@ -29,7 +36,10 @@ abstract class AllocationDriver (
   
   private[this] var responses =  Map[Byte, Either[AllocationError.Value, StorePointer]]()
   
-  def sendAllocationMessages(): Unit = {
+  /** Initiates the allocation process */
+  def start() = sendAllocationMessages()
+  
+  protected def sendAllocationMessages(): Unit = {
     val toSend = synchronized { objectData.filter( t => !responses.contains(t._1) ) }
     
     for ( (storeIndex, objectData) <- toSend ) {
@@ -70,6 +80,20 @@ abstract class AllocationDriver (
 
 object AllocationDriver {
   trait Factory {
-    def create(): AllocationDriver
+    def create(messenger: AllocationMessenger,
+               poolUUID: UUID,
+               newObjectUUID: UUID,
+               objectSize: Option[Int],
+               objectIDA: IDA,
+               objectData: Map[Byte,Array[Byte]], // Map DataStore pool index -> store-specific ObjectData
+               initialRefcount: ObjectRefcount,
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): AllocationDriver = {
+      new AllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, initialRefcount, 
+                           allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    }
   }
+  
+  object NoErrorRecoveryAllocationDriver extends Factory {}
 }
