@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.allocation.AllocationError
 
 trait DataStore {
   
@@ -28,7 +29,7 @@ trait DataStore {
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[ObjectAllocationError.Value, StorePointer]]
+                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]]
   
   
   /** Reads an object on the store */

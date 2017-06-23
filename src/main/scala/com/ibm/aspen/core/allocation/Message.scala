@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.StorePointer
 sealed abstract class Message
 
 final case class Allocate(
+    toStore: DataStoreID,
     fromClient: Client,
     newObjectUUID: UUID,
     objectSize: Option[Int],

@@ -1,6 +1,6 @@
 package com.ibm.aspen.core.allocation
 
-import com.ibm.aspen.core.network.AllocationMessenger
+import com.ibm.aspen.core.network.ClientSideAllocationMessenger
 import java.util.UUID
 import scala.concurrent.Promise
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -18,7 +18,7 @@ import com.ibm.aspen.core.ida.IDA
  * 
  */
 class AllocationDriver (
-    val messenger: AllocationMessenger,
+    val messenger: ClientSideAllocationMessenger,
     val poolUUID: UUID,
     val newObjectUUID: UUID,
     val objectSize: Option[Int],
@@ -45,8 +45,8 @@ class AllocationDriver (
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
       
-      val msg = Allocate(messenger.client, newObjectUUID, objectSize, objectData, initialRefcount, allocationTransactionUUID,
-                         allocatingObject, allocatingObjectRevision)
+      val msg = Allocate(storeId, messenger.client, newObjectUUID, objectSize, objectData, initialRefcount, 
+                         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
       messenger.send(storeId, msg)
     }
@@ -80,7 +80,7 @@ class AllocationDriver (
 
 object AllocationDriver {
   trait Factory {
-    def create(messenger: AllocationMessenger,
+    def create(messenger: ClientSideAllocationMessenger,
                poolUUID: UUID,
                newObjectUUID: UUID,
                objectSize: Option[Int],
