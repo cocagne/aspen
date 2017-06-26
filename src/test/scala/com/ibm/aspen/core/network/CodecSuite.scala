@@ -9,6 +9,9 @@ import com.ibm.aspen.core.ida._
 import com.ibm.aspen.core.transaction._
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
+import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.allocation.AllocateResponse
+import com.ibm.aspen.core.allocation.AllocationError
 
 object CodecSuite {
   
@@ -39,6 +42,121 @@ object CodecSuite {
 class CodecSuite extends FunSuite with Matchers {
   
   import CodecSuite._
+  /*final case class AllocateResponse(
+    fromStoreId: DataStoreID,
+    allocationTransactionUUID: UUID,
+    result: Either[AllocationError.Value, StorePointer]) extends Message*/
+  test("AllocateResponse Encoding Error") {
+    val poolUUID = new java.util.UUID(1,2)
+    val storeId = DataStoreID(poolUUID, 3)
+    val txUUID = new java.util.UUID(3,4)
+    
+    val ar = AllocateResponse(storeId, txUUID, Left(AllocationError.InsufficientSpace))
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, ar)
+    
+    P.Message.startMessage(builder)
+    P.Message.addAllocateResponse(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.allocateResponse())
+    
+    decoded should be (ar)
+  }
+  
+  test("AllocateResponse Encoding Success") {
+    val poolUUID = new java.util.UUID(1,2)
+    val storeId = DataStoreID(poolUUID, 3)
+    val txUUID = new java.util.UUID(3,4)
+    val sp = StorePointer(0, Array[Byte](0, 1, 2, 3))
+    val ar = AllocateResponse(storeId, txUUID, Right(sp))
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, ar)
+    
+    P.Message.startMessage(builder)
+    P.Message.addAllocateResponse(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.allocateResponse())
+    
+    decoded should be (ar)
+  }
+  
+  test("Allocate Encoding without Size") {
+    val d1 = List[Byte](1,2,3).toArray
+    val s1:Option[Int] = None
+    val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
+    val ref = ObjectRefcount(1,1)
+    val rev = ObjectRevision(2,2)
+    val poolUUID = new java.util.UUID(1,2)
+    val txUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
+    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val storeId = DataStoreID(poolUUID, 3)
+    val a1 = Allocate(storeId, c1, objUUID, s1, d1, ref, txUUID,  op, rev)
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, a1)
+    
+    P.Message.startMessage(builder)
+    P.Message.addAllocate(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.allocate())
+    
+    decoded should be (a1)
+  }
+  
+  test("Allocate Encoding with Size") {
+    val d1 = List[Byte](1,2,3).toArray
+    val s1:Option[Int] = Some(5)
+    val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
+    val ref = ObjectRefcount(1,1)
+    val rev = ObjectRevision(2,2)
+    val poolUUID = new java.util.UUID(1,2)
+    val txUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
+    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val storeId = DataStoreID(poolUUID, 3)
+    val a1 = Allocate(storeId, c1, objUUID, s1, d1, ref, txUUID,  op, rev)
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, a1)
+    
+    P.Message.startMessage(builder)
+    P.Message.addAllocate(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.allocate())
+    
+    decoded should be (a1)
+  }
   
   test("TxPrepare Encoding") {
     

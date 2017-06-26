@@ -20,7 +20,16 @@ final case class Allocate(
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,
     allocatingObjectRevision: ObjectRevision
-    ) extends Message
+    ) extends Message {
+  
+  override def equals(other: Any): Boolean = other match {
+    case rhs: Allocate => toStore == rhs.toStore && fromClient == rhs.fromClient && 
+      objectSize == rhs.objectSize && java.util.Arrays.equals(objectData, rhs.objectData) &&
+      initialRefcount == rhs.initialRefcount && allocationTransactionUUID == rhs.allocationTransactionUUID &&
+      allocatingObject == rhs.allocatingObject && allocatingObjectRevision == rhs.allocatingObjectRevision
+    case _ => false
+  }
+}
     
 final case class AllocateResponse(
     fromStoreId: DataStoreID,

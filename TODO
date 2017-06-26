@@ -1,12 +1,4 @@
 
-** Create AllocationMessenger
-
-Add support for Allocation message + TODO for recovering from failure
-  * Add com.ibm.aspen.core.allocation package
-  * Add AllocationManager to drive the process
-  * Need a "ClientAddress" to use for send/receive messages from non-store entity 
-  * Can put error-recovery logic here as well (eventually)
-  * Similar to Tx, each Alloc is driven by an object
 
 Add support for Read Object
   * Add com.ibm.aspen.core.read package
@@ -22,6 +14,9 @@ Figure out the allocation/bootstrapping issues
       |-> TransactionDriver subclasses are the only classes that generate messages and these will still
           generally only be responses. The only truly "generated" messages are from Paxos error recovery
           e.g. lost messages, leadership collisions, etc
+          
+  * Transaction, Allocation, & Read are all implemented with Managers and Drivers. Each operation gets a
+    UUID and a driver instance drives the operation to completion.
           
   * network.MessageReceiver instance
      - dispatches messages to appropriate store.TransactionManager

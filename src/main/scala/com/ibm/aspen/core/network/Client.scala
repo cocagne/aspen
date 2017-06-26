@@ -4,5 +4,17 @@ package com.ibm.aspen.core.network
  * 
  */
 trait Client {
-  
+  def serialized: Array[Byte]
+}
+
+object Client {
+  case class SimpleClient(bytes: Array[Byte]) extends Client {
+    def serialized: Array[Byte] = bytes
+    
+    override def equals(other: Any): Boolean = other match {
+      case rhs: SimpleClient => java.util.Arrays.equals(bytes, rhs.bytes)
+      case _ => false
+    }
+  }
+  def fromSerialized(data:Array[Byte]): Client = SimpleClient(data)
 }

@@ -27,6 +27,9 @@ import com.ibm.aspen.core.transaction.TxPrepareResponse
 import com.ibm.aspen.core.transaction.TxAccept
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxFinalized
+import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.allocation.AllocateResponse
+import com.ibm.aspen.core.allocation.AllocationError
 
 
 
@@ -485,5 +488,74 @@ object Codec {
     val transactionUUID = decode(n.transactionUuid())
     
     TxFinalized(from, transactionUUID, n.committed())
+  }
+  
+  //-----------------------------------------------------------------------------------------------
+  // Allocation Messages
+  //-----------------------------------------------------------------------------------------------
+  
+  def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
+    val toStore = encode(builder, o.toStore)
+    val clientData = P.SerializedFinalizationAction.createDataVector(builder, o.fromClient.serialized)
+    val objectData = P.SerializedFinalizationAction.createDataVector(builder, o.objectData)
+    val allocObj = encode(builder, o.allocatingObject)
+    
+    P.Allocate.startAllocate(builder)
+    P.Allocate.addToStore(builder, toStore)
+    P.Allocate.addFromClient(builder, clientData)
+    P.Allocate.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
+    o.objectSize.foreach( sz => P.Allocate.addObjectSize(builder, sz) )
+    P.Allocate.addObjectData(builder, objectData)
+    P.Allocate.addInitialRefcount(builder, encode(builder, o.initialRefcount))
+    P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
+    P.Allocate.addAllocatingObject(builder, allocObj)
+    P.Allocate.addAllocatingObjectRevision(builder, encode(builder, o.allocatingObjectRevision))
+    P.Allocate.endAllocate(builder)
+  }
+  def decode(n: P.Allocate): Allocate = {
+    val toStore = decode(n.toStore())
+    val fromClient = new Array[Byte](n.fromClientLength())
+    n.fromClientAsByteBuffer().get(fromClient)
+    val newObjectUUID = decode(n.newObjectUUID())
+    val objectSize = if (n.objectSize() == 0) None else Some(n.objectSize())
+    val objectData = new Array[Byte](n.objectDataLength())
+    n.objectDataAsByteBuffer().get(objectData)
+    val initialRefcount = decode(n.initialRefcount())
+    val allocationTransactionUUID = decode(n.allocationTransactionUUID())
+    val allocatingObject = decode(n.allocatingObject())
+    val allocatingObjectRevision = decode(n.allocatingObjectRevision())
+    Allocate(toStore, Client.fromSerialized(fromClient), newObjectUUID, objectSize, objectData, initialRefcount, 
+        allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:AllocateResponse): Int = {
+    val fromStoreID = encode(builder, o.fromStoreId)
+    val resultPointer = o.result match {
+      case Right(sp) => encode(builder, sp)
+      case Left(_) => -1
+    }
+    
+    P.AllocateResponse.startAllocateResponse(builder)
+    P.AllocateResponse.addFromStoreID(builder, fromStoreID)
+    P.AllocateResponse.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
+    o.result match {
+      case Right(sp) => P.AllocateResponse.addResultPointer(builder, resultPointer)
+      case Left(err) => P.AllocateResponse.addResultError(builder, err match {
+        case AllocationError.InsufficientSpace => P.AllocationError.InsufficientSpace
+      })
+    }
+    P.AllocateResponse.endAllocateResponse(builder)
+  }
+  def decode(n: P.AllocateResponse): AllocateResponse = {
+    val fromStoreId = decode(n.fromStoreID())
+    val allocationTransactionUUID = decode(n.allocationTransactionUUID())
+    val result = if (n.resultPointer() == null) {
+      n.resultError() match {
+        case P.AllocationError.InsufficientSpace => Left(AllocationError.InsufficientSpace)
+      }
+    } else {
+      Right(decode(n.resultPointer()))
+    }
+    AllocateResponse(fromStoreId, allocationTransactionUUID, result)
   }
 }

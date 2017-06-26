@@ -175,6 +175,33 @@ table TxFinalized {
   committed: bool;
 }
 //---------------------------------------------------------------------------
+//- Allocation Messages
+//---------------------------------------------------------------------------
+
+table Allocate {
+  toStore: DataStoreID;
+  fromClient: [byte];
+  newObjectUUID: UUID;
+  objectSize: int;
+  objectData: [byte];
+  initialRefcount: ObjectRefcount;
+  allocationTransactionUUID: UUID;
+  allocatingObject: ObjectPointer;
+  allocatingObjectRevision: ObjectRevision;
+}
+
+enum AllocationError:byte {
+  InsufficientSpace
+}
+
+table AllocateResponse {
+  fromStoreID: DataStoreID;
+  allocationTransactionUUID: UUID;
+  resultPointer: StorePointer;
+  resultError: AllocationError;
+}
+
+//---------------------------------------------------------------------------
 //- Root Message
 //---------------------------------------------------------------------------
 table Message {
@@ -183,6 +210,8 @@ table Message {
   accept: TxAccept;
   accept_response: TxAcceptResponse;
   finalized: TxFinalized;
+  allocate: Allocate;
+  allocate_response: AllocateResponse;
 }
 
 root_type Message;
