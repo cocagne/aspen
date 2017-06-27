@@ -30,6 +30,9 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.read.Read
+import com.ibm.aspen.core.read.ReadResponse
+import com.ibm.aspen.core.read.ReadError
 
 
 
@@ -496,8 +499,8 @@ object Codec {
   
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
     val toStore = encode(builder, o.toStore)
-    val clientData = P.SerializedFinalizationAction.createDataVector(builder, o.fromClient.serialized)
-    val objectData = P.SerializedFinalizationAction.createDataVector(builder, o.objectData)
+    val clientData = P.Allocate.createFromClientVector(builder, o.fromClient.serialized)
+    val objectData = P.Allocate.createObjectDataVector(builder, o.objectData)
     val allocObj = encode(builder, o.allocatingObject)
     
     P.Allocate.startAllocate(builder)
@@ -557,5 +560,93 @@ object Codec {
       Right(decode(n.resultPointer()))
     }
     AllocateResponse(fromStoreId, allocationTransactionUUID, result)
+  }
+  
+  //-----------------------------------------------------------------------------------------------
+  // Read Messages
+  //-----------------------------------------------------------------------------------------------
+  def encode(builder:FlatBufferBuilder, o:Read): Int = {
+    val toStore = encode(builder, o.toStore)
+    val clientData = P.Read.createFromClientVector(builder, o.fromClient.serialized)
+    val optr = encode(builder, o.objectPointer)
+    
+    P.Read.startRead(builder)
+    P.Read.addToStore(builder, toStore)
+    P.Read.addFromClient(builder, clientData)
+    P.Read.addReadUUID(builder, encode(builder, o.readUUID))
+    P.Read.addObjectPointer(builder, optr)
+    P.Read.addReturnObjectData(builder, o.returnObjectData)
+    P.Read.addReturnLockedTransaction(builder, o.returnLockedTransaction)
+    P.Read.endRead(builder)
+  }
+  def decode(n: P.Read): Read = {
+    val toStore = decode(n.toStore())
+    val fromClient = new Array[Byte](n.fromClientLength())
+    n.fromClientAsByteBuffer().get(fromClient)
+    val readUUID = decode(n.readUUID())
+    val objectPointer = decode(n.objectPointer())
+    val returnObjectData = n.returnObjectData()
+    val returnLockedTransaction = n.returnLockedTransaction()
+    
+    Read(toStore, Client.fromSerialized(fromClient), readUUID, objectPointer, returnObjectData, returnLockedTransaction)
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {
+    val fromStore = encode(builder, o.fromStore)
+    
+    val (objectData, lockedTransaction) = o.result match {
+      case Left(_) => (-1, -1)
+      case Right(cs) => 
+        val od = cs.objectData match {
+          case None => -1
+          case Some(d) => P.ReadResponse.createObjectDataVector(builder, d)
+        }
+        val td = cs.lockedTransaction match {
+          case None => -1
+          case Some(txd) => encode(builder, txd)
+        }
+        (od, td)
+    }
+    
+    P.ReadResponse.startReadResponse(builder)
+    P.ReadResponse.addFromStore(builder, fromStore)
+    P.ReadResponse.addReadUUID(builder, encode(builder, o.readUUID))
+    o.result match {
+      case Left(err) => 
+        val readError = err match {
+          case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
+          case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
+          case ReadError.CorruptedObject => P.ReadError.CorruptedObject
+        }
+        P.ReadResponse.addReadError(builder, readError)
+      case Right(cs) =>
+        P.ReadResponse.addRevision(builder, encode(builder, cs.revision))
+        P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
+        if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
+        if (lockedTransaction != -1) P.ReadResponse.addLockedTransaction(builder, lockedTransaction)
+    }
+    P.ReadResponse.endReadResponse(builder)
+  }
+  def decode(n: P.ReadResponse): ReadResponse = {
+    val fromStore = decode(n.fromStore())
+    val readUUID = decode(n.readUUID())
+    val result = if (n.revision() == null) {
+      n.readError() match {
+        case P.ReadError.ObjectMismatch => Left(ReadError.ObjectMismatch)
+        case P.ReadError.InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
+        case P.ReadError.CorruptedObject => Left(ReadError.CorruptedObject)
+      }
+    } else {
+      val revision = decode(n.revision())
+      val refcount = decode(n.refcount())
+      val objectData = if (n.objectDataLength() <= 0) None else {
+        val buff = new Array[Byte](n.objectDataLength())
+        n.objectDataAsByteBuffer().get(buff)
+        Some(buff)
+      }
+      val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }
+      Right(ReadResponse.CurrentState(revision, refcount, objectData, lockedTransaction))
+    }
+    ReadResponse(fromStore, readUUID, result)
   }
 }

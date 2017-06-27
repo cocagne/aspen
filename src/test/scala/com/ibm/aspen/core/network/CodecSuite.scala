@@ -12,6 +12,9 @@ import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.read.Read
+import com.ibm.aspen.core.read.ReadResponse
+import com.ibm.aspen.core.read.ReadError
 
 object CodecSuite {
   
@@ -42,10 +45,125 @@ object CodecSuite {
 class CodecSuite extends FunSuite with Matchers {
   
   import CodecSuite._
-  /*final case class AllocateResponse(
-    fromStoreId: DataStoreID,
-    allocationTransactionUUID: UUID,
-    result: Either[AllocationError.Value, StorePointer]) extends Message*/
+  /*final case class ReadResponse(
+    fromStore: DataStoreID,
+    readUUID: UUID,
+    result: Either[ReadError.Value, ReadResponse.CurrentState]) extends Message
+    
+object ReadResponse {
+  case class CurrentState(
+      revision: ObjectRevision,
+      refcount: ObjectRefcount,
+      objectData: Option[Array[Byte]],
+      lockedTransaction: Option[TransactionDescription])*/
+  
+  test("Allocate Encoding with read error") {
+    val poolUUID = new java.util.UUID(1,2)
+    val storeId = DataStoreID(poolUUID, 3)
+    val readUUID = new java.util.UUID(3,4)
+    
+    val rr = ReadResponse(storeId, readUUID, Left(ReadError.ObjectMismatch))
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, rr)
+    
+    P.Message.startMessage(builder)
+    P.Message.addReadResponse(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.readResponse())
+    
+    decoded should be (rr)
+  }
+  test("Allocate Encoding with data and locked tx") {
+    val poolUUID = new java.util.UUID(1,2)
+    val storeId = DataStoreID(poolUUID, 3)
+    val readUUID = new java.util.UUID(3,4)
+    val ref = ObjectRefcount(1,1)
+    val rev = ObjectRevision(2,2)
+    val cs = ReadResponse.CurrentState(rev, ref, Some(List[Byte](1,2,3).toArray), Some(txd))
+    
+    val rr = ReadResponse(storeId, readUUID, Right(cs))
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, rr)
+    
+    P.Message.startMessage(builder)
+    P.Message.addReadResponse(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.readResponse())
+    
+    decoded should be (rr)
+  }
+  test("Allocate Encoding without data or locked tx") {
+    val poolUUID = new java.util.UUID(1,2)
+    val storeId = DataStoreID(poolUUID, 3)
+    val readUUID = new java.util.UUID(3,4)
+    val ref = ObjectRefcount(1,1)
+    val rev = ObjectRevision(2,2)
+    val cs = ReadResponse.CurrentState(rev, ref, None, None)
+    
+    val rr = ReadResponse(storeId, readUUID, Right(cs))
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, rr)
+    
+    P.Message.startMessage(builder)
+    P.Message.addReadResponse(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.readResponse())
+    
+    decoded should be (rr)
+  }
+  
+  test("Read Encoding") {
+    val c = Client.SimpleClient(List[Byte](1,2).toArray)
+    val readUUID = new java.util.UUID(1,2)
+    val poolUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
+    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val storeId = DataStoreID(poolUUID, 3)
+    
+    val r = Read(storeId, c, readUUID, op, true, false)
+    
+    val builder = new FlatBufferBuilder(1024)
+    
+    val o = Codec.encode(builder, r)
+    
+    P.Message.startMessage(builder)
+    P.Message.addRead(builder, o)
+    
+    val m =  P.Message.endMessage(builder)
+    builder.finish(m)
+    
+    val buf = builder.dataBuffer()
+    
+    val m2 = P.Message.getRootAsMessage(buf)
+    val decoded = Codec.decode(m2.read())
+    
+    decoded should be (r)
+  }
+  
   test("AllocateResponse Encoding Error") {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)

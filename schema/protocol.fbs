@@ -174,10 +174,10 @@ table TxFinalized {
   transaction_uuid: UUID;
   committed: bool;
 }
+
 //---------------------------------------------------------------------------
 //- Allocation Messages
 //---------------------------------------------------------------------------
-
 table Allocate {
   toStore: DataStoreID;
   fromClient: [byte];
@@ -202,6 +202,35 @@ table AllocateResponse {
 }
 
 //---------------------------------------------------------------------------
+//- Read Messages
+//---------------------------------------------------------------------------
+enum ReadError:byte
+{ 
+    ObjectMismatch,    
+    InvalidLocalPointer,
+    CorruptedObject
+}
+
+table Read {
+   toStore: DataStoreID;
+   fromClient: [byte];
+   readUUID: UUID;
+   objectPointer: ObjectPointer;
+   returnObjectData: bool;
+   returnLockedTransaction: bool;
+}
+
+table ReadResponse {
+  fromStore: DataStoreID;
+  readUUID: UUID;
+  revision: ObjectRevision;
+  refcount: ObjectRefcount;
+  objectData: [byte];
+  lockedTransaction: TransactionDescription;
+  readError: ReadError;
+}
+
+//---------------------------------------------------------------------------
 //- Root Message
 //---------------------------------------------------------------------------
 table Message {
@@ -212,6 +241,8 @@ table Message {
   finalized: TxFinalized;
   allocate: Allocate;
   allocate_response: AllocateResponse;
+  read: Read;
+  read_response: ReadResponse;
 }
 
 root_type Message;
