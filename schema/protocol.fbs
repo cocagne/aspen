@@ -208,7 +208,8 @@ enum ReadError:byte
 { 
     ObjectMismatch,    
     InvalidLocalPointer,
-    CorruptedObject
+    CorruptedObject,
+    UnexpectedInternalError
 }
 
 table Read {

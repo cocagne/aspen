@@ -53,7 +53,7 @@ class MemoryOnlyDataStore(
     getObject(storePointer.data) match {
       case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
       case Some(obj) =>
-        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount)
+        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lock)
         Future.successful(Right( (cstate, obj.data) ))
     }
   }
@@ -75,7 +75,7 @@ class MemoryOnlyDataStore(
         result: Either[ObjectError.Value, CurrentObjectState] = getObject(spo.get.data) match {
           case None => Left(ObjectError.InvalidLocalPointer)
           case Some(obj) => if (op.uuid == obj.uuid) 
-            Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount))
+            Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lock))
           else  
             Left(ObjectError.ObjectMismatch)
         }

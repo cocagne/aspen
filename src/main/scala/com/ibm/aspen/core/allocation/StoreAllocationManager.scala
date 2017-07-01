@@ -7,7 +7,6 @@ import com.ibm.aspen.core.data_store.DataStoreID
 
 class StoreAllocationManager(
     val storeMessenger: StoreSideAllocationMessenger,
-    val driverFactory: AllocationDriver.Factory,
     initialStores: List[DataStore])(implicit ec: ExecutionContext) {
   
   private[this] var dataStores: Map[DataStoreID,DataStore] = initialStores.map(ds => (ds.storeId -> ds)).toMap

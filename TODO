@@ -1,9 +1,5 @@
 
-
-Add support for Read Object
-  * Add com.ibm.aspen.core.read package
-  * Add ReadManager to track and drive progress
-  * Similar to Tx and Alloc, each "Read" is driven similar to a Tx
+** Add Unit Tests for ReadDriver
   
 Add DSL/STM support for Tx building
   

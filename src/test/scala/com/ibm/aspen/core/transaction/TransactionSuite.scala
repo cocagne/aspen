@@ -202,8 +202,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       
       override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
         var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), refcount))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), refcount))))
+        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), refcount, None))))
+        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), refcount, None))))
         Future.successful(m)
       }
     }
@@ -237,8 +237,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       
       override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
         var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, ObjectRefcount(9,9)))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, ObjectRefcount(9,9)))))
+        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, ObjectRefcount(9,9), None))))
+        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, ObjectRefcount(9,9), None))))
         Future.successful(m)
       }
     }
@@ -272,8 +272,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       
       override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
         var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9)))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9)))))
+        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), None))))
+        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), None))))
         Future.successful(m)
       }
     }

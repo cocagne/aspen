@@ -617,6 +617,7 @@ object Codec {
           case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
           case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
           case ReadError.CorruptedObject => P.ReadError.CorruptedObject
+          case ReadError.UnexpectedInternalError => P.ReadError.UnexpectedInternalError
         }
         P.ReadResponse.addReadError(builder, readError)
       case Right(cs) =>
@@ -635,6 +636,7 @@ object Codec {
         case P.ReadError.ObjectMismatch => Left(ReadError.ObjectMismatch)
         case P.ReadError.InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
         case P.ReadError.CorruptedObject => Left(ReadError.CorruptedObject)
+        case P.ReadError.UnexpectedInternalError => Left(ReadError.UnexpectedInternalError)
       }
     } else {
       val revision = decode(n.revision())

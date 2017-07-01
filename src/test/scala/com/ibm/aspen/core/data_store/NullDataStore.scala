@@ -34,8 +34,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
     var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
-    txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, refcount))))
-    txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, refcount))))
+    txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, refcount, None))))
+    txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, refcount, None))))
     Future.successful(m)
   }
   
