@@ -26,9 +26,13 @@ class BaseReadDriver(
   
   def readResult = promise.future
   
+  def start() = sendReadRequests()
+  
+  /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
       Read(dataStoreId, clientMessenger.client, readUUID, objectPointer, retrieveObjectData, retrieveLockedTransaction))
       
+  /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
     val heardFrom = synchronized { responses.keySet }
     objectPointer.storePointers.foreach(sp => {
@@ -38,6 +42,7 @@ class BaseReadDriver(
     })
   }
   
+  /** Successfully complete the read operation or throw and IDAError. Must be called from within a synchronized block */
   protected def complete(): Unit = {
     
     val segments = objectPointer.storePointers.foldLeft(List[(Byte,Option[Array[Byte]])]())( (l, sp) => {
@@ -50,6 +55,7 @@ class BaseReadDriver(
       }
     })
     
+    // If something goes wrong with the IDA, it'll throw an IDAError exception
     val odata = if (retrieveObjectData) Some(objectPointer.ida.restore(segments)) else None
       
     val zv = ObjectRevision(0,0)
@@ -65,6 +71,7 @@ class BaseReadDriver(
           case None => h._3
           case Some(txd) => (ss.storeId, txd) :: h._3
         }
+        
         (hrev, href, locks)
     })
     
@@ -119,7 +126,7 @@ class BaseReadDriver(
         case e: IDAError => 
           promise.success(Left(e))
       }
-    } else if ( numErrs > objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
+    } else if ( numErrs >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
       val errMap = objectPointer.storePointers.foldLeft(Map[DataStoreID,Option[ReadError.Value]]())( (m, sp) => {
         val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex) 
         responses.get(storeId) match {

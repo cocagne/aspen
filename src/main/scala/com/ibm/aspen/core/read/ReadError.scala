@@ -6,7 +6,7 @@ sealed abstract class ReadError(msg: String) extends Exception(msg)
 
 class IDAError(msg:String) extends ReadError(msg)
 
-class ThresholdError(val errors: Map[DataStoreID,Option[ReadError.Value]]) extends ReadError("ThresholdError")
+case class ThresholdError(errors: Map[DataStoreID,Option[ReadError.Value]]) extends ReadError("ThresholdError")
 
 object ReadError extends Enumeration {
   
