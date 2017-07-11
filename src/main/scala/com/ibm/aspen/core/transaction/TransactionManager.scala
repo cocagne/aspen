@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.transaction
 
 import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.core.network.TransactionMessenger
+import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
@@ -11,7 +11,7 @@ import com.ibm.aspen.core.network.TransactionMessageReceiver
 
 class TransactionManager(
     val crl: CrashRecoveryLog, 
-    val messenger: TransactionMessenger,
+    val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
     val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionMessageReceiver {
  

@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.transaction
 
 
-import com.ibm.aspen.core.network.TransactionMessenger
+import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.data_store.DataStoreID
 import scala.concurrent.Future
 
@@ -14,6 +14,6 @@ trait TransactionFinalizer {
 
 object TransactionFinalizer {
   trait Factory {
-    def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: TransactionMessenger): TransactionFinalizer
+    def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: StoreSideTransactionMessenger): TransactionFinalizer
   }
 }

@@ -5,7 +5,7 @@ import com.ibm.aspen.core.transaction.paxos.PersistentState
 import com.ibm.aspen.core.transaction.paxos.Acceptor
 import com.ibm.aspen.core.transaction.paxos.Learner
 import com.ibm.aspen.core.transaction.paxos.Prepare
-import com.ibm.aspen.core.network.TransactionMessenger
+import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.data_store.CurrentObjectState
 import com.ibm.aspen.core.data_store.ObjectError
@@ -17,7 +17,7 @@ import scala.concurrent.Future
 
 class Transaction(
     val crl: CrashRecoveryLog, 
-    val messenger: TransactionMessenger,
+    val messenger: StoreSideTransactionMessenger,
     val onDiscard: (Transaction) => Unit,
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   val store: DataStore = trs.store
@@ -262,7 +262,7 @@ class Transaction(
 object Transaction {
   def apply(
       crl: CrashRecoveryLog,
-      messenger: TransactionMessenger,
+      messenger: StoreSideTransactionMessenger,
       onDiscard: (Transaction) => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
@@ -278,7 +278,7 @@ object Transaction {
   
   def apply(
       crl: CrashRecoveryLog, 
-      messenger: TransactionMessenger, 
+      messenger: StoreSideTransactionMessenger, 
       onDiscard: (Transaction) => Unit,
       trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, trs)
   
