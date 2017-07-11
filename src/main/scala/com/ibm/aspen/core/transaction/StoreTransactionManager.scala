@@ -9,7 +9,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.network.TransactionMessageReceiver
 
 
-class TransactionManager(
+class StoreTransactionManager(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
