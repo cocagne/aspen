@@ -117,8 +117,9 @@ abstract class TransactionDriver(
             //       peers successfully processed the transaction
             if (committed)  
               finalizer = Some(finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger))
-            else
-              complete()
+            else 
+              complete(false)
+            
             
             onResolution(committed)
           }
@@ -129,14 +130,18 @@ abstract class TransactionDriver(
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
     finalized = true
     finalizer.foreach( _.cancel() )
-    complete()
+    complete(msg.committed)
   }
   
   def mayBeDiscarded: Boolean = synchronized { finalized }
   
-  protected def complete() = {
+  protected def complete(committed: Boolean) = {
     finalized = true
     onComplete(initialPrepare.txd.transactionUUID)
+    
+    initialPrepare.txd.originatingClient.foreach(client => {
+      messenger.send(client, TxFinalized(storeId, initialPrepare.txd.transactionUUID, committed))
+    })
   }
   
   protected def nextRound(): Unit = {

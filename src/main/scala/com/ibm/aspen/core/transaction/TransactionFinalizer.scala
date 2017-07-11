@@ -3,11 +3,13 @@ package com.ibm.aspen.core.transaction
 
 import com.ibm.aspen.core.network.TransactionMessenger
 import com.ibm.aspen.core.data_store.DataStoreID
+import scala.concurrent.Future
 
 trait TransactionFinalizer {
   
   /** Called when a TxFinalized message is received. */ 
   def cancel(): Unit
+  
 }
 
 object TransactionFinalizer {

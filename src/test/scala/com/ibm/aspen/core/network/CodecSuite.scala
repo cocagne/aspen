@@ -35,9 +35,10 @@ object CodecSuite {
     val dataUpdates = DataUpdate(op, ObjectRevision(1,150), DataUpdateOperation.Overwrite) :: Nil
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
+    val client = Client.SimpleClient(List[Byte](1,2).toArray)
     
     (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, Nil, finalz),
-        TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz))
+        TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz, Some(client)))
         
   }
 }

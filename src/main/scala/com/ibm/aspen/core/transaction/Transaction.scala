@@ -197,6 +197,7 @@ class Transaction(
             Left(TxAcceptResponse.Nack(nack.promisedProposalId)))
             
         messenger.send(msg.from, response)
+        txd.originatingClient.foreach( client => messenger.send(client, response) )
         
       case Right(accept) =>
         val recoveryState = synchronized {
@@ -210,7 +211,10 @@ class Transaction(
             Right(TxAcceptResponse.Accepted(accept.proposalValue)))
             
         // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
-        crl.saveTransactionRecoveryState(recoveryState, None).onSuccess({case _ => messenger.send(msg.from, response)})
+        crl.saveTransactionRecoveryState(recoveryState, None).onSuccess({case _ => 
+          messenger.send(msg.from, response)
+          txd.originatingClient.foreach( client => messenger.send(client, response) )
+        })
     }
   }
   

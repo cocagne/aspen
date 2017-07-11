@@ -250,6 +250,11 @@ object Codec {
     val refcountUpdates = P.TransactionDescription.createRefcountUpdatesVector(builder, o.refcountUpdates.map(ru => encode(builder, ru)).toArray)
     val finalizationActions = P.TransactionDescription.createFinalizationActionsVector(builder, o.finalizationActions.map(fa => encode(builder, fa)).toArray)
     
+    val originatingClient = o.originatingClient match {
+      case None => -1
+      case Some(client) => P.TransactionDescription.createOriginatingClientVector(builder, client.serialized)
+    }
+    
     P.TransactionDescription.startTransactionDescription(builder)
     P.TransactionDescription.addTransactionUuid(builder, encode(builder, o.transactionUUID))
     P.TransactionDescription.addStartTimestamp(builder, o.startTimestamp)
@@ -258,6 +263,8 @@ object Codec {
     P.TransactionDescription.addDataUpdates(builder, dataUpdates)
     P.TransactionDescription.addRefcountUpdates(builder, refcountUpdates)
     P.TransactionDescription.addFinalizationActions(builder, finalizationActions)
+    if (originatingClient != -1)
+      P.TransactionDescription.addOriginatingClient(builder, originatingClient)
     P.TransactionDescription.endTransactionDescription(builder)
   }
   def decode(n: P.TransactionDescription): TransactionDescription = {
@@ -265,6 +272,13 @@ object Codec {
     val startTimestamp = n.startTimestamp()
     val primaryObject = decode(n.primaryObject())
     val designatedLeaderUID = n.designatedLeaderUid()
+    val originatingClient = if (n.originatingClientLength() == 0) 
+      None 
+    else {  
+        val buf = new Array[Byte](n.originatingClientLength())
+        n.originatingClientAsByteBuffer().get(buf)
+        Some(Client.fromSerialized(buf))
+    }
       
     def dataUpdates(idx: Int, l:List[DataUpdate]): List[DataUpdate] = if (idx == -1) 
         l
@@ -288,12 +302,12 @@ object Codec {
         designatedLeaderUID,
         dataUpdates(n.dataUpdatesLength()-1, Nil),
         refcountUpdates(n.refcountUpdatesLength()-1, Nil),
-        finalizationActions(n.finalizationActionsLength()-1, Nil))
-        
+        finalizationActions(n.finalizationActionsLength()-1, Nil),
+        originatingClient)
   }
   
   //-----------------------------------------------------------------------------------------------
-  // Transaction Description
+  // Transaction Messages
   //-----------------------------------------------------------------------------------------------
   
   def encode(builder:FlatBufferBuilder, o:ProposalID): Int = {
