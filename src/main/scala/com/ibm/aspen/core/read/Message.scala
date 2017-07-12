@@ -7,6 +7,7 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
+import java.nio.ByteBuffer
 
 sealed abstract class Message
 
@@ -27,13 +28,13 @@ object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
       refcount: ObjectRefcount,
-      objectData: Option[Array[Byte]],
+      objectData: Option[ByteBuffer],
       lockedTransaction: Option[TransactionDescription]) {
     
     override def equals(other: Any): Boolean = other match {
       case rhs: CurrentState => 
         val dmatch = (objectData, rhs.objectData) match {
-          case (Some(lhs), Some(rhs)) => java.util.Arrays.equals(lhs, rhs)
+          case (Some(lhs), Some(rhs)) => lhs.compareTo(rhs) == 0
           case (None, None) => true
           case _ => false
         }

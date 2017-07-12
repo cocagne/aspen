@@ -15,6 +15,7 @@ import com.ibm.aspen.core.allocation.AllocationError
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
+import java.nio.ByteBuffer
 
 object CodecSuite {
   
@@ -88,7 +89,7 @@ object ReadResponse {
     val readUUID = new java.util.UUID(3,4)
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
-    val cs = ReadResponse.CurrentState(rev, ref, Some(List[Byte](1,2,3).toArray), Some(txd))
+    val cs = ReadResponse.CurrentState(rev, ref, Some(ByteBuffer.wrap(List[Byte](1,2,3).toArray)), Some(txd))
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -216,7 +217,7 @@ object ReadResponse {
   }
   
   test("Allocate Encoding without Size") {
-    val d1 = List[Byte](1,2,3).toArray
+    val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = None
     val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
     val ref = ObjectRefcount(1,1)
@@ -247,7 +248,7 @@ object ReadResponse {
   }
   
   test("Allocate Encoding with Size") {
-    val d1 = List[Byte](1,2,3).toArray
+    val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = Some(5)
     val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
     val ref = ObjectRefcount(1,1)

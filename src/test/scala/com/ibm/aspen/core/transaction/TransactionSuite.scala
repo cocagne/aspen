@@ -17,6 +17,7 @@ import com.ibm.aspen.core.transaction.paxos.PersistentState
 import java.util.UUID
 import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.data_store.CurrentObjectState
+import java.nio.ByteBuffer
 
 object TransactionSuite {
   
@@ -31,12 +32,12 @@ object TransactionSuite {
   
   object HaveContent extends LocalUpdateContent {
     def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
-    def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = throw new Exception("should not be called")
+    def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = throw new Exception("should not be called")
   }
   
   object LackContent extends LocalUpdateContent {
     def haveDataForUpdateIndex(updateIndex: Int): Boolean = false
-    def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = throw new Exception("should not be called")
+    def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = throw new Exception("should not be called")
   }
   
   class TMessenger extends NullMessenger {

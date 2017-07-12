@@ -33,20 +33,20 @@ class MemoryOnlyDataStore(
   /** Allocates a new Object on the store */
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: Array[Byte],
+                        initialContent: ByteBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]] = synchronized {
     val (objId, lpArray) = nextLocalPointer()
     
-    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.length), initialRefcount, initialContent, None))
+    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.capacity), initialRefcount, initialContent, None))
     
     Future.successful(Right(StorePointer(storeId.poolIndex, lpArray)))
   }
   
   /** Reads an object on the store */
-  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]] = synchronized {
+  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
       return Future.successful(Left(ObjectError.InvalidLocalPointer))
       
@@ -163,12 +163,19 @@ class MemoryOnlyDataStore(
         if (du.requiredRevision == obj.revision) {
           obj.revision = du.operation match {
             case DataUpdateOperation.Append => 
-              obj.data ++ localUpdates.getDataForUpdateIndex(idx)
-              ObjectRevision(obj.revision.overwriteCount, obj.data.length)
+              val appendData = localUpdates.getDataForUpdateIndex(idx)
+              val newData = ByteBuffer.allocateDirect(obj.data.capacity + appendData.capacity)
+
+              newData.put(obj.data)
+              newData.put(appendData)
+              newData.position(0)
+              
+              obj.data = newData
+              ObjectRevision(obj.revision.overwriteCount, obj.data.capacity)
               
             case DataUpdateOperation.Overwrite => 
               obj.data = localUpdates.getDataForUpdateIndex(idx)
-              ObjectRevision(obj.revision.overwriteCount+1, obj.data.length)
+              ObjectRevision(obj.revision.overwriteCount+1, obj.data.capacity)
           }
         }
       })  
@@ -214,6 +221,6 @@ object MemoryOnlyDataStore {
       val uuid: UUID, 
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
-      var data: Array[Byte], 
+      var data: ByteBuffer, 
       var lock: Option[TransactionDescription])
 }

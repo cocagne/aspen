@@ -14,6 +14,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.read
 import scala.concurrent.Await
 import com.ibm.aspen.core.transaction.TransactionDescription
+import java.nio.ByteBuffer
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -36,7 +37,7 @@ object BaseReadDriverSuite {
   val rev = ObjectRevision(0,4)
   val ref = ObjectRefcount(1,1)
   
-  val odata = List[Byte](1,2,3,4).toArray
+  val odata = ByteBuffer.wrap(List[Byte](1,2,3,4).toArray)
   
   val noLocks = List[(DataStoreID,TransactionDescription)]()
   

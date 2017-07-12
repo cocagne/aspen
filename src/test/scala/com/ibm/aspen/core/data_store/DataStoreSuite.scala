@@ -17,6 +17,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.util.Success
 import scala.util.Failure
 import com.ibm.aspen.core.transaction.LocalUpdateContent
+import java.nio.ByteBuffer
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -35,8 +36,8 @@ object DataStoreSuite {
   
   val storeId = DataStoreID(poolUUID, 1)
   
-  val icontent0 = List[Byte](1,2,3).toArray
-  val icontent1 = List[Byte](4,5,6).toArray
+  val icontent0 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
+  val icontent1 = ByteBuffer.wrap(List[Byte](4,5,6).toArray)
   val irev = ObjectRevision(0,3)
 }
 
@@ -130,12 +131,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
       case None => succeed
     }
     
-    val newContent = List[Byte](7,8,9,10).toArray
+    val newContent = ByteBuffer.wrap(List[Byte](7,8,9,10).toArray)
     
     object lu extends LocalUpdateContent {
       def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
   
-      def getDataForUpdateIndex(updateIndex: Int): Array[Byte] = newContent
+      def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = newContent
     }
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
@@ -302,7 +303,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   test("Allocate New Object") {
     val ds = newStore
     
-    val icontent = List[Byte](1,2,3).toArray
+    val icontent = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
             
     futureResponse map { either => either match {
@@ -314,7 +315,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   test("Allocate and Read New Object") {
     val ds = newStore
     
-    val icontent = List[Byte](1,2,3).toArray
+    val icontent = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
             
     val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, None), icontent)

@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.allocation.AllocationError
+import java.nio.ByteBuffer
 
 trait DataStore {
   
@@ -25,7 +26,7 @@ trait DataStore {
    */
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: Array[Byte],
+                        initialContent: ByteBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
@@ -33,11 +34,11 @@ trait DataStore {
   
   
   /** Reads an object on the store */
-  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]]
+  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]]
   
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectError.Value, (CurrentObjectState,Array[Byte])]] = {
+  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
     objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
       case Some(sp) => getObject(sp)
       case None => Future.successful(Left(ObjectError.InvalidLocalPointer))

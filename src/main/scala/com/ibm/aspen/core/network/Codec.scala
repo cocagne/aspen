@@ -33,6 +33,7 @@ import com.ibm.aspen.core.allocation.AllocationError
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
+import java.nio.ByteBuffer
 
 
 
@@ -514,7 +515,9 @@ object Codec {
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Allocate.createFromClientVector(builder, o.fromClient.serialized)
-    val objectData = P.Allocate.createObjectDataVector(builder, o.objectData)
+    builder.createUnintializedVector(1, o.objectData.capacity, 1).put(o.objectData)
+    o.objectData.position(0)
+    val objectData = builder.endVector()
     val allocObj = encode(builder, o.allocatingObject)
     
     P.Allocate.startAllocate(builder)
@@ -533,10 +536,12 @@ object Codec {
     val toStore = decode(n.toStore())
     val fromClient = new Array[Byte](n.fromClientLength())
     n.fromClientAsByteBuffer().get(fromClient)
+    
     val newObjectUUID = decode(n.newObjectUUID())
     val objectSize = if (n.objectSize() == 0) None else Some(n.objectSize())
-    val objectData = new Array[Byte](n.objectDataLength())
-    n.objectDataAsByteBuffer().get(objectData)
+    val objectData = ByteBuffer.allocateDirect(n.objectDataLength())
+    objectData.put(n.objectDataAsByteBuffer())
+    objectData.position(0)
     val initialRefcount = decode(n.initialRefcount())
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val allocatingObject = decode(n.allocatingObject())
@@ -613,7 +618,10 @@ object Codec {
       case Right(cs) => 
         val od = cs.objectData match {
           case None => -1
-          case Some(d) => P.ReadResponse.createObjectDataVector(builder, d)
+          case Some(d) =>
+            builder.createUnintializedVector(1, d.capacity, 1).put(d)
+            d.position(0)
+            builder.endVector()
         }
         val td = cs.lockedTransaction match {
           case None => -1
@@ -656,8 +664,9 @@ object Codec {
       val revision = decode(n.revision())
       val refcount = decode(n.refcount())
       val objectData = if (n.objectDataLength() <= 0) None else {
-        val buff = new Array[Byte](n.objectDataLength())
-        n.objectDataAsByteBuffer().get(buff)
+        val buff = ByteBuffer.allocateDirect(n.objectDataLength())
+        buff.put(n.objectDataAsByteBuffer())
+        buff.position(0)
         Some(buff)
       }
       val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }

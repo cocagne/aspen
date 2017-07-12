@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.IDA
+import java.nio.ByteBuffer
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -23,7 +24,7 @@ class AllocationDriver (
     val newObjectUUID: UUID,
     val objectSize: Option[Int],
     val objectIDA: IDA,
-    val objectData: Map[Byte,Array[Byte]], // Map DataStore pool index -> store-specific ObjectData
+    val objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
     val initialRefcount: ObjectRefcount,
     val allocationTransactionUUID: UUID,
     val allocatingObject: ObjectPointer,
@@ -85,7 +86,7 @@ object AllocationDriver {
                newObjectUUID: UUID,
                objectSize: Option[Int],
                objectIDA: IDA,
-               objectData: Map[Byte,Array[Byte]], // Map DataStore pool index -> store-specific ObjectData
+               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
