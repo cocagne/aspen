@@ -3,7 +3,7 @@ package com.ibm.aspen.core.ida
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.read.IDAError
 
-sealed abstract class IDA {
+sealed abstract class IDA extends Ordered[IDA] {
   
   /** Number of slices/replicas */
   def width: Int
@@ -25,6 +25,10 @@ sealed abstract class IDA {
    *  Accepts a list of (Storage Pool Index, Option[Array[Byte]). All stores hosting segments are represented in the list.
    */
   def restore(segments: List[(Byte,Option[Array[Byte]])]): Array[Byte]
+  
+  def failureTolerance: Int = width - writeThreshold
+  
+  def compare(that: IDA) = failureTolerance - that.failureTolerance
 }
 
 case class Replication(width: Int, writeThreshold: Int) extends IDA {

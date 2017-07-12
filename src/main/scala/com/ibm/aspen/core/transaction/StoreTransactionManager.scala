@@ -49,6 +49,7 @@ class StoreTransactionManager(
       case m: TxPrepareResponse =>
         // TODO - Handle PrepareResponse messages seen before corresponding Prepare message is seen
         //        Will likely involve caching recently-seen transaction UUIDs
+        //        Fixed-size cache of 1000 entries or so should be sufficient
         getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxPrepareResponse(m) )
       
       case m: TxAccept => getTransaction(m.transactionUUID).foreach( tx => tx.receiveAccept(m) )
