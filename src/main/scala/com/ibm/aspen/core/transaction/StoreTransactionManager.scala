@@ -6,14 +6,14 @@ import java.util.UUID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
 import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.network.TransactionMessageReceiver
+import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 
 
 class StoreTransactionManager(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
-    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionMessageReceiver {
+    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
  
   private[this] var stores = Map[DataStoreID, DataStore]()
   private[this] var transactions = Map[UUID, Transaction]()
