@@ -49,7 +49,7 @@ class MemoryOnlyDataStore(
   def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
       return Future.successful(Left(ObjectError.InvalidLocalPointer))
-      
+    
     getObject(storePointer.data) match {
       case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
       case Some(obj) =>
