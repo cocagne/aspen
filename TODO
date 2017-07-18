@@ -1,6 +1,56 @@
 
+* Implement rocksdb unit test. 
+   * Should be able to pull file handling setup/teardown code from old aspen tests
+
+* Implement DataStore & CRL in terms of BufferedConsistentRocksDB
+    * Should be pretty easy to load CRL content. Just add a visit_all method that applies a function to each key/value pair
+    
+* Add cache of PrepareResponse to designated node for when this is seen before the original prepare. Will break otherwise
+
+* Useful
+   - RocksDB store (there is a java wrapper)
+      - keep all objects in RAM (** this is just an option. Can do the queries via RocksDB api as well **)
+      - use key-value DB for backing store
+         - Write performance wont be as good as possible but we can ignore a huge number of issues
+         - Use a WriteBatch to aggregate all changes while a commit is outstanding then immediately do another commit if next batch isn't empty
+   - RocksDB for CRL
+      - similar batched-commit strategy
+      - Use a write-batch to aggregate all changes while synchronous commit is outstanding
+      - Could use this to simplify file-store impl. Write impending changes here so they can be re-done on crash.
+   - very basic error handling
+      - read driver
+      - transaction driver
+   - offline store transfer
+      - get this for free if we simply don't do error recovery
+         - or only do client-driven error recovery
+         - repair only objects that are seen to be defective during a read operation
+         **** Could use this for a simple scan-like rebuild process. Have a background task constantly walking the allocation trees and fetching object state (not data)
+         **** When errors are seen, repair them.
+         **** No need for error logging. 
+         ****** Gossip-based error recovery for in-mem stores. Periodically gossip about object version/refcount with nearby stores.
+         ****** Mask based error recovery for in-mem stores. With each object, keep a bitmask of peer stores. set ones for all stores seen to have accepted the latest value
+                 *** This is probably the easiest proactive rebuild mechanism
+                 *** TxDriver should send a TxResult message with minimum-set of known-good recipients
+                 *** Also eliminates need to delay, "late" Tx messages are valid for updating bitmask if version/refcount match
+   - Live transfer between nodes
+       * ideally not needing to offline the store
+       * Ownership transfers instantaneously (via commit). Use log + in-mem copies of all modified objects while download of read-only store state is in progress
+
+* Will need a StorageNode class. This wraps data stores on a single machine.
+   - Has an IP:port for network connections
+   - Maintains zmq network
+   - Implements message send/receive
+   - Has DataStores, CRL, TransactionManager (from local config file)
+   - Has a System instance for interfacing with the rest of the system
+   
+ * Will need an AspenSystem implementation.
+    * Implements a Client
+    * Identified by a generated UUID
+        - Set this as ZMQ socket identity
+        - Use this as the Array[Byte] for Client messenger identity
+        - StorageNodes use Router socket so they know where to send replies
+    * Bootstraps from a config file that defines Map[NetworkEndpoint, List[data-store-id]]
   
-Add DSL/STM support for Tx building
   
 Figure out the allocation/bootstrapping issues
 
