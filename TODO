@@ -2,8 +2,6 @@
 * Implement DataStore & CRL in terms of BufferedConsistentRocksDB
     * Should be pretty easy to load CRL content. Just add a visit_all method that applies a function to each key/value pair
     * deletion of non-existent keys isnt an error. May be able to use this to simplify state handling (delete all keys that *could* be associated with a tx)
-    
-* Add cache of PrepareResponse to designated node for when this is seen before the original prepare. Will break otherwise
 
 * Useful
    - RocksDB store (there is a java wrapper)

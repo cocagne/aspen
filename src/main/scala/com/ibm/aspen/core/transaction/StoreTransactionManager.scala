@@ -7,6 +7,8 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
+import com.github.blemale.scaffeine.Scaffeine
+import scala.concurrent.duration._
 
 
 class StoreTransactionManager(
@@ -26,6 +28,11 @@ class StoreTransactionManager(
   private[this] def getStore(id: DataStoreID): Option[DataStore] = synchronized { stores.get(id) }
   private[this] def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
   
+  private[this] val prepareResponseCache = Scaffeine().recordStats()
+                                                      .expireAfterWrite(10.seconds)
+                                                      .maximumSize(1000)
+                                                      .build[UUID, Map[DataStoreID,TxPrepareResponse]]()
+  
   private def onTransactionDiscarded(t: Transaction) = synchronized { transactions -= t.txd.transactionUUID }
   
   private def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
@@ -38,8 +45,19 @@ class StoreTransactionManager(
           transactions.get(m.txd.transactionUUID).getOrElse({
             val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent.getOrElse(new MissingUpdateContent))
             transactions += (m.txd.transactionUUID -> t)
-            if (m.txd.designatedLeaderUID == store.storeId.poolIndex)
-              transactionDrivers += (m.txd.transactionUUID -> driverFactory.create(toStore, messenger, m, finalizerFactory, onTransactionDriverComplete _))
+            
+            if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
+              val driver = driverFactory.create(toStore, messenger, m, finalizerFactory, onTransactionDriverComplete _)
+              transactionDrivers += (m.txd.transactionUUID -> driver)
+              
+              // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
+              prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach( pmap => {
+                pmap.foreach( t => driver.receiveTxPrepareResponse(t._2) )
+              })
+            }
+            
+            // No need to keep the cached entries around (if any) the driver will receive the messages directly
+            prepareResponseCache.invalidate(m.txd.transactionUUID)
             t
           })
         }
@@ -47,10 +65,20 @@ class StoreTransactionManager(
         getTransactionDriver(m.txd.transactionUUID).foreach( td => td.receiveTxPrepare(m) )
    
       case m: TxPrepareResponse =>
-        // TODO - Handle PrepareResponse messages seen before corresponding Prepare message is seen
-        //        Will likely involve caching recently-seen transaction UUIDs
-        //        Fixed-size cache of 1000 entries or so should be sufficient
-        getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxPrepareResponse(m) )
+        getTransactionDriver(m.transactionUUID) match {
+          case Some(td) => td.receiveTxPrepareResponse(m)
+          
+          case None =>
+            // TxPrepareResponse messages are unicast to the transaction leader. That we're receiving one probably means we're
+            // the designated leader for the transaction. We'll hold on to these for a while so that if we receive the prepare
+            // message, we can immediately process the replies rather than having to rely on the driver to recover the transaction
+            // via retransmissions or another Paxos round.
+            val pm = prepareResponseCache.getIfPresent(m.transactionUUID) match {
+              case Some(pmap) => pmap
+              case None => Map[DataStoreID,TxPrepareResponse]()
+            }
+            prepareResponseCache.put(m.transactionUUID, pm + (m.from -> m))
+        }
       
       case m: TxAccept => getTransaction(m.transactionUUID).foreach( tx => tx.receiveAccept(m) )
       
