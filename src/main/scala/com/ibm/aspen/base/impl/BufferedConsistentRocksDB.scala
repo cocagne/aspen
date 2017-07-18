@@ -94,6 +94,19 @@ class BufferedConsistentRocksDB(
       Some(value)
   }
   
+  def foreach(fn: (Array[Byte], Array[Byte]) => Unit): Future[Unit] = Future {
+    val iterator = db.newIterator()
+    try {
+      iterator.seekToFirst()
+      while (iterator.isValid()) {
+        fn(iterator.key(), iterator.value())
+        iterator.next()
+      }
+    } finally {
+      iterator.close()
+    }
+  }
+  
   def close() = {
     db.close()
     nextBatch.close()
