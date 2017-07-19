@@ -9,6 +9,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.github.blemale.scaffeine.Scaffeine
 import scala.concurrent.duration._
+import java.nio.ByteBuffer
 
 
 class StoreTransactionManager(
@@ -37,13 +38,13 @@ class StoreTransactionManager(
   
   private def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
   
-  def receive(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = getStore(toStore) foreach ( 
+  def receive(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = getStore(toStore) foreach ( 
     store => {
       message match {
       case m: TxPrepare => 
         val tx = synchronized {
           transactions.get(m.txd.transactionUUID).getOrElse({
-            val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent.getOrElse(new MissingUpdateContent))
+            val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent)
             transactions += (m.txd.transactionUUID -> t)
             
             if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {

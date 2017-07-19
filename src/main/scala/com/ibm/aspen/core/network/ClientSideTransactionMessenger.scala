@@ -4,7 +4,6 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import java.nio.ByteBuffer
 
 trait ClientSideTransactionMessenger {

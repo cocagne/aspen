@@ -10,6 +10,7 @@ import com.ibm.aspen.core.network.NullMessenger
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
+import java.nio.ByteBuffer
 
 object TransactionDriverSuite {
   val poolUUID = java.util.UUID.randomUUID()
@@ -33,7 +34,7 @@ object TransactionDriverSuite {
   class TMessenger extends NullMessenger {
     var messages = List[(DataStoreID,Message)]()
     
-    override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = messages = (toStore,message) :: messages
+    override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = messages = (toStore,message) :: messages
     
     def clear(): Unit = messages = List()
   }

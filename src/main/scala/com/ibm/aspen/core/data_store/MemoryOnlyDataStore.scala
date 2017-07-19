@@ -1,7 +1,6 @@
 package com.ibm.aspen.core.data_store
 
 import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import scala.concurrent.Future
 import java.util.UUID
@@ -143,7 +142,7 @@ class MemoryOnlyDataStore(
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = synchronized {
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = synchronized {
     val localSet = for {
       op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
       spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
@@ -160,10 +159,12 @@ class MemoryOnlyDataStore(
     
     for ((du, idx) <- txd.dataUpdates.zipWithIndex) {
       localObjects.get(du.objectPointer.uuid).foreach(obj => {
+        assert(localUpdates.isDefined, "Attempted to commit data update without having data update content!")
+        assert(localUpdates.get.size > idx, "Attempted to commit with data update index greater than size of content array!")
         if (du.requiredRevision == obj.revision) {
           obj.revision = du.operation match {
             case DataUpdateOperation.Append => 
-              val appendData = localUpdates.getDataForUpdateIndex(idx)
+              val appendData = localUpdates.get.apply(idx)
               val newData = ByteBuffer.allocateDirect(obj.data.capacity + appendData.capacity)
 
               newData.put(obj.data)
@@ -174,7 +175,7 @@ class MemoryOnlyDataStore(
               ObjectRevision(obj.revision.overwriteCount, obj.data.capacity)
               
             case DataUpdateOperation.Overwrite => 
-              obj.data = localUpdates.getDataForUpdateIndex(idx)
+              obj.data = localUpdates.get.apply(idx)
               ObjectRevision(obj.revision.overwriteCount+1, obj.data.capacity)
           }
         }

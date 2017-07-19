@@ -4,7 +4,6 @@ import scala.concurrent._
 
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.util.UUID
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -42,7 +41,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = None
   
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = Future.successful(())
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = Future.successful(())
   
   def discardTransaction(txd: TransactionDescription): Unit = ()
 }

@@ -16,7 +16,6 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.util.Success
 import scala.util.Failure
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import java.nio.ByteBuffer
 
 object DataStoreSuite {
@@ -133,11 +132,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val newContent = ByteBuffer.wrap(List[Byte](7,8,9,10).toArray)
     
-    object lu extends LocalUpdateContent {
-      def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
-  
-      def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = newContent
-    }
+    val lu = Some(List(newContent).toArray)
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     

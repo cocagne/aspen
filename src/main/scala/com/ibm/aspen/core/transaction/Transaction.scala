@@ -14,6 +14,7 @@ import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.transaction.paxos.Accept
 import com.ibm.aspen.core.transaction.paxos.Accepted
 import scala.concurrent.Future
+import java.nio.ByteBuffer
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -22,7 +23,7 @@ class Transaction(
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   val store: DataStore = trs.store
   val txd: TransactionDescription = trs.txd
-  val localUpdates: LocalUpdateContent = trs.localUpdates
+  val localUpdates: Option[Array[ByteBuffer]] = trs.localUpdates
   
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
   private[this] var commitFuture: Option[Future[Unit]] = None
@@ -107,7 +108,7 @@ class Transaction(
           //       that the node will be in this state for a significant period of time. Leave it to the 
           //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState, Some(localUpdates)).onSuccess({case _ => messenger.send(prepare.from, response)})
+          crl.saveTransactionRecoveryState(recoveryState, localUpdates).onSuccess({case _ => messenger.send(prepare.from, response)})
         })
     }
   }
@@ -130,7 +131,7 @@ class Transaction(
       case Right(cs) =>
         val (du, updateIndex) = t
         
-        if (!localUpdates.haveDataForUpdateIndex(updateIndex))
+        if ( !(localUpdates.isDefined && localUpdates.get.size > updateIndex) )
           errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.MissingUpdateData, None, None, None) :: errs
         
         if (cs.revision != du.requiredRevision)
@@ -266,7 +267,7 @@ object Transaction {
       onDiscard: (Transaction) => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
-      localUpdates: LocalUpdateContent)(implicit ec: ExecutionContext): Transaction = {
+      localUpdates: Option[Array[ByteBuffer]])(implicit ec: ExecutionContext): Transaction = {
     new Transaction(crl, messenger, onDiscard, TransactionRecoveryState(
         store,
         txd, 

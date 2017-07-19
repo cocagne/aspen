@@ -3,7 +3,6 @@ package com.ibm.aspen.core.data_store
 import java.util.UUID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.concurrent.Future
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
@@ -66,7 +65,7 @@ trait DataStore {
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit]
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit]
   
   
   /** Called at the end of each transaction to ensure all object locks are released.

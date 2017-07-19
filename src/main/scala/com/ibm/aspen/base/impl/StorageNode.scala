@@ -11,7 +11,6 @@ import com.ibm.aspen.core.network.StoreSideReadMessenger
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.LocalUpdateContent
 import com.ibm.aspen.core.transaction.StoreTransactionManager
 import com.ibm.aspen.core.network.ReadMessageReceiver
 import com.ibm.aspen.core.network.AllocationMessageReceiver
@@ -20,6 +19,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.read.ReadResponse
+import java.nio.ByteBuffer
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -47,7 +47,7 @@ class StorageNode(
     case _ => // Ignore other allocation messages
   }
   
-  def receive(fromStore: DataStoreID, message: transaction.Message, updateContent: Option[LocalUpdateContent]): Unit  = {
+  def receive(fromStore: DataStoreID, message: transaction.Message, updateContent: Option[Array[ByteBuffer]]): Unit  = {
     txManager.receive(fromStore, message, updateContent)
   }
   

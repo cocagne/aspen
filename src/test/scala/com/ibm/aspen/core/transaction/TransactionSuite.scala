@@ -30,22 +30,15 @@ object TransactionSuite {
       
   def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
   
-  object HaveContent extends LocalUpdateContent {
-    def haveDataForUpdateIndex(updateIndex: Int): Boolean = true
-    def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = throw new Exception("should not be called")
-  }
-  
-  object LackContent extends LocalUpdateContent {
-    def haveDataForUpdateIndex(updateIndex: Int): Boolean = false
-    def getDataForUpdateIndex(updateIndex: Int): ByteBuffer = throw new Exception("should not be called")
-  }
+  val HaveContent = Some(List(ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0))).toArray)
+  val LackContent = None
   
   class TMessenger extends NullMessenger {
     var p = Promise[(DataStoreID,Message)]()
     
     def futureMessage = p.future
     
-    override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
+    override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
       val t = p
       p = Promise[(DataStoreID,Message)]()
       t success (toStore, message)
@@ -110,13 +103,13 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val store = new NullDataStore(DataStoreID(poolUUID,0))
     val crl = new NullCRL {
-      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[LocalUpdateContent]): Future[Unit] = {
+      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
         crlStateSaved = true
         super.saveTransactionRecoveryState(state, dataUpdateContent)
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
+      override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(toStore, message)
       }
@@ -491,13 +484,13 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val store = new NullDataStore(DataStoreID(poolUUID,0))
     val crl = new NullCRL {
-      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[LocalUpdateContent]): Future[Unit] = {
+      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
         crlStateSaved = true
         super.saveTransactionRecoveryState(state, dataUpdateContent)
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message, updateContent: Option[LocalUpdateContent]): Unit = {
+      override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(toStore, message)
       }
@@ -578,7 +571,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     var stateCommitted = false
     
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = {
         stateCommitted = true
         Future.successful(())
       }
@@ -609,7 +602,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     var calls = 0
     
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = {
         calls += 1
         Future.successful(())
       }
@@ -648,7 +641,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     var stateCommitted = false
     
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: LocalUpdateContent): Future[Unit] = {
+      override def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = {
         stateCommitted = true
         Future.successful(())
       }
