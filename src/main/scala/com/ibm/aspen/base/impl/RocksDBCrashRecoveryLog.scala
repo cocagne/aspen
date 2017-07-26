@@ -53,6 +53,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   private [this] var shuttingDown: Option[Future[Unit]] = None
   private [this] var pendingSaves = Set[Future[Unit]]()
   private [this] var pendingTransactions = Map[UUID,Long]()
+  private [this] var savedUpdateContent = Set[Long]()
   private [this] var nextTxId:Long = 0
   
   import RocksDBCrashRecoveryLog._
@@ -72,7 +73,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
             val td = CRLCodec.transactionDataFromByteArray(value)
             
             pendingTransactions += (td.txd.transactionUUID -> txid)
-            
+             
             TransactionRecoveryState(td.dataStoreId, td.txd, td.dataUpdateContent, TransactionDisposition.Undetermined, 
                 TransactionStatus.Unresolved, PersistentState(None, None))
           } else {
@@ -100,33 +101,51 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   }
   
   def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
-    val (txid, addDataValue) = synchronized { 
+    val (txid, addDataValue, contentSaved) = synchronized { 
       pendingTransactions.get(state.txd.transactionUUID) match {
         case None =>
-          val tid = nextTxId
+          val txid = nextTxId
           nextTxId += 1
-          (tid, true)
-        case Some(tid) => (tid, false)
+          pendingTransactions += (state.txd.transactionUUID -> txid)
+          (txid, true, false)
+        case Some(txid) => (txid, false, savedUpdateContent.contains(txid))
       }
     }
     
-    if (addDataValue) {
+    if (addDataValue || (state.localUpdates.isDefined && !contentSaved)) {
       val dataKey = getDataKey(txid) 
-      val dataValue = CRLCodec.toTransactionDataByteArray(state.storeId, state.txd, dataUpdateContent)
-      synchronized { db.put(dataKey, dataValue) }
+      val dataValue = CRLCodec.toTransactionDataByteArray(state.storeId, state.txd, state.localUpdates)
+      synchronized {
+        if (state.localUpdates.isDefined)
+          savedUpdateContent += txid
+        db.put(dataKey, dataValue) 
+      }
     }
     
     val stateKey = getStateKey(txid)
     val stateValue = CRLCodec.toTransactionStateByteArray(state.disposition, state.status, state.paxosAcceptorState.promised, state.paxosAcceptorState.accepted)
     
-    synchronized { db.put(stateKey, stateValue) }
+    synchronized { 
+      val f = db.put(stateKey, stateValue)
+      pendingSaves += f
+      f onComplete {
+        case _ => synchronized { pendingSaves -= f }
+      }
+      f
+    }
   }
   
-  def discardTransactionState(txd: TransactionDescription): Unit = synchronized { 
-    pendingTransactions.get(txd.transactionUUID).foreach(txid => {
-      db.delete(getDataKey(txid))
-      db.delete(getStateKey(txid))
-    })
+  def discardTransactionState(txd: TransactionDescription): Unit = confirmedDiscardTransactionState(txd)
+  
+  def confirmedDiscardTransactionState(txd: TransactionDescription): Future[Unit] = synchronized {
+    pendingTransactions.get(txd.transactionUUID) match {
+      case None => Future.successful(())
+      case Some(txid) =>
+        pendingTransactions -= txd.transactionUUID
+        savedUpdateContent -= txid
+        db.delete(getDataKey(txid))
+        db.delete(getStateKey(txid))
+    }
   }
   
   def close(): Future[Unit] = synchronized {

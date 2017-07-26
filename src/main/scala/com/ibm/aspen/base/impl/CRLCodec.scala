@@ -79,6 +79,7 @@ object CRLCodec {
         val totalDataSize = uc.foldLeft(0)( (sz, bb) => sz + bb.capacity )
         val dbuff = builder.createUnintializedVector(1, totalDataSize, 1)
         uc.foreach(db => dbuff.put( db.asReadOnlyBuffer() ) )
+        
         val updateData = builder.endVector()
         val updateSizes = C.CRLTransactionData.createUpdateSizesVector(builder, uc.map( bb => bb.capacity ))
         (updateData, updateSizes)
@@ -87,6 +88,7 @@ object CRLCodec {
     C.CRLTransactionData.startCRLTransactionData(builder)
     C.CRLTransactionData.addDataStoreId(builder, dataStoreId)
     C.CRLTransactionData.addTxd(builder, txd)
+    
     if (updateData > 0) {
       C.CRLTransactionData.addUpdateData(builder, updateData)
       C.CRLTransactionData.addUpdateSizes(builder, updateSizes)
@@ -96,19 +98,26 @@ object CRLCodec {
   def decode(e: C.CRLTransactionData): TransactionData = {
     val dataStoreId = NetCodec.decode(e.dataStoreId())
     val txd = NetCodec.decode(e.txd())
-    
-    val dataUpdateContent = if (e.updateDataLength() == 0 )
+    val dataUpdateContent = if (e.updateDataLength() == 0 ) {
       None
-    else {
-      var offset = 0
+    } else {
+      
       val buffs = new Array[ByteBuffer](e.updateSizesLength())
       val dbuff = e.updateDataAsByteBuffer()
-      for (i <- 0 to e.updateSizesLength()) {
+      var offset = dbuff.position()
+      
+      for (i <- 0 until e.updateSizesLength()) {
         val size = e.updateSizes(i)
+
+        dbuff.position(offset)
         dbuff.limit(offset+size)
-        buffs(i) = ByteBuffer.allocateDirect(size)
+
+        buffs(i) = ByteBuffer.allocate(size)
         buffs(i).put(dbuff)
+        buffs(i).position(0)
+        offset += size
       }
+      
       Some(buffs)
     }
     
