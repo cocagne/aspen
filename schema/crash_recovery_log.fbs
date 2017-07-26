@@ -1,0 +1,31 @@
+include "network_protocol.fbs";
+
+namespace com.ibm.aspen.base.impl.crl;
+
+//---------------------------------------------------------------------------
+//- CRL State 
+//---------------------------------------------------------------------------
+table CRLTransactionData {
+    dataStoreId: com.ibm.aspen.core.network.protocol.DataStoreID;
+    txd: com.ibm.aspen.core.network.protocol.TransactionDescription;
+    updateData: [byte]; // Concatenated array of update data.
+    updateSizes: [int]; // Number of bytes in each update 
+}
+
+table CRLTransactionState {
+    disposition: com.ibm.aspen.core.network.protocol.TransactionDisposition;
+    status: com.ibm.aspen.core.network.protocol.TransactionStatus;
+    last_promised_id: com.ibm.aspen.core.network.protocol.ProposalID; // null if no promise has been made
+    last_accepted_id: com.ibm.aspen.core.network.protocol.ProposalID; // null if no accepted proposals
+    last_accepted_value: bool;    // null if no accepted proposals
+}
+
+//---------------------------------------------------------------------------
+//- Root Type
+//---------------------------------------------------------------------------
+table CRLEntry {
+  crl_data: CRLTransactionData;
+  crl_state: CRLTransactionState;
+}
+
+root_type CRLEntry;

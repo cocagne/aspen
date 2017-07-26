@@ -56,8 +56,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
     
@@ -435,8 +435,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
     
@@ -460,8 +460,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val txd = mktxd(Nil, Nil)
     
     val promisedId = ProposalID(5,1)
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None)))
     
     val futureResponse = messenger.futureMessage
     
@@ -531,8 +531,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
             DataStoreID(poolUUID,0), 
@@ -580,8 +580,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
             DataStoreID(poolUUID,0), 
@@ -611,8 +611,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
             DataStoreID(poolUUID,0), 
@@ -650,8 +650,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val txd = mktxd(Nil, Nil)
     
-    val tx = new Transaction(crl, messenger, t => (), TransactionRecoveryState(
-        store, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
+    val tx = new Transaction(crl, messenger, t => (), store, TransactionRecoveryState(
+        store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveFinalized(TxFinalized(
             DataStoreID(poolUUID,1), 

@@ -20,8 +20,9 @@ class Transaction(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val onDiscard: (Transaction) => Unit,
+    val store: DataStore,
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
-  val store: DataStore = trs.store
+  
   val txd: TransactionDescription = trs.txd
   val localUpdates: Option[Array[ByteBuffer]] = trs.localUpdates
   
@@ -89,7 +90,7 @@ class Transaction(
               case TransactionDisposition.VoteCommit => TransactionDisposition.VoteCommit
             }
             
-            TransactionRecoveryState(store, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
+            TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
           }
 
           val response = TxPrepareResponse(
@@ -202,7 +203,7 @@ class Transaction(
         
       case Right(accept) =>
         val recoveryState = synchronized {
-          TransactionRecoveryState(store, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
+          TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
         }
 
         val response = TxAcceptResponse(
@@ -268,8 +269,8 @@ object Transaction {
       store: DataStore, 
       txd: TransactionDescription, 
       localUpdates: Option[Array[ByteBuffer]])(implicit ec: ExecutionContext): Transaction = {
-    new Transaction(crl, messenger, onDiscard, TransactionRecoveryState(
-        store,
+    new Transaction(crl, messenger, onDiscard, store, TransactionRecoveryState(
+        store.storeId,
         txd, 
         localUpdates, 
         TransactionDisposition.Undetermined, 
@@ -281,7 +282,8 @@ object Transaction {
       crl: CrashRecoveryLog, 
       messenger: StoreSideTransactionMessenger, 
       onDiscard: (Transaction) => Unit,
-      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, trs)
+      store: DataStore,
+      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, store, trs)
   
   def objectErrorToUpdateError(objErr: ObjectError.Value): UpdateError.Value = objErr match {
     case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer

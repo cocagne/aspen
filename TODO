@@ -1,3 +1,5 @@
+CRL Unit Tests
+  - must be future based
 
 * Implement DataStore & CRL in terms of BufferedConsistentRocksDB
     * Should be pretty easy to load CRL content. Just add a visit_all method that applies a function to each key/value pair

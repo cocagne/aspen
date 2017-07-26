@@ -33,19 +33,34 @@ lazy val root = (project in file(".")).
 
 sourceGenerators in Compile += Def.task {
   val base = (sourceManaged in Compile).value
-  val out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "core" / "network" / "protocol"
+  
+  // Network Protocol
+  val net_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "core" / "network" / "protocol"
 
-  val schema = file("schema") / "protocol.fbs"
+  val net_schema = file("schema") / "network_protocol.fbs"
 
-  val generate = !out_dir.exists() || out_dir.listFiles().exists( f => schema.lastModified() > f.lastModified() )
+  val net_generate = !net_out_dir.exists() || net_out_dir.listFiles().exists( f => net_schema.lastModified() > f.lastModified() )
 
-  if (generate) {
-    println(s"Generating Files")
-    val stdout = s"flatc --java -o $base schema/protocol.fbs".!
+  if (net_generate) {
+    println(s"Generating Network Protocol Source Files")
+    val stdout = s"flatc --java -o $base schema/network_protocol.fbs".!
     println(s"Result: $stdout")  
   }
   
-  out_dir.listFiles().toSeq
+  // Crash Recovery Log
+  val crl_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "crl"
+
+  val crl_schema = file("schema") / "crash_recovery_log.fbs"
+
+  val crl_generate = !crl_out_dir.exists() || crl_out_dir.listFiles().exists( f => crl_schema.lastModified() > f.lastModified() )
+
+  if (crl_generate) {
+    println(s"Generating Crash Recovery Log Serialization Source Files")
+    val stdout = s"flatc --java -o $base schema/crash_recovery_log.fbs".!
+    println(s"Result: $stdout")  
+  }
+  
+  net_out_dir.listFiles().toSeq ++ crl_out_dir.listFiles().toSeq
 }.taskValue
 
 

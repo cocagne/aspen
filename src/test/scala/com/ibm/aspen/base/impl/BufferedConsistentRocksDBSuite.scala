@@ -12,35 +12,12 @@ import scala.concurrent.ExecutionContext
 object BufferedConsistentRocksDBSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
 }
-class BufferedConsistentRocksDBSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
+class BufferedConsistentRocksDBSuite extends TempDirSuiteBase {
   import BufferedConsistentRocksDBSuite._
   
   var db: BufferedConsistentRocksDB = null
   
-  var tdir:File = _
-
-  before {
-    val tfile = File.createTempFile("scalatest", "BufferedConsistentRocksDBSuite")
-    tfile.delete()
-    tdir = new File(tfile.toString)
-    tdir.mkdir()
-  }
-
-  after {
-    if (db!=null)
-      db.close()
-
-    def cleanup(f:File): Unit = {
-      if (f.isFile) {
-        f.delete()
-      }
-      else {
-        f.listFiles().foreach( cleanup )
-        f.delete()
-      }
-    }
-    cleanup(tdir)
-  }
+  override def preTempDirDeletion(): Unit = if (db!=null) db.close()
   
   test("Test foreach") {
     
