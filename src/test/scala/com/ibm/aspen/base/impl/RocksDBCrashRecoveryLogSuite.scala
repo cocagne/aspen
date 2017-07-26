@@ -56,6 +56,32 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     lst should be ( trs :: Nil )
   }
   
+  test("Update Entry") {
+    val txd = mktxd(Nil, Nil)
+    val promisedId = ProposalID(5,1)
+    val promisedId2 = ProposalID(6,2)
+    
+    val trs = TransactionRecoveryState(
+        storeId, txd, LackContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
+    
+    newCRL()
+    
+    Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
+    
+    val trs2 = TransactionRecoveryState(
+        storeId, txd, LackContent, TransactionDisposition.VoteCommit, TransactionStatus.Committed, PersistentState(Some(promisedId2), Some((promisedId2,true))))
+    
+    Await.result(crl.saveTransactionRecoveryState(trs2), awaitDuration)
+    
+    crl.immediateClose()
+    
+    newCRL()
+    
+    val lst = Await.result(crl.initialize(), awaitDuration)
+    
+    lst should be ( trs2 :: Nil )
+  }
+  
   test("Save with data") {
     val txd = mktxd(Nil, Nil)
     val promisedId = ProposalID(5,1)
