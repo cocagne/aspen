@@ -100,7 +100,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     }).map(_ => states.values.toList)
   }
   
-  def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
+  def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
     val (txid, addDataValue, contentSaved) = synchronized { 
       pendingTransactions.get(state.txd.transactionUUID) match {
         case None =>

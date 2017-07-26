@@ -10,7 +10,7 @@ object MemoryOnlyCRL extends CrashRecoveryLog {
   
   private val queue = new java.util.concurrent.LinkedBlockingQueue[Promise[Unit]]()
   
-  override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
+  override def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
     val p = Promise[Unit]()
     queue.put(p)
     p.future

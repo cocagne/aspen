@@ -109,7 +109,7 @@ class Transaction(
           //       that the node will be in this state for a significant period of time. Leave it to the 
           //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState, localUpdates).onSuccess({case _ => messenger.send(prepare.from, response)})
+          crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => messenger.send(prepare.from, response)})
         })
     }
   }
@@ -213,7 +213,7 @@ class Transaction(
             Right(TxAcceptResponse.Accepted(accept.proposalValue)))
             
         // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
-        crl.saveTransactionRecoveryState(recoveryState, None).onSuccess({case _ => 
+        crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => 
           messenger.send(msg.from, response)
           txd.originatingClient.foreach( client => messenger.send(client, response) )
         })

@@ -103,9 +103,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val store = new NullDataStore(DataStoreID(poolUUID,0))
     val crl = new NullCRL {
-      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
+      override def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
         crlStateSaved = true
-        super.saveTransactionRecoveryState(state, dataUpdateContent)
+        super.saveTransactionRecoveryState(state)
       }
     }
     val messenger = new TMessenger {
@@ -484,9 +484,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val store = new NullDataStore(DataStoreID(poolUUID,0))
     val crl = new NullCRL {
-      override def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = {
+      override def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
         crlStateSaved = true
-        super.saveTransactionRecoveryState(state, dataUpdateContent)
+        super.saveTransactionRecoveryState(state)
       }
     }
     val messenger = new TMessenger {

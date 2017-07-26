@@ -6,7 +6,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 
 class NullCRL extends CrashRecoveryLog {
-  def saveTransactionRecoveryState(state: TransactionRecoveryState, dataUpdateContent: Option[Array[ByteBuffer]]): Future[Unit] = Future.successful(())
+  def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = Future.successful(())
   
   def discardTransactionState(txd: TransactionDescription): Unit = ()
 }

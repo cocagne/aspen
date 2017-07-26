@@ -45,7 +45,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     newCRL()
     
-    Await.result(crl.saveTransactionRecoveryState(trs, None), awaitDuration)
+    Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
     crl.immediateClose()
     
@@ -69,7 +69,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     newCRL()
     
-    Await.result(crl.saveTransactionRecoveryState(trs, DataContent), awaitDuration)
+    Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
     crl.immediateClose()
     
@@ -105,7 +105,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     newCRL()
     
-    Await.result(crl.saveTransactionRecoveryState(trs, DataContent), awaitDuration)
+    Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
     Await.result(crl.confirmedDiscardTransactionState(txd), awaitDuration)
     
