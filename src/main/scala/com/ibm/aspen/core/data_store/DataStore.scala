@@ -33,13 +33,13 @@ trait DataStore {
   
   
   /** Reads an object on the store */
-  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]]
+  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]]
   
   
   /** Reads an object on the store */
   def getObject(objectPointer: ObjectPointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
     objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
-      case Some(sp) => getObject(sp)
+      case Some(sp) => getObject(objectPointer, sp)
       case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
     }
   }

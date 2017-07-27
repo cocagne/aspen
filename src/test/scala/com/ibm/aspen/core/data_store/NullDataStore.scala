@@ -28,7 +28,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
     Future.successful(Left(AllocationError.InsufficientSpace))
   }
   
-  def getObject(storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
     Future.successful(Left(ObjectError.InvalidLocalPointer))
   }
   

@@ -316,7 +316,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, None), icontent)
     
     futureResponse flatMap { either => either match {
-      case Right(sp) => ds.getObject(sp).flatMap(er => er match {
+      case Right(sp) => ds.getObject(mkObjPtr(txUUID, sp)).flatMap(er => er match {
         case Right(data) => data should be (expected)
         case Left(err) => fail("Returned failure instead of object content")
       })
@@ -326,8 +326,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   
   test("Read Invalid Object") {
     val ds = newStore
-    
-    val futureResponse = ds.getObject(StorePointer(storeId.poolIndex, new Array[Byte](0)))
+    val sp = StorePointer(storeId.poolIndex, new Array[Byte](0))
+    val futureResponse = ds.getObject(mkObjPtr(txUUID, sp))
     
     futureResponse map { either => either match {
       case Right(_) => fail("Should have failed read")
