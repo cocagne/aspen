@@ -95,7 +95,7 @@ abstract class RocksDBDataStore(
   
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
     synchronized {workingState.get(objectPointer.uuid)} match {
-      case Some(ws) => Future.successful(Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.lockedTransaction), ws.data)))
+      case Some(ws) => Future.successful(Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.lastTxUUID, ws.lockedTransaction), ws.data)))
       case None =>
         val fstate = db.get(stateKey(objectPointer.uuid))
         val fdata = db.get(dataKey(objectPointer.uuid))
@@ -106,7 +106,7 @@ abstract class RocksDBDataStore(
           (ostate, odata) match {
             case (Some(stateBuf), Some(dataBuf)) =>
               val (revision, refcount, lastTxUUID) = bytesToState(stateBuf)
-              Right((CurrentObjectState(objectPointer.uuid, revision, refcount, None), ByteBuffer.wrap(dataBuf)))
+              Right((CurrentObjectState(objectPointer.uuid, revision, refcount, lastTxUUID, None), ByteBuffer.wrap(dataBuf)))
             case _ => Left(ObjectError.InvalidLocalPointer)
           }
         }

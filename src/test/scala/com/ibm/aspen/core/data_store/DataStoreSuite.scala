@@ -49,7 +49,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   def initObjects(): (DataStore, StorePointer, StorePointer) = {
     val ds = newStore
             
-    val expected = (CurrentObjectState(uuid0, irev, oneRef, None), icontent0)
+    val expected = (CurrentObjectState(uuid0, irev, oneRef, txUUID, None), icontent0)
     
     val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, txUUID, allocObj, allocRev) flatMap { either => either match {
       case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, txUUID, allocObj, allocRev).flatMap(er => er match {
@@ -111,8 +111,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.size should be (2)
     m.contains(uuid0) should be (true)
     m.contains(uuid1) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, Some(txd))))
-    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, Some(txd))))
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, Some(txd))))
+    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, txUUID, Some(txd))))
   }
   
   test("Commit Locked Transaction") {
@@ -138,8 +138,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val newRev = ObjectRevision(1,4)
     
-    val expected0 = Right((CurrentObjectState(uuid0, newRev, oneRef, None), newContent))
-    val expected1 = Right((CurrentObjectState(uuid1, ObjectRevision(0,3), newRef, None), icontent1))
+    val expected0 = Right((CurrentObjectState(uuid0, newRev, oneRef, txd.transactionUUID, None), newContent))
+    val expected1 = Right((CurrentObjectState(uuid1, ObjectRevision(0,3), newRef, txd.transactionUUID, None), icontent1))
     
     val cs0 = Await.result(ds.getObject(op0), awaitDuration)
     val cs1 = Await.result(ds.getObject(op1), awaitDuration)
@@ -256,8 +256,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.size should be (2)
     m.contains(uuid0) should be (true)
     m.contains(uuid1) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, None)))
-    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, None)))
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
+    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, txUUID, None)))
   }
   
   test("Get Invalid Object State") {
@@ -273,7 +273,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.size should be (2)
     m.contains(uuid0) should be (true)
     m.contains(uuid1) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, None)))
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
     m(uuid1) should be (Left(ObjectError.InvalidLocalPointer))
   }
   
@@ -291,7 +291,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.size should be (2)
     m.contains(uuid0) should be (true)
     m.contains(badUUID) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, None)))
+    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
     m(badUUID) should be (Left(ObjectError.ObjectMismatch))
   }
   
@@ -313,7 +313,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val icontent = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
             
-    val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, None), icontent)
+    val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, txUUID, None), icontent)
     
     futureResponse flatMap { either => either match {
       case Right(sp) => ds.getObject(mkObjPtr(txUUID, sp)).flatMap(er => er match {

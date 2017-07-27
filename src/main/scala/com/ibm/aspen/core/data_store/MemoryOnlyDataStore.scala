@@ -39,7 +39,7 @@ class MemoryOnlyDataStore(
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]] = synchronized {
     val (objId, lpArray) = nextLocalPointer()
     
-    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.capacity), initialRefcount, initialContent, None))
+    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.capacity), initialRefcount, initialContent, allocationTransactionUUID, None))
     
     Future.successful(Right(StorePointer(storeId.poolIndex, lpArray)))
   }
@@ -52,7 +52,7 @@ class MemoryOnlyDataStore(
     getObject(storePointer.data) match {
       case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
       case Some(obj) =>
-        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lock)
+        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock)
         Future.successful(Right( (cstate, obj.data) ))
     }
   }
@@ -74,7 +74,7 @@ class MemoryOnlyDataStore(
         result: Either[ObjectError.Value, CurrentObjectState] = getObject(spo.get.data) match {
           case None => Left(ObjectError.InvalidLocalPointer)
           case Some(obj) => if (op.uuid == obj.uuid) 
-            Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lock))
+            Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock))
           else  
             Left(ObjectError.ObjectMismatch)
         }
@@ -223,5 +223,6 @@ object MemoryOnlyDataStore {
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
       var data: ByteBuffer, 
+      var lastCommittedTxUUID: UUID,
       var lock: Option[TransactionDescription])
 }

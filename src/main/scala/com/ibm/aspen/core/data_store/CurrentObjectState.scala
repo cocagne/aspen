@@ -9,4 +9,5 @@ case class CurrentObjectState(
     uuid: UUID,
     revision: ObjectRevision,
     refcount: ObjectRefcount,
+    lastCommittedTxUUID: UUID,
     lockedTransaction: Option[TransactionDescription])
