@@ -22,6 +22,7 @@ object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
   val uuid0 = new UUID(0,0)
   val uuid1 = new UUID(0,1)
+  val uuid2 = new UUID(0,4)
   val poolUUID = new UUID(0,2)
   val txUUID = new UUID(0,3)
   
@@ -72,8 +73,10 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
+      case Some(m) => fail(s"Shouldn't have encountered errors: $m")
       case None => succeed
     }
     
@@ -85,8 +88,10 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
+    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    
     ds.lockOrCollide(txd2) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
+      case Some(m) => fail(s"Shouldn't have encountered errors: $m")
       case None => succeed
     }
   }
@@ -100,7 +105,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val op1 = mkObjPtr(uuid1, sp1)
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
-                    
+              
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -125,6 +132,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -154,6 +163,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
+    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    
     ds.lockOrCollide(txd2) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -168,6 +179,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -175,13 +188,15 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val tx2UUID = new UUID(99,99)
     
-    val op3 = mkObjPtr(uuid1, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
+    val op3 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
     
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
         
+    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    
     ds.lockOrCollide(txd2) match {
-      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid1 -> Left(ObjectError.InvalidLocalPointer))))
+      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid2 -> Left(ObjectError.InvalidLocalPointer))))
       case None => fail("Shouldn't have succeeded")
     }
   }
@@ -198,6 +213,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, badRef, oneRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => m should be (Map((uuid0->Left(ObjectError.RevisionMismatch)),(uuid1->Left(ObjectError.RefcountMismatch))))
       case None => fail("Should have encountered errors")
@@ -213,6 +230,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -223,6 +242,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
         
+    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    
     ds.lockOrCollide(txd2) match {
       case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid1 -> Right(txd))))
       case None => fail("Shouldn't have encountered errors")
@@ -237,6 +258,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
+    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    
     ds.lockOrCollide(txd) match {
       case Some(m) => fail("Shouldn't have encountered errors")
       case None => succeed
@@ -264,17 +287,18 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val (ds, sp0, sp1) = initObjects()
     
     val op0 = mkObjPtr(uuid0, sp0)
-    val op1 = mkObjPtr(uuid1, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
+    val op2 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    RefcountUpdate(op2, oneRef, oneRef) :: Nil)
                     
     val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
     
     m.size should be (2)
     m.contains(uuid0) should be (true)
-    m.contains(uuid1) should be (true)
+    m.contains(uuid2) should be (true)
     m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    m(uuid1) should be (Left(ObjectError.InvalidLocalPointer))
+    val s = Set[Either[ObjectError.Value, CurrentObjectState]](Left(ObjectError.ObjectMismatch), Left(ObjectError.InvalidLocalPointer))
+    s.contains(m(uuid2)) should be (true)
   }
   
   test("Get Object State With Object Mistmatch") {
@@ -292,7 +316,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.contains(uuid0) should be (true)
     m.contains(badUUID) should be (true)
     m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    m(badUUID) should be (Left(ObjectError.ObjectMismatch))
+    val s = Set[Either[ObjectError.Value, CurrentObjectState]](Left(ObjectError.ObjectMismatch), Left(ObjectError.InvalidLocalPointer))
+    s.contains(m(badUUID)) should be (true)
   }
   
   test("Allocate New Object") {
@@ -316,9 +341,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, txUUID, None), icontent)
     
     futureResponse flatMap { either => either match {
-      case Right(sp) => ds.getObject(mkObjPtr(txUUID, sp)).flatMap(er => er match {
+      case Right(sp) => ds.getObject(mkObjPtr(uuid0, sp)).flatMap(er => er match {
         case Right(data) => data should be (expected)
-        case Left(err) => fail("Returned failure instead of object content")
+        case Left(err) => fail(s"Returned failure instead of object content: $err")
       })
       case Left(err) => fail("Returned failure instead of store pointer")
     }}

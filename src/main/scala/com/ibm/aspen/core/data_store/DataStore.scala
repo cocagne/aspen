@@ -15,6 +15,8 @@ trait DataStore {
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
   
+  /** Completes when initialization is complete and the store is ready for use. No methods should be invoked prior to completion */
+  def initialized: Future[Unit]
   
   /** Allocates a new Object on the store.
    *

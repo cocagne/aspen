@@ -14,6 +14,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.data_store.CurrentObjectState
 import scala.concurrent.ExecutionContext
+import com.ibm.aspen.core.transaction.DataUpdateOperation
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -57,7 +58,7 @@ object RocksDBDataStore {
       var pendingTransactions: Set[TransactionDescription])
 }
 
-abstract class RocksDBDataStore(
+class RocksDBDataStore(
     val storeId: DataStoreID,
     initialLockedTransactions: List[TransactionDescription],
     dbPath:String)(implicit ec: ExecutionContext) extends DataStore {
@@ -69,6 +70,27 @@ abstract class RocksDBDataStore(
   /** Holds the current object state while transactions are outstanding and/or data has yet to be committed to disk */
   private [this] var workingState = Map[UUID, WorkingState]()
   
+  private [this] def isHostedObject(op: ObjectPointer) = op.poolUUID == storeId.poolUUID && op.storePointers.find(_.poolIndex == storeId.poolIndex).isDefined
+  
+  private [this] def getHostedObjects(txd:TransactionDescription) = txd.allReferencedObjectsSet.filter(isHostedObject)
+  
+  def close() = db.close()
+  
+  val initialized: Future[Unit] = {
+    var flocks = List[Future[Unit]]()
+    
+    initialLockedTransactions.foreach(txd => getHostedObjects(txd).foreach(op => {
+      flocks = getObject(op).map(r => r match {
+        case Left(err) => // ??? Shouldn't be possible and there's nothing we can do about it. Log?
+        case Right((state, data)) => 
+          workingState += (op.uuid -> new WorkingState(state.revision, state.refcount, state.lastCommittedTxUUID, data, Some(txd), Set(txd)))
+      }) :: flocks
+    })
+    )
+    
+    Future.sequence(flocks).map(_=>())
+  }
+  
   /** TODO Failure handling. Currently we never check to see if the allocation succeeded/failed
    */
   def allocateNewObject(objectUUID: UUID, 
@@ -79,7 +101,8 @@ abstract class RocksDBDataStore(
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]] = {
     val f = synchronized {
-      db.put(stateKey(objectUUID), stateToBytes(ObjectRevision(0, initialContent.capacity), initialRefcount, allocationTransactionUUID))
+      val initialRevision = ObjectRevision(0, initialContent.capacity)
+      db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, allocationTransactionUUID))
       val buf = if (!initialContent.isDirect()) 
         initialContent.array()
         else {
@@ -87,14 +110,28 @@ abstract class RocksDBDataStore(
           initialContent.get(a)
           a
         }
-      db.put(dataKey(objectUUID), buf)
+      val fcommitted = db.put(dataKey(objectUUID), buf)
+      
+      val ws = new WorkingState(initialRevision, initialRefcount, allocationTransactionUUID, initialContent, None, Set())
+      
+      workingState += (objectUUID -> ws)
+      
+      fcommitted onComplete {
+        case _ => synchronized {
+          if (ws.pendingTransactions.isEmpty)
+            workingState -= objectUUID
+        }
+      }
+      
+      fcommitted
     }
     
     f.map(_ => Right(StorePointer(storeId.poolIndex, new Array[Byte](0))))
   }
   
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
-    synchronized {workingState.get(objectPointer.uuid)} match {
+    synchronized {
+      workingState.get(objectPointer.uuid)} match {
       case Some(ws) => Future.successful(Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.lastTxUUID, ws.lockedTransaction), ws.data)))
       case None =>
         val fstate = db.get(stateKey(objectPointer.uuid))
@@ -113,13 +150,23 @@ abstract class RocksDBDataStore(
     }
   }
   
-  
+  /* This method must be called at the beginning of a transaction before any decisions can be made. To allow lockOrCollide to complete
+   * immediately and without preforming any I/O, we'll load all local objects into the workingState map and keep them there until the
+   * transaction commits/aborts.
+   */
   def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectError.Value, CurrentObjectState]]] = {
-    val localObjects = txd.allReferencedObjectsSet.filter(op => op.poolUUID == storeId.poolUUID && op.storePointers.find(_.poolIndex == storeId.poolIndex).isDefined)
+    val localObjects = getHostedObjects(txd)
     
     val futureSet = localObjects.map(op => getObject(op).map(r => r match {
       case Left(err) => (op.uuid -> Left(err))
-      case Right((state, data)) => (op.uuid -> Right(state))
+      case Right((state, data)) =>
+        synchronized {
+          workingState.get(op.uuid) match {
+            case Some(ws) => ws.pendingTransactions += txd
+            case None => workingState += (op.uuid -> new WorkingState(state.revision, state.refcount, state.lastCommittedTxUUID, data, None, Set(txd)))
+          }
+        }
+        (op.uuid -> Right(state))
     }))
     
     Future.sequence(futureSet).map( _.toMap )
@@ -130,9 +177,41 @@ abstract class RocksDBDataStore(
    *  must detect Revision and Refcount mismatch errors. getCurrentObjectState is used by transactions to do initial error
    *  checking on the refcount and revision but it is possible for those values to change between that call and this call.
    */
-//  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
-//    
-//  }
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
+    // Note that objects can be deleted between getCurrentObjectState and the call here. If they're not in the working set, provide an error.
+    // Also, we can only report one error per object so subsequent checks will overwrite previously found errors
+    //
+    var localObjects = Map[UUID, WorkingState]()
+    var errs =  Map[UUID, Either[ObjectError.Value, TransactionDescription]]()
+    
+    // Check for object existence and locked transactions
+    for (op <- getHostedObjects(txd)) {
+      workingState.get(op.uuid) match {
+        case None => errs += (op.uuid -> Left(ObjectError.InvalidLocalPointer))
+        case Some(ws) =>
+          localObjects += (op.uuid -> ws)
+          ws.lockedTransaction.foreach( lockedTxd => errs += (op.uuid -> Right(lockedTxd)) )
+      }
+    }
+    
+    // Check Refcounts
+    txd.refcountUpdates.foreach(ru => localObjects.get(ru.objectPointer.uuid).foreach(ws =>{
+      if (ws.refcount != ru.requiredRefcount)
+        errs += (ru.objectPointer.uuid -> Left(ObjectError.RefcountMismatch))
+    }))
+    
+    // Check Revisions
+    txd.dataUpdates.foreach(du => localObjects.get(du.objectPointer.uuid).foreach(ws =>{
+      if (ws.revision != du.requiredRevision)
+        errs += (du.objectPointer.uuid -> Left(ObjectError.RevisionMismatch))
+    }))
+    
+    if (errs.isEmpty) {
+      localObjects.foreach(t => t._2.lockedTransaction = Some(txd))
+      None
+    } else
+      Some(errs)
+  }
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.
@@ -140,7 +219,59 @@ abstract class RocksDBDataStore(
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit]
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = synchronized {
+    
+    var localObjects = Map[UUID, WorkingState]()
+    var dataUpdates = Set[WorkingState]()
+    
+    getHostedObjects(txd).foreach(op => workingState.get(op.uuid).foreach(ws => localObjects += (op.uuid -> ws)))
+    
+    txd.refcountUpdates.foreach(ru => localObjects.get(ru.objectPointer.uuid).foreach(ws => ws.refcount = ru.newRefcount)) 
+    
+    // Update object data only if we have the data to do so
+    localUpdates.foreach( updateData => if (updateData.size == txd.dataUpdates.size) {
+      txd.dataUpdates.zipWithIndex.foreach(t => localObjects.get(t._1.objectPointer.uuid).foreach(ws =>{
+        dataUpdates += ws
+        t._1.operation match {
+          case DataUpdateOperation.Overwrite => 
+            ws.data = updateData(t._2)
+            ws.revision = ObjectRevision(ws.revision.overwriteCount + 1, ws.data.capacity)
+          case DataUpdateOperation.Append =>
+            val app = updateData(t._2)
+            val buf = ByteBuffer.allocate( ws.data.capacity + app.capacity )
+            buf.put(ws.data)
+            buf.put(app)
+            buf.position(0)
+            ws.data = buf
+            ws.revision = ObjectRevision(ws.revision.overwriteCount, ws.data.capacity)
+        }
+      }))
+    })
+    
+    var commits = List[Future[Unit]]()
+    
+    localObjects.foreach(t => {
+      commits = db.put(stateKey(t._1), stateToBytes(t._2.revision, t._2.refcount, txd.transactionUUID)) :: commits
+      
+      if (dataUpdates.contains(t._2)) {
+        val data = if (t._2.data.isDirect) {
+          val buf = new Array[Byte](t._2.data.capacity)
+          t._2.data.asReadOnlyBuffer().get(buf)
+          buf
+        } else
+          t._2.data.array
+        db.put(dataKey(t._1), data)
+      }
+      
+      t._2.lockedTransaction = None
+      t._2.pendingTransactions -= txd
+      
+      if (t._2.pendingTransactions.isEmpty)
+        workingState -= t._1
+    })
+   
+    Future.sequence(commits).map(_ => ())
+  }
   
   
   /** Called at the end of each transaction to ensure all object locks are released.
@@ -149,5 +280,14 @@ abstract class RocksDBDataStore(
    *  locks while the finalization actions run. Both committed and aborted transactions call this method.
    * 
    */
-  def discardTransaction(txd: TransactionDescription): Unit
+  def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
+    getHostedObjects(txd).foreach(op => workingState.get(op.uuid).foreach(ws => {
+      ws.pendingTransactions -= txd
+      
+      ws.lockedTransaction.foreach( lockedTxd => if (txd == lockedTxd) ws.lockedTransaction = None )
+      
+      if (ws.pendingTransactions.isEmpty)
+        workingState -= op.uuid
+    }))
+  }
 }

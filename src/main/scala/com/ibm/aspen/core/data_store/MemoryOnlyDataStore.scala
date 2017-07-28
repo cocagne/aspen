@@ -27,6 +27,8 @@ class MemoryOnlyDataStore(
     (lp, ByteBuffer.allocate(4).putInt(lp).array())
   }
   
+  def initialized: Future[Unit] = Future.successful(())
+  
   private def getObject(ba: Array[Byte]) = objects.get(ByteBuffer.wrap(ba).getInt)
   
   /** Allocates a new Object on the store */

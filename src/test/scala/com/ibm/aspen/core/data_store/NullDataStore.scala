@@ -18,6 +18,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   import NullDataStore._
   
+  def initialized: Future[Unit] = Future.successful(())
+  
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
                         initialContent: ByteBuffer,

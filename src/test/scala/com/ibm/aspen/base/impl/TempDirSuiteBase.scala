@@ -7,27 +7,18 @@ import org.scalatest.Matchers
 
 trait TempDirSuiteBase extends AsyncFunSuite with Matchers with BeforeAndAfter {
   var tdir:File = _
-
+  var tdirMgr: TempDirManager = _
+  
   before {
-    val tfile = File.createTempFile("scalatest", "TempDirSuiteTest")
-    tfile.delete()
-    tdir = new File(tfile.toString)
-    tdir.mkdir()
+    tdirMgr = new TempDirManager
+    tdir = tdirMgr.tdir
+    
   }
 
   after {
     preTempDirDeletion()
     
-    def cleanup(f:File): Unit = {
-      if (f.isFile) {
-        f.delete()
-      }
-      else {
-        f.listFiles().foreach( cleanup )
-        f.delete()
-      }
-    }
-    cleanup(tdir)
+    tdirMgr.delete()
   }
   
   def preTempDirDeletion(): Unit = ()
