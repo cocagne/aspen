@@ -1,3 +1,14 @@
+* Can probably go a ways yet within the unit test environment
+  StorageNode to aggregate CRL, Stores, Per-store TxManagers, and network interface implementers
+  AspenSystem to implement client interface (constructor takes a UUID for client identifier, default to random)
+  InProc Network
+    - Could go ZMQ and use inproc
+    - Full-stack tests then but introduces non-determinism. Though Futures already do that to a degree
+    
+* For Store Transfer
+    - No need to wait for all transactions to complete. Instead, bundle the CRL entries for that store along with the store data.
+      * Slightly bigger coding effort but it minimizes the special cases. Store transfer is simply store temporarily offline
+    
 
 * Useful
    - RocksDB store (there is a java wrapper)

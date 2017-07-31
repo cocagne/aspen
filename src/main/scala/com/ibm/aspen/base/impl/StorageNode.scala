@@ -20,6 +20,7 @@ import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.read.ReadResponse
 import java.nio.ByteBuffer
+import scala.concurrent.Future
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -31,10 +32,18 @@ class StorageNode(
   val initialStores: List[DataStore]
 )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with ReadMessageReceiver with AllocationMessageReceiver {
   
-  private[this] var stores: Map[DataStoreID, DataStore] = initialStores.map( s => (s.storeId -> s) ).toMap
+  private[this] var stores = Map[DataStoreID, DataStore]()
   private[this] val txManager = new StoreTransactionManager(crl, transactionMessenger, driverFactory, finalizerFactory)
   
   private[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
+  
+  /** Waits for the store to complete its internal initialization then adds it to the map of active stores */
+  def addStore(store: DataStore): Future[Unit] = store.initialized andThen {
+    case _ => synchronized { stores += (store.storeId -> store) }
+  }
+  
+  /** Completes when all initialStores are fully initialized */
+  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>())
   
   def receive(message: allocation.Message): Unit = message match {
     case m: allocation.Allocate => getStore(m.toStore).foreach(store => {
