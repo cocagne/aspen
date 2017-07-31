@@ -1,20 +1,33 @@
 package com.ibm.aspen.core.network
 
+import java.util.UUID
+import java.nio.ByteBuffer
+
 /** Represents a non-store entity that can send and receive messages to and from data stores
  * 
  */
-trait Client {
-  def serialized: Array[Byte]
+case class Client(uuid: UUID) {
+  
+  def serialized: Array[Byte] = {
+    val bb = ByteBuffer.allocate(16)
+    bb.putLong(0, uuid.getMostSignificantBits)
+    bb.putLong(8, uuid.getLeastSignificantBits)
+    bb.array()
+  }
+  
+  override def equals(other: Any): Boolean = other match {
+    case rhs: Client => uuid == rhs.uuid
+    case _ => false
+  }
 }
 
 object Client {
-  case class SimpleClient(bytes: Array[Byte]) extends Client {
-    def serialized: Array[Byte] = bytes
+  
+  def apply(data:Array[Byte]): Client = {
+    assert(data.length == 16, "Serialized Client UUID is not of length 16!")
     
-    override def equals(other: Any): Boolean = other match {
-      case rhs: SimpleClient => java.util.Arrays.equals(bytes, rhs.bytes)
-      case _ => false
-    }
+    val bb = ByteBuffer.wrap(data)
+    
+    Client(new UUID(bb.getLong(0), bb.getLong(8)))
   }
-  def fromSerialized(data:Array[Byte]): Client = SimpleClient(data)
 }

@@ -22,6 +22,7 @@ object BaseReadDriverSuite {
   val objUUID = new UUID(0,1)
   val poolUUID = new UUID(0,2)
   val readUUID = new UUID(0,3)
+  val cliUUID = new UUID(0,4)
   
   val ida = Replication(3,2)
   
@@ -41,9 +42,7 @@ object BaseReadDriverSuite {
   
   val noLocks = List[(DataStoreID,TransactionDescription)]()
   
-  object client extends Client {
-    val serialized: Array[Byte] = List[Byte](3).toArray 
-  }
+  val client = Client(cliUUID)
   
   class TMessenger extends ClientSideReadMessenger {
     var mlist = List[(DataStoreID,read.Message)]()

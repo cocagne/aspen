@@ -278,7 +278,7 @@ object Codec {
     else {  
         val buf = new Array[Byte](n.originatingClientLength())
         n.originatingClientAsByteBuffer().get(buf)
-        Some(Client.fromSerialized(buf))
+        Some(Client(buf))
     }
       
     def dataUpdates(idx: Int, l:List[DataUpdate]): List[DataUpdate] = if (idx == -1) 
@@ -546,7 +546,7 @@ object Codec {
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val allocatingObject = decode(n.allocatingObject())
     val allocatingObjectRevision = decode(n.allocatingObjectRevision())
-    Allocate(toStore, Client.fromSerialized(fromClient), newObjectUUID, objectSize, objectData, initialRefcount, 
+    Allocate(toStore, Client(fromClient), newObjectUUID, objectSize, objectData, initialRefcount, 
         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
   
@@ -607,7 +607,7 @@ object Codec {
     val returnObjectData = n.returnObjectData()
     val returnLockedTransaction = n.returnLockedTransaction()
     
-    Read(toStore, Client.fromSerialized(fromClient), readUUID, objectPointer, returnObjectData, returnLockedTransaction)
+    Read(toStore, Client(fromClient), readUUID, objectPointer, returnObjectData, returnLockedTransaction)
   }
   
   def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {

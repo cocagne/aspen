@@ -16,12 +16,14 @@ import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
+import java.util.UUID
 
 object CodecSuite {
   
   val (txd, txd2) = {
     val objUuid = java.util.UUID.randomUUID()
     val poolUUID = java.util.UUID.randomUUID()
+    val cliUUID = new UUID(1,1)
     val size = 10
     val p1 = StorePointer(0, Array[Byte](0, 1, 2, 3))
     val p2 = StorePointer(1, Array[Byte](3, 2, 1, 0))
@@ -36,7 +38,7 @@ object CodecSuite {
     val dataUpdates = DataUpdate(op, ObjectRevision(1,150), DataUpdateOperation.Overwrite) :: Nil
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
-    val client = Client.SimpleClient(List[Byte](1,2).toArray)
+    val client = Client(cliUUID)
     
     (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, Nil, finalz),
         TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz, Some(client)))
@@ -139,7 +141,7 @@ object ReadResponse {
   }
   
   test("Read Encoding") {
-    val c = Client.SimpleClient(List[Byte](1,2).toArray)
+    val c = Client(new UUID(1,1))
     val readUUID = new java.util.UUID(1,2)
     val poolUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
@@ -219,7 +221,7 @@ object ReadResponse {
   test("Allocate Encoding without Size") {
     val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = None
-    val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
+    val c1 = Client(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
     val poolUUID = new java.util.UUID(1,2)
@@ -250,7 +252,7 @@ object ReadResponse {
   test("Allocate Encoding with Size") {
     val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = Some(5)
-    val c1 = Client.SimpleClient(List[Byte](1,2).toArray)
+    val c1 = Client(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
     val poolUUID = new java.util.UUID(1,2)
