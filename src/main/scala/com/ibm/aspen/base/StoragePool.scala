@@ -9,9 +9,9 @@ import java.nio.ByteBuffer
 trait StoragePool {
   def width: Int
   
-  def allocateInto(targetPointer:ObjectPointer, 
-                   targetRevision: ObjectRevision,
-                   newObjectIDA: IDA,
-                   newObjectContent: ByteBuffer,
-                   writeToTarget:(ObjectPointer, ObjectRevision, ObjectPointer, Transaction) => Unit): Future[AspenObject]
+  def allocateIntoTarget(targetPointer:ObjectPointer, 
+                         targetRevision: ObjectRevision,
+                         newObjectIDA: IDA,
+                         newObjectContent: ByteBuffer,
+                         writeToTarget:(ObjectPointer, ObjectRevision, ObjectPointer, Transaction) => Unit): Future[ObjectStateAndData]
 }

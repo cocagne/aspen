@@ -1,3 +1,20 @@
+* Impl Generic B-Tree
+   - easy to test
+   
+* Impl B-tree to support allocation trees
+
+* Then impl bootstrapping logic in terms of the B-tree
+
+* Then impl basic allocation error recovery
+
+* Then basic error recovery for transactions & reads 
+
+* Think through the allocation problem
+  - This is a major need. How far down the error recovery track do we need to go?
+  - Is there a higher-level alternative that we could use instead?
+     * Update an object with intent-to-allocate, then allocate w/ that record, then clean up?
+     * Or is there an easy tx recovery mechanism? Performance doesn't matter here
+
 * Can probably go a ways yet within the unit test environment
   StorageNode to aggregate CRL, Stores, Per-store TxManagers, and network interface implementers
   AspenSystem to implement client interface (constructor takes a UUID for client identifier, default to random)

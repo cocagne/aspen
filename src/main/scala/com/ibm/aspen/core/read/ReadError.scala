@@ -8,6 +8,8 @@ class IDAError(msg:String) extends ReadError(msg)
 
 case class ThresholdError(errors: Map[DataStoreID,Option[ReadError.Value]]) extends ReadError("ThresholdError")
 
+case class DataRetrievalFailed() extends ReadError("DataRetrievalFailed")
+
 object ReadError extends Enumeration {
   
   /** UUID for the stored object does not match the UUID in the ObjectPointer */
