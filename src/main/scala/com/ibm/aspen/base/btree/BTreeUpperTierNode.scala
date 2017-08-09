@@ -52,16 +52,24 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
     p.future
   }
   
-  def fetchLowerNode(key: Key)(implicit ec: ExecutionContext): Future[Either[BTreeUpperTierNode[Key,Value], BTreeLeafNode[Key,Value]]] = {
+  /** Throws UnreachableKey if no lower node can be found for the requested key
+   * 
+   */
+  def fetchLowerNode(key: Key, blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Future[Either[BTreeUpperTierNode[Key,Value], BTreeLeafNode[Key,Value]]] = {
     scanToWithinRange(key) flatMap (node => {
+      var i = 0
+      var npIndex = -1
       
-      var np = node.sortedLowerTierNodes(0)
-      var i = 1
-      
-      while (i < node.sortedLowerTierNodes.length && key > node.sortedLowerTierNodes(i).minimum) {
-        np = node.sortedLowerTierNodes(i)
+      while (i < node.sortedLowerTierNodes.length && (npIndex == -1 || key > node.sortedLowerTierNodes(npIndex).minimum)) {
+        if (!blacklisted.contains(node.sortedLowerTierNodes(i)))
+          npIndex = i
         i += 1
       }
+      
+      if (npIndex == -1)
+        throw new UnreachableKey
+      
+      val np = node.sortedLowerTierNodes(npIndex)
       
       if (tier == 1)
         node.fetchLeafNode(np) map (Right(_))
@@ -70,11 +78,27 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
     })
   }
   
-  protected def doFetch(key: Key, p: Promise[Option[Value]])(implicit ec: ExecutionContext): Unit = {
-    fetchLowerNode(key)  onComplete {
-      case Failure(err) => p.failure(err)
+  protected def doFetch(key: Key, p: Promise[Option[Value]], path:List[BTreeUpperTierNode[Key,Value]], blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Unit = {
+    fetchLowerNode(key, blacklisted)  onComplete {
+      case Failure(err) => err match {
+        
+        case e: NodeNotFound[Key] =>
+          // Probably the result of a join operation in the tier below us. Blacklist the node and recursively try again
+          doFetch(key, p, path, blacklisted + e.nodePointer)
+          
+        case e: UnreachableKey =>
+          // None of the lower pointers in this node may be used. 
+          
+          if (path.isEmpty) 
+            p.failure(e) // No recourse. Propagate the error to the user
+          else 
+            path.head.doFetch(key, p, path.tail, blacklisted + nodePointer) // Blacklist this node and resume the search from our parent node
+          
+        case _ => p.failure(err)
+      }
+      
       case Success(either) => either match {
-        case Left(upper) => upper.doFetch(key, p)
+        case Left(upper) => upper.doFetch(key, p, this :: path, blacklisted)
         case Right(leaf) => leaf.fetchValue(key) onComplete {
           case Failure(err) => p.failure(err)
           case Success(ovalue) => p.success(ovalue)
@@ -85,7 +109,7 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
   
   def fetch(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = {
     val p = Promise[Option[Value]]
-    doFetch(key, p)
+    doFetch(key, p, Nil, Set())
     p.future
   }
 }

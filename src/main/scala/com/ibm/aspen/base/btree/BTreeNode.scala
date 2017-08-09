@@ -29,6 +29,13 @@ trait BTreeNode[Key <: Ordered[Key], Value] {
 
 object BTreeNode {
   case class NodePointer[Key <: Ordered[Key]](objectPointer:ObjectPointer, minimum: Key) extends Ordered[NodePointer[Key]] {
-    def compare(that: NodePointer[Key]) = minimum.compare(that.minimum)
+    def compare(that: NodePointer[Key]) = {
+      val keyComp = minimum.compare(that.minimum)
+      
+      if (keyComp == 0) 
+        objectPointer.uuid.compareTo(that.objectPointer.uuid)
+      else
+        keyComp
+    }
   }
 }
