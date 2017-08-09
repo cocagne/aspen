@@ -78,7 +78,7 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
     })
   }
   
-  protected def doFetch(key: Key, p: Promise[Option[Value]], path:List[BTreeUpperTierNode[Key,Value]], blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Unit = {
+  protected def doFetch(key: Key, p: Promise[BTreeLeafNode[Key,Value]], path:List[BTreeUpperTierNode[Key,Value]], blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Unit = {
     fetchLowerNode(key, blacklisted)  onComplete {
       case Failure(err) => err match {
         
@@ -99,16 +99,19 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
       
       case Success(either) => either match {
         case Left(upper) => upper.doFetch(key, p, this :: path, blacklisted)
-        case Right(leaf) => leaf.fetchValue(key) onComplete {
-          case Failure(err) => p.failure(err)
-          case Success(ovalue) => p.success(ovalue)
-        }
+        case Right(leaf) => p.success(leaf)
       }
     }
   } 
   
   def fetch(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = {
-    val p = Promise[Option[Value]]
+    val p = Promise[BTreeLeafNode[Key,Value]]()
+    doFetch(key, p, Nil, Set())
+    p.future.flatMap(_.fetchValue(key))
+  }
+  
+  def fetchLeafNode(key: Key)(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]] = {
+    val p = Promise[BTreeLeafNode[Key,Value]]()
     doFetch(key, p, Nil, Set())
     p.future
   }

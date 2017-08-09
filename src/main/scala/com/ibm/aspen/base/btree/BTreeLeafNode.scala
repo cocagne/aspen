@@ -69,4 +69,6 @@ trait BTreeLeafNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value]  {
     doFetch(key, p)
     p.future
   }
+  
+  def fetchLeafNode(key: Key)(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]] = scanToWithinRange(key)
 }

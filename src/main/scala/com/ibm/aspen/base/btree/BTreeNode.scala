@@ -25,6 +25,8 @@ trait BTreeNode[Key <: Ordered[Key], Value] {
   /** Fetches a value from the tree */
   def fetch(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]]
   
+  /** Fetches the leaf node with the key range including the specified key */
+  def fetchLeafNode(key: Key)(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]]
 }
 
 object BTreeNode {
