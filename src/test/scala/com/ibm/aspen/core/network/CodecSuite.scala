@@ -140,6 +140,19 @@ object ReadResponse {
     decoded should be (rr)
   }
   
+  test("Direct ObjectPointer encode/decode") {
+    
+    val poolUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
+    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    
+    val bb = Codec.objectPointerToByteBuffer(op)
+    
+    bb.position(0)
+    
+    Codec.byteBufferToObjectPointer(bb) should be (op)
+  }
+  
   test("Read Encoding") {
     val c = Client(new UUID(1,1))
     val readUUID = new java.util.UUID(1,2)

@@ -15,14 +15,20 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
   // use scala.util.Sorting to create the sorted array
   val sortedLowerTierNodes: Array[NodePointer[Key]]
   
-  def fetchUpperTierNode(pointer: NodePointer[Key])(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[Key,Value]]
+  def fetchUpperTierNode(
+      pointer: NodePointer[Key], 
+      treeRoot: NodePointer[Key], 
+      previousNode: Option[NodePointer[Key]])(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[Key,Value]]
   
-  def fetchLeafNode(pointer: NodePointer[Key])(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]]
+  def fetchLeafNode(
+      pointer: NodePointer[Key], 
+      treeRoot: NodePointer[Key], 
+      previousNode: Option[NodePointer[Key]])(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]]
   
   def fetchNextNode()(implicit ec: ExecutionContext): Future[Option[BTreeUpperTierNode[Key,Value]]] = {
     nextNode match {
       case None => Future.successful(None)
-      case Some(ptr) => fetchUpperTierNode(ptr).map(Some(_))
+      case Some(ptr) => fetchUpperTierNode(ptr, treeRoot, Some(nodePointer)).map(Some(_))
     }
   }
   
@@ -52,11 +58,55 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
     p.future
   }
   
+  /** Call this method only *after* checking to ensure that the key is not less than the current minimum */
+  protected def scanRightToPriorNode(np:NodePointer[Key], p:Promise[BTreeUpperTierNode[Key,Value]])(implicit ec: ExecutionContext): Unit = {
+    nextNode match {
+      case None => p.success(this)
+      case Some(nextPtr) =>
+        if (nextPtr.minimum == np.minimum)
+          p.success(this)
+        else if(nextPtr.minimum > np.minimum)
+          p.failure(new MissingRightScanTarget)
+        else {
+          fetchNextNode() onComplete {
+            case Failure(err) => p.failure(err)
+            case Success(onode) => onode match {
+              case None => p.success(this)
+              case Some(node) => node.scanRightToPriorNode(np, p)
+            }
+          }
+        }
+    }
+  }
+  
+  def scanToNodePriorTo(np: NodePointer[Key])(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[Key,Value]] = {
+    val p = Promise[BTreeUpperTierNode[Key,Value]]()
+    
+    if (np.minimum < minimum)
+      p.failure(new KeyOutOfRange)
+    else 
+      scanRightToPriorNode(np, p)  
+    
+    p.future
+  }
+  
+  def fetchLeftNode()(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[Key,Value]] = previousNode match {
+    case None => Future.failed(new NoLeftNode)
+    case Some(leftPointer) => fetchUpperTierNode(treeRoot, treeRoot, None).flatMap(_.fetchLowerNode(leftPointer.minimum, Set(), tier)).flatMap(n => n match {
+      case Left(upper) => upper.scanToNodePriorTo(nodePointer)
+      case Right(_) => Future.failed(new Exception("Internal Error")) // Not possible. We're scanning for nodes in the same tier
+    })
+  }
+  
   /** Throws UnreachableKey if no lower node can be found for the requested key
    * 
    */
-  def fetchLowerNode(key: Key, blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Future[Either[BTreeUpperTierNode[Key,Value], BTreeLeafNode[Key,Value]]] = {
+  def fetchLowerNode(key: Key, blacklisted: Set[NodePointer[Key]], targetTier:Int)(implicit ec: ExecutionContext): Future[Either[BTreeUpperTierNode[Key,Value], BTreeLeafNode[Key,Value]]] = {
     scanToWithinRange(key) flatMap (node => {
+      
+      if (targetTier == node.tier)
+        return Future.successful(Left(node))
+      
       var i = 0
       var npIndex = -1
       
@@ -70,16 +120,17 @@ trait BTreeUpperTierNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value
         throw new UnreachableKey
       
       val np = node.sortedLowerTierNodes(npIndex)
+      val previousNode = if (npIndex == 0) None else Some(node.sortedLowerTierNodes(npIndex-1))
       
       if (tier == 1)
-        node.fetchLeafNode(np) map (Right(_))
+        node.fetchLeafNode(np, treeRoot, previousNode) map (Right(_))
       else
-        node.fetchUpperTierNode(np) map (Left(_))   
+        node.fetchUpperTierNode(np, treeRoot, previousNode) map (Left(_))   
     })
   }
   
   protected def doFetch(key: Key, p: Promise[BTreeLeafNode[Key,Value]], path:List[BTreeUpperTierNode[Key,Value]], blacklisted: Set[NodePointer[Key]])(implicit ec: ExecutionContext): Unit = {
-    fetchLowerNode(key, blacklisted)  onComplete {
+    fetchLowerNode(key, blacklisted, 0)  onComplete {
       case Failure(err) => err match {
         
         case e: NodeNotFound[Key] =>

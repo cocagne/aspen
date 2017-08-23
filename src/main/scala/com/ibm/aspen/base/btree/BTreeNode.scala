@@ -3,13 +3,17 @@ package com.ibm.aspen.base.btree
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.ExecutionContext
+import com.ibm.aspen.base.AspenSystem
 
 trait BTreeNode[Key <: Ordered[Key], Value] {
   import BTreeNode._
   
-  val nodePointer: NodePointer[Key]
+  val treeRoot: NodePointer[Key]
   val tier: Int
+  val nodePointer: NodePointer[Key]
+  val previousNode: Option[NodePointer[Key]] // This is just a guess. Its primary goal is to serve as a staring point for searching for the real previous node
   val nextNode: Option[NodePointer[Key]]
+  def system: AspenSystem
   
   def minimum = nodePointer.minimum
   

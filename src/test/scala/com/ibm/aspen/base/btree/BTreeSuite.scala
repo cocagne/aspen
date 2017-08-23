@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.StorePointer
 import scala.collection.immutable.SortedMap
+import com.ibm.aspen.base.AspenSystem
 
 
 object BTreeSuite {
@@ -27,11 +28,15 @@ object BTreeSuite {
   
   def mknp(minimum:Int) = NodePointer[IKey](mkptr(minimum), IKey(minimum))
   
+  
   class Upper(
       minimum: Int,
       val tier:Int,
       val next: Option[Upper],
-      contents: List[Either[Upper, Leaf]]) extends BTreeNode[IKey,Int] with BTreeUpperTierNode[IKey,Int] {
+      contents: List[Either[Upper, Leaf]],
+      val system: AspenSystem=null,
+      val treeRoot: NodePointer[IKey] = null,
+      val previousNode: Option[NodePointer[IKey]] = None) extends BTreeNode[IKey,Int] with BTreeUpperTierNode[IKey,Int] {
     
     val nodePointer:NodePointer[IKey] = mknp(minimum)
     val nextNode: Option[NodePointer[IKey]] = next.map(_.nodePointer)
@@ -47,7 +52,8 @@ object BTreeSuite {
     
     var fakeMissing = Set[NodePointer[IKey]]()
     
-    def fetchUpperTierNode(pointer: NodePointer[IKey])(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[IKey,Int]] = {
+    def fetchUpperTierNode(pointer: NodePointer[IKey], treeRoot: NodePointer[IKey], 
+      previousNode: Option[NodePointer[IKey]])(implicit ec: ExecutionContext): Future[BTreeUpperTierNode[IKey,Int]] = {
       def checkFake(u: Upper): Future[BTreeUpperTierNode[IKey,Int]] = if (fakeMissing.contains(u.nodePointer)) 
           Future.failed(new NodeNotFound(u.nodePointer))
       else
@@ -68,7 +74,8 @@ object BTreeSuite {
       }
     }
   
-    def fetchLeafNode(pointer: NodePointer[IKey])(implicit ec: ExecutionContext): Future[BTreeLeafNode[IKey,Int]] = sm.get(pointer) match {
+    def fetchLeafNode(pointer: NodePointer[IKey], treeRoot: NodePointer[IKey], 
+      previousNode: Option[NodePointer[IKey]])(implicit ec: ExecutionContext): Future[BTreeLeafNode[IKey,Int]] = sm.get(pointer) match {
       case None => Future.failed(new NodeNotFound(pointer))
       case Some(either) => either match {
         case Left(upper) => Future.failed(new Exception("upper found where leaf expected"))
@@ -80,7 +87,10 @@ object BTreeSuite {
   class Leaf(
       minimum: Int,
       val next: Option[Leaf],
-      contents:List[Int]) extends BTreeNode[IKey,Int] with BTreeLeafNode[IKey,Int] {
+      contents:List[Int],
+      val system: AspenSystem=null,
+      val treeRoot: NodePointer[IKey] = null,
+      val previousNode: Option[NodePointer[IKey]] = None) extends BTreeNode[IKey,Int] with BTreeLeafNode[IKey,Int] {
     
     val nodePointer:NodePointer[IKey] = mknp(minimum)
     var sm = SortedMap[IKey,Int]()
@@ -91,7 +101,8 @@ object BTreeSuite {
     
     def getValueFromThisNode(key: IKey): Option[Int] = sm.get(key) 
     
-    def fetchLeafNode(pointer: NodePointer[IKey])(implicit ec: ExecutionContext): Future[BTreeLeafNode[IKey,Int]] = next match {
+    def fetchLeafNode(pointer: NodePointer[IKey], treeRoot: NodePointer[IKey], 
+      previousNode: Option[NodePointer[IKey]])(implicit ec: ExecutionContext): Future[BTreeLeafNode[IKey,Int]] = next match {
       case None => Future.failed(new NodeNotFound(pointer))
       case Some(leaf) => Future.successful(leaf)
     }
@@ -175,4 +186,6 @@ class BTreeSuite extends AsyncFunSuite with Matchers {
     
     t3u1.fetch(IKey(5)) map { v => v should be (Some(5)) }
   }
+  
+  
 }

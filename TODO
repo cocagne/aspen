@@ -1,6 +1,25 @@
-* Impl Generic B-Tree
-   - easy to test
+* Finish B-Tree implementation
+    * Have generic B-Tree navigation and a generic Updater that uses EncodedKey instances
+    * may need a getRawNodeForUpdate that scans to the appropriate node and returns a RawBTreeNode instance
    
+* Could use a TreeDefinition Object
+   - contains a flatbuffers encoded definition of the tree
+   - tier pointers
+   - per-tier allocation policy (eventually)
+ |-> Will want BTree to have pointer to BTreeDefinition instead of root pointer
+ 
+* BTreeUpdater will need a updateTreeDefinition method for use by split
+   - Also useful for adding the first node of tier 0
+   - Tree is created by creating it's definition. Can be read and written from there. Tier nodes created on demand 
+    
+* Need FinalizationAction impl
+   * On split we need to add an InsertIntoUpperTier FA
+     - will either alloc a new node and overwrite the TreeDefinition object
+     - OR just fetch the containing node in the specified tier and insert the object pointer
+     
+   * Need mechanism to register FA handlers with AspenSystem
+       - Maybe a base.FinalizationHandlers object that references all other FA handler objects
+      
 * Impl B-tree to support allocation trees
 
 * Then impl bootstrapping logic in terms of the B-tree

@@ -7,6 +7,7 @@ sealed class BTreeError(val msg: String) extends Throwable(msg)
  */
 class KeyOutOfRange extends BTreeError("KeyOutOfRange")
 
+
 /** Thrown when the requested node does not exist.
  *
  * This will usually be a result of joins where a node is deleted but the upper branch has not yet
@@ -22,3 +23,21 @@ class NodeNotFound[Key <: Ordered[Key]](val nodePointer: BTreeNode.NodePointer[K
  *  propagate up to the user is requests for keys below the minimum of the left-most tier zero node.
  */
 class UnreachableKey extends BTreeError("UnreachableKey")
+
+
+/** Thrown when an attempt is made to fetch a node to the left of left-most node in a tier
+ */
+class NoLeftNode extends BTreeError("NoLeftNode")
+
+
+/** Thrown if the target node is not found during scan for the previous node
+ */
+class MissingRightScanTarget extends BTreeError("MissingRightScanTarget")
+
+
+/** Thrown if an insert exceeds the size of a single node */
+class InsertOverflow extends BTreeError("InsertOverflow")
+
+
+/** Thrown if a key or value is too large to encode */
+class EncodingSizeError extends BTreeError("EncodingSizeError")

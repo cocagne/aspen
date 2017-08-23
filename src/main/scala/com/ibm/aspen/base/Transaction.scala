@@ -13,7 +13,15 @@ trait Transaction {
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): Unit
   
-  /** Future to the result of the transaction. 
+  /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
+   * 
+   */
+  def invalidateTransaction(reason: Throwable): Unit
+  
+  def result: Future[Unit]
+  
+  /** Begins the transaction commit process and returns a Future to its completion. This is the same future as
+   *  returned by 'result' 
    *  
    *  The future successfully completes if the transaction commits. Otherwise it will fail with a TransactionError subclass.  
    */

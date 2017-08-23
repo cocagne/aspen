@@ -15,12 +15,15 @@ trait BTreeLeafNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value]  {
   
   protected def getValueFromThisNode(key: Key): Option[Value]
   
-  def fetchLeafNode(pointer: NodePointer[Key])(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]]
+  def fetchLeafNode(
+      pointer: NodePointer[Key],
+      treeRoot: NodePointer[Key], 
+      previousNode: Option[NodePointer[Key]])(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]]
   
   def fetchNextNode()(implicit ec: ExecutionContext): Future[Option[BTreeLeafNode[Key,Value]]] = {
     nextNode match {
       case None => Future.successful(None)
-      case Some(ptr) => fetchLeafNode(ptr).map(Some(_))
+      case Some(ptr) => fetchLeafNode(ptr, treeRoot, Some(nodePointer)).map(Some(_))
     }
   }
   
@@ -46,6 +49,38 @@ trait BTreeLeafNode[Key <: Ordered[Key], Value] extends BTreeNode[Key,Value]  {
       p.failure(new KeyOutOfRange)
     else 
       scanRight(key, p)  
+    
+    p.future
+  }
+  
+  /** Call this method only *after* checking to ensure that the key is not less than the current minimum */
+  protected def scanRightToPriorNode(np:NodePointer[Key], p:Promise[BTreeLeafNode[Key,Value]])(implicit ec: ExecutionContext): Unit = {
+    nextNode match {
+      case None => p.success(this)
+      case Some(nextPtr) =>
+        if (nextPtr.minimum == np.minimum)
+          p.success(this)
+        else if(nextPtr.minimum > np.minimum)
+          p.failure(new MissingRightScanTarget)
+        else {
+          fetchNextNode() onComplete {
+            case Failure(err) => p.failure(err)
+            case Success(onode) => onode match {
+              case None => p.success(this)
+              case Some(node) => node.scanRightToPriorNode(np, p)
+            }
+          }
+        }
+    }
+  }
+  
+  def scanToNodePriorTo(np: NodePointer[Key])(implicit ec: ExecutionContext): Future[BTreeLeafNode[Key,Value]] = {
+    val p = Promise[BTreeLeafNode[Key,Value]]()
+    
+    if (np.minimum < minimum)
+      p.failure(new KeyOutOfRange)
+    else 
+      scanRightToPriorNode(np, p)  
     
     p.future
   }
