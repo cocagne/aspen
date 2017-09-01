@@ -12,6 +12,8 @@ import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.core.read.DataRetrievalFailed
+import com.ibm.aspen.base.Transaction
+import java.nio.ByteBuffer
 
 class AspenSystemImpl(
     val clientMessenger: ClientSideReadMessenger,
@@ -33,6 +35,14 @@ class AspenSystemImpl(
               case None => throw DataRetrievalFailed()
             }
           })
+          
+  def newTransaction(): Transaction = null
+  
+  def allocateObject(
+      allocInto: ObjectPointer, 
+      poolUUID: UUID, 
+      minimumSize: Int, 
+      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = null
   
   //def getStoragePool(poolUUID: UUID): Future[StoragePool]
 }

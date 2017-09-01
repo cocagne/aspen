@@ -13,6 +13,9 @@ trait Transaction {
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): Unit
   
+  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): Unit = append(objectPointer, requiredRevision, ByteBuffer.wrap(data))
+  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): Unit = overwrite(objectPointer, requiredRevision, ByteBuffer.wrap(data))
+  
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
    * 
    */

@@ -1,6 +1,45 @@
+aspen.base.FinalizationActionsRegistrar
+  * object that uses a list of FinalizationActionFactory
+  * kvtree.FinalizationActions implements the Factory and provides UUIDs for the FAs it supports
+
+* KVTree
+  - Use distinct classes for Have/Don'tHave the first tier node
+  - Allocation done via ObjectAllocationPolicyUUID
+    - system.getObjectAllocater(policyUUID)
+       policy.allocate( objReqs )
+         objDescription is a subclass of ObjectAllocationRequirements
+           def initialContent: 
+           def tier: 
+           * Policy itself is KVTree specific and adds things like
+              tierSizeLimit, tierIDA, tierPoolSet
+    - policy-based object allocaters implemented in terms of PoolAllocater
+      * takes UUID of pool and full object description + content. Returns Future[ObjectPointer]
+         
+SystemTrees
+  * allocationPolicies
+  * storagePoolDefinitions
+      * PoolDefinition
+          * allocTree
+
+* Allocation Strategy could be referenced via UUID
+  * allows policy definition external to data structure
+  * but then how does the DS provide hints or make intelligent allocation choices?
+  * May just have to encode the alloc policy info directly into DataStructureDescriptor node
+  * aspenSytem provides an allocateObject(objectToUpdate, poolUUID, size, initialContent)(implicit Transaction)
+  * Just need something simple for now 
+
+* Would the B-Tree be simpler if we switched to Array[Byte] for key/value pairs and a KeyCompare function?
+   - Consistent and simple API that can then be wrapped by convenience APIs
+   - we're not locked to a single BTree impl so we can afford to go simple
+   - rename to KVTree. 
+      * Port code to KVTree then delete btree 
+
 * Finish B-Tree implementation
     * Have generic B-Tree navigation and a generic Updater that uses EncodedKey instances
     * may need a getRawNodeForUpdate that scans to the appropriate node and returns a RawBTreeNode instance
+    
+* Top-level insert mechanism for multi-key/value pairs will need to fork searching potentially for each key
+  since multiple leaf nodes may need to be updated as part of the tx
    
 * Could use a TreeDefinition Object
    - contains a flatbuffers encoded definition of the tree

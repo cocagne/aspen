@@ -1,0 +1,13 @@
+include "network_protocol.fbs";
+
+namespace com.ibm.aspen.base.kvtree;
+
+//---------------------------------------------------------------------------
+//- KVTreeDescription 
+//---------------------------------------------------------------------------
+table KVTreeDescription {
+    allocationPolicyUUID: com.ibm.aspen.core.network.protocol.UUID;
+    tierPointers: [com.ibm.aspen.core.network.protocol.ObjectPointer]; 
+}
+
+root_type KVTreeDescription;
