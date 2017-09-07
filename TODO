@@ -1,6 +1,8 @@
 aspen.base.FinalizationActionsRegistrar
   * object that uses a list of FinalizationActionFactory
   * kvtree.FinalizationActions implements the Factory and provides UUIDs for the FAs it supports
+  * Need to implement stubbed section
+  * Need to consider having Client run the FA list (maybe heartbeat to designated node so it delays action)
 
 * KVTree
   - Use distinct classes for Have/Don'tHave the first tier node

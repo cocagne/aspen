@@ -15,6 +15,7 @@ import com.ibm.aspen.base.Transaction
 
 trait KVTree {
   def treeDescriptionPointer: ObjectPointer
+  
   def system: AspenSystem
   
   def compareKeys(a: Array[Byte], b: Array[Byte]): Int

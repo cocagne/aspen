@@ -111,7 +111,12 @@ object Codec {
     new ObjectPointer(uuid, poolUUID, size, ida, storePointers)
   }
   
-  def objectPointerToByteBuffer(o: ObjectPointer): ByteBuffer = {
+  def objectPointerToByteBuffer(o: ObjectPointer): ByteBuffer = ByteBuffer.wrap(objectPointerToByteArray(o))
+  def byteBufferToObjectPointer(bb: ByteBuffer): ObjectPointer = {
+    Codec.decode(P.ObjectPointer.getRootAsObjectPointer(bb))
+  }
+  
+  def objectPointerToByteArray(o: ObjectPointer): Array[Byte] = {
     
     val builder = new FlatBufferBuilder(2048)
     
@@ -124,11 +129,9 @@ object Codec {
     val arr = new Array[Byte](db.capacity - db.position)
     db.get(arr)
     
-    ByteBuffer.wrap(arr)
+    arr
   }
-  def byteBufferToObjectPointer(bb: ByteBuffer): ObjectPointer = {
-    Codec.decode(P.ObjectPointer.getRootAsObjectPointer(bb))
-  }
+  def byteArrayToObjectPointer(arr: Array[Byte]): ObjectPointer = byteBufferToObjectPointer(ByteBuffer.wrap(arr)) 
   
   //-----------------------------------------------------------------------------------------------
   // IDA

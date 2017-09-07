@@ -26,9 +26,7 @@ class KVListNode(
   
   def fetchRightNode()(implicit ec: ExecutionContext): Future[Option[KVListNode]] = rightNode match {
     case None => Future.successful(None)
-    case Some(rptr) => list.fetchNodeObject(rptr.objectPointer) map {
-      osd => Some(KVListNode(list, rptr, Some(this.nodePointer), osd))
-    }
+    case Some(rptr) => list.fetchNode(rptr.objectPointer, rptr.minimum, Some(this.nodePointer)) map (Some(_))
   }
   
   def keyWithinRange(key: Array[Byte]): Boolean = {
@@ -51,6 +49,15 @@ class KVListNode(
   def update(inserts: List[(Array[Byte], Array[Byte])], deletes: List[Array[Byte]], onSplit: (Transaction, ExecutionContext, KVListNode, KVListNode, KVListNode) => Unit)
             (implicit transaction: Transaction, ec: ExecutionContext): Future[Future[(KVListNode, Option[KVListNode])]] = {
     val promise = Promise[Future[(KVListNode, Option[KVListNode])]]()
+    
+    // Update cache on successful modification
+    promise.future onSuccess {
+      case f => f onSuccess {
+        case (updatedNode, splitNode) => 
+          list.updateCachedNode(updatedNode)
+          splitNode.foreach(list.updateCachedNode)
+      }
+    }
     
     def failTransaction(reason: Throwable) = {
       transaction.invalidateTransaction(reason)

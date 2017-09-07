@@ -247,7 +247,7 @@ private[kvlist] object KVListCodec {
 
   def mkSetRight(nodePointer: KVListNodePointer): SetRightPointerOp = mkSetRight(nodePointer.objectPointer, nodePointer.minimum)
 
-  /** Returns (List[OpCode], sizeInBytes) */
+  /** Returns (List[OpCode], sizeInBytes, opCount) */
   def encodeOperations(operations: List[KVListOperation]): (List[OpCode], Int, Int) = {
     var size = 0
     var opCount = 0

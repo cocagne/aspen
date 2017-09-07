@@ -61,9 +61,15 @@ object BTreeUpdaterSuite {
     var overwriteOps: Ops = null
     var invalidated: Throwable = null
     
-    def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit = appendOps = Ops(objectPointer, requiredRevision, data)
-    def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit = overwriteOps = Ops(objectPointer, requiredRevision, data)
-    def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): Unit = throw new Exception("Should not be used")
+    def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {
+      appendOps = Ops(objectPointer, requiredRevision, data)
+      requiredRevision.append(data.limit - data.position)
+    }
+    def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {
+      overwriteOps = Ops(objectPointer, requiredRevision, data)
+      requiredRevision.overwrite(data.limit - data.position)
+    }
+    def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = throw new Exception("Should not be used")
     
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason
     

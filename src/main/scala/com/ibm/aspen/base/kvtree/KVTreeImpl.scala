@@ -10,72 +10,117 @@ import scala.concurrent.Promise
 import scala.util.Success
 import scala.util.Failure
 import java.nio.ByteBuffer
+import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.base.kvlist.KVListNode
+import com.ibm.aspen.base.kvlist.KVList
+import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.kvlist.KVListNodeAllocater
+import com.ibm.aspen.base.kvlist.KVListNodePointer
 
-private[kvtree] abstract class KVTreeImpl(
+abstract class KVTreeImpl(
     val treeDescriptionPointer: ObjectPointer, // Pointer to object holding the serialized content of this instance
-    private[kvtree] val objectAllocater: KVTreeObjectAllocater,
-    val system: AspenSystem,
-    val compareKeys: (Array[Byte], Array[Byte]) => Int,
     private[this] var treeDescriptionRevision: ObjectRevision,
-    private[this] var tierPointers: List[ObjectPointer]) extends KVTree {
+    val nodeAllocater: KVTreeNodeAllocater,
+    val nodeCache: KVTreeNodeCache,
+    val compareKeysFunction: (Array[Byte], Array[Byte]) => Int,
+    private[this] var rootPointers: List[ObjectPointer],
+    val system: AspenSystem) extends KVTree {
   
-  // Use a reversed list internally. We'll generally only want the root pointer
-  tierPointers = tierPointers.reverse
+  class Tier(tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
+   
+    val objectAllocater = nodeAllocater.getListNodeAllocaterForTier(tier)
+    
+    def fetchNodeObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = readObject(objectPointer)
+    
+    override def fetchCachedNode(objectPointer: ObjectPointer): Option[KVListNode] = nodeCache.getCachedNode(tier, objectPointer)
+    override def updateCachedNode(node: KVListNode): Unit = nodeCache.updateCachedNode(tier, node)
+    override def dropCachedNode(node: KVListNode): Unit = nodeCache.dropCachedNode(node)
+    
+    def fetchRoot()(implicit ec: ExecutionContext): Future[KVListNode] = fetchNode(rootObjectPointer, new Array[Byte](0), None)
+    
+    def compareKeys(a: Array[Byte], b: Array[Byte]): Int = compareKeysFunction(a, b)
+  }
   
-  private[this] var initializationFuture: Option[Future[ObjectPointer]] = None
+  private[this] var tiers:Array[Tier] = rootPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
+  private[this] var creatingTier: Option[Future[ObjectPointer]] = None
+
+  /** Reads and returns the underlying object.
+   *
+   * This is broken out into a dedicated method primarily to allow mix-in traits to override the default behavior  
+   */
+  def readObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
   
-  def tierSizelimit(tier: Int): Int = objectAllocater.tierSizelimit(tier)
-      
-  // Minimum for a node in the left-most tier is always  new Array[]()
+  protected def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
+    KVTreeFinalizationActions.insertIntoUpperTier(transaction, tier+1, newNode.nodePointer)
+    // TODO: Add callback to successful commit to do the operation and inform the designated leader
+  }
    
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = system.readObject(treeDescriptionPointer, None) map { osd =>
-    val (_, tiers) = KVTreeCodec.decodeTreeDescription(osd.data)
+    val (_, tierPointers) = KVTreeCodec.decodeTreeDescription(osd.data)
     synchronized {
       if (osd.revision > treeDescriptionRevision) {
-        tierPointers = tiers.reverse
+        tiers = tierPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
         treeDescriptionRevision = osd.revision 
       }
     }
   }
- 
-  private[this] def allocateInitialNode()(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
-    initializationFuture match {
+  
+  def rootTier: Tier = synchronized { tiers(tiers.length-1) }
+  
+  protected def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
+    creatingTier match {
       case Some(f) => f
+      
       case None =>
         val p = Promise[ObjectPointer]()
-        initializationFuture = Some(p.future)
-        
+    
         implicit val tx = system.newTransaction()
+        val requiredRevision = treeDescriptionRevision // Snapshot this value. Could change underneath us
         
-        objectAllocater.allocate(treeDescriptionPointer, treeDescriptionRevision, 0, ByteBuffer.allocate(0)) onComplete {
-          
-          case Success(ptr) => synchronized {
-            val data = KVTreeCodec.encodeTreeDescription(objectAllocater.allocationPolicyUUID, (ptr :: tierPointers).reverse)
-            tx.overwrite(treeDescriptionPointer, treeDescriptionRevision, data)
-            tx.commit() onComplete {
-              case Success(_) =>
-                tierPointers = ptr :: tierPointers
-                p.success(ptr)
-              case Failure(reason) => p.failure(reason)
+        val tier = tiers.length // Tier to create. Tiers start counting at zero so the length of the array is the tier number to create
+        
+        val falloc = if (tier == 0) 
+            nodeAllocater.allocateRootLeafNode(treeDescriptionPointer, requiredRevision) 
+          else 
+            nodeAllocater.allocateRootTierNode(treeDescriptionPointer, requiredRevision, tier, initialContent)
+            
+        falloc onComplete {
+            case Success(ptr) => synchronized {
+              // Node allocation was successful. Update the tree description node to embed a reference to it and commit the transaction
+              val newTiers = new Array[Tier](tier + 1)
+              tiers.copyToArray(newTiers)
+              newTiers(tier) = new Tier(tier, ptr)
+              val data = KVTreeCodec.encodeTreeDescription(nodeAllocater.allocationPolicyUUID, newTiers.iterator.map(_.rootObjectPointer).toList)
+              
+              tx.overwrite(treeDescriptionPointer, requiredRevision, data)
+              
+              tx.commit() onComplete {
+                case Success(_) => synchronized {
+                  tiers = newTiers
+                  treeDescriptionRevision = requiredRevision.overwrite(data.length)
+                  p.success(ptr)
+                }
+                case Failure(reason) => p.failure(reason)
+              }
             }
-          }
-          
-          case Failure(reason) => synchronized { 
-            tx.invalidateTransaction(reason)
-            p.failure(reason)
-          }
+            
+            case Failure(reason) => synchronized { 
+              tx.invalidateTransaction(reason)
+              p.failure(reason)
+            }
+        }
+        
+        creatingTier = Some(p.future)
+        
+        p.future onComplete {
+          case _ => synchronized { creatingTier = None }
         }
         
         p.future
+      }
     }
-  }
-  
-  def getRootPointer()(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
-    tierPointers match {
-      case Nil => allocateInitialNode()
-      case lst => Future.successful(lst.head)
-    }
-  }
+    
+ 
   
 } 
  

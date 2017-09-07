@@ -9,12 +9,13 @@ import java.nio.ByteBuffer
 
 trait Transaction {
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit
-  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): Unit
+  // All returns are what the new object revision/refcount will be if the transaction completes successfully
+  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision
+  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision
+  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): Unit = append(objectPointer, requiredRevision, ByteBuffer.wrap(data))
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): Unit = overwrite(objectPointer, requiredRevision, ByteBuffer.wrap(data))
+  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = append(objectPointer, requiredRevision, ByteBuffer.wrap(data))
+  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = overwrite(objectPointer, requiredRevision, ByteBuffer.wrap(data))
   
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
    * 

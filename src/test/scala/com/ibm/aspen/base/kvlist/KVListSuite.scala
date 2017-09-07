@@ -48,17 +48,19 @@ object KVListSuite {
     var overwriteOp: Op = null
     var invalidated: Throwable = null
     
-    def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit = appendOp = {
+    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {  
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
-      Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
+      appendOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
+      requiredRevision.append(data.limit - data.position)
     }
     
-    def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): Unit = overwriteOp = {
+    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision =  {
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
-      Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
+      overwriteOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
+      requiredRevision.overwrite(data.limit - data.position)
     }
     
-    def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): Unit = throw new Exception("Should not be used")
+    override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = throw new Exception("Should not be used")
     
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason
     
