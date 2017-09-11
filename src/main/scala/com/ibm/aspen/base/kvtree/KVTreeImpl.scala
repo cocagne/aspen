@@ -26,7 +26,7 @@ abstract class KVTreeImpl(
     val nodeCache: KVTreeNodeCache,
     val compareKeysFunction: (Array[Byte], Array[Byte]) => Int,
     private[this] var rootPointers: List[ObjectPointer],
-    val system: AspenSystem) extends KVTree {
+    val system: AspenSystem) {
   
   class Tier(val tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
    
@@ -45,6 +45,18 @@ abstract class KVTreeImpl(
   
   private[this] var tiers:Array[Tier] = rootPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
   private[this] var creatingTier: Option[Future[ObjectPointer]] = None
+  
+  def get(key: Array[Byte])(implicit ec: ExecutionContext): Future[Option[Array[Byte]]] = fetchContainingNode(key) map {
+    tpl => tpl._2.content.get(key)
+  }
+  
+  def put(key: Array[Byte], value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = fetchContainingNode(key) map {
+    tpl => tpl._2.update((key,value)::Nil, Nil, onListNodeSplit(tpl._1.tier))
+  }
+  
+  def delete(key: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = fetchContainingNode(key) map {
+    tpl => tpl._2.update(Nil, key::Nil, onListNodeSplit(tpl._1.tier))
+  }
 
   /** Reads and returns the underlying object.
    *
@@ -67,9 +79,9 @@ abstract class KVTreeImpl(
     }
   }
   
-  def rootTier: Tier = synchronized { tiers(tiers.length-1) }
+  protected def rootTier: Tier = synchronized { tiers(tiers.length-1) }
   
-  def getTier(tier: Int) = synchronized { tiers(tier) }
+  protected def getTier(tier: Int) = synchronized { tiers(tier) }
   
   protected def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
     creatingTier match {
@@ -185,19 +197,31 @@ abstract class KVTreeImpl(
       }
     }
     
-    val rt = rootTier
-    
-    rt.fetchRoot() onComplete {
-      case Failure(cause) => p.failure(cause)
-      case Success(rn) =>
-        if (rt.tier == targetTier) {
-          rn.fetchContainingNode(key) onComplete {
-            case Failure(cause) => p.failure(cause)
-            case Success(targetNode) => p.success((rt, targetNode))
+    def doFetch(root: Tier) {
+      root.fetchRoot() onComplete {
+        case Failure(cause) => p.failure(cause)
+        case Success(rn) =>
+          if (root.tier == targetTier) {
+            rn.fetchContainingNode(key) onComplete {
+              case Failure(cause) => p.failure(cause)
+              case Success(targetNode) => p.success((root, targetNode))
+            }
+          } else {
+            fetchLower(root, rn, Set(), Nil)
           }
-        } else {
-          fetchLower(rt, rn, Set(), Nil)
+      }
+    }
+    
+    // If no tiers exist, create the first one. Otherwise do the fetch
+    synchronized {
+      if (tiers.length == 0) {
+        createNextTier(Nil) onComplete {
+          case Failure(cause) => p.failure(cause)
+          case Success(_) => doFetch(tiers(0))
         }
+      } else {
+        doFetch(tiers(tiers.length-1))
+      }
     }
     
     p.future
