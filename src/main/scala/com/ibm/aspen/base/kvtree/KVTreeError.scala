@@ -48,3 +48,6 @@ class InsertOverflow extends KVTreeError("InsertOverflow")
 
 /** Thrown if a key or value is too large to encode */
 class EncodingSizeError extends KVTreeError("EncodingSizeError")
+
+/** Thrown if a condition is encountered that should not be possible */
+class InternalError extends KVTreeError("InternalError")

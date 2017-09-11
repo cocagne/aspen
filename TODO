@@ -1,3 +1,15 @@
+
+** GET RID OF THE LEFT NODE
+
+Security Model
+  * Foundation is each message has associated client UUID 
+  * Client either does or does not have read/write access to a pool
+  * Network layer is responsible for ensuring this is reliable
+  * Leverage graph model to reduce/eliminate searching
+  * Pools are aggregated into PoolAuthGroups (so pools with same creds can be aggregated)
+  * PoolAuthGroups point to individual clients and/or CertAuthAuthorities
+  * Storage nodes pre-load cred info on startup for all PoolAuthGroups referenced by its hosted pools
+
 aspen.base.FinalizationActionsRegistrar
   * object that uses a list of FinalizationActionFactory
   * kvtree.FinalizationActions implements the Factory and provides UUIDs for the FAs it supports

@@ -16,6 +16,8 @@ import com.ibm.aspen.base.kvlist.KVList
 import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.kvlist.KVListNodePointer
+import com.ibm.aspen.core.network.{Codec => NetworkCodec}
+import scala.annotation.tailrec
 
 abstract class KVTreeImpl(
     val treeDescriptionPointer: ObjectPointer, // Pointer to object holding the serialized content of this instance
@@ -26,7 +28,7 @@ abstract class KVTreeImpl(
     private[this] var rootPointers: List[ObjectPointer],
     val system: AspenSystem) extends KVTree {
   
-  class Tier(tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
+  class Tier(val tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
    
     val objectAllocater = nodeAllocater.getListNodeAllocaterForTier(tier)
     
@@ -66,6 +68,8 @@ abstract class KVTreeImpl(
   }
   
   def rootTier: Tier = synchronized { tiers(tiers.length-1) }
+  
+  def getTier(tier: Int) = synchronized { tiers(tier) }
   
   protected def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
     creatingTier match {
@@ -119,8 +123,86 @@ abstract class KVTreeImpl(
         p.future
       }
     }
-    
- 
   
+  protected def fetchContainingNode(key: Array[Byte], targetTier:Int=0)(implicit ec: ExecutionContext): Future[(Tier, KVListNode)] = {
+    val p = Promise[(Tier, KVListNode)]()
+    
+    def fetchLower(t: Tier, startingNode: KVListNode, blacklisted: Set[KVListNodePointer], path: List[(Tier, KVListNode)]): Unit = {
+      startingNode.fetchContainingNode(key, blacklisted) onComplete {
+        case Failure(cause) => p.failure(cause) // propagate to caller
+        case Success(node) => 
+          if (t.tier == targetTier)
+            p.success((t, node))
+          else {
+            // Returns a list of all pointers in this node that are less than or equal to the target key 
+            @tailrec
+            def getLowerPointers(kvi: Iterator[(Array[Byte], Array[Byte])], reverseOrder:List[(Array[Byte], Array[Byte])]): List[(Array[Byte], Array[Byte])] = {
+              if (!kvi.hasNext)
+                reverseOrder
+              else {
+                val kv = kvi.next
+                if (compareKeysFunction(key, kv._1) > 0)
+                  reverseOrder
+                else
+                  getLowerPointers(kvi, kv :: reverseOrder)
+              }
+            }
+            
+            val it = getLowerPointers(node.content.iterator, Nil).iterator
+            
+            while (it.hasNext) {
+              val (minimum, encodedObjectPointer) = it.next()
+              val np =  KVListNodePointer(NetworkCodec.byteArrayToObjectPointer(encodedObjectPointer), minimum)
+              if (!blacklisted.contains(np)) {
+                t.fetchNode(np.objectPointer, np.minimum, None) onComplete {
+                  case Failure(cause) => p.failure(cause)
+                  case Success(lowerNode) => 
+                    fetchLower(getTier(t.tier-1), lowerNode, blacklisted, (t, node) :: path)
+                    return 
+                }
+              }
+            }
+            //
+            // If we get here then no useable pointers were found in this node. 
+            // Blacklist this node and resume search from our parent tier
+            //
+            if (path.isEmpty) {
+              // The tree structure is horribly broken (this really shouldn't be possible). 
+              // Last resort is to do a full scan of the target tier
+              val tgtTier = getTier(targetTier) 
+              tgtTier.fetchRoot() onComplete {
+                case Failure(cause) => p.failure(cause)
+                case Success(rn) => rn.fetchContainingNode(key) onComplete {
+                  case Failure(cause) => p.failure(cause)
+                  case Success(targetNode) =>p.success((tgtTier, targetNode))
+                }
+              }
+            } else {
+              val (parentTier, parentNode) = path.head
+              fetchLower(parentTier, parentNode, blacklisted + node.nodePointer, path.tail)
+            }
+        }
+      }
+    }
+    
+    val rt = rootTier
+    
+    rt.fetchRoot() onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(rn) =>
+        if (rt.tier == targetTier) {
+          rn.fetchContainingNode(key) onComplete {
+            case Failure(cause) => p.failure(cause)
+            case Success(targetNode) => p.success((rt, targetNode))
+          }
+        } else {
+          fetchLower(rt, rn, Set(), Nil)
+        }
+    }
+    
+    p.future
+  }
+    
 } 
+
  

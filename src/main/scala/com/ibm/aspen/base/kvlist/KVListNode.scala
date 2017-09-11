@@ -41,7 +41,11 @@ class KVListNode(
       rok
   }
   
-  def fetchContainingNode(key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = scanToWithinRange(this, key)
+  /** Scans to the right until the node that owns the range is found */
+  def fetchContainingNode(key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = scanToWithinRange(this, key, None)
+  
+  /** Scans to the right until the node that owns the range is found or the next node is blacklisted */
+  def fetchContainingNode(key: Array[Byte], blacklisted: Set[KVListNodePointer])(implicit ec: ExecutionContext): Future[KVListNode] = scanToWithinRange(this, key, Some(blacklisted))
   
   /**
    * split(allocatingTransaction, ExecutionContext, OriginalNode, UpdatedNode, NewAllocatedNode) 
@@ -196,18 +200,30 @@ object KVListNode {
     new KVListNode(list, nodePointer, osd.revision, leftNodePointer, rightPointer, content)
   }
   
-  def scanToWithinRange(sourceNode: KVListNode, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = {
+  def scanToWithinRange(sourceNode: KVListNode, key: Array[Byte], blacklisted: Option[Set[KVListNodePointer]])(implicit ec: ExecutionContext): Future[KVListNode] = {
     val p = Promise[KVListNode]()
     
     def scanRight(node: KVListNode, key: Array[Byte])(implicit ec: ExecutionContext): Unit = {
       if (node.keyWithinRange(key))
         p.success(node)
       else {
-        node.fetchRightNode() onComplete {
-          case Failure(err) => p.failure(err)
-          case Success(onode) => onode match {
-            case None => p.success(node)
-            case Some(rnode) => scanRight(rnode, key)
+        val nextIsBlacklisted = blacklisted match {
+          case None => false
+          case Some(blacklist) => node.rightNode match {
+            case None => false
+            case Some(rn) => blacklist.contains(rn)
+          }
+        }
+        
+        if (nextIsBlacklisted)
+          p.success(node) // stop here
+        else {
+          node.fetchRightNode() onComplete {
+            case Failure(err) => p.failure(err)
+            case Success(onode) => onode match {
+              case None => p.success(node)
+              case Some(rnode) => scanRight(rnode, key)
+            }
           }
         }
       }
