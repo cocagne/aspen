@@ -21,7 +21,7 @@ trait KVList {
         case Some(n) => Future.successful(n)
         
         case None => fetchNodeObject(objectPointer) map {
-          osd => KVListNode(this, KVListNodePointer(objectPointer, minimum), leftNode, osd)
+          osd => KVListNode(this, KVListNodePointer(objectPointer, minimum), osd)
         }
       }
   }

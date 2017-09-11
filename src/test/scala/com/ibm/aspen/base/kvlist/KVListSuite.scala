@@ -104,7 +104,7 @@ object KVListSuite {
     
     m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), ByteBuffer.allocate(0)))
     
-    def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), None, m(rootObjectPointer.uuid))
+    def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }
   
   def k(key: Int): Array[Byte] = ByteBuffer.allocate(4).putInt(key).array()
