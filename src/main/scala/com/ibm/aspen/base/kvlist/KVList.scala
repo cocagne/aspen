@@ -16,12 +16,12 @@ trait KVList {
   
   def dropCachedNode(node: KVListNode): Unit = ()
   
-  def fetchNode(objectPointer: ObjectPointer, minimum: Array[Byte], leftNode: Option[KVListNodePointer])(implicit ec: ExecutionContext): Future[KVListNode] = {
-      fetchCachedNode(objectPointer) match {
+  def fetchNode(p: KVListNodePointer)(implicit ec: ExecutionContext): Future[KVListNode] = {
+      fetchCachedNode(p.objectPointer) match {
         case Some(n) => Future.successful(n)
         
-        case None => fetchNodeObject(objectPointer) map {
-          osd => KVListNode(this, KVListNodePointer(objectPointer, minimum), osd)
+        case None => fetchNodeObject(p.objectPointer) map {
+          osd => KVListNode(this, p, osd)
         }
       }
   }
@@ -32,5 +32,11 @@ trait KVList {
   
   val objectAllocater: KVListNodeAllocater
   
-  def fetchRootNode()(implicit ec: ExecutionContext): Future[KVListNode] = fetchNode(rootObjectPointer, new Array[Byte](0), None)
+  def fetchRootNode()(implicit ec: ExecutionContext): Future[KVListNode] = fetchNode(KVListNodePointer(rootObjectPointer, new Array[Byte](0)))
+}
+
+object KVList {
+  class KeyOrdering(val keyCompare: (Array[Byte], Array[Byte]) => Int) extends Ordering[Array[Byte]] {
+    def compare(a: Array[Byte], b: Array[Byte]) = keyCompare(a, b)
+  }
 }

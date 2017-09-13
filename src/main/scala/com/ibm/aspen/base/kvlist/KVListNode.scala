@@ -25,7 +25,7 @@ class KVListNode(
   
   def fetchRightNode()(implicit ec: ExecutionContext): Future[Option[KVListNode]] = rightNode match {
     case None => Future.successful(None)
-    case Some(rptr) => list.fetchNode(rptr.objectPointer, rptr.minimum, Some(this.nodePointer)) map (Some(_))
+    case Some(rptr) => list.fetchNode(rptr) map (Some(_))
   }
   
   def keyWithinRange(key: Array[Byte]): Boolean = {
@@ -228,7 +228,7 @@ object KVListNode {
       }
     }
     
-    if (sourceNode.list.compareKeys(key, sourceNode.minimum) < 0)
+    if (sourceNode.minimum.length != 0 && sourceNode.list.compareKeys(key, sourceNode.minimum) < 0)
       p.failure(new KeyOutOfRange)
     else 
       scanRight(sourceNode, key)  

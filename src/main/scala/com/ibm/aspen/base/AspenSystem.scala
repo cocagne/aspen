@@ -7,6 +7,7 @@ import com.ibm.aspen.core.network.Client
 import com.ibm.aspen.core.read.ReadDriver
 import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext
+import com.ibm.aspen.core.objects.ObjectRevision
 
 trait AspenSystem {
   
@@ -14,10 +15,13 @@ trait AspenSystem {
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData]
   
+  def readObject(pointer:ObjectPointer): Future[ObjectStateAndData] = readObject(pointer, None)
+  
   def newTransaction(): Transaction
   
   def allocateObject(
-      allocInto: ObjectPointer, 
+      allocInto: ObjectPointer,
+      allocIntoRevision: ObjectRevision,
       poolUUID: UUID, 
       minimumSize: Int, 
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]

@@ -8,7 +8,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 import scala.collection.immutable.SortedMap
 
-private[kvlist] object KVListCodec {
+private [base] object KVListCodec {
   
   class KeyOrdering(val keyCompare: (Array[Byte], Array[Byte]) => Int) extends Ordering[Array[Byte]] {
     def compare(a: Array[Byte], b: Array[Byte]) = keyCompare(a, b)
@@ -246,6 +246,21 @@ private[kvlist] object KVListCodec {
   def mkSetRight(pointer: ObjectPointer, minimum: Array[Byte]): SetRightPointerOp = mkSetRight(NetworkCodec.objectPointerToByteBuffer(pointer), minimum)
 
   def mkSetRight(nodePointer: KVListNodePointer): SetRightPointerOp = mkSetRight(nodePointer.objectPointer, nodePointer.minimum)
+  
+  def encode(operations: List[KVListOperation]): ByteBuffer = {
+    val (ops, size, _) = encodeOperations(operations)
+    opsToByteBuffer(ops, size)
+  }
+  
+  /** For unit tests */
+  def testEncodeContent(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): ByteBuffer = {
+    val ins = content.map(t => Insert(t._1, t._2))
+    val ops = rptr match {
+      case None => ins
+      case Some(rp) => SetRightPointer(rp.objectPointer, rp.minimum) :: ins
+    }
+    encode(ops)
+  }
 
   /** Returns (List[OpCode], sizeInBytes, opCount) */
   def encodeOperations(operations: List[KVListOperation]): (List[OpCode], Int, Int) = {

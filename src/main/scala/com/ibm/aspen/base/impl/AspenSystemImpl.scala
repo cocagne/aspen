@@ -14,6 +14,7 @@ import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.objects.ObjectRevision
 
 class AspenSystemImpl(
     val clientMessenger: ClientSideReadMessenger,
@@ -39,7 +40,8 @@ class AspenSystemImpl(
   def newTransaction(): Transaction = null
   
   def allocateObject(
-      allocInto: ObjectPointer, 
+      allocInto: ObjectPointer,
+      allocIntoRevision: ObjectRevision,
       poolUUID: UUID, 
       minimumSize: Int, 
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = null

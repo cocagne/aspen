@@ -8,8 +8,18 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 import scala.collection.immutable.SortedMap
 import com.ibm.aspen.base.kvlist.KVListNodePointer
+import com.ibm.aspen.base.kvlist.KVListCodec
 
 private[kvtree] object KVTreeCodec {
+  
+  def encode(ic: List[KVListNodePointer], rptr: Option[KVListNodePointer]): ByteBuffer = {
+    val iops = ic.map(np => KVListCodec.Insert(np.minimum, NetworkCodec.objectPointerToByteArray(np.objectPointer)))
+    val fullOps = rptr match {
+      case None => iops
+      case Some(rp) => KVListCodec.SetRightPointer(rp.objectPointer, rp.minimum) :: iops
+    }
+    KVListCodec.encode(fullOps)
+  }
   
   def encodeTreeDescription(allocationPolicyUUID: UUID, tiers: List[ObjectPointer]): Array[Byte] = {
     val builder = new FlatBufferBuilder(4096)
@@ -43,5 +53,4 @@ private[kvtree] object KVTreeCodec {
     
     (allocationPolicyUUID, tier(m.tierPointersLength()-1, Nil))
   }
-  
 }
