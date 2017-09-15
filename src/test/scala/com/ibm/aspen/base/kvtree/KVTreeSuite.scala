@@ -205,6 +205,62 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       }
       (tier, cont) <- tr.fetchContainingNode(5)
     } yield {
+      cont.content.foreach(t => println(s"${a2i(t._1)}, ${a2i(t._2)}"))
+      cont.content.contains(5) should be (true)
+    }
+  }
+  
+  test("Test invalid pointer during navigation") {
+    val ts = new TestSetup()
+    
+    val invalidPointer = np(5, mkptr(999))
+    
+    for {
+      l3 <- ts.mkleaf( kv(10,10)::Nil, None)
+      l2 <- ts.mkleaf( kv(5,5)::Nil, Some(KVListNodePointer(l3,10)))
+      l1 <- ts.mkleaf( Nil, Some(KVListNodePointer(l2,5)))
+      
+      n3 <- ts.mknode(np(10,l3)::Nil, None)
+      n2 <- ts.mknode(np(3,l2)::invalidPointer::Nil, Some(np(10,n3)))
+      n1 <- ts.mknode(np(0,l1)::Nil, Some(np(3,n2)))
+      
+      m1 <- ts.mknode(np(0,n1)::np(5,n2)::np(10,n3)::Nil, None)
+      td <- ts.mktree(l1::n1::m1::Nil)
+      os <- ts.system.readObject(td)
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::m1::Nil, ts.system) {
+        override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = Future.failed(new Exception("Should not be used!")) 
+      }
+      (tier, cont) <- tr.fetchContainingNode(5) 
+    } yield {
+      println("All node contents:")
+      cont.content.foreach(t => println(s"${a2i(t._1)}, ${a2i(t._2)}"))
+      cont.content.contains(5) should be (true)
+    }
+  }
+  
+  test("Test backup to parent node during navigation") {
+    val ts = new TestSetup()
+    
+    val invalidPointer1 = np(3, mkptr(998))
+    val invalidPointer2 = np(5, mkptr(999))
+    
+    for {
+      l3 <- ts.mkleaf( kv(10,10)::Nil, None)
+      l2 <- ts.mkleaf( kv(5,5)::Nil, Some(KVListNodePointer(l3,10)))
+      l1 <- ts.mkleaf( Nil, Some(KVListNodePointer(l2,5)))
+      
+      n3 <- ts.mknode(np(10,l3)::Nil, None)
+      n2 <- ts.mknode(invalidPointer1::invalidPointer2::Nil, Some(np(10,n3)))
+      n1 <- ts.mknode(np(0,l1)::Nil, Some(np(3,n2)))
+      
+      m1 <- ts.mknode(np(0,n1)::np(3,n2)::np(10,n3)::Nil, None)
+      td <- ts.mktree(l1::n1::m1::Nil)
+      os <- ts.system.readObject(td)
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::m1::Nil, ts.system) {
+        override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = Future.failed(new Exception("Should not be used!")) 
+      }
+      (tier, cont) <- tr.fetchContainingNode(5)
+    } yield {
       println("All node contents:")
       cont.content.foreach(t => println(s"${a2i(t._1)}, ${a2i(t._2)}"))
       cont.content.contains(5) should be (true)

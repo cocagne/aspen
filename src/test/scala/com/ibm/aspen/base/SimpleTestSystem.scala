@@ -15,6 +15,7 @@ import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import com.ibm.aspen.core.network.Client
 import com.ibm.aspen.core.read.ReadDriver
+import com.ibm.aspen.core.read.DataRetrievalFailed
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -29,8 +30,10 @@ class SimpleTestSystem extends AspenSystem {
   def client: Client = Client(poolUUID)
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
-    val o = content(pointer.uuid)
-    Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data))
+    content.get(pointer.uuid) match {
+      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data))
+      case None => Future.failed(new DataRetrievalFailed)
+    }
   }
   
   def newTransaction(): Transaction = new Tx

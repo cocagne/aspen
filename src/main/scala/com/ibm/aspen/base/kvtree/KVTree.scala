@@ -153,15 +153,11 @@ class KVTree(
         t: Tier, startingNode: KVListNode, blacklisted: Set[KVListNodePointer], 
         path: List[(Tier, KVListNode)], initialReverseOrder: Option[List[(Array[Byte], Array[Byte])]]): Unit = {
       
-      def toint(a: Array[Byte]): Int = if (a.length == 0) -1 else ByteBuffer.wrap(a).getInt
-      println(s"fetchLower tier ${t.tier} NodePointer ${toint(startingNode.nodePointer.minimum)}. targetTier: $targetTier")
-      
       // Scan to the right to find the correct owning node
       startingNode.fetchContainingNode(key, blacklisted) onComplete {
         case Failure(cause) => p.failure(cause) // propagate to caller
         
         case Success(node) => 
-          println(s"Containing Node: tier ${t.tier} NodePointer ${toint(node.nodePointer.minimum)}.")
           if (t.tier == targetTier)
             p.success((t, node))
           else {
@@ -214,10 +210,6 @@ class KVTree(
               case Some(ro) => ro
               case None => getReverseOrder(node.content.iterator, Nil)
             }
-            
-            println(s"Contents:")
-            node.content.foreach(t => println(s"  Raw: ${toint(t._1)}"))
-            reverseOrder.foreach(t => println(s"    Lower: ${toint(t._1)}"))
             
             val (lowerNodePointer, remainingPointers) = findFirstNonBlacklistedNode(reverseOrder)
             
