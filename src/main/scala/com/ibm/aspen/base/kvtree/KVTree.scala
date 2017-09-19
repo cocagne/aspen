@@ -61,11 +61,13 @@ class KVTree(
     private[this] var treeDefinitionRevision: ObjectRevision,
     val nodeAllocater: KVTreeNodeAllocater,
     val nodeCache: KVTreeNodeCache,
-    val compareKeysFunction: (Array[Byte], Array[Byte]) => Int,
+    val keyComparisonStrategy: KVTree.KeyComparison.Value,
     private[this] var rootPointers: List[ObjectPointer],
     val system: AspenSystem) {
   
   import KVTree._
+  
+  val compareKeysFunction = getKeyComparisonFunction(keyComparisonStrategy)
   
   class Tier(val tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
    

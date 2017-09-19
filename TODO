@@ -28,6 +28,14 @@ Security Model
   * Pools are aggregated into PoolAuthGroups (so pools with same creds can be aggregated)
   * PoolAuthGroups point to individual clients and/or CertAuthAuthorities
   * Storage nodes pre-load cred info on startup for all PoolAuthGroups referenced by its hosted pools
+  
+* System-Level FinalizationAction handlers
+  * Not all Finalizers are appropriate for running in the core system. Take end-user code, for example.
+  * Rather than requiring the storage nodes to understand all finalizers, we could instead have a
+    finalizer service that could be leveraged to execute the FA on the storge node's behalf. Possibly
+    as end-user code within a dedicated container
+  * Tie this in with the client application having hte primary responsibility for executing the FA.
+  * Storage nodes only do this as a fallback if the client heartbeat of "im still working on the FAs" stops
 
 aspen.base.FinalizationActionsRegistrar
   * object that uses a list of FinalizationActionFactory

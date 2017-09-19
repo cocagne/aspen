@@ -46,16 +46,12 @@ object KVTreeSuite {
   
   def kv(key:Int, value:Int): (Array[Byte], Array[Byte]) = (iarr(key), iarr(value))
   
-  def compareKeysFn(a: Array[Byte], b: Array[Byte]): Int = {
-    val ia = ByteBuffer.wrap(a).getInt()
-    val ib = ByteBuffer.wrap(b).getInt()
-    ia - ib
-  }
-  
   def toKVset(a:SortedMap[Array[Byte], Array[Byte]]): Set[(Int,Int)] = {
     def dc(b: Array[Byte]): Int = ByteBuffer.wrap(b).getInt
     a.iterator.map(t => (dc(t._1), dc(t._2))).toSet
   }
+  
+  val compareKeysFn = KVTree.getKeyComparisonFunction(KVTree.KeyComparison.BigInt)
   
   implicit val keyOrdering = new KVList.KeyOrdering(compareKeysFn)
   
@@ -156,7 +152,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       n1 <- ts.mknode(Nil, None)
       td <- ts.mktree(l1::n1::Nil)
       os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::Nil, ts.system) {
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l1::n1::Nil, ts.system) {
         override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = {
          lastResortCalled = true
          super.navigationFallbackOfLastResort(targetTier, key)
@@ -179,7 +175,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       n1 <- ts.mknode(np(0,l1)::np(3,l2)::np(7,l3)::Nil, None)
       td <- ts.mktree(l1::n1::Nil)
       os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::Nil, ts.system)      
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l1::n1::Nil, ts.system)      
       (tier, cont) <- tr.fetchContainingNode(10)
     } yield {
       cont.content.contains(10) should be (true)
@@ -201,7 +197,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       m1 <- ts.mknode(np(0,n1)::np(5,n2)::np(10,n3)::Nil, None)
       td <- ts.mktree(l1::n1::m1::Nil)
       os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::m1::Nil, ts.system) {
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l1::n1::m1::Nil, ts.system) {
         override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = Future.failed(new Exception("Should not be used!")) 
       }
       (tier, cont) <- tr.fetchContainingNode(5)
@@ -228,7 +224,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       m1 <- ts.mknode(np(0,n1)::np(5,n2)::np(10,n3)::Nil, None)
       td <- ts.mktree(l1::n1::m1::Nil)
       os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::m1::Nil, ts.system) {
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l1::n1::m1::Nil, ts.system) {
         override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = Future.failed(new Exception("Should not be used!")) 
       }
       (tier, cont) <- tr.fetchContainingNode(5) 
@@ -257,7 +253,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       m1 <- ts.mknode(np(0,n1)::np(3,n2)::np(10,n3)::Nil, None)
       td <- ts.mktree(l1::n1::m1::Nil)
       os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, compareKeysFn, l1::n1::m1::Nil, ts.system) {
+      tr = new KVTree(td, os.revision, new ts.TreeAlloc(9999), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l1::n1::m1::Nil, ts.system) {
         override def navigationFallbackOfLastResort(targetTier: Int, key: Array[Byte])(implicit ec: ExecutionContext): Future[KVListNode] = Future.failed(new Exception("Should not be used!")) 
       }
       (tier, cont) <- tr.fetchContainingNode(5)
