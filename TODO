@@ -1,4 +1,24 @@
 
+* How create KVTrees in FA handling context?
+   - Maybe trees don't take arbitrary comparison functions. Instead they could take an Strategy Enum
+       Raw - binary array comparison (default type)
+       BigInteger - Arbitrarily sized integers 
+       String - UTF8 encoded strings w/ lexical comparison
+       
+   - Maybe we use a treeFactory(which takes a tree description pointer)
+       - Reads treeDescription, Figures out the Allocation handler, returns Future[KVTree]
+       - Allows injection of caching strategy but uses default if not provided
+       
+   - Instead of FA objects, we use FA classes. Continue to use Registrar but have its constructor take dependency injection arguments.
+       - This then explicitly creates instances of FA handlers with the injected variations
+          - (e.g. caching strategy for KVTrees allocated by FA handlers)
+
+* KVTree Finalization actions
+  * Encode/Decode FA content in KVTreeCodec
+  * Implement limited exponential backoff retry
+  * Implement the insertion   
+
+** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason
 
 Security Model
   * Foundation is each message has associated client UUID 
@@ -186,6 +206,8 @@ Mid-Term Enhancements:
       
       
 BackLog
+* Refuse to vote on transaction if any FinalizationAction is unknown
+
 * Add store-side failed allocation detection and recovery
 
 * Add detection & handling of leader failure

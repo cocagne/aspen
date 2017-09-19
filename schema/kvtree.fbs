@@ -10,4 +10,16 @@ table KVTreeDescription {
     tierPointers: [com.ibm.aspen.core.network.protocol.ObjectPointer]; 
 }
 
+table InsertIntoUpperTier {
+  treeDescriptionObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  targetTier: int;
+  newNodePointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  minimum: [byte];
+}
+
+table KVTreeEncoding {
+  description: KVTreeDescription;
+  insertIntoUpperTier: InsertIntoUpperTier;
+}
+
 root_type KVTreeDescription;

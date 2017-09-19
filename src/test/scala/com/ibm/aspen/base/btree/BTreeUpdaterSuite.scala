@@ -73,6 +73,8 @@ object BTreeUpdaterSuite {
     
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason
     
+    def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = ()
+    
     def commit(): Future[Unit] = result
   }
   

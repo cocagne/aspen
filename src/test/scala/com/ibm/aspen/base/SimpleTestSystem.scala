@@ -61,6 +61,10 @@ class SimpleTestSystem extends AspenSystem {
     
     var ops = List[ ()=>Unit ]()
     
+    var fas = Map[UUID, Array[Byte]]()
+    
+    var invalidatedReason: Option[Throwable] = None
+    
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {
       def fn() = {
         val o = content(objectPointer.uuid) 
@@ -98,7 +102,9 @@ class SimpleTestSystem extends AspenSystem {
       refcount
     }
     
-    def invalidateTransaction(reason: Throwable): Unit = ()
+    def invalidateTransaction(reason: Throwable): Unit = invalidatedReason = Some(reason)
+    
+    def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = fas += (finalizationActionUUID -> serializedContent)
     
     def commit(): Future[Unit] = {
       ops.foreach(fn => fn())

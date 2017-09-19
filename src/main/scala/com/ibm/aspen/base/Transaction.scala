@@ -17,6 +17,8 @@ trait Transaction {
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = append(objectPointer, requiredRevision, ByteBuffer.wrap(data))
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = overwrite(objectPointer, requiredRevision, ByteBuffer.wrap(data))
   
+  def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
+  
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
    * 
    */

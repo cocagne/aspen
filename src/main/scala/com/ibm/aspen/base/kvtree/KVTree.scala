@@ -48,6 +48,8 @@ class KVTree(
   private[this] var tiers:Array[Tier] = rootPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
   private[this] var creatingTier: Option[Future[ObjectPointer]] = None
   
+  def getTiersList(): List[ObjectPointer] = synchronized { rootPointers }
+  
   def get(key: Array[Byte])(implicit ec: ExecutionContext): Future[Option[Array[Byte]]] = fetchContainingNode(key) map {
     tpl => tpl._2.content.get(key)
   }
@@ -67,8 +69,9 @@ class KVTree(
   def readObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
   
   protected def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
-    KVTreeFinalizationActions.insertIntoUpperTier(transaction, tier+1, newNode.nodePointer)
-    // TODO: Add callback to successful commit to do the operation and inform the designated leader
+    KVTreeFinalizationActions.insertIntoUpperTier(transaction, this, tier+1, newNode.nodePointer)
+    // TODO: Add callback that inserts newNode into the upper tier or drops the cached upper tier node?
+    //       Could just rely on cache expiry times
   }
    
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = system.readObject(treeDescriptionPointer, None) map { osd =>
