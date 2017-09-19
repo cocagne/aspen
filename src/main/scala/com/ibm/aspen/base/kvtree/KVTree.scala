@@ -19,16 +19,53 @@ import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.network.{Codec => NetworkCodec}
 import scala.annotation.tailrec
 
-
+object KVTree {
+  
+  object KeyComparison extends Enumeration {
+    val Raw = Value
+    val BigInt = Value  // Keys are encoded via BigInteger.toByteArray
+    val Lexical = Value // Keys are UTF-8 encoded strings
+  }
+  
+  def rawCompare(a: Array[Byte], b: Array[Byte]): Int = {
+    for (i <- 0 until a.length) {
+      if (i > b.length) return 1 // a is longer than b and all preceeding bytes are equal
+      if (a(i) < b(i)) return -1 // a is less than b
+      if (a(i) > b(i)) return 1  // a is greater than b
+    }
+    if (b.length > a.length) return -1 // b is longer than a and all preceeding bytes are equal
+    0 // a and b are the same length and have matching content
+  }
+  
+  def bigIntCompare(a: Array[Byte], b: Array[Byte]): Int = {
+    val bigA = new java.math.BigInteger(a)
+    val bigB = new java.math.BigInteger(b)
+    bigA.compareTo(bigB)
+  }
+  
+  def lexicalCompare(a: Array[Byte], b: Array[Byte]): Int = {
+    val sa = new String(a, "UTF-8")
+    val sb = new String(b, "UTF-8")
+    sa.compareTo(sb)
+  }
+  
+  def getKeyComparisonFunction(keyType: KeyComparison.Value): (Array[Byte], Array[Byte]) => Int = keyType match {
+    case KeyComparison.Raw => rawCompare
+    case KeyComparison.BigInt => bigIntCompare
+    case KeyComparison.Lexical => lexicalCompare
+  }
+}
 
 class KVTree(
-    val treeDescriptionPointer: ObjectPointer, // Pointer to object holding the serialized content of this instance
-    private[this] var treeDescriptionRevision: ObjectRevision,
+    val treeDefinitionPointer: ObjectPointer, // Pointer to object holding the serialized content of this instance
+    private[this] var treeDefinitionRevision: ObjectRevision,
     val nodeAllocater: KVTreeNodeAllocater,
     val nodeCache: KVTreeNodeCache,
     val compareKeysFunction: (Array[Byte], Array[Byte]) => Int,
     private[this] var rootPointers: List[ObjectPointer],
     val system: AspenSystem) {
+  
+  import KVTree._
   
   class Tier(val tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
    
@@ -74,12 +111,12 @@ class KVTree(
     //       Could just rely on cache expiry times
   }
    
-  def refresh()(implicit ec: ExecutionContext): Future[Unit] = system.readObject(treeDescriptionPointer, None) map { osd =>
-    val (_, tierPointers) = KVTreeCodec.decodeTreeDescription(osd.data)
+  def refresh()(implicit ec: ExecutionContext): Future[Unit] = system.readObject(treeDefinitionPointer, None) map { osd =>
+    val td = KVTreeCodec.decodeTreeDefinition(osd.data)
     synchronized {
-      if (osd.revision > treeDescriptionRevision) {
-        tiers = tierPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
-        treeDescriptionRevision = osd.revision 
+      if (osd.revision > treeDefinitionRevision) {
+        tiers = td.tiers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
+        treeDefinitionRevision = osd.revision 
       }
     }
   }
@@ -96,29 +133,30 @@ class KVTree(
         val p = Promise[ObjectPointer]()
     
         implicit val tx = system.newTransaction()
-        val requiredRevision = treeDescriptionRevision // Snapshot this value. Could change underneath us
+        val requiredRevision = treeDefinitionRevision // Snapshot this value. Could change underneath us
         
         val tier = tiers.length // Tier to create. Tiers start counting at zero so the length of the array is the tier number to create
         
         val falloc = if (tier == 0) 
-            nodeAllocater.allocateRootLeafNode(treeDescriptionPointer, requiredRevision) 
+            nodeAllocater.allocateRootLeafNode(treeDefinitionPointer, requiredRevision) 
           else 
-            nodeAllocater.allocateRootTierNode(treeDescriptionPointer, requiredRevision, tier, initialContent)
+            nodeAllocater.allocateRootTierNode(treeDefinitionPointer, requiredRevision, tier, initialContent)
             
         falloc onComplete {
             case Success(ptr) => synchronized {
-              // Node allocation was successful. Update the tree description node to embed a reference to it and commit the transaction
+              // Node allocation was successful. Update the tree definition node to embed a reference to it and commit the transaction
               val newTiers = new Array[Tier](tier + 1)
               tiers.copyToArray(newTiers)
               newTiers(tier) = new Tier(tier, ptr)
-              val data = KVTreeCodec.encodeTreeDescription(nodeAllocater.allocationPolicyUUID, newTiers.iterator.map(_.rootObjectPointer).toList)
+              val newTD = KVTreeDefinition(nodeAllocater.allocationPolicyUUID, KeyComparison.Raw, newTiers.iterator.map(_.rootObjectPointer).toList)
+              val data = KVTreeCodec.encodeTreeDefinition(newTD)
               
-              tx.overwrite(treeDescriptionPointer, requiredRevision, data)
+              tx.overwrite(treeDefinitionPointer, requiredRevision, data)
               
               tx.commit() onComplete {
                 case Success(_) => synchronized {
                   tiers = newTiers
-                  treeDescriptionRevision = requiredRevision.overwrite(data.length)
+                  treeDefinitionRevision = requiredRevision.overwrite(data.length)
                   p.success(ptr)
                 }
                 case Failure(reason) => p.failure(reason)

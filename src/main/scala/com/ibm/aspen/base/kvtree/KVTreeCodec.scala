@@ -1,6 +1,6 @@
 package com.ibm.aspen.base.kvtree
 
-import com.ibm.aspen.base.{kvtree => K}
+import com.ibm.aspen.base.kvtree.{encoding => K}
 import com.ibm.aspen.core.network.{Codec => NetworkCodec}
 import com.google.flatbuffers.FlatBufferBuilder
 import java.util.UUID
@@ -37,21 +37,21 @@ private[kvtree] object KVTreeCodec {
   }
   def encodeInsertIntoUpperTierFinalizationActionImpl(tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Int = {
     val builder = new FlatBufferBuilder(4096)
-    val treeDescriptionObjectOffset = NetworkCodec.encode(builder, tree.treeDescriptionPointer)
+    val treeDescriptionObjectOffset = NetworkCodec.encode(builder, tree.treeDefinitionPointer)
     val minimumOffset = K.InsertIntoUpperTier.createMinimumVector(builder, nodePointer.minimum)
     val newNodePointerOffset = NetworkCodec.encode(builder, nodePointer.objectPointer)
     
     K.InsertIntoUpperTier.startInsertIntoUpperTier(builder)
-    K.InsertIntoUpperTier.addTreeDescriptionObject(builder, treeDescriptionObjectOffset)
+    K.InsertIntoUpperTier.addTreeDefinitionObject(builder, treeDescriptionObjectOffset)
     K.InsertIntoUpperTier.addTargetTier(builder, targetTier)
     K.InsertIntoUpperTier.addNewNodePointer(builder, newNodePointerOffset)
     K.InsertIntoUpperTier.addMinimum(builder, minimumOffset)
     K.InsertIntoUpperTier.endInsertIntoUpperTier(builder)
   }
   
-  case class InsertIntoUpperTierData(treeDescriptionPointer: ObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
+  case class InsertIntoUpperTierData(treeDefinitionPointer: ObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
   
-   def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = decodeInsertIntoUpperTierFinalizationAction(ByteBuffer.wrap(arr))
+  def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = decodeInsertIntoUpperTierFinalizationAction(ByteBuffer.wrap(arr))
   
   def decodeInsertIntoUpperTierFinalizationAction(bb: ByteBuffer): InsertIntoUpperTierData = {
     val m = K.InsertIntoUpperTier.getRootAsInsertIntoUpperTier(bb.asReadOnlyBuffer())
@@ -59,7 +59,7 @@ private[kvtree] object KVTreeCodec {
   }
   
   def decodeInsertIntoUpperTierFinalizationActionImpl(m: K.InsertIntoUpperTier): InsertIntoUpperTierData = {
-    val tdp = NetworkCodec.decode(m.treeDescriptionObject())
+    val tdp = NetworkCodec.decode(m.treeDefinitionObject())
     val nnp = NetworkCodec.decode(m.newNodePointer())
     val min = new Array[Byte](m.minimumLength())
     m.minimumAsByteBuffer().get(min)
@@ -67,18 +67,19 @@ private[kvtree] object KVTreeCodec {
   }
   
   
-  def encodeTreeDescriptionImpl(builder: FlatBufferBuilder, allocationPolicyUUID: UUID, tiers: List[ObjectPointer]): Int = {
-    val tierPointersOffset = K.KVTreeDescription.createTierPointersVector(builder, tiers.map(op => NetworkCodec.encode(builder, op)).toArray)
+  def encodeTreeDefinitionImpl(builder: FlatBufferBuilder, td: KVTreeDefinition): Int = {
+    val tierPointersOffset = K.KVTreeDefinition.createTierPointersVector(builder, td.tiers.map(op => NetworkCodec.encode(builder, op)).toArray)
 
-    K.KVTreeDescription.startKVTreeDescription(builder)
-    K.KVTreeDescription.addAllocationPolicyUUID(builder, NetworkCodec.encode(builder, allocationPolicyUUID))
-    K.KVTreeDescription.addTierPointers(builder, tierPointersOffset)
+    K.KVTreeDefinition.startKVTreeDefinition(builder)
+    K.KVTreeDefinition.addAllocationPolicyUUID(builder, NetworkCodec.encode(builder, td.allocationPolicyUUID))
+    K.KVTreeDefinition.addKeyComparisonStrategy(builder, td.keyComparison.id.asInstanceOf[Byte])
+    K.KVTreeDefinition.addTierPointers(builder, tierPointersOffset)
     
-    val m =  K.KVTreeDescription.endKVTreeDescription(builder)
+    val m =  K.KVTreeDefinition.endKVTreeDefinition(builder)
     m
   }
   
-  def decodeTreeDescriptionImpl(m: K.KVTreeDescription): (UUID, List[ObjectPointer]) = {
+  def decodeTreeDefinitionImpl(m: K.KVTreeDefinition): KVTreeDefinition = {
     val allocationPolicyUUID = NetworkCodec.decode(m.allocationPolicyUUID())
     
     def tier(idx: Int, l:List[ObjectPointer]): List[ObjectPointer] = if (idx == -1) 
@@ -86,13 +87,15 @@ private[kvtree] object KVTreeCodec {
       else 
         tier(idx-1, NetworkCodec.decode(m.tierPointers(idx)) :: l)
     
-    (allocationPolicyUUID, tier(m.tierPointersLength()-1, Nil))
+    val kc = KVTree.KeyComparison(m.keyComparisonStrategy())
+        
+    KVTreeDefinition(allocationPolicyUUID, kc, tier(m.tierPointersLength()-1, Nil))
   }
   
-  def encodeTreeDescription(allocationPolicyUUID: UUID, tiers: List[ObjectPointer]): Array[Byte] = {
+  def encodeTreeDefinition(td: KVTreeDefinition): Array[Byte] = {
     val builder = new FlatBufferBuilder(4096)
     
-    val m = encodeTreeDescriptionImpl(builder, allocationPolicyUUID, tiers)
+    val m = encodeTreeDefinitionImpl(builder, td)
         
     builder.finish(m)
     
@@ -104,10 +107,10 @@ private[kvtree] object KVTreeCodec {
     arr
   }
   
-  def decodeTreeDescription(arr: Array[Byte]): (UUID, List[ObjectPointer]) = decodeTreeDescription(ByteBuffer.wrap(arr))
+  def decodeTreeDefinition(arr: Array[Byte]): KVTreeDefinition = decodeTreeDefinition(ByteBuffer.wrap(arr))
   
-  def decodeTreeDescription(bb: ByteBuffer): (UUID, List[ObjectPointer]) = {
-    val m = K.KVTreeDescription.getRootAsKVTreeDescription(bb.asReadOnlyBuffer())
-    decodeTreeDescriptionImpl(m)
+  def decodeTreeDefinition(bb: ByteBuffer): KVTreeDefinition = {
+    val m = K.KVTreeDefinition.getRootAsKVTreeDefinition(bb.asReadOnlyBuffer())
+    decodeTreeDefinitionImpl(m)
   }
 }

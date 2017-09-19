@@ -61,7 +61,7 @@ sourceGenerators in Compile += Def.task {
   }
   
   // KVTree
-  val kvt_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "kvtree"
+  val kvt_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "kvtree" / "encoding"
 
   val kvt_schema = file("schema") / "kvtree.fbs"
 

@@ -79,7 +79,8 @@ object KVTreeSuite {
     
     def mktree(tiers: List[ObjectPointer]): Future[ObjectPointer] = {
       implicit val tx = new system.Tx
-      val data = ByteBuffer.wrap(KVTreeCodec.encodeTreeDescription(treePolicyUUID, tiers))
+      val td = KVTreeDefinition(treePolicyUUID, KVTree.KeyComparison.BigInt, tiers)
+      val data = ByteBuffer.wrap(KVTreeCodec.encodeTreeDefinition(td))
       val f = system.allocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), 0, data)
       tx.commit()
       f

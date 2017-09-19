@@ -1,25 +1,26 @@
 include "network_protocol.fbs";
 
-namespace com.ibm.aspen.base.kvtree;
+namespace com.ibm.aspen.base.kvtree.encoding;
 
 //---------------------------------------------------------------------------
-//- KVTreeDescription 
+//- KVTreeDefinition
 //---------------------------------------------------------------------------
-table KVTreeDescription {
+table KVTreeDefinition {
     allocationPolicyUUID: com.ibm.aspen.core.network.protocol.UUID;
+    keyComparisonStrategy: byte;
     tierPointers: [com.ibm.aspen.core.network.protocol.ObjectPointer]; 
 }
 
 table InsertIntoUpperTier {
-  treeDescriptionObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  treeDefinitionObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
   targetTier: int;
   newNodePointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
   minimum: [byte];
 }
 
 table KVTreeEncoding {
-  description: KVTreeDescription;
+  definition: KVTreeDefinition;
   insertIntoUpperTier: InsertIntoUpperTier;
 }
 
-root_type KVTreeDescription;
+root_type KVTreeEncoding;
