@@ -31,7 +31,7 @@ class SimpleTestSystem extends AspenSystem {
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {
-      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data))
+      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data.asReadOnlyBuffer()))
       case None => Future.failed(new DataRetrievalFailed)
     }
   }
@@ -66,30 +66,35 @@ class SimpleTestSystem extends AspenSystem {
     var invalidatedReason: Option[Throwable] = None
     
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {
+      val len = data.limit - data.position
+      
       def fn() = {
         val o = content(objectPointer.uuid) 
-        val len = data.limit - data.position
         o.rev = requiredRevision.append(len)
+        val orig_data = o.data
         o.data = ByteBuffer.allocate(o.data.capacity + len)
-        o.data.put(o.data)
+        o.data.put(orig_data)
         o.data.put(data)
+        o.data.position(0)
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.append(data.limit - data.position)
+      requiredRevision.append(len)
     }
     
     override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision =  {
+      val len = data.limit - data.position
+      
       def fn() = {
         val o = content(objectPointer.uuid) 
-        val len = data.limit - data.position
-        o.rev = requiredRevision.append(len)
+        o.rev = requiredRevision.overwrite(len)
         o.data = ByteBuffer.allocate(len)
         o.data.put(data)
+        o.data.position(0)
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.overwrite(data.limit - data.position)
+      requiredRevision.overwrite(len)
     }
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = {

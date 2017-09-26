@@ -38,9 +38,17 @@ object KVTree {
   }
   
   def bigIntCompare(a: Array[Byte], b: Array[Byte]): Int = {
-    val bigA = new java.math.BigInteger(a)
-    val bigB = new java.math.BigInteger(b)
-    bigA.compareTo(bigB)
+    if (a.length == 0 && b.length == 0)
+      0
+    else if (a.length == 0 && b.length != 0)
+      -1
+    else if (a.length != 0 && b.length == 0)
+      1
+    else {
+      val bigA = new java.math.BigInteger(a)
+      val bigB = new java.math.BigInteger(b)
+      bigA.compareTo(bigB)
+    }
   }
   
   def lexicalCompare(a: Array[Byte], b: Array[Byte]): Int = {
@@ -62,7 +70,7 @@ class KVTree(
     val nodeAllocater: KVTreeNodeAllocater,
     val nodeCache: KVTreeNodeCache,
     val keyComparisonStrategy: KVTree.KeyComparison.Value,
-    private[this] var rootPointers: List[ObjectPointer],
+    rootPointers: List[ObjectPointer],
     val system: AspenSystem) {
   
   import KVTree._
@@ -87,18 +95,26 @@ class KVTree(
   private[this] var tiers:Array[Tier] = rootPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
   private[this] var creatingTier: Option[Future[ObjectPointer]] = None
   
-  def getTiersList(): List[ObjectPointer] = synchronized { rootPointers }
-  
   def get(key: Array[Byte])(implicit ec: ExecutionContext): Future[Option[Array[Byte]]] = fetchContainingNode(key) map {
     tpl => tpl._2.content.get(key)
   }
   
-  def put(key: Array[Byte], value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = fetchContainingNode(key) map {
-    tpl => tpl._2.update((key,value)::Nil, Nil, onListNodeSplit(tpl._1.tier))
+  /* Future completes when the transaction is ready to commit */
+  def put(key: Array[Byte], value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = {
+    val pcommitReady = Promise[Unit]()
+    fetchContainingNode(key) onComplete {
+      case Failure(cause) => pcommitReady.failure(cause)
+      case Success(tpl) => 
+        tpl._2.update((key,value)::Nil, Nil, onListNodeSplit(0)) onComplete {
+          case Success(_) => pcommitReady.success(())
+          case Failure(cause) => pcommitReady.failure(cause)
+        }
+    }
+    pcommitReady.future
   }
   
   def delete(key: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = fetchContainingNode(key) map {
-    tpl => tpl._2.update(Nil, key::Nil, onListNodeSplit(tpl._1.tier))
+    tpl => tpl._2.update(Nil, key::Nil, onListNodeSplit(0))
   }
 
   /** Reads and returns the underlying object.
@@ -107,8 +123,8 @@ class KVTree(
    */
   def readObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
   
-  protected def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
-    KVTreeFinalizationActions.insertIntoUpperTier(transaction, this, tier+1, newNode.nodePointer)
+  protected [kvtree] def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
+    KVTreeFinalizationActionHandler.insertIntoUpperTier(transaction, this, tier+1, newNode.nodePointer)
     // TODO: Add callback that inserts newNode into the upper tier or drops the cached upper tier node?
     //       Could just rely on cache expiry times
   }
@@ -123,11 +139,13 @@ class KVTree(
     }
   }
   
-  protected def rootTier: Tier = synchronized { tiers(tiers.length-1) }
+  protected [kvtree] def rootTier: Tier = synchronized { tiers(tiers.length-1) }
+  
+  def numTiers = synchronized { tiers.length }
   
   protected def getTier(tier: Int) = synchronized { tiers(tier) }
   
-  protected def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
+  protected [kvtree] def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
     creatingTier match {
       case Some(f) => f
       

@@ -162,7 +162,7 @@ private [base] object KVListCodec {
   def decodeOperations(bb: ByteBuffer): List[KVListOperation] = {
     var ops = List[KVListOperation]()
 
-    while (bb.position() < bb.capacity())
+    while (bb.position() < bb.capacity()) 
       ops = decodeOp(bb) :: ops
 
     ops.reverse

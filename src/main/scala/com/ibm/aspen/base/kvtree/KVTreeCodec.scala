@@ -24,19 +24,19 @@ private[kvtree] object KVTreeCodec {
   def encodeInsertIntoUpperTierFinalizationAction(tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Array[Byte] = {
     val builder = new FlatBufferBuilder(4096)
     
-    val m = encodeInsertIntoUpperTierFinalizationActionImpl(tree, targetTier, nodePointer)
+    val m = encodeInsertIntoUpperTierFinalizationActionImpl(builder, tree, targetTier, nodePointer)
         
     builder.finish(m)
     
     val db = builder.dataBuffer()
     
-    val arr = new Array[Byte](db.capacity - db.position)
+    val arr = new Array[Byte](db.limit - db.position)
     db.get(arr)
     
     arr
   }
-  def encodeInsertIntoUpperTierFinalizationActionImpl(tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Int = {
-    val builder = new FlatBufferBuilder(4096)
+  def encodeInsertIntoUpperTierFinalizationActionImpl(builder: FlatBufferBuilder, tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Int = {
+    
     val treeDescriptionObjectOffset = NetworkCodec.encode(builder, tree.treeDefinitionPointer)
     val minimumOffset = K.InsertIntoUpperTier.createMinimumVector(builder, nodePointer.minimum)
     val newNodePointerOffset = NetworkCodec.encode(builder, nodePointer.objectPointer)
@@ -51,7 +51,9 @@ private[kvtree] object KVTreeCodec {
   
   case class InsertIntoUpperTierData(treeDefinitionPointer: ObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
   
-  def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = decodeInsertIntoUpperTierFinalizationAction(ByteBuffer.wrap(arr))
+  def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = {
+    decodeInsertIntoUpperTierFinalizationAction(ByteBuffer.wrap(arr))
+  }
   
   def decodeInsertIntoUpperTierFinalizationAction(bb: ByteBuffer): InsertIntoUpperTierData = {
     val m = K.InsertIntoUpperTier.getRootAsInsertIntoUpperTier(bb.asReadOnlyBuffer())
@@ -101,7 +103,7 @@ private[kvtree] object KVTreeCodec {
     
     val db = builder.dataBuffer()
     
-    val arr = new Array[Byte](db.capacity - db.position)
+    val arr = new Array[Byte](db.limit - db.position)
     db.get(arr)
     
     arr

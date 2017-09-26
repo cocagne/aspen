@@ -126,7 +126,7 @@ object Codec {
     
     val db = builder.dataBuffer()
     
-    val arr = new Array[Byte](db.capacity - db.position)
+    val arr = new Array[Byte](db.limit - db.position)
     db.get(arr)
     
     arr
