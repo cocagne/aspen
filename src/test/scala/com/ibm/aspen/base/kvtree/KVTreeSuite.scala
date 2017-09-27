@@ -471,6 +471,14 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     val k  = iarr(1)
     val v = iarr(10)
     
+    object split {
+      private [this] var splits: List[(Int, KVListNodePointer)] = Nil
+      def add(tier: Int, newNode:KVListNode): Unit = synchronized {
+        splits = (tier, newNode.nodePointer) :: splits
+      }
+      def list = synchronized { splits }
+    }
+    
     val noRetry = new RetryStrategy {
       def retryUntilSuccessful(attempt: => Future[Unit]): Future[Unit] = {
         val p = Promise[Unit]()
@@ -482,70 +490,56 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       }
     }
     
+    trait SplitCapture extends KVTree {
+      override def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
+        split.add(tier, newNode)
+        super.onListNodeSplit(tier)(transaction, ec, originalNode, updatedNode, newNode)
+      }
+    }
+    
     val treeFactory = new KVTreeFactory {
       def createTree(treeDefinitionObject: ObjectPointer): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
         val tl = tdef.tiers.map( o => o.uuid )
-        new KVTree(treeDefinitionObject, osd.revision, new ts.TreeAlloc(250), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, tdef.tiers, ts.system)
-      }
-    }
-    
-    class Finalizer(
-      treeFactory: KVTreeFactory,
-      retryStrategy: RetryStrategy,
-      system: AspenSystem) extends KVTreeFinalizationActionHandler(treeFactory, retryStrategy, system) {
-      
-      override def createAction(
-        finalizationActionUUID: UUID, 
-        serializedActionData: Array[Byte]): Option[FinalizationAction] = {
-        val fao = super.createAction(finalizationActionUUID, serializedActionData)
-        fao.foreach( fa => fa.execute() )
-        fao
+        new KVTree(treeDefinitionObject, osd.revision, new ts.TreeAlloc(250), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, tdef.tiers, ts.system) with SplitCapture
       }
     }
     
     val fah = new KVTreeFinalizationActionHandler(treeFactory, noRetry, ts.system)
     
     for {
-      l <- ts.mkleaf( (k,v)::Nil, None)
-      td <- ts.mktree(l::Nil)
-      os <- ts.system.readObject(td)
-      tr = new KVTree(td, os.revision, new ts.TreeAlloc(250), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, l::Nil, ts.system)
+      l3 <- ts.mkleaf( kv(10,10)::Nil, None)
+      l2 <- ts.mkleaf( kv(5,5)::Nil, Some(KVListNodePointer(l3,10)))
+      l1 <- ts.mkleaf( Nil, Some(KVListNodePointer(l2,5)))
       
-      l2 <- ts.mkleaf((iarr(10),iarr(11))::Nil, None)      
-      enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, 1, np(10,l2))
+      t1 <- ts.mknode(np(0,l1)::np(5,l2)::Nil, None)
+      
+      td <- ts.mktree(l1::t1::Nil)
+      
+      // At 250 bytes in size, the single tier1 node can hold 2 pointers but not three. Adding a pointer 
+      // to l3 will cause t1 to split and create a finalization action to create tier2
+      tr <- treeFactory.createTree(td)
+      enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, 1, np(10,l3))
       fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
       fa = fao.get
       result <- fa.execute()
       
-      tr2 <- treeFactory.createTree(td)
+      if split.list.length == 1  // this will cause test to fail if length isn't 1
       
-      l3 <- ts.mkleaf((iarr(20),iarr(20))::Nil, None)      
-      enc2 = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr2, 1, np(20,l3))
-      fao2 = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc2)
-      fa2 = fao2.get
-      result <- fa2.execute()
+      (tier, nodePointer) = split.list.head
       
-      tr3 <- treeFactory.createTree(td)
-      
-      l4 <- ts.mkleaf((iarr(30),iarr(30))::Nil, None)      
-      enc3 = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr3, 1, np(30,l4))
-      fao3 = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc3)
-      fa3 = fao3.get
-      result <- fa3.execute()
-      
+      tr <- treeFactory.createTree(td)
+      enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, tier, nodePointer)
+      fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
+      fa = fao.get
+      result <- fa.execute()
+
       tr4 <- treeFactory.createTree(td)
-       
-      (leafTier, leaf) <- tr4.fetchContainingNode(iarr(30), 0)
+      
     } yield {
-      tr2.numTiers should be (3)
-      
-      leafTier.tier should be (0)
-      leaf.content.contains(iarr(30)) should be (true)
-      
-      leaf.nodePointer.objectPointer should be (l4)
+      tr4.numTiers should be (3)
     }
   }
   

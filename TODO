@@ -1,17 +1,4 @@
 
-* Test puts and deletes
-* Test split of tier 0
-* Test split of tier 1
-
-* KVTree Finalization actions
-  * Encode/Decode FA content in KVTreeCodec
-  * Implement limited exponential backoff retryUntilSuccessful
-     - KVTreeFAHandler should take a RetryHandler class for implementing FA retries
-         - moves policy out for definiing backoff properties and the like
-     - java.util.concurrent.ScheduledExecutorService 
-         - can adapt to a scala ExecutionContext via ExecutionContext.fromExecutorService
-  * Implement the insertion   
-
 * Tie base FA registry to transaction
 
 ** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason

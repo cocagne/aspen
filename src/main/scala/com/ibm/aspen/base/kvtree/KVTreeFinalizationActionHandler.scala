@@ -39,16 +39,21 @@ class KVTreeFinalizationActionHandler(
           }
           
           if (targetTier == tree.numTiers) {
+            // Create the next tier up
             val oldRootPointer = KVListNodePointer(tree.rootTier.rootObjectPointer, new Array[Byte](0))
             tree.createNextTier(oldRootPointer :: nodePointer :: Nil).map(x => ())
           } else {
-            tree.fetchContainingNode(nodePointer.minimum, targetTier) flatMap {
-              t =>
-                implicit val tx = system.newTransaction()
-                val encPtr = NetworkCodec.objectPointerToByteArray(nodePointer.objectPointer)
-                t._2.update((nodePointer.minimum, encPtr)::Nil, Nil, tree.onListNodeSplit(targetTier))
-                tx.commit()
-            }
+            // Insert into an existing tier
+            implicit val tx = system.newTransaction()
+            
+            for {
+              (_, node) <- tree.fetchContainingNode(nodePointer.minimum, targetTier)
+              encPtr = NetworkCodec.objectPointerToByteArray(nodePointer.objectPointer)
+              // Update returns a Future to a Future. The outer future is to when the Transaction is ready to commit.
+              // On node splits, ensure the pointer to the new node goes into the tier above this one
+              commitReady <- node.update((nodePointer.minimum, encPtr)::Nil, Nil, tree.onListNodeSplit(targetTier+1))
+              complete <- tx.commit() 
+            } yield ()
           }
       } 
     }

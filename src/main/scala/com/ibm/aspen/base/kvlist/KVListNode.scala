@@ -111,6 +111,7 @@ class KVListNode(
         implicit val keyOrdering = new KVListCodec.KeyOrdering(list.compareKeys)
         
         if (overwriteSize <= sizeLimit) {
+          
           val buf = KVListCodec.opsToByteBuffer(overwriteOps, overwriteSize)
           
           assert(buf.limit - buf.position == overwriteSize)
