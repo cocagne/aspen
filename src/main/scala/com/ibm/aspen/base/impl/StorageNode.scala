@@ -12,7 +12,7 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.StoreTransactionManager
 import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
-import com.ibm.aspen.core.network.AllocationMessageReceiver
+import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 import com.ibm.aspen.core.data_store.DataStore
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.data_store.ObjectError
@@ -21,6 +21,7 @@ import com.ibm.aspen.core.read.ReadResponse
 import java.nio.ByteBuffer
 import scala.concurrent.Future
 import com.ibm.aspen.core.read.Read
+import com.ibm.aspen.core.allocation.Allocate
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -30,7 +31,7 @@ class StorageNode(
   val driverFactory: TransactionDriver.Factory,
   val finalizerFactory: TransactionFinalizer.Factory,
   val initialStores: List[DataStore]
-)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with AllocationMessageReceiver {
+)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
   private[this] val txManager = new StoreTransactionManager(crl, transactionMessenger, driverFactory, finalizerFactory)
@@ -45,7 +46,7 @@ class StorageNode(
   /** Completes when all initialStores are fully initialized */
   val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>())
   
-  def receive(message: allocation.Message): Unit = message match {
+  def receive(message: Allocate): Unit = message match {
     case m: allocation.Allocate => getStore(m.toStore).foreach(store => {
       val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
                                       m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)

@@ -5,9 +5,11 @@ import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import com.ibm.aspen.core.network.StoreSideReadMessenger
+import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 
 trait StorageNodeMessenger extends StoreSideTransactionMessenger with StoreSideAllocationMessenger with StoreSideReadMessenger {
   def setMessageReceivers(
       transactionMessageReceiver: StoreSideTransactionMessageReceiver,
-      readMessageReceiver: StoreSideReadMessageReceiver): Unit
+      readMessageReceiver: StoreSideReadMessageReceiver,
+      allocationMessageReceiver: StoreSideAllocationMessageReceiver): Unit
 }
