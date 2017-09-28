@@ -364,7 +364,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
         val tl = tdef.tiers.map( o => o.uuid )
-        println(s"Tiers: $tl")
+        //println(s"Tiers: $tl")
         new KVTree(treeDefinitionObject, osd.revision, new ts.TreeAlloc(800), new KVTreeNodeCache {}, KVTree.KeyComparison.BigInt, tdef.tiers, ts.system)
       }
     }
