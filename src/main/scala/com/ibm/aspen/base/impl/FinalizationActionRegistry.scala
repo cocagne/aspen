@@ -1,7 +1,8 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.impl
 
 import java.util.UUID
-import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
+import com.ibm.aspen.base.FinalizationAction
+import com.ibm.aspen.base.FinalizationActionHandler
 
 class FinalizationActionRegistry(handlers: List[FinalizationActionHandler]) extends FinalizationActionHandler {
   
