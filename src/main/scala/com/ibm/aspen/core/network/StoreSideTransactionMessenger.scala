@@ -7,7 +7,7 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import java.nio.ByteBuffer
 
 trait StoreSideTransactionMessenger {
-  def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]] = None): Unit
+  def send(message: Message, updateContent: Option[Array[ByteBuffer]] = None): Unit
   def send(client: Client, acceptResponse: TxAcceptResponse): Unit
   def send(client: Client, finalized: TxFinalized): Unit
 }

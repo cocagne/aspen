@@ -1,6 +1,14 @@
 
 * Tie base FA registry to transaction
 
+* ClientMessenger & StoreMessenger (extend all network messengers for cli/store)
+
+* Implement BasicAspenSystem in terms of a ClientMessenger (this provides identity and networking component)
+* Consider implementing StoreMessenger in terms of ClientMessenger (should work)
+* Implement StorageNode in terms of AspenSystem + StoreMessenger (or, even better, ClientMessenger)
+   * For StorageNode, use immutable map of DataStoreID -> DataStore. Synchronize only access to root map pointer,
+     allows us to leverage immutability for access by other threads
+
 ** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason
 
 Security Model
@@ -26,18 +34,7 @@ aspen.base.FinalizationActionsRegistrar
   * Need to implement stubbed section
   * Need to consider having Client run the FA list (maybe heartbeat to designated node so it delays action)
 
-* KVTree
-  - Use distinct classes for Have/Don'tHave the first tier node
-  - Allocation done via ObjectAllocationPolicyUUID
-    - system.getObjectAllocater(policyUUID)
-       policy.allocate( objReqs )
-         objDescription is a subclass of ObjectAllocationRequirements
-           def initialContent: 
-           def tier: 
-           * Policy itself is KVTree specific and adds things like
-              tierSizeLimit, tierIDA, tierPoolSet
-    - policy-based object allocaters implemented in terms of PoolAllocater
-      * takes UUID of pool and full object description + content. Returns Future[ObjectPointer]
+
          
 SystemTrees
   * allocationPolicies

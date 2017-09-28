@@ -50,6 +50,7 @@ class Transaction(
     response match {
       case Left(nack) => 
         val response = TxPrepareResponse(
+            prepare.from,
             store.storeId, 
             txd.transactionUUID, 
             Left(TxPrepareResponse.Nack(nack.promisedProposalId)), 
@@ -57,7 +58,7 @@ class Transaction(
             originalDisposition,
             Nil)
             
-        messenger.send(prepare.from, response)
+        messenger.send(response)
             
       case Right(promise) =>
         
@@ -94,6 +95,7 @@ class Transaction(
           }
 
           val response = TxPrepareResponse(
+              prepare.from,
               store.storeId, 
               txd.transactionUUID, 
               Right(TxPrepareResponse.Promise(recoveryState.paxosAcceptorState.accepted)),
@@ -109,7 +111,7 @@ class Transaction(
           //       that the node will be in this state for a significant period of time. Leave it to the 
           //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => messenger.send(prepare.from, response)})
+          crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => messenger.send(response)})
         })
     }
   }
@@ -193,12 +195,13 @@ class Transaction(
       
       case Left(nack) =>
         val response = TxAcceptResponse(
+            msg.from,
             store.storeId, 
             txd.transactionUUID, 
             msg.proposalId,
             Left(TxAcceptResponse.Nack(nack.promisedProposalId)))
             
-        messenger.send(msg.from, response)
+        messenger.send(response)
         txd.originatingClient.foreach( client => messenger.send(client, response) )
         
       case Right(accept) =>
@@ -207,6 +210,7 @@ class Transaction(
         }
 
         val response = TxAcceptResponse(
+            msg.from,
             store.storeId, 
             txd.transactionUUID, 
             msg.proposalId,
@@ -214,7 +218,7 @@ class Transaction(
             
         // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
         crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => 
-          messenger.send(msg.from, response)
+          messenger.send(response)
           txd.originatingClient.foreach( client => messenger.send(client, response) )
         })
     }

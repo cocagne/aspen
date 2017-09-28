@@ -23,12 +23,18 @@ object TransactionSuite {
   
   val poolUUID = java.util.UUID.randomUUID()
   
+  val ds0 = DataStoreID(poolUUID,0)
+  val ds1 = DataStoreID(poolUUID,1)
+  val ds2 = DataStoreID(poolUUID,2)
+  val ds3 = DataStoreID(poolUUID,3)
+  
   def mkobj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   
   def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate]) = TransactionDescription(
       java.util.UUID.randomUUID(), 100, mkobj, 0, du, ru, Nil)
       
-  def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
+  // All TxPrepare messages are sent to store 0
+  def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,0), DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
   
   val HaveContent = Some(List(ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0))).toArray)
   val LackContent = None
@@ -38,10 +44,10 @@ object TransactionSuite {
     
     def futureMessage = p.future
     
-    override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
+    override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
       val t = p
       p = Promise[(DataStoreID,Message)]()
-      t success (toStore, message)
+      t success (message.to, message)
     }
   }
 }
@@ -64,6 +70,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Left(TxPrepareResponse.Nack(promisedId)), 
@@ -87,6 +94,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -109,9 +117,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
+      override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
-        super.send(toStore, message)
+        super.send(message)
       }
     }
     
@@ -124,6 +132,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -154,6 +163,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -180,6 +190,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -215,6 +226,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -250,6 +262,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -285,6 +298,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -320,6 +334,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -355,6 +370,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -394,6 +410,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     tx.receivePrepare(mkprep(1, 2, txd))
     
     val response = TxPrepareResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -413,6 +430,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       tx.receivePrepare(mkprep(2, 2, txd))
       
       val response = TxPrepareResponse(
+              ds2,
               store.storeId, 
               txd.transactionUUID, 
               Right(TxPrepareResponse.Promise(None)), 
@@ -442,9 +460,10 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val pid = ProposalID(1,0)
     
-    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
+    tx.receiveAccept(TxAccept(ds0, DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
     
     val response = TxAcceptResponse(
+            ds0,
             store.storeId, 
             txd.transactionUUID,
             pid,
@@ -467,9 +486,10 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val pid = ProposalID(6,0)
     
-    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
+    tx.receiveAccept(TxAccept(ds0, DataStoreID(poolUUID,0), txd.transactionUUID, pid, false))
     
     val response = TxAcceptResponse(
+            ds0,
             store.storeId, 
             txd.transactionUUID,
             pid,
@@ -490,9 +510,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
+      override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
-        super.send(toStore, message)
+        super.send(message)
       }
     }
     
@@ -504,9 +524,10 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val pid = ProposalID(6,2)
     
-    tx.receiveAccept(TxAccept(DataStoreID(poolUUID,2), txd.transactionUUID, pid, false))
+    tx.receiveAccept(TxAccept(ds0, DataStoreID(poolUUID,2), txd.transactionUUID, pid, false))
     
     val response = TxAcceptResponse(
+            ds2,
             store.storeId, 
             txd.transactionUUID,
             pid,
@@ -535,30 +556,35 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,0), 
             txd.transactionUUID,
             ProposalID(1,0),
             Right(TxAcceptResponse.Accepted(false)))) should be (None)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,1), 
             txd.transactionUUID,
             ProposalID(6,0),
             Left(TxAcceptResponse.Nack(ProposalID(2,2))))) should be (None)    
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,0), 
             txd.transactionUUID,
             ProposalID(3,0),
             Right(TxAcceptResponse.Accepted(false)))) should be (None)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,0), 
             txd.transactionUUID,
             ProposalID(3,0),
             Right(TxAcceptResponse.Accepted(false)))) should be (None)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,1), 
             txd.transactionUUID,
             ProposalID(3,0),
@@ -584,12 +610,14 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,0), 
             txd.transactionUUID,
             ProposalID(3,0),
             Right(TxAcceptResponse.Accepted(true)))) should be (None)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,1), 
             txd.transactionUUID,
             ProposalID(3,0),
@@ -615,12 +643,14 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,0), 
             txd.transactionUUID,
             ProposalID(3,0),
             Right(TxAcceptResponse.Accepted(true)))) should be (None)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,1), 
             txd.transactionUUID,
             ProposalID(3,0),
@@ -629,6 +659,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     calls should be (1)
     
     tx.receiveAcceptResponse(TxAcceptResponse(
+            ds0,
             DataStoreID(poolUUID,2), 
             txd.transactionUUID,
             ProposalID(3,0),
@@ -654,6 +685,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         store.storeId, txd, HaveContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(None, None)))
     
     tx.receiveFinalized(TxFinalized(
+            ds0,
             DataStoreID(poolUUID,1), 
             txd.transactionUUID,
             true)) 

@@ -14,6 +14,8 @@ abstract class TransactionDriver(
     private val finalizerFactory: TransactionFinalizer.Factory,
     private val onComplete: (UUID) => Unit) {
   
+  import TransactionDriver._
+  
   val ida = initialPrepare.txd.primaryObject.ida
   
   protected val proposer = new Proposer(storeId.poolIndex, ida.width, ida.writeThreshold)
@@ -140,7 +142,7 @@ abstract class TransactionDriver(
     onComplete(initialPrepare.txd.transactionUUID)
     
     initialPrepare.txd.originatingClient.foreach(client => {
-      messenger.send(client, TxFinalized(storeId, initialPrepare.txd.transactionUUID, committed))
+      messenger.send(client, TxFinalized(NullDataStoreId, storeId, initialPrepare.txd.transactionUUID, committed))
     })
   }
   
@@ -154,16 +156,16 @@ abstract class TransactionDriver(
     val poolUUID = initialPrepare.txd.primaryObject.poolUUID
     
     val accept = synchronized {
-      proposer.currentAcceptMessage().map(paxAccept => 
-        (TxAccept(storeId, initialPrepare.txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue), acceptedPeers)
-      )
+      proposer.currentAcceptMessage().map(paxAccept => (paxAccept, acceptedPeers))
     }
     
     accept.foreach(t => {
+      val (paxAccept, acceptedPeers) = t
       initialPrepare.txd.primaryObject.storePointers.foreach(sp => {
-        val dest = DataStoreID(poolUUID, sp.poolIndex)
-        if (!t._2.contains(dest))
-          messenger.send(dest, t._1)
+        val to = DataStoreID(poolUUID, sp.poolIndex)
+        val txAccept = TxAccept(to, storeId, initialPrepare.txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
+        if (!t._2.contains(to))
+          messenger.send(txAccept)
       })
     })
   }
@@ -177,6 +179,9 @@ abstract class TransactionDriver(
 }
 
 object TransactionDriver {
+  /** Used when sending Transaction Messages to Clients instead of data stores */
+  val NullDataStoreId = DataStoreID(new UUID(0,0), 0)
+  
   trait Factory {
     def create(
         storeId: DataStoreID,

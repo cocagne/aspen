@@ -137,12 +137,14 @@ table UpdateErrorResponse {
 }
 
 table TxPrepare {
+  to: DataStoreID;
   from: DataStoreID;
   txd: TransactionDescription;
   proposal_id: ProposalID;
 }
 
 table TxPrepareResponse {
+  to: DataStoreID;
   from: DataStoreID;
   transaction_uuid: UUID;
   response_type: TxPrepareResponseType;
@@ -155,6 +157,7 @@ table TxPrepareResponse {
 }
 
 table TxAccept {
+  to: DataStoreID;
   from: DataStoreID;
   transaction_uuid: UUID;
   proposal_id: ProposalID;
@@ -162,6 +165,7 @@ table TxAccept {
 }
 
 table TxAcceptResponse {
+  to: DataStoreID;
   from: DataStoreID;
   transaction_uuid: UUID;
   proposal_id: ProposalID;
@@ -171,6 +175,7 @@ table TxAcceptResponse {
 }
 
 table TxFinalized {
+  to: DataStoreID;
   from: DataStoreID;
   transaction_uuid: UUID;
   committed: bool;

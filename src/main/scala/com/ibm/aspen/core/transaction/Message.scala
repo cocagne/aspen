@@ -4,14 +4,19 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import java.util.UUID
 
-sealed abstract class Message
+sealed abstract class Message {
+  val to: DataStoreID
+  val from: DataStoreID
+}
 
 final case class TxPrepare(
+    to: DataStoreID,
     from: DataStoreID,
     txd: TransactionDescription,
     proposalId: ProposalID) extends Message
     
 final case class TxPrepareResponse(
+    to: DataStoreID,
     from: DataStoreID,
     transactionUUID: UUID,
     response: Either[TxPrepareResponse.Nack, TxPrepareResponse.Promise],
@@ -25,12 +30,14 @@ object TxPrepareResponse {
 }
 
 final case class TxAccept(
+    to: DataStoreID,
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
     value: Boolean) extends Message
   
 final case class TxAcceptResponse(
+    to: DataStoreID,
     from: DataStoreID,
     transactionUUID: UUID,
     proposalId: ProposalID,
@@ -42,6 +49,7 @@ object TxAcceptResponse {
 }
     
 final case class TxFinalized(
+    to: DataStoreID,
     from: DataStoreID,
     transactionUUID: UUID,
     committed: Boolean) extends Message

@@ -29,12 +29,12 @@ object TransactionDriverSuite {
   def mktxd(optr: ObjectPointer, du: List[DataUpdate] = Nil, ru: List[RefcountUpdate] = Nil) = TransactionDescription(
       java.util.UUID.randomUUID(), 100, optr, 0, du, ru, Nil)
       
-  def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
+  def mkprep(paxosRound: Int, toPeer: Byte, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,toPeer), DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
   
   class TMessenger extends NullMessenger {
-    var messages = List[(DataStoreID,Message)]()
+    var messages = List[Message]()
     
-    override def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = messages = (toStore,message) :: messages
+    override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = messages = message :: messages
     
     def clear(): Unit = messages = List()
   }
@@ -66,7 +66,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   
   test("Simple PrepareResponse Handling") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -74,6 +74,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -84,21 +85,23 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
             Nil))
-            
-    val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),true)
     
-    messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true), 
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true), 
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))     
   }
   
   test("Ignore invalid acceptors") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -106,6 +109,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -116,6 +120,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds3, // invalid, poolIndex doesn't host a slice
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -126,6 +131,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             DataStoreID(java.util.UUID.randomUUID(), 1), // invalid, poolUUID doesn't match
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -136,16 +142,18 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
             Nil))
-            
-    val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),true)
     
-    messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))
   }
   
   test("Multi-object PrepareResponse Handling") {
@@ -157,7 +165,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val ods1 = DataStoreID(otherPool, 1)
     
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -165,6 +173,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -175,6 +184,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -185,6 +195,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ods0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -195,16 +206,18 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ods1, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
             Nil))
-            
-    val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),true)
     
-    messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))   
   }
   
   test("Multi-object PrepareResponse Handling - Abort") {
@@ -216,7 +229,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val ods1 = DataStoreID(otherPool, 1)
     
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -224,7 +237,8 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0, 
+            ds0,
+            ds0,
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
@@ -234,7 +248,8 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds1, 
+            ds0,
+            ds1,
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
@@ -244,6 +259,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ods0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -254,21 +270,23 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     messenger.messages should be (Nil)
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ods1, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteAbort,
             Nil))
-            
-    val acc = TxAccept(ds0,txd.transactionUUID,ProposalID(1,0),false)
     
-    messenger.messages.toSet should be (Set((ds0,acc), (ds1,acc), (ds2,acc)))     
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),false),
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),false),
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),false)))     
   }
   
   test("Simple AcceptResponse Handling - Abort") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -276,6 +294,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -285,6 +304,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     completed should be (false)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -296,7 +316,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   
   test("Simple AcceptResponse Handling - Commit") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -304,6 +324,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -314,6 +335,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     finalizer.created should be (false)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -324,7 +346,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     finalizer.created should be (true)
     finalizer.cancelled should be (false)
     
-    driver.receiveTxFinalized(TxFinalized(ds0, txd.transactionUUID, true))
+    driver.receiveTxFinalized(TxFinalized(ds0, ds0, txd.transactionUUID, true))
     
     driver.mayBeDiscarded should be (true)
     completed should be (true)
@@ -334,7 +356,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   
   test("Simple AcceptResponse Handling - Ignore invalid acceptor") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, txd)
+    val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
@@ -342,6 +364,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds0, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -351,6 +374,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     completed should be (false)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds3, 
             txd.transactionUUID, 
             ProposalID(1,0),
@@ -360,6 +384,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     completed should be (false)
     
     driver.receiveTxAcceptResponse(TxAcceptResponse(
+            ds0,
             ds1, 
             txd.transactionUUID, 
             ProposalID(1,0),

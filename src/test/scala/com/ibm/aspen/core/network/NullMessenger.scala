@@ -7,7 +7,7 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import java.nio.ByteBuffer
 
 class NullMessenger extends StoreSideTransactionMessenger {
-  def send(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = ()
-  def send(client: Client, acceptResponse: TxAcceptResponse): Unit = ()
-  def send(client: Client, finalized: TxFinalized): Unit = ()
+  override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = ()
+  override def send(client: Client, acceptResponse: TxAcceptResponse): Unit = ()
+  override def send(client: Client, finalized: TxFinalized): Unit = ()
 }

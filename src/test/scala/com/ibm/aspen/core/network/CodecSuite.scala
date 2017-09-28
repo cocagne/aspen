@@ -295,10 +295,11 @@ object ReadResponse {
   
   test("TxPrepare Encoding") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
-    val prep = TxPrepare(ds, txd, pid)
+    val prep = TxPrepare(to, ds, txd, pid)
     
 	  val builder = new FlatBufferBuilder(1024)
     
@@ -320,6 +321,7 @@ object ReadResponse {
   
   test("TxPrepareResponse Encoding") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     val pid2 = ProposalID(1, 0)
@@ -328,6 +330,7 @@ object ReadResponse {
     val e2 = UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, None, None, None)
     
     val prep = TxPrepareResponse(
+        to,
         ds, 
         txd.transactionUUID, 
         Right(TxPrepareResponse.Promise(Some((pid2, false)))),
@@ -355,11 +358,13 @@ object ReadResponse {
   
   test("TxPrepareResponse Encoding2") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     val pid2 = ProposalID(1, 0)
     
     val prep = TxPrepareResponse(
+        to,
         ds, 
         txd.transactionUUID, 
         Left(TxPrepareResponse.Nack(pid2)),
@@ -387,10 +392,11 @@ object ReadResponse {
 
   test("TxAccept Encoding") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
-    val a = TxAccept(ds, txd.transactionUUID, pid, true)
+    val a = TxAccept(to, ds, txd.transactionUUID, pid, true)
     
 	  val builder = new FlatBufferBuilder(1024)
     
@@ -412,10 +418,11 @@ object ReadResponse {
   
   test("TxAccepted Encoding") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
-    val a = TxAcceptResponse(ds, txd.transactionUUID, pid, Left(TxAcceptResponse.Nack(pid)))
+    val a = TxAcceptResponse(to, ds, txd.transactionUUID, pid, Left(TxAcceptResponse.Nack(pid)))
     
 	  val builder = new FlatBufferBuilder(1024)
     
@@ -437,10 +444,11 @@ object ReadResponse {
   
   test("TxFinalized Encoding") {
     
+    val to = DataStoreID(txd.primaryObject.poolUUID, 2)
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     
-    val a = TxFinalized(ds, txd.transactionUUID, true)
+    val a = TxFinalized(to, ds, txd.transactionUUID, true)
     
 	  val builder = new FlatBufferBuilder(1024)
     
