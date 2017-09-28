@@ -1,4 +1,4 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.impl
 
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
