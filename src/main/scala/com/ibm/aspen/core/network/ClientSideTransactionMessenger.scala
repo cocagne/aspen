@@ -10,5 +10,5 @@ trait ClientSideTransactionMessenger {
   def send(message: TxPrepare, updateContent: List[ByteBuffer]): Unit
   
   /** Identifies the local Client associated with this instance */
-  def client: Client
+  val client: Client
 }
