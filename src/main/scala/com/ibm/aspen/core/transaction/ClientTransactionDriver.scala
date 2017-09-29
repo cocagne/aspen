@@ -7,6 +7,15 @@ import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.data_store.DataStoreID
 import scala.concurrent.Promise
 
+object ClientTransactionDriver {
+  type Factory = (ClientSideTransactionMessenger, TransactionDescription, List[Map[Byte,ByteBuffer]]) => ClientTransactionDriver
+ 
+  def noErrorRecoveryFactory(
+    messenger: ClientSideTransactionMessenger,
+    txd: TransactionDescription, 
+    updateData: List[Map[Byte,ByteBuffer]]): ClientTransactionDriver = new ClientTransactionDriver(messenger, txd, updateData)
+}
+
 class ClientTransactionDriver(
     val messenger: ClientSideTransactionMessenger,
     val txd: TransactionDescription, 

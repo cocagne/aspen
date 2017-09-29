@@ -34,7 +34,7 @@ class StorageNode(
 )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val txManager = new StoreTransactionManager(crl, messenger, driverFactory, finalizerFactory, getStore)
+  private[this] val txManager = new StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory, getStore)
   
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   

@@ -22,7 +22,7 @@ import com.ibm.aspen.core.transaction.TxPrepareResponse
 import scala.annotation.implicitNotFound
 
 
-class StoreTransactionManager(
+class StorageNodeTransactionManager(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,

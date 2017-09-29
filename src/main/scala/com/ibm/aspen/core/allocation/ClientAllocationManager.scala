@@ -9,14 +9,15 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import scala.concurrent.Future
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
-    val driverFactory: AllocationDriver.Factory)(implicit ec: ExecutionContext) {
+    val driverFactory: AllocationDriver.Factory)(implicit ec: ExecutionContext) extends ClientSideAllocationMessageReceiver {
   
   private[this] var outstandingAllocations = Map[UUID, AllocationDriver]()
   
-  def receiveAllocateResponseMessage(m: AllocateResponse): Unit = { 
+  def receive(m: AllocateResponse): Unit = { 
     synchronized { outstandingAllocations.get(m.allocationTransactionUUID) } foreach {
       driver => driver.receiveAllocationResult(m.fromStoreId, m.allocationTransactionUUID, m.result)
     }  

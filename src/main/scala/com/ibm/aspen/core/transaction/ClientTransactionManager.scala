@@ -11,7 +11,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 class ClientTransactionManager(
     messenger: ClientSideTransactionMessenger,
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
-    val defaultDriverFactory: (ClientSideTransactionMessenger, TransactionDescription, List[Map[Byte,ByteBuffer]]) => ClientTransactionDriver
+    val defaultDriverFactory: ClientTransactionDriver.Factory
     ) extends ClientSideTransactionMessageReceiver {
   import ClientTransactionManager._
   

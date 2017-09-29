@@ -7,12 +7,13 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.CurrentObjectState
 import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 
-class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) {
+class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
   
-  def receiveReadResponseMessage(m: ReadResponse): Unit = { 
+  def receive(m: ReadResponse): Unit = { 
     synchronized { outstandingReads.get(m.readUUID) } foreach {
       driver => driver.receiveReadResponse(m)
     }  

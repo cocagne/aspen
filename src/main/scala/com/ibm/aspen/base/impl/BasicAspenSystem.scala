@@ -15,16 +15,28 @@ import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.transaction.ClientTransactionDriver
+import com.ibm.aspen.core.transaction.ClientTransactionManager
+import com.ibm.aspen.core.allocation.ClientAllocationManager
+import com.ibm.aspen.core.allocation.AllocationDriver
 
-class AspenSystemImpl(
-    val clientMessenger: ClientSideReadMessenger,
-    val defaultReadDriverFactory: ReadDriver.Factory)(implicit ec: ExecutionContext) extends AspenSystem {
+class BasicAspenSystem(
+    chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
+    val messenger: ClientMessenger,
+    val defaultReadDriverFactory: ReadDriver.Factory,
+    val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
+    val defaultAllocationDriverFactory: AllocationDriver.Factory
+    )(implicit ec: ExecutionContext) extends AspenSystem {
   
-  import AspenSystemImpl._
+  import BasicAspenSystem._
   
-  val readManager = new ClientReadManager(clientMessenger)
+  val readManager = new ClientReadManager(messenger)
+  val txManager = new ClientTransactionManager(messenger, chooseDesignatedLeader, defaultTransactionDriverFactory)
+  val allocManager = new ClientAllocationManager(messenger, defaultAllocationDriverFactory)
   
-  def client = clientMessenger.client
+  messenger.setMessageReceivers(txManager, readManager, allocManager)
+  
+  def client = messenger.client
   
   def readObject(
       objectPointer:ObjectPointer, 
@@ -49,6 +61,6 @@ class AspenSystemImpl(
   //def getStoragePool(poolUUID: UUID): Future[StoragePool]
 }
 
-object AspenSystemImpl {
+object BasicAspenSystem {
   
 }
