@@ -6,13 +6,14 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.Proposer
 import com.ibm.aspen.core.transaction.paxos.Learner
 import com.ibm.aspen.core.objects.ObjectPointer
+import scala.concurrent.ExecutionContext
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
     val messenger: StoreSideTransactionMessenger, 
     initialPrepare: TxPrepare, 
     private val finalizerFactory: TransactionFinalizer.Factory,
-    private val onComplete: (UUID) => Unit) {
+    private val onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) {
   
   import TransactionDriver._
   
@@ -117,11 +118,14 @@ abstract class TransactionDriver(
           case Some(committed) => if (!alreadyResolved) {
             // TODO: Wait a bit for additional responses before finalizing. This approach always shows only write-threshold
             //       peers successfully processed the transaction
-            if (committed)  
-              finalizer = Some(finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger))
-            else 
+            if (committed) {
+              val f = finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger)
+              f.complete onSuccess {
+                case _ => complete(committed) 
+              }
+              finalizer = Some(f)
+            } else 
               complete(false)
-            
             
             onResolution(committed)
           }
@@ -130,20 +134,21 @@ abstract class TransactionDriver(
   }
   
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
-    finalized = true
     finalizer.foreach( _.cancel() )
     complete(msg.committed)
   }
   
   def mayBeDiscarded: Boolean = synchronized { finalized }
   
-  protected def complete(committed: Boolean) = {
-    finalized = true
-    onComplete(initialPrepare.txd.transactionUUID)
-    
-    initialPrepare.txd.originatingClient.foreach(client => {
-      messenger.send(client, TxFinalized(NullDataStoreId, storeId, initialPrepare.txd.transactionUUID, committed))
-    })
+  protected def complete(committed: Boolean) = synchronized {
+    if (!finalized) {
+      finalized = true
+      onComplete(initialPrepare.txd.transactionUUID)
+      
+      initialPrepare.txd.originatingClient.foreach(client => {
+        messenger.send(client, TxFinalized(NullDataStoreId, storeId, initialPrepare.txd.transactionUUID, committed))
+      })
+    }
   }
   
   protected def nextRound(): Unit = {

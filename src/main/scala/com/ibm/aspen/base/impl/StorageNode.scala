@@ -10,7 +10,6 @@ import com.ibm.aspen.core.network.StoreSideReadMessenger
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.StoreTransactionManager
 import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
 import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 import com.ibm.aspen.core.data_store.DataStore
@@ -23,41 +22,43 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.allocation.Allocate
 import scala.util.Success
+import scala.util.Failure
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
   val messenger: StorageNodeMessenger,
   val driverFactory: TransactionDriver.Factory,
   val finalizerFactory: TransactionFinalizer.Factory,
-  val initialStores: List[DataStore]
+  val initialStores: List[DataStore],
+  val onStoreInitializationFailure: (DataStore, Throwable) => Unit
 )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val txManager = new StoreTransactionManager(crl, messenger, driverFactory, finalizerFactory)
+  private[this] val txManager = new StoreTransactionManager(crl, messenger, driverFactory, finalizerFactory, getStore)
   
-  private[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
+  private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
   /** Waits for the store to complete its internal initialization then adds it to the map of active stores */
   def addStore(store: DataStore): Future[Unit] = store.initialized andThen {
-    case _ => synchronized { stores += (store.storeId -> store) }
+    case Success(_) => synchronized { stores += (store.storeId -> store) }
+    case Failure(cause) => onStoreInitializationFailure(store, cause)
   }
   
   /** Completes when all initialStores are fully initialized */
-  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>()) andThen { case Success(_) => messenger.initialize(this) }
-  
-  def receive(message: Allocate): Unit = message match {
-    case m: allocation.Allocate => getStore(m.toStore).foreach(store => {
-      val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
-                                      m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
-      f onSuccess {  case result => 
-        messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
-      }
-    })
-    case _ => // Ignore other allocation messages
+  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>()) andThen { 
+    case Success(_) => messenger.initialize(this) 
   }
   
-  def receive(fromStore: DataStoreID, message: transaction.Message, updateContent: Option[Array[ByteBuffer]]): Unit  = {
-    txManager.receive(fromStore, message, updateContent)
+  def receive(m: Allocate): Unit = getStore(m.toStore).foreach(store => {
+    val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
+                                    m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
+    f onSuccess {  case result => 
+      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
+    }
+  })
+  
+  def receive(message: transaction.Message, updateContent: Option[Array[ByteBuffer]]): Unit  = {
+    txManager.receive(message, updateContent)
   }
   
   def receive(message: Read): Unit = getStore(message.toStore).foreach(store => {
@@ -79,7 +80,7 @@ class StorageNode(
           }
           
           case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, if (message.returnObjectData) Some(data) else None,
-                                                                    if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
+                                                                     if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
         }
         
         response match {

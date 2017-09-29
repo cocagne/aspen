@@ -7,6 +7,8 @@ import scala.concurrent.Future
 
 trait TransactionFinalizer {
   
+  def complete: Future[Unit]
+  
   /** Called when a TxFinalized message is received. */ 
   def cancel(): Unit
   

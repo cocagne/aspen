@@ -1,4 +1,4 @@
-package com.ibm.aspen.core.transaction
+package com.ibm.aspen.base.impl
 
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
@@ -10,24 +10,31 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.github.blemale.scaffeine.Scaffeine
 import scala.concurrent.duration._
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.Message
+import com.ibm.aspen.core.transaction.Transaction
+import com.ibm.aspen.core.transaction.TransactionDriver
+import com.ibm.aspen.core.transaction.TransactionFinalizer
+import com.ibm.aspen.core.transaction.TxAccept
+import com.ibm.aspen.core.transaction.TxAcceptResponse
+import com.ibm.aspen.core.transaction.TxFinalized
+import com.ibm.aspen.core.transaction.TxPrepare
+import com.ibm.aspen.core.transaction.TxPrepareResponse
+import scala.annotation.implicitNotFound
 
 
 class StoreTransactionManager(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
-    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
+    val finalizerFactory: TransactionFinalizer.Factory,
+    val getStore: (DataStoreID) => Option[DataStore])(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
  
-  private[this] var stores = Map[DataStoreID, DataStore]()
   private[this] var transactions = Map[UUID, Transaction]()
   private[this] var transactionDrivers = Map[UUID, TransactionDriver]()
   
   private[this] def getTransaction(txuuid: UUID): Option[Transaction] = synchronized { transactions.get(txuuid) }
   
   private[this] def getTransactionDriver(txuuid: UUID): Option[TransactionDriver] = synchronized { transactionDrivers.get(txuuid) }
-  
-  private[this] def getStore(id: DataStoreID): Option[DataStore] = synchronized { stores.get(id) }
-  private[this] def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
   
   private[this] val prepareResponseCache = Scaffeine().recordStats()
                                                       .expireAfterWrite(10.seconds)
@@ -38,17 +45,18 @@ class StoreTransactionManager(
   
   private def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
   
-  def receive(toStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = getStore(toStore) foreach ( 
-    store => {
-      message match {
+  def receive(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = getStore(message.to) foreach ( store => {
+    message match {
       case m: TxPrepare => 
-        val tx = synchronized {
-          transactions.get(m.txd.transactionUUID).getOrElse({
+        val tx = synchronized { 
+          transactions.get(m.txd.transactionUUID).getOrElse {
             val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent)
+            
             transactions += (m.txd.transactionUUID -> t)
             
             if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
-              val driver = driverFactory.create(toStore, messenger, m, finalizerFactory, onTransactionDriverComplete _)
+              val driver = driverFactory.create(message.to, messenger, m, finalizerFactory, onTransactionDriverComplete _)
+              
               transactionDrivers += (m.txd.transactionUUID -> driver)
               
               // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
@@ -60,7 +68,7 @@ class StoreTransactionManager(
             // No need to keep the cached entries around (if any) the driver will receive the messages directly
             prepareResponseCache.invalidate(m.txd.transactionUUID)
             t
-          })
+          }
         }
         tx.receivePrepare(m)
         getTransactionDriver(m.txd.transactionUUID).foreach( td => td.receiveTxPrepare(m) )
@@ -74,11 +82,14 @@ class StoreTransactionManager(
             // the designated leader for the transaction. We'll hold on to these for a while so that if we receive the prepare
             // message, we can immediately process the replies rather than having to rely on the driver to recover the transaction
             // via retransmissions or another Paxos round.
-            val pm = prepareResponseCache.getIfPresent(m.transactionUUID) match {
-              case Some(pmap) => pmap
-              case None => Map[DataStoreID,TxPrepareResponse]()
+            synchronized {
+              // Do this in a synchronized block to serialize updates to the immutable map
+              val pm = prepareResponseCache.getIfPresent(m.transactionUUID) match {
+                case Some(pmap) => pmap
+                case None => Map[DataStoreID,TxPrepareResponse]()
+              }
+              prepareResponseCache.put(m.transactionUUID, pm + (m.from -> m))
             }
-            prepareResponseCache.put(m.transactionUUID, pm + (m.from -> m))
         }
       
       case m: TxAccept => getTransaction(m.transactionUUID).foreach( tx => tx.receiveAccept(m) )

@@ -5,5 +5,5 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import java.nio.ByteBuffer
 
 trait StoreSideTransactionMessageReceiver {
-  def receive(fromStore: DataStoreID, message: Message, updateContent: Option[Array[ByteBuffer]]): Unit  
+  def receive(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit  
 }

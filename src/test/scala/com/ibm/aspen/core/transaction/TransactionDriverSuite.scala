@@ -11,6 +11,10 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.concurrent.Promise
+
 
 object TransactionDriverSuite {
   val poolUUID = java.util.UUID.randomUUID()
@@ -45,12 +49,14 @@ object TransactionDriverSuite {
     finalizerFactory: TransactionFinalizer.Factory,
     onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete)
   
-  class TFinalizer extends TransactionFinalizer with TransactionFinalizer.Factory {
+  class TFinalizer(autoComplete: Boolean = true) extends TransactionFinalizer with TransactionFinalizer.Factory {
     var cancelled = false
     var created = false
     var peers = Set[DataStoreID]()
     
     override def cancel(): Unit = cancelled = true
+    
+    def complete: Future[Unit] = if (autoComplete) Future.successful(()) else Promise[Unit]().future
     
     override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: StoreSideTransactionMessenger): TransactionFinalizer = {
       created = true
@@ -317,7 +323,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   test("Simple AcceptResponse Handling - Commit") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
-    val finalizer = new TFinalizer()
+    val finalizer = new TFinalizer(false)
     val messenger = new TMessenger()
     var completed = false
     
