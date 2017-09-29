@@ -22,19 +22,18 @@ import java.nio.ByteBuffer
 import scala.concurrent.Future
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.allocation.Allocate
+import scala.util.Success
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
-  val transactionMessenger: StoreSideTransactionMessenger,
-  val readMessenger: StoreSideReadMessenger,
-  val allocationMessenger: StoreSideAllocationMessenger,
+  val messenger: StorageNodeMessenger,
   val driverFactory: TransactionDriver.Factory,
   val finalizerFactory: TransactionFinalizer.Factory,
   val initialStores: List[DataStore]
 )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val txManager = new StoreTransactionManager(crl, transactionMessenger, driverFactory, finalizerFactory)
+  private[this] val txManager = new StoreTransactionManager(crl, messenger, driverFactory, finalizerFactory)
   
   private[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
@@ -44,14 +43,14 @@ class StorageNode(
   }
   
   /** Completes when all initialStores are fully initialized */
-  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>())
+  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>()) andThen { case Success(_) => messenger.initialize(this) }
   
   def receive(message: Allocate): Unit = message match {
     case m: allocation.Allocate => getStore(m.toStore).foreach(store => {
       val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
                                       m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
       f onSuccess {  case result => 
-        allocationMessenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
+        messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
       }
     })
     case _ => // Ignore other allocation messages
@@ -84,8 +83,8 @@ class StorageNode(
         }
         
         response match {
-          case Left(err) => readMessenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(err)), None)
-          case Right((state, data)) => readMessenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(state)), Some(data))
+          case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(err)), None)
+          case Right((state, data)) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(state)), Some(data))
         }
     }
   })
