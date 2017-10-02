@@ -19,6 +19,7 @@ import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.allocation.ClientAllocationManager
 import com.ibm.aspen.core.allocation.AllocationDriver
+import com.ibm.aspen.core.ida.IDA
 
 class BasicAspenSystem(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
@@ -51,13 +52,32 @@ class BasicAspenSystem(
           })
           
   def newTransaction(): Transaction = transactionFactory(this)
-  
+  /* def allocate(messenger: ClientSideAllocationMessenger,
+               poolUUID: UUID,
+               newObjectUUID: UUID,
+               objectSize: Option[Int],
+               objectIDA: IDA,
+               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
+               initialRefcount: ObjectRefcount,
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationError.Value], ObjectPointer]]*/
   def allocateObject(
       allocInto: ObjectPointer,
       allocIntoRevision: ObjectRevision,
       poolUUID: UUID, 
-      minimumSize: Int, 
-      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = null
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+    // Create Tx UUID
+    // Use IDA to encode the initial content buffer
+    // Need the Storage Pool record to know num stores
+    // Need a mechanism to select the hosting stores
+    
+    //allocManager.allocate(messenger, poolUUID, objectSize,
+    
+    Future.failed(new Exception("TODO"))
+  }
   
   //def getStoragePool(poolUUID: UUID): Future[StoragePool]
 }

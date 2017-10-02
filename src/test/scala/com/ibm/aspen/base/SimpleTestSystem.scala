@@ -16,6 +16,7 @@ import ExecutionContext.Implicits.global
 import com.ibm.aspen.core.network.Client
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.read.DataRetrievalFailed
+import com.ibm.aspen.core.ida.IDA
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -41,9 +42,11 @@ class SimpleTestSystem extends AspenSystem {
   def allocateObject(
       allocInto: ObjectPointer,
       allocIntoRevision: ObjectRevision,
-      poolUUID: UUID, 
-      minimumSize: Int, 
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+    
     val id = allocCount
     allocCount += 1
     val ptr = mkptr(id)

@@ -8,6 +8,7 @@ import com.ibm.aspen.core.read.ReadDriver
 import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.ida.IDA
 
 trait AspenSystem {
   
@@ -22,8 +23,9 @@ trait AspenSystem {
   def allocateObject(
       allocInto: ObjectPointer,
       allocIntoRevision: ObjectRevision,
-      poolUUID: UUID, 
-      minimumSize: Int, 
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
   
   
