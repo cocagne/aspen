@@ -32,7 +32,7 @@ class ClientAllocationManager(
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationError.Value], ObjectPointer]] = {
+               allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]] = {
     
     val driver = driverFactory.create(clientMessenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, initialRefcount,
                                       allocationTransactionUUID, allocatingObject, allocatingObjectRevision)

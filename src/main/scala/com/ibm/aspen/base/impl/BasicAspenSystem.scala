@@ -25,7 +25,8 @@ class BasicAspenSystem(
     val messenger: ClientMessenger,
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
-    val defaultAllocationDriverFactory: AllocationDriver.Factory
+    val defaultAllocationDriverFactory: AllocationDriver.Factory,
+    val transactionFactory: (BasicAspenSystem) => Transaction
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -49,7 +50,7 @@ class BasicAspenSystem(
             }
           })
           
-  def newTransaction(): Transaction = null
+  def newTransaction(): Transaction = transactionFactory(this)
   
   def allocateObject(
       allocInto: ObjectPointer,

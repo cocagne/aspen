@@ -8,7 +8,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.ObjectError
@@ -99,7 +99,7 @@ class RocksDBDataStore(
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]] = {
+                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
     val f = synchronized {
       val initialRevision = ObjectRevision(0, initialContent.capacity)
       db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, allocationTransactionUUID))

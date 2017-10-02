@@ -9,7 +9,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.allocation.AllocationErrors
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -38,7 +38,7 @@ class MemoryOnlyDataStore(
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationError.Value, StorePointer]] = synchronized {
+                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = synchronized {
     val (objId, lpArray) = nextLocalPointer()
     
     objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.capacity), initialRefcount, initialContent, allocationTransactionUUID, None))

@@ -31,11 +31,11 @@ class AllocationDriver (
     val allocatingObjectRevision: ObjectRevision
     ){
   
-  private[this] val promise = Promise[Either[Map[Byte,AllocationError.Value], ObjectPointer]]
+  private[this] val promise = Promise[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]]
   
   def futureResult = promise.future
   
-  private[this] var responses =  Map[Byte, Either[AllocationError.Value, StorePointer]]()
+  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value, StorePointer]]()
   
   /** Initiates the allocation process */
   def start() = sendAllocationMessages()
@@ -55,7 +55,7 @@ class AllocationDriver (
   
   def receiveAllocationResult(fromStoreId: DataStoreID, 
                               allocationTransactionUUID: UUID, 
-                              result: Either[AllocationError.Value, StorePointer]): Unit = synchronized {
+                              result: Either[AllocationErrors.Value, StorePointer]): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done, nothing left to do
       
@@ -63,7 +63,7 @@ class AllocationDriver (
       responses += (fromStoreId.poolIndex -> result)
       
     if (responses.size == objectData.size) {
-      var errors = Map[Byte,AllocationError.Value]()
+      var errors = Map[Byte,AllocationErrors.Value]()
       var pointers = List[StorePointer]()
       
       responses.foreach(t => t._2 match {

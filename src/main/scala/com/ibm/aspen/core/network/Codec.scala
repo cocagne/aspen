@@ -29,7 +29,7 @@ import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
@@ -600,7 +600,7 @@ object Codec {
     o.result match {
       case Right(sp) => P.AllocateResponse.addResultPointer(builder, resultPointer)
       case Left(err) => P.AllocateResponse.addResultError(builder, err match {
-        case AllocationError.InsufficientSpace => P.AllocationError.InsufficientSpace
+        case AllocationErrors.InsufficientSpace => P.AllocationError.InsufficientSpace
       })
     }
     P.AllocateResponse.endAllocateResponse(builder)
@@ -610,7 +610,7 @@ object Codec {
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val result = if (n.resultPointer() == null) {
       n.resultError() match {
-        case P.AllocationError.InsufficientSpace => Left(AllocationError.InsufficientSpace)
+        case P.AllocationError.InsufficientSpace => Left(AllocationErrors.InsufficientSpace)
       }
     } else {
       Right(decode(n.resultPointer()))

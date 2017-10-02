@@ -11,7 +11,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.allocation.AllocationError
+import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
@@ -186,7 +186,7 @@ object ReadResponse {
     val storeId = DataStoreID(poolUUID, 3)
     val txUUID = new java.util.UUID(3,4)
     
-    val ar = AllocateResponse(storeId, txUUID, Left(AllocationError.InsufficientSpace))
+    val ar = AllocateResponse(storeId, txUUID, Left(AllocationErrors.InsufficientSpace))
     
     val builder = new FlatBufferBuilder(1024)
     
