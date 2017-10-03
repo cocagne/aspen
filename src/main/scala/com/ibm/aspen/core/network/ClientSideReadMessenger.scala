@@ -7,5 +7,5 @@ trait ClientSideReadMessenger {
   def send(toStore: DataStoreID, message: read.Message): Unit
   
   /** Identifies the local Client associated with this instance */
-  val client: Client
+  val client: ClientID
 }

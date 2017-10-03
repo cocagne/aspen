@@ -8,6 +8,6 @@ import java.nio.ByteBuffer
 
 trait StoreSideTransactionMessenger {
   def send(message: Message, updateContent: Option[Array[ByteBuffer]] = None): Unit
-  def send(client: Client, acceptResponse: TxAcceptResponse): Unit
-  def send(client: Client, finalized: TxFinalized): Unit
+  def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit
+  def send(client: ClientID, finalized: TxFinalized): Unit
 }

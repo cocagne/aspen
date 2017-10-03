@@ -2,7 +2,7 @@ package com.ibm.aspen.core.transaction
 
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.network.Client
+import com.ibm.aspen.core.network.ClientID
 
 final case class TransactionDescription(
   
@@ -40,7 +40,7 @@ final case class TransactionDescription(
   refcountUpdates: List[RefcountUpdate],
   finalizationActions: List[SerializedFinalizationAction],
   
-  originatingClient: Option[Client] = None) {
+  originatingClient: Option[ClientID] = None) {
 
   def allReferencedObjectsSet = (dataUpdates.iterator.map(_.objectPointer) ++ refcountUpdates.iterator.map(_.objectPointer)).toSet
   

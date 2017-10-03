@@ -6,16 +6,16 @@ import java.nio.ByteBuffer
 /** Represents a non-store entity that can send and receive messages to and from data stores
  * 
  */
-case class Client(uuid: UUID) extends NetworkID {
+case class ClientID(uuid: UUID) extends NetworkID {
   
   override def equals(other: Any): Boolean = other match {
-    case rhs: Client => uuid == rhs.uuid
+    case rhs: ClientID => uuid == rhs.uuid
     case _ => false
   }
 }
 
-object Client {
+object ClientID {
   
-  def apply(data:Array[Byte]): Client = Client(NetworkID.decodeUUID(data))
+  def apply(data:Array[Byte]): ClientID = ClientID(NetworkID.decodeUUID(data))
   
 }

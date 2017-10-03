@@ -8,6 +8,6 @@ import java.nio.ByteBuffer
 
 class NullMessenger extends StoreSideTransactionMessenger {
   override def send(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = ()
-  override def send(client: Client, acceptResponse: TxAcceptResponse): Unit = ()
-  override def send(client: Client, finalized: TxFinalized): Unit = ()
+  override def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = ()
+  override def send(client: ClientID, finalized: TxFinalized): Unit = ()
 }

@@ -1,6 +1,6 @@
 package com.ibm.aspen.core.allocation
 
-import com.ibm.aspen.core.network.Client
+import com.ibm.aspen.core.network.ClientID
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -13,7 +13,7 @@ sealed abstract class Message
 
 final case class Allocate(
     toStore: DataStoreID,
-    fromClient: Client,
+    fromClient: ClientID,
     newObjectUUID: UUID,
     objectSize: Option[Int],
     objectData: ByteBuffer,

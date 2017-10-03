@@ -13,7 +13,7 @@ import scala.concurrent.Future
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
-import com.ibm.aspen.core.network.Client
+import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.core.ida.IDA
@@ -28,7 +28,7 @@ class SimpleTestSystem extends AspenSystem {
   var content = Map[UUID, Obj]()
   var allocCount = 0
   
-  def client: Client = Client(poolUUID)
+  def client: ClientID = ClientID(poolUUID)
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {

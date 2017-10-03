@@ -38,7 +38,7 @@ object CodecSuite {
     val dataUpdates = DataUpdate(op, ObjectRevision(1,150), DataUpdateOperation.Overwrite) :: Nil
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
-    val client = Client(cliUUID)
+    val client = ClientID(cliUUID)
     
     (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, Nil, finalz),
         TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz, Some(client)))
@@ -154,7 +154,7 @@ object ReadResponse {
   }
   
   test("Read Encoding") {
-    val c = Client(new UUID(1,1))
+    val c = ClientID(new UUID(1,1))
     val readUUID = new java.util.UUID(1,2)
     val poolUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
@@ -234,7 +234,7 @@ object ReadResponse {
   test("Allocate Encoding without Size") {
     val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = None
-    val c1 = Client(new UUID(1,1))
+    val c1 = ClientID(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
     val poolUUID = new java.util.UUID(1,2)
@@ -265,7 +265,7 @@ object ReadResponse {
   test("Allocate Encoding with Size") {
     val d1 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
     val s1:Option[Int] = Some(5)
-    val c1 = Client(new UUID(1,1))
+    val c1 = ClientID(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
     val poolUUID = new java.util.UUID(1,2)

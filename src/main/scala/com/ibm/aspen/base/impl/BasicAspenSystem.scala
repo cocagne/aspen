@@ -2,7 +2,7 @@ package com.ibm.aspen.base.impl
 
 import com.ibm.aspen.base.AspenSystem
 import java.util.UUID
-import com.ibm.aspen.core.network.Client
+import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.read.ClientReadManager
 import scala.concurrent.ExecutionContext

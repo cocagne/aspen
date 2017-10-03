@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.read
 
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.network.Client
+import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
@@ -13,7 +13,7 @@ sealed abstract class Message
 
 final case class Read(
     toStore: DataStoreID,
-    fromClient: Client,
+    fromClient: ClientID,
     readUUID: UUID,
     objectPointer: ObjectPointer,
     returnObjectData: Boolean = true,

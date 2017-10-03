@@ -7,5 +7,5 @@ trait ClientSideAllocationMessenger {
   def send(toStore: DataStoreID, message: allocation.Message): Unit
   
   /** Identifies the local Client associated with this instance */
-  val client: Client
+  val client: ClientID
 }
