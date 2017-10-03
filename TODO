@@ -1,6 +1,18 @@
 
 * Tie base FA registry to transaction
 
+StoragePool
+  * Descriptor Object (like KVTree)
+     * Number of contained stores
+     * List of StorageNode UUIDs hosting them
+     * Pointer to Allocation KVTree Descriptor
+  * API
+     def width: Int
+     def supportsIDA(ida): Boolean
+     def selectStoresForAllocation(ida): Array[Int]
+     def getHostingStorageNodes(): Array[StorageNodeID]
+
+
 * ClientMessenger & StoreMessenger (extend all network messengers for cli/store)
 
 * Implement BasicAspenSystem in terms of a ClientMessenger (this provides identity and networking component)
