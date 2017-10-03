@@ -16,7 +16,7 @@ import com.ibm.aspen.base.kvlist.KVList
 import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.kvlist.KVListNodePointer
-import com.ibm.aspen.core.network.{Codec => NetworkCodec}
+import com.ibm.aspen.core.network.NetworkCodec
 import scala.annotation.tailrec
 
 object KVTree {

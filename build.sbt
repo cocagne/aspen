@@ -60,6 +60,19 @@ sourceGenerators in Compile += Def.task {
     println(s"Result: $stdout")  
   }
   
+  // Storage Pool
+  val pool_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "pool_encoding"
+
+  val pool_schema = file("schema") / "storage_pool.fbs"
+
+  val pool_generate = !pool_out_dir.exists() || pool_out_dir.listFiles().exists( f => pool_schema.lastModified() > f.lastModified() )
+
+  if (pool_generate) {
+    println(s"Generating Storage Pool Serialization Source Files")
+    val stdout = s"flatc --java -o $base schema/storage_pool.fbs".!
+    println(s"Result: $stdout")  
+  }
+  
   // KVTree
   val kvt_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "kvtree" / "encoding"
 
@@ -86,7 +99,9 @@ sourceGenerators in Compile += Def.task {
     println(s"Result: $stdout")  
   }
   
-  net_out_dir.listFiles().toSeq ++ crl_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq
+  
+  
+  net_out_dir.listFiles().toSeq ++ crl_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq ++ pool_out_dir.listFiles().toSeq
 }.taskValue
 
 

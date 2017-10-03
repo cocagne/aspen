@@ -10,7 +10,7 @@ import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 
 object CRLCodec {
-  import com.ibm.aspen.core.network.{Codec => NetCodec}
+  import com.ibm.aspen.core.network.NetworkCodec
   
   case class TransactionData( 
       dataStoreId: DataStoreID,
@@ -70,8 +70,8 @@ object CRLCodec {
   }
   
   def encode(builder:FlatBufferBuilder, o:TransactionData): Int = {
-    val dataStoreId = NetCodec.encode(builder, o.dataStoreId)
-    val txd = NetCodec.encode(builder, o.txd)
+    val dataStoreId = NetworkCodec.encode(builder, o.dataStoreId)
+    val txd = NetworkCodec.encode(builder, o.txd)
     
     val (updateData, updateSizes) = o.dataUpdateContent match {
       case None => (-1, -1)
@@ -96,8 +96,8 @@ object CRLCodec {
     C.CRLTransactionData.endCRLTransactionData(builder)
   }
   def decode(e: C.CRLTransactionData): TransactionData = {
-    val dataStoreId = NetCodec.decode(e.dataStoreId())
-    val txd = NetCodec.decode(e.txd())
+    val dataStoreId = NetworkCodec.decode(e.dataStoreId())
+    val txd = NetworkCodec.decode(e.txd())
     val dataUpdateContent = if (e.updateDataLength() == 0 ) {
       None
     } else {
@@ -126,33 +126,33 @@ object CRLCodec {
   
   
   def encode(builder:FlatBufferBuilder, o:TransactionState): Int = {
-    val disposition = NetCodec.encodeTransactionDisposition(o.disposition)
-    val status = NetCodec.encodeTransactionStatus(o.status)
+    val disposition = NetworkCodec.encodeTransactionDisposition(o.disposition)
+    val status = NetworkCodec.encodeTransactionStatus(o.status)
     
     C.CRLTransactionState.startCRLTransactionState(builder)
     C.CRLTransactionState.addDisposition(builder, disposition)
     C.CRLTransactionState.addStatus(builder, status)
-    o.lastPromisedId.foreach( pid => C.CRLTransactionState.addLastPromisedId(builder, NetCodec.encode(builder, pid)) )
+    o.lastPromisedId.foreach( pid => C.CRLTransactionState.addLastPromisedId(builder, NetworkCodec.encode(builder, pid)) )
     o.lastAccepted.foreach(t => { 
-      C.CRLTransactionState.addLastAcceptedId(builder, NetCodec.encode(builder, t._1))
+      C.CRLTransactionState.addLastAcceptedId(builder, NetworkCodec.encode(builder, t._1))
       C.CRLTransactionState.addLastAcceptedValue(builder, t._2)
     })
     
     C.CRLTransactionState.endCRLTransactionState(builder)
   }
   def decode(e: C.CRLTransactionState): TransactionState = {
-    val disposition = NetCodec.decodeTransactionDispositione(e.disposition())
-    val status = NetCodec.decodeTransactionStatus(e.status())
+    val disposition = NetworkCodec.decodeTransactionDispositione(e.disposition())
+    val status = NetworkCodec.decodeTransactionStatus(e.status())
     
     val lastPromisedId = if (e.lastPromisedId() == null)
       None
     else
-      Some(NetCodec.decode(e.lastPromisedId()))
+      Some(NetworkCodec.decode(e.lastPromisedId()))
       
     val lastAccepted = if(e.lastAcceptedId() == null)
       None
     else
-      Some((NetCodec.decode(e.lastAcceptedId()), e.lastAcceptedValue()))
+      Some((NetworkCodec.decode(e.lastAcceptedId()), e.lastAcceptedValue()))
     
     TransactionState(disposition, status, lastPromisedId, lastAccepted)
   }

@@ -1,7 +1,7 @@
 package com.ibm.aspen.base.kvlist
 
 import com.ibm.aspen.base.{ kvlist => K }
-import com.ibm.aspen.core.network.{ Codec => NetworkCodec }
+import com.ibm.aspen.core.network.NetworkCodec
 import com.google.flatbuffers.FlatBufferBuilder
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer

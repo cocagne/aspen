@@ -21,7 +21,6 @@ import com.ibm.aspen.base.kvlist.KVList
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.SimpleTestSystem
 import com.ibm.aspen.base.kvlist.KVListNodePointer
-import com.ibm.aspen.core.network.{Codec => NetworkCodec}
 import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.base.kvlist.KVListNode
 import com.ibm.aspen.base.RetryStrategy

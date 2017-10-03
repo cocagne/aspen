@@ -70,7 +70,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, rr)
+    val o = NetworkCodec.encode(builder, rr)
     
     P.Message.startMessage(builder)
     P.Message.addReadResponse(builder, o)
@@ -81,7 +81,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.readResponse())
+    val decoded = NetworkCodec.decode(m2.readResponse())
     
     decoded should be (rr)
   }
@@ -97,7 +97,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, rr)
+    val o = NetworkCodec.encode(builder, rr)
     
     P.Message.startMessage(builder)
     P.Message.addReadResponse(builder, o)
@@ -108,7 +108,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.readResponse())
+    val decoded = NetworkCodec.decode(m2.readResponse())
     
     decoded should be (rr)
   }
@@ -124,7 +124,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, rr)
+    val o = NetworkCodec.encode(builder, rr)
     
     P.Message.startMessage(builder)
     P.Message.addReadResponse(builder, o)
@@ -135,7 +135,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.readResponse())
+    val decoded = NetworkCodec.decode(m2.readResponse())
     
     decoded should be (rr)
   }
@@ -146,11 +146,11 @@ object ReadResponse {
     val objUUID = new java.util.UUID(5,6)
     val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     
-    val bb = Codec.objectPointerToByteBuffer(op)
+    val bb = NetworkCodec.objectPointerToByteBuffer(op)
     
     bb.position(0)
     
-    Codec.byteBufferToObjectPointer(bb) should be (op)
+    NetworkCodec.byteBufferToObjectPointer(bb) should be (op)
   }
   
   test("Read Encoding") {
@@ -165,7 +165,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, r)
+    val o = NetworkCodec.encode(builder, r)
     
     P.Message.startMessage(builder)
     P.Message.addRead(builder, o)
@@ -176,7 +176,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.read())
+    val decoded = NetworkCodec.decode(m2.read())
     
     decoded should be (r)
   }
@@ -190,7 +190,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, ar)
+    val o = NetworkCodec.encode(builder, ar)
     
     P.Message.startMessage(builder)
     P.Message.addAllocateResponse(builder, o)
@@ -201,7 +201,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.allocateResponse())
+    val decoded = NetworkCodec.decode(m2.allocateResponse())
     
     decoded should be (ar)
   }
@@ -215,7 +215,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, ar)
+    val o = NetworkCodec.encode(builder, ar)
     
     P.Message.startMessage(builder)
     P.Message.addAllocateResponse(builder, o)
@@ -226,7 +226,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.allocateResponse())
+    val decoded = NetworkCodec.decode(m2.allocateResponse())
     
     decoded should be (ar)
   }
@@ -246,7 +246,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, a1)
+    val o = NetworkCodec.encode(builder, a1)
     
     P.Message.startMessage(builder)
     P.Message.addAllocate(builder, o)
@@ -257,7 +257,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.allocate())
+    val decoded = NetworkCodec.decode(m2.allocate())
     
     decoded should be (a1)
   }
@@ -277,7 +277,7 @@ object ReadResponse {
     
     val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, a1)
+    val o = NetworkCodec.encode(builder, a1)
     
     P.Message.startMessage(builder)
     P.Message.addAllocate(builder, o)
@@ -288,7 +288,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = Codec.decode(m2.allocate())
+    val decoded = NetworkCodec.decode(m2.allocate())
     
     decoded should be (a1)
   }
@@ -303,7 +303,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, prep)
+    val o = NetworkCodec.encode(builder, prep)
     
     P.Message.startMessage(builder)
     P.Message.addPrepare(builder, o)
@@ -314,7 +314,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val prep2 = Codec.decode(m2.prepare())
+    val prep2 = NetworkCodec.decode(m2.prepare())
     
     prep2 should be(prep)
 	}
@@ -340,7 +340,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, prep)
+    val o = NetworkCodec.encode(builder, prep)
     
     P.Message.startMessage(builder)
     P.Message.addPrepareResponse(builder, o)
@@ -351,7 +351,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val prep2 = Codec.decode(m2.prepareResponse())
+    val prep2 = NetworkCodec.decode(m2.prepareResponse())
     
     prep2 should be(prep)
 	}
@@ -374,7 +374,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, prep)
+    val o = NetworkCodec.encode(builder, prep)
     
     P.Message.startMessage(builder)
     P.Message.addPrepareResponse(builder, o)
@@ -385,7 +385,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val prep2 = Codec.decode(m2.prepareResponse())
+    val prep2 = NetworkCodec.decode(m2.prepareResponse())
     
     prep2 should be(prep)
 	}
@@ -400,7 +400,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, a)
+    val o = NetworkCodec.encode(builder, a)
     
     P.Message.startMessage(builder)
     P.Message.addAccept(builder, o)
@@ -411,7 +411,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val a2 = Codec.decode(m2.accept())
+    val a2 = NetworkCodec.decode(m2.accept())
     
     a2 should be(a)
 	}
@@ -426,7 +426,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, a)
+    val o = NetworkCodec.encode(builder, a)
     
     P.Message.startMessage(builder)
     P.Message.addAcceptResponse(builder, o)
@@ -437,7 +437,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val a2 = Codec.decode(m2.acceptResponse())
+    val a2 = NetworkCodec.decode(m2.acceptResponse())
     
     a2 should be(a)
 	}
@@ -452,7 +452,7 @@ object ReadResponse {
     
 	  val builder = new FlatBufferBuilder(1024)
     
-    val o = Codec.encode(builder, a)
+    val o = NetworkCodec.encode(builder, a)
     
     P.Message.startMessage(builder)
     P.Message.addFinalized(builder, o)
@@ -463,7 +463,7 @@ object ReadResponse {
     val buf = builder.dataBuffer()
     
     val m2 = P.Message.getRootAsMessage(buf)
-    val a2 = Codec.decode(m2.finalized())
+    val a2 = NetworkCodec.decode(m2.finalized())
     
     a2 should be(a)
 	}

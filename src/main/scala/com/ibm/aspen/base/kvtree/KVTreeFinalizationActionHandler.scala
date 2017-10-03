@@ -10,7 +10,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.network.{Codec => NetworkCodec}
+import com.ibm.aspen.core.network.NetworkCodec
 
 class KVTreeFinalizationActionHandler(
     val treeFactory: KVTreeFactory,

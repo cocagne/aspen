@@ -1,0 +1,14 @@
+include "network_protocol.fbs";
+
+namespace com.ibm.aspen.base.impl.pool_encoding;
+
+//---------------------------------------------------------------------------
+//- StoragePoolDefinition
+//---------------------------------------------------------------------------
+table StoragePoolDefinition {
+    poolUUID: com.ibm.aspen.core.network.protocol.UUID;
+    storeHosts: [com.ibm.aspen.core.network.protocol.UUID];
+    allocationTreeDefinition: com.ibm.aspen.core.network.protocol.ObjectPointer; 
+}
+
+root_type StoragePoolDefinition;

@@ -37,7 +37,7 @@ import java.nio.ByteBuffer
 
 
 
-object Codec {
+object NetworkCodec {
   
   //-----------------------------------------------------------------------------------------------
   // Objects
@@ -113,14 +113,14 @@ object Codec {
   
   def objectPointerToByteBuffer(o: ObjectPointer): ByteBuffer = ByteBuffer.wrap(objectPointerToByteArray(o))
   def byteBufferToObjectPointer(bb: ByteBuffer): ObjectPointer = {
-    Codec.decode(P.ObjectPointer.getRootAsObjectPointer(bb))
+    NetworkCodec.decode(P.ObjectPointer.getRootAsObjectPointer(bb))
   }
   
   def objectPointerToByteArray(o: ObjectPointer): Array[Byte] = {
     
     val builder = new FlatBufferBuilder(2048)
     
-    val d = Codec.encode(builder, o)
+    val d = NetworkCodec.encode(builder, o)
 
     builder.finish(d)
     
