@@ -21,8 +21,8 @@ trait AspenSystem {
   def newTransaction(): Transaction
   
   def allocateObject(
-      allocInto: ObjectPointer,
-      allocIntoRevision: ObjectRevision,
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,

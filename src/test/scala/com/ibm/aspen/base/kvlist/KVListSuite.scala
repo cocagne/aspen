@@ -38,6 +38,8 @@ object KVListSuite {
   implicit val keyOrdering = new KVListCodec.KeyOrdering(compareKeys)
   
   class Tx extends Transaction {
+    val uuid = new UUID(0,0)
+    
     val p = Promise[Unit]()
     
     val result = p.future

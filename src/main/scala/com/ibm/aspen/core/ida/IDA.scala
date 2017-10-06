@@ -23,13 +23,18 @@ sealed abstract class IDA extends Ordered[IDA] {
   def writeThreshold: Int
   
   /** Restores the data or throws an Exception if the restore operation fails. 
-   *  Accepts a list of (Storage Pool Index, Option[Array[Byte]). All stores hosting segments are represented in the list.
+   *  Accepts a list of (EncodingIndex, Option[Array[Byte]).
+   *  Where the encoding index is the index of this data within the corresponding encode() call 
    */
   def restore(segments: List[(Byte,Option[ByteBuffer])]): ByteBuffer
   
-  /** Encodes the object and returns a mapping of StoragePoolIndex -> ByteBuffer
+  /** Encodes the object into an array of ByteBuffers
+   *  
+   *  Note that the indices of this array are known as the EncodingIndex and are significant to the
+   *  corresponding decode operation. The correct index in this array must be used during the decoding
+   *  process.
    */
-  def encode(poolIndicies: List[Byte], objectContent: ByteBuffer): Map[Byte,ByteBuffer]
+  def encode(objectContent: ByteBuffer): Array[ByteBuffer]
   
   def failureTolerance: Int = width - writeThreshold
   
@@ -50,7 +55,12 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
     case Some(t) => t._2.get
   }
   
-  def encode(poolIndicies: List[Byte], objectContent: ByteBuffer): Map[Byte,ByteBuffer] = poolIndicies.map( i => (i -> objectContent) ).toMap
+  def encode(objectContent: ByteBuffer): Array[ByteBuffer] = {
+    val arr = new Array[ByteBuffer](width)
+    for (i <- 0 until width)
+      arr(i) = objectContent.asReadOnlyBuffer()
+    arr
+  }
 }
 
 case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int) 
@@ -60,5 +70,5 @@ case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int)
   
   def restore(segments: List[(Byte,Option[ByteBuffer])]): ByteBuffer = throw new IDAError("Read Solomon not yet supported")
   
-  def encode(poolIndicies: List[Byte], objectContent: ByteBuffer): Map[Byte,ByteBuffer] = throw new IDAError("Read Solomon not yet supported")
+  def encode(objectContent: ByteBuffer): Array[ByteBuffer] = throw new IDAError("Read Solomon not yet supported")
 }

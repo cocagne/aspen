@@ -20,14 +20,46 @@ import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.allocation.ClientAllocationManager
 import com.ibm.aspen.core.allocation.AllocationDriver
 import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.network.StorageNodeID
+import com.ibm.aspen.base.kvtree.KVTree
+import com.ibm.aspen.base.kvtree.KVTreeNodeCache
+import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
+import com.ibm.aspen.core.network.NetworkCodec
+import com.ibm.aspen.base.UnsupportedIDA
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.base.StoreAllocationError
 
+
+object BasicAspenSystem {
+  val SystemAllocationPolicyUUID = new UUID(0,0)
+  val BootstrapStoragePoolUUID = new UUID(0,0)
+  val SystemTreeNodeSizeLimit = 64 * 1024
+  val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
+  
+  import scala.language.implicitConversions
+  
+  implicit def uuid2byte(uuid: UUID): Array[Byte] = {
+    val bb = ByteBuffer.allocate(16)
+    bb.putLong(0, uuid.getMostSignificantBits)
+    bb.putLong(8, uuid.getLeastSignificantBits)
+    bb.array()
+  }
+}
+
+// StoragePool UUID 0000 is used for bootstrapping pool
 class BasicAspenSystem(
-    chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
+    val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
+    val isStorageNodeOnline: (StorageNodeID) => Boolean,
     val messenger: ClientMessenger,
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
     val defaultAllocationDriverFactory: AllocationDriver.Factory,
-    val transactionFactory: (BasicAspenSystem) => Transaction
+    val transactionFactory: (BasicAspenSystem) => Transaction,
+    val storagePoolFactory: StoragePoolFactory,
+    val storagePoolTreeDefinition: ObjectPointer,
+    val bootstrapPoolIDA: IDA,
+    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache
+    // Probably dont need this. Network should be able to figure it out... val boostrapStorageNodes: Array[StorageNodeID] // Storage nodes ids for each of the stores in the bootstrap pool
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -39,6 +71,13 @@ class BasicAspenSystem(
   messenger.setMessageReceivers(txManager, readManager, allocManager)
   
   def client = messenger.client
+  
+  val systemTreeNodeCache = systemTreeNodeCacheFactory(this)
+  val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
+                                                  SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
+  
+  // TODO: Add a retry strategy to ensure this eventually succeeds
+  val storagePoolTree: Future[KVTree] = systemTreeFactory.createTree(storagePoolTreeDefinition)
   
   def readObject(
       objectPointer:ObjectPointer, 
@@ -52,36 +91,39 @@ class BasicAspenSystem(
           })
           
   def newTransaction(): Transaction = transactionFactory(this)
-  /* def allocate(messenger: ClientSideAllocationMessenger,
-               poolUUID: UUID,
-               newObjectUUID: UUID,
-               objectSize: Option[Int],
-               objectIDA: IDA,
-               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
-               initialRefcount: ObjectRefcount,
-               allocationTransactionUUID: UUID,
-               allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationError.Value], ObjectPointer]]*/
+  
   def allocateObject(
-      allocInto: ObjectPointer,
-      allocIntoRevision: ObjectRevision,
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
       poolUUID: UUID, 
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    // Create Tx UUID
-    // Use IDA to encode the initial content buffer
-    // Need the Storage Pool record to know num stores
-    // Need a mechanism to select the hosting stores
     
-    //allocManager.allocate(messenger, poolUUID, objectSize,
+    val encoded = objectIDA.encode(initialContent)
+    val newObjectUUID = UUID.randomUUID()
     
-    Future.failed(new Exception("TODO"))
+    for {
+      pool <- getStoragePool(poolUUID)
+      hosts = pool.selectStoresForAllocation(objectIDA)
+      objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
+      result <- allocManager.allocate(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
+                                      t.uuid, allocatingObject, allocatingObjectRevision)
+    } yield {
+     result match {
+       case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
+       case Right(newObjPtr) => newObjPtr
+     }
+    }
   }
   
-  //def getStoragePool(poolUUID: UUID): Future[StoragePool]
-}
-
-object BasicAspenSystem {
+  
+  def getStoragePool(poolUUID: UUID): Future[StoragePool] = for {
+    spTree <- storagePoolTree
+    encPtr <- spTree.get(poolUUID)
+    if (encPtr.isDefined)
+    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
+    pool <- storagePoolFactory.createStoragePool(this, poolPtr, isStorageNodeOnline)
+  } yield pool
   
 }

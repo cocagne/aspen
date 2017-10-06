@@ -359,7 +359,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      def createTree(treeDefinitionObject: ObjectPointer): Future[KVTree] = for {
+      def createTree(treeDefinitionObject: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
@@ -417,7 +417,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      def createTree(treeDefinitionObject: ObjectPointer): Future[KVTree] = for {
+      def createTree(treeDefinitionObject: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
@@ -498,7 +498,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      def createTree(treeDefinitionObject: ObjectPointer): Future[KVTree] = for {
+      def createTree(treeDefinitionObject: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)

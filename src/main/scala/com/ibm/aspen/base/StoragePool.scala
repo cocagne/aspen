@@ -14,6 +14,7 @@ trait StoragePool {
   
   def supportsIDA(ida: IDA): Boolean
   
+  /** Throws AllocationError: UnsupportedIDA if the IDA is not supported*/
   def selectStoresForAllocation(ida: IDA): Array[Int]
   
 }

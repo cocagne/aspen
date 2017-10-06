@@ -9,6 +9,8 @@ import java.nio.ByteBuffer
 
 trait Transaction {
   
+  val uuid: UUID
+  
   // All returns are what the new object revision/refcount will be if the transaction completes successfully
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision
