@@ -20,7 +20,7 @@ class BaseStoragePool(
     val poolRefcount: ObjectRefcount,
     val uuid: UUID,
     val hostingStorageNodes: Array[StorageNodeID],
-    val allocationTreeDefinition: ObjectPointer,
+    val allocationTreeDefinitionPointer: ObjectPointer,
     val isStorageNodeOnline: (StorageNodeID) => Boolean) extends StoragePool {
   
   def supportsIDA(ida: IDA): Boolean = ida.width >= numberOfStores

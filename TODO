@@ -206,6 +206,11 @@ Mid-Term Enhancements:
       
       
 BackLog
+
+* Allocation trees use same IDA as their StoragePoolDefinition node and all tree nodes are stored on the pool itself
+   - This will need to be configurable
+   - Will need to update isIDASupported() method to return false when requested IDA is more reliable than the alloc tree
+
 * Refuse to vote on transaction if any FinalizationAction is unknown
 
 * Add store-side failed allocation detection and recovery

@@ -107,12 +107,17 @@ class BasicAspenSystem(
       pool <- getStoragePool(poolUUID)
       hosts = pool.selectStoresForAllocation(objectIDA)
       objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
+
       result <- allocManager.allocate(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
                                       t.uuid, allocatingObject, allocatingObjectRevision)
     } yield {
      result match {
        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
-       case Right(newObjPtr) => newObjPtr
+       case Right(newObjPtr) =>
+         
+         *** TODO: Add Allocation Finalizer to transaction. Pool has pointer to allocation tree
+         
+         newObjPtr
      }
     }
   }

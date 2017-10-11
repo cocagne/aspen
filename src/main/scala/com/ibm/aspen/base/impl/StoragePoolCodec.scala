@@ -13,7 +13,7 @@ object StoragePoolCodec {
  def encode(
      poolUUID: UUID, 
      hostingStorageNodes: Array[StorageNodeID], 
-     allocationTreeDefinition: ObjectPointer): ByteBuffer = {
+     allocationTreeDefinition: Option[ObjectPointer]): ByteBuffer = {
     
     val builder = new FlatBufferBuilder(2048)
     
@@ -24,7 +24,7 @@ object StoragePoolCodec {
     builder.dataBuffer().asReadOnlyBuffer()
   }
  
- def decode(buf: ByteBuffer): (UUID, Array[StorageNodeID], ObjectPointer) = {
+ def decode(buf: ByteBuffer): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
    decode(P.StoragePoolDefinition.getRootAsStoragePoolDefinition(buf.asReadOnlyBuffer()))
  }
  
@@ -32,20 +32,27 @@ object StoragePoolCodec {
      builder: FlatBufferBuilder, 
      poolUUID: UUID, 
      hostingStorageNodes: Array[StorageNodeID], 
-     allocationTreeDefinition: ObjectPointer): Int = {
+     allocationTreeDefinition: Option[ObjectPointer]): Int = {
    
-   val treeDefOffset = NetworkCodec.encode(builder, allocationTreeDefinition)
+   val treeDefOffset = allocationTreeDefinition match {
+     case Some(atd) => NetworkCodec.encode(builder, atd)
+     case None => -1
+   }
    
    P.StoragePoolDefinition.startStoragePoolDefinition(builder)
    P.StoragePoolDefinition.addPoolUUID(builder, NetworkCodec.encode(builder, poolUUID))
-   P.StoragePoolDefinition.addAllocationTreeDefinition(builder, treeDefOffset)
+   if (treeDefOffset >= 0) P.StoragePoolDefinition.addAllocationTreeDefinition(builder, treeDefOffset)
    P.StoragePoolDefinition.startStoreHostsVector(builder, hostingStorageNodes.length)
    hostingStorageNodes.foreach(snid => NetworkCodec.encode(builder, snid.uuid))
    P.StoragePoolDefinition.endStoragePoolDefinition(builder)
  }
- def decode(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], ObjectPointer) = {
+ def decode(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
    val poolUUID = NetworkCodec.decode(n.poolUUID())
-   val treeDefPtr = NetworkCodec.decode(n.allocationTreeDefinition())
+   
+   val atd = n.allocationTreeDefinition()
+ 
+   val treeDefPtr =  if (atd == null) None else Some(NetworkCodec.decode(atd))
+   
    val hostingNodes = new Array[StorageNodeID](n.storeHostsLength())
    for (i <- 0 until n.storeHostsLength()) {
      hostingNodes(i) = new StorageNodeID(NetworkCodec.decode(n.storeHosts(i)))
