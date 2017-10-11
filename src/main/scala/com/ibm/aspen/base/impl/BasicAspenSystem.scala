@@ -115,7 +115,7 @@ class BasicAspenSystem(
        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
        case Right(newObjPtr) =>
          
-         *** TODO: Add Allocation Finalizer to transaction. Pool has pointer to allocation tree
+         //*** TODO: Add Allocation Finalizer to transaction. Pool has pointer to allocation tree
          
          newObjPtr
      }

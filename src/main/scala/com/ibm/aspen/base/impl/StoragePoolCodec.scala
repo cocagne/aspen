@@ -1,6 +1,6 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.base.impl.{pool_encoding => P}
+import com.ibm.aspen.base.impl.{codec => P}
 import com.google.flatbuffers.FlatBufferBuilder
 import java.util.UUID
 import com.ibm.aspen.core.network.StorageNodeID

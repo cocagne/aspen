@@ -1,6 +1,6 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.base.impl.{crl => C}
+import com.ibm.aspen.base.impl.{codec => C}
 import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription

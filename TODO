@@ -1,4 +1,11 @@
 
+* Combine crash_recovery_log.fbs and storage_pool.fbs into aspen_base.fbs
+* Combine Codec impls
+* Add AllocationFinalizer struct/codec
+
+* Finish AllocationTree impl
+   |-> Includes allocating tree definition on first insert attempt (which will be for itself)
+
 * Tie base FA registry to transaction
 
 StoragePool

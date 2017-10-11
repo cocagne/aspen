@@ -20,7 +20,7 @@ class BaseStoragePool(
     val poolRefcount: ObjectRefcount,
     val uuid: UUID,
     val hostingStorageNodes: Array[StorageNodeID],
-    val allocationTreeDefinitionPointer: ObjectPointer,
+    initialAllocationTreeDefinitionPointer: Option[ObjectPointer],
     val isStorageNodeOnline: (StorageNodeID) => Boolean) extends StoragePool {
   
   def supportsIDA(ida: IDA): Boolean = ida.width >= numberOfStores
@@ -36,6 +36,9 @@ class BaseStoragePool(
       throw new InsufficientOnlineNodes(ida.width, arr.length)
     arr
   }
+  
+  
+  def allocationTreeDefinitionPointer()(implicit ec: ExecutionContext): Future[ObjectPointer] = Future.failed(new Exception("TODO"))
   
 }
 

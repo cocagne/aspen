@@ -47,29 +47,16 @@ sourceGenerators in Compile += Def.task {
     println(s"Result: $stdout")  
   }
   
-  // Crash Recovery Log
-  val crl_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "crl"
+  // Aspen Base
+  val abase_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "codec"
 
-  val crl_schema = file("schema") / "crash_recovery_log.fbs"
+  val abase_schema = file("schema") / "aspen_base.fbs"
 
-  val crl_generate = !crl_out_dir.exists() || crl_out_dir.listFiles().exists( f => crl_schema.lastModified() > f.lastModified() )
+  val abase_generate = !abase_out_dir.exists() || abase_out_dir.listFiles().exists( f => abase_schema.lastModified() > f.lastModified() )
 
-  if (crl_generate) {
-    println(s"Generating Crash Recovery Log Serialization Source Files")
-    val stdout = s"flatc --java -o $base schema/crash_recovery_log.fbs".!
-    println(s"Result: $stdout")  
-  }
-  
-  // Storage Pool
-  val pool_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "pool_encoding"
-
-  val pool_schema = file("schema") / "storage_pool.fbs"
-
-  val pool_generate = !pool_out_dir.exists() || pool_out_dir.listFiles().exists( f => pool_schema.lastModified() > f.lastModified() )
-
-  if (pool_generate) {
-    println(s"Generating Storage Pool Serialization Source Files")
-    val stdout = s"flatc --java -o $base schema/storage_pool.fbs".!
+  if (abase_generate) {
+    println(s"Generating Aspen Base Serialization Source Files")
+    val stdout = s"flatc --java -o $base schema/aspen_base.fbs".!
     println(s"Result: $stdout")  
   }
   
@@ -99,9 +86,7 @@ sourceGenerators in Compile += Def.task {
     println(s"Result: $stdout")  
   }
   
-  
-  
-  net_out_dir.listFiles().toSeq ++ crl_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq ++ pool_out_dir.listFiles().toSeq
+  net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq
 }.taskValue
 
 
