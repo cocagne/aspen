@@ -114,21 +114,21 @@ class BasicAspenSystem(
      result match {
        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
        case Right(newObjPtr) =>
-         
-         //*** TODO: Add Allocation Finalizer to transaction. Pool has pointer to allocation tree
-         
+         AllocationFinalizationAction.addToAllocationTree(t, pool.poolDefinitionPointer, newObjPtr)
          newObjPtr
      }
     }
   }
-  
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool] = for {
     spTree <- storagePoolTree
     encPtr <- spTree.get(poolUUID)
     if (encPtr.isDefined)
     poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
-    pool <- storagePoolFactory.createStoragePool(this, poolPtr, isStorageNodeOnline)
+    pool <- getStoragePool(poolPtr)
   } yield pool
   
+  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
+    storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
+  }
 }

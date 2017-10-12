@@ -12,20 +12,23 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.UnsupportedIDA
+import com.ibm.aspen.base.RetryStrategy
+import java.nio.ByteBuffer
+import com.ibm.aspen.base.kvtree.KVTree
 
 class BaseStoragePool(
     val system: AspenSystem,
-    val poolPointer: ObjectPointer,
-    val poolRevision: ObjectRevision,
-    val poolRefcount: ObjectRefcount,
+    val poolDefinitionPointer: ObjectPointer,
+    val poolDefinitionRevision: ObjectRevision,
+    val poolDefinitionRefcount: ObjectRefcount,
     val uuid: UUID,
     val hostingStorageNodes: Array[StorageNodeID],
-    initialAllocationTreeDefinitionPointer: Option[ObjectPointer],
+    val allocationTreeDefinitionPointer: Option[ObjectPointer],
     val isStorageNodeOnline: (StorageNodeID) => Boolean) extends StoragePool {
   
-  def supportsIDA(ida: IDA): Boolean = ida.width >= numberOfStores
+  override def supportsIDA(ida: IDA): Boolean = ida.width >= numberOfStores
   
-  def selectStoresForAllocation(ida: IDA): Array[Int] = {
+  override def selectStoresForAllocation(ida: IDA): Array[Int] = {
     if (!supportsIDA(ida))
       throw new UnsupportedIDA(uuid, ida)
     
@@ -37,10 +40,37 @@ class BaseStoragePool(
     arr
   }
   
+  def refresh()(implicit ec: ExecutionContext): Future[StoragePool] = BaseStoragePool.Factory.createStoragePool(system, poolDefinitionPointer, isStorageNodeOnline)
   
-  def allocationTreeDefinitionPointer()(implicit ec: ExecutionContext): Future[ObjectPointer] = Future.failed(new Exception("TODO"))
+  override def getAllocationTreeDefinitionPointer(
+      retryStrategy: RetryStrategy)
+      (implicit ec: ExecutionContext): Future[ObjectPointer] = {
+    
+    def createTree(currentPool: BaseStoragePool): Future[ObjectPointer] = currentPool.allocationTreeDefinitionPointer match {
+          case Some(allocTreePtr) => Future.successful(allocTreePtr)
+          case None =>
+            implicit val tx = system.newTransaction()
+            
+            val treeDefinitionContent = KVTree.defineNewTree(new UUID(0,0), KVTree.KeyComparison.Raw)
+            
+            for {
+              allocTreePtr <- system.allocateObject(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, uuid, None, poolDefinitionPointer.ida, ByteBuffer.wrap(treeDefinitionContent))
+              newContent = StoragePoolCodec.encode(uuid, hostingStorageNodes, Some(allocTreePtr))
+              _ = tx.overwrite(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, newContent)
+              committed <- tx.commit()
+            } yield allocTreePtr
+    }
+    
+    allocationTreeDefinitionPointer match {
+      case Some(allocTreePtr) => Future.successful(allocTreePtr)
+      case None =>
+        retryStrategy.retryUntilSuccessful {
+          BaseStoragePool.Factory.createStoragePool(system, poolDefinitionPointer, isStorageNodeOnline) flatMap createTree
+        }
+    }
+  }
   
-}
+} // end BaseStoragePool
 
 object BaseStoragePool {
  
@@ -48,7 +78,7 @@ object BaseStoragePool {
     def createStoragePool(
         system: AspenSystem, 
         poolDefinitionPointer: ObjectPointer, 
-        isStorageNodeOnline: (StorageNodeID) => Boolean)(implicit ec: ExecutionContext): Future[StoragePool] = {
+        isStorageNodeOnline: (StorageNodeID) => Boolean)(implicit ec: ExecutionContext): Future[BaseStoragePool] = {
       system.readObject(poolDefinitionPointer) map { 
         osd => 
           val (poolUUID, hostingStorageNodes, allocationTreeDefinition) = StoragePoolCodec.decode(osd.data)

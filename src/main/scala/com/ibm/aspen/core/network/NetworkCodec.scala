@@ -116,6 +116,13 @@ object NetworkCodec {
     NetworkCodec.decode(P.ObjectPointer.getRootAsObjectPointer(bb))
   }
   
+  def byteBufferToArray(bb: ByteBuffer): Array[Byte] = {
+    val arr = new Array[Byte](bb.limit - bb.position)
+    val ro = bb.asReadOnlyBuffer()
+    ro.get(arr)
+    arr
+  }
+  
   def objectPointerToByteArray(o: ObjectPointer): Array[Byte] = {
     
     val builder = new FlatBufferBuilder(2048)

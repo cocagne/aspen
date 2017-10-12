@@ -10,7 +10,9 @@ import scala.concurrent.ExecutionContext
 trait StoragePool {
   val uuid: UUID
   
-  def allocationTreeDefinitionPointer()(implicit ec: ExecutionContext): Future[ObjectPointer]
+  val poolDefinitionPointer: ObjectPointer
+  
+  def getAllocationTreeDefinitionPointer(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[ObjectPointer]
   
   /** The entries of this array describe which storage node is currently hosting the store with the corresponding index */
   def hostingStorageNodes: Array[StorageNodeID]
@@ -21,5 +23,7 @@ trait StoragePool {
   
   /** Throws AllocationError: UnsupportedIDA if the IDA is not supported*/
   def selectStoresForAllocation(ida: IDA): Array[Int]
+  
+  def refresh()(implicit ec: ExecutionContext): Future[StoragePool]
   
 }

@@ -1,32 +1,17 @@
 
-* Combine crash_recovery_log.fbs and storage_pool.fbs into aspen_base.fbs
-* Combine Codec impls
-* Add AllocationFinalizer struct/codec
+* Test BasicAspenSystem
+  * Create a MockSystem class
+     - has a map of object pointer -> current state w/ synchronized get/put
+     - Impl ReadManager in terms of this map
+     - Impl Transaction in terms of this map
+     - At Tx commit, run all Finalization Actions
+     - System needs to track all FAs so it can know when all are complete
+        - tests will use this to let the system stabilize then analyze
+     - Can then construct the BasicAspenSystem using these data types and verify basic operation
+        - e.g. alloc object results in creation of alloc tree and entries for the new object plus the tree definition root
 
-* Finish AllocationTree impl
-   |-> Includes allocating tree definition on first insert attempt (which will be for itself)
 
 * Tie base FA registry to transaction
-
-StoragePool
-  * Descriptor Object (like KVTree)
-     * Number of contained stores
-     * List of StorageNode UUIDs hosting them
-     * Pointer to Allocation KVTree Descriptor
-  * API
-     def width: Int
-     def supportsIDA(ida): Boolean
-     def selectStoresForAllocation(ida): Array[Int]
-     def getHostingStorageNodes(): Array[StorageNodeID]
-
-
-* ClientMessenger & StoreMessenger (extend all network messengers for cli/store)
-
-* Implement BasicAspenSystem in terms of a ClientMessenger (this provides identity and networking component)
-* Consider implementing StoreMessenger in terms of ClientMessenger (should work)
-* Implement StorageNode in terms of AspenSystem + StoreMessenger (or, even better, ClientMessenger)
-   * For StorageNode, use immutable map of DataStoreID -> DataStore. Synchronize only access to root map pointer,
-     allows us to leverage immutability for access by other threads
 
 ** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason
 
@@ -217,6 +202,7 @@ BackLog
 * Allocation trees use same IDA as their StoragePoolDefinition node and all tree nodes are stored on the pool itself
    - This will need to be configurable
    - Will need to update isIDASupported() method to return false when requested IDA is more reliable than the alloc tree
+   - also missing a way to specify the tree object size
 
 * Refuse to vote on transaction if any FinalizationAction is unknown
 

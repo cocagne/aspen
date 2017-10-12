@@ -14,8 +14,10 @@ trait AspenSystem {
   
   def client: ClientID
   
+  /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData]
   
+  /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:ObjectPointer): Future[ObjectStateAndData] = readObject(pointer, None)
   
   def newTransaction(): Transaction
@@ -29,6 +31,7 @@ trait AspenSystem {
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
   
   
-  //def getStoragePool(poolUUID: UUID): Future[StoragePool]
+  def getStoragePool(poolUUID: UUID): Future[StoragePool]
+  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] 
   
 }

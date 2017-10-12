@@ -5,5 +5,5 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 
 trait KVTreeFactory {
-    def createTree(treeDefinitionObject: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree]
+    def createTree(treeDefinitionObjectPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree]
 }

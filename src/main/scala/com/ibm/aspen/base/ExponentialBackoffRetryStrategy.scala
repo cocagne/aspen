@@ -29,13 +29,13 @@ object ExponentialBackoffRetryStrategy {
 class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetryDelay: Int = 15) extends RetryStrategy {
   import ExponentialBackoffRetryStrategy._
   
-  def retryUntilSuccessful(attempt: => Future[Unit]): Future[Unit] = {
-    val p = Promise[Unit]()
+  def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
+    val p = Promise[T]()
     
     implicit val ec = getExecutionContext()
     
     def retry(limit: Int): Unit = attempt onComplete {
-      case Success(_) => p.success(())
+      case Success(result) => p.success(result)
       
       case Failure(cause) =>
         val delay = rand.nextInt(limit)

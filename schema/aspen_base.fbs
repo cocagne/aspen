@@ -33,3 +33,11 @@ table StoragePoolDefinition {
     storeHosts: [com.ibm.aspen.core.network.protocol.UUID];
     allocationTreeDefinition: com.ibm.aspen.core.network.protocol.ObjectPointer; 
 }
+
+//---------------------------------------------------------------------------
+//- AllocationFinalizationActionContent
+//---------------------------------------------------------------------------
+table AllocationFinalizationActionContent {
+    storagePoolDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+    newObjectPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+}

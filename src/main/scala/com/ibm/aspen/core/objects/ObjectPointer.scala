@@ -17,4 +17,6 @@ final case class ObjectPointer(
   }
   
   override def hashCode: Int = uuid.hashCode()
+  
+  def uuidAsByteArray: Array[Byte] = com.ibm.aspen.core.Util.uuid2byte(uuid)
 }

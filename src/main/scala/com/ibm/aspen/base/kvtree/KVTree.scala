@@ -62,6 +62,12 @@ object KVTree {
     case KeyComparison.BigInt => bigIntCompare
     case KeyComparison.Lexical => lexicalCompare
   }
+  
+  /** Creates the content for writing in to a new TreeDefinition object */
+  def defineNewTree(allocationPolicyUUID: UUID, keyComparison: KVTree.KeyComparison.Value): Array[Byte] = {
+    val td = KVTreeDefinition(allocationPolicyUUID, keyComparison, Nil)
+    KVTreeCodec.encodeTreeDefinition(td)
+  }
 }
 
 class KVTree(

@@ -21,10 +21,10 @@ class KVTreeSimpleFactory(
     nodeCache: KVTreeNodeCache,
     keyComparisonStrategy: KVTree.KeyComparison.Value) extends KVTreeFactory {
   
-  def createTree(treeDefinitionObject: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = system.readObject(treeDefinitionObject) map {
+  def createTree(treeDefinitionObjectPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = system.readObject(treeDefinitionObjectPointer) map {
     osd => 
       val td = KVTreeCodec.decodeTreeDefinition(osd.data)
-      new KVTree(treeDefinitionObject, osd.revision, new TreeAllocater, nodeCache, keyComparisonStrategy, td.tiers, system)  
+      new KVTree(treeDefinitionObjectPointer, osd.revision, new TreeAllocater, nodeCache, keyComparisonStrategy, td.tiers, system)  
   }
   
   class TreeListAllocater extends KVListNodeAllocater {
