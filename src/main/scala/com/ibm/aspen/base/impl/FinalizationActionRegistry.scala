@@ -3,6 +3,25 @@ package com.ibm.aspen.base.impl
 import java.util.UUID
 import com.ibm.aspen.base.FinalizationAction
 import com.ibm.aspen.base.FinalizationActionHandler
+import com.ibm.aspen.base.RetryStrategy
+import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.kvtree.KVTreeFactory
+import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
+
+object FinalizationActionRegistry {
+  def initialize(
+    retryStrategy: RetryStrategy,
+    system: AspenSystem,
+    kvTreeFactory: KVTreeFactory): FinalizationActionRegistry = {
+    
+    val handlers = List(
+        new KVTreeFinalizationActionHandler(kvTreeFactory, retryStrategy, system),
+        new AllocationFinalizationAction(retryStrategy, system)
+    )
+    
+    new FinalizationActionRegistry(handlers)
+  }
+}
 
 class FinalizationActionRegistry(handlers: List[FinalizationActionHandler]) extends FinalizationActionHandler {
   

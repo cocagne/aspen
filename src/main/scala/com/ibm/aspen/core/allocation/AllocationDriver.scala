@@ -10,6 +10,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.IDA
 import java.nio.ByteBuffer
+import scala.concurrent.Future
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -18,65 +19,16 @@ import java.nio.ByteBuffer
  *  provide error-handling strategies.
  * 
  */
-class AllocationDriver (
-    val messenger: ClientSideAllocationMessenger,
-    val poolUUID: UUID,
-    val newObjectUUID: UUID,
-    val objectSize: Option[Int],
-    val objectIDA: IDA,
-    val objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
-    val initialRefcount: ObjectRefcount,
-    val allocationTransactionUUID: UUID,
-    val allocatingObject: ObjectPointer,
-    val allocatingObjectRevision: ObjectRevision
-    ){
-  
-  private[this] val promise = Promise[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]]
-  
-  def futureResult = promise.future
-  
-  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value, StorePointer]]()
+trait AllocationDriver {
+    
+  def futureResult: Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]]
   
   /** Initiates the allocation process */
-  def start() = sendAllocationMessages()
-  
-  protected def sendAllocationMessages(): Unit = {
-    val toSend = synchronized { objectData.filter( t => !responses.contains(t._1) ) }
-    
-    for ( (storeIndex, objectData) <- toSend ) {
-      val storeId = DataStoreID(poolUUID, storeIndex)
-      
-      val msg = Allocate(storeId, messenger.client, newObjectUUID, objectSize, objectData, initialRefcount, 
-                         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
-                         
-      messenger.send(storeId, msg)
-    }
-  }
+  def start(): Unit
   
   def receiveAllocationResult(fromStoreId: DataStoreID, 
                               allocationTransactionUUID: UUID, 
-                              result: Either[AllocationErrors.Value, StorePointer]): Unit = synchronized {
-    if (promise.isCompleted)
-      return // Already done, nothing left to do
-      
-    if ( !responses.contains(fromStoreId.poolIndex) )
-      responses += (fromStoreId.poolIndex -> result)
-      
-    if (responses.size == objectData.size) {
-      var errors = Map[Byte,AllocationErrors.Value]()
-      var pointers = List[StorePointer]()
-      
-      responses.foreach(t => t._2 match {
-        case Right(sp) => pointers = sp :: pointers
-        case Left(err) => errors += (t._1 -> err)
-      })
-      
-      if (errors.isEmpty)
-        promise.success(Right(ObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)))
-      else 
-        promise.success(Left(errors))
-    }
-  }
+                              result: Either[AllocationErrors.Value, StorePointer]): Unit 
 }
 
 object AllocationDriver {
@@ -90,11 +42,7 @@ object AllocationDriver {
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): AllocationDriver = {
-      new AllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, initialRefcount, 
-                           allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
-    }
+               allocatingObjectRevision: ObjectRevision): AllocationDriver 
   }
   
-  object NoErrorRecoveryAllocationDriver extends Factory {}
 }

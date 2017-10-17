@@ -14,6 +14,14 @@ trait ReadDriver {
 }
 
 object ReadDriver {
-  /** The first boolean is whether to retrieve the object data and the second is whether to retrieve locked transactions */
+  /**
+   * Signature: 
+   * 
+   * Factory( clientMessenger: ClientSideReadMessenger
+   *          objectPointer: ObjectPointer,
+   *          retrieveObjectData: Boolean,
+   *          retrieveLockedTransaction: Boolean,
+   * ,        readUUID:UUID)
+   */
   type Factory = (ClientSideReadMessenger, ObjectPointer, Boolean, Boolean, UUID) => ReadDriver
 }

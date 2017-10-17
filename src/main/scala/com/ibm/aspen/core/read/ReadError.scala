@@ -10,6 +10,8 @@ case class ThresholdError(errors: Map[DataStoreID,Option[ReadError.Value]]) exte
 
 case class DataRetrievalFailed() extends ReadError("DataRetrievalFailed")
 
+case class InvalidObject() extends ReadError("InvalidObject")
+
 object ReadError extends Enumeration {
   
   /** UUID for the stored object does not match the UUID in the ObjectPointer */
