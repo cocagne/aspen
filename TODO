@@ -10,6 +10,10 @@
      - Can then construct the BasicAspenSystem using these data types and verify basic operation
         - e.g. alloc object results in creation of alloc tree and entries for the new object plus the tree definition root
 
+* Add a bootstrapAllocate() method to DataStore interface. Called only during bootstrap process. Returns Future to object pointer
+  basically not allowed to fail. 
+    - Should never need to call this from over the network. Assume bootstrapping happens locally on a single system.
+    - Stores are then shut down and transferred off to new hosts 
 
 * Tie base FA registry to transaction
 

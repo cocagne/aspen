@@ -30,6 +30,15 @@ trait AspenSystem {
       objectIDA: IDA,
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
   
+  def allocateObject(
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, ByteBuffer.wrap(initialContent))
+  }
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] 

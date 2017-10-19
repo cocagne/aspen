@@ -27,6 +27,12 @@ private [base] object KVListCodec {
       case srp: KVListCodec.SetRightPointer => (t._1, Some(KVListNodePointer(srp.op, srp.minimum)))
     })
   }
+  
+  def encodeNewListContent(initialContent: List[(Array[Byte], Array[Byte])]): Array[Byte] = {
+    val opsList = initialContent.map(t => Insert(t._1, t._2))
+    val (appendOps, appendSize, appendOpCount) = KVListCodec.encodeOperations(opsList)
+    opsToByteBuffer(appendOps, appendSize).array
+  }
 
   def encodeListDescription(allocationPolicyUUID: UUID, rootObject: ObjectPointer): Array[Byte] = {
     val builder = new FlatBufferBuilder(4096)

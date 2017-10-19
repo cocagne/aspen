@@ -1,4 +1,4 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.impl
 
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
@@ -21,16 +21,11 @@ import com.ibm.aspen.core.network.ClientSideAllocationMessenger
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.allocation.AllocationDriver
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.base.impl.BaseStoragePool
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.core.network.StorageNodeID
-import com.ibm.aspen.base.impl.ClientMessenger
 import com.ibm.aspen.core.network.ClientSideTransactionMessageReceiver
 import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
-import com.ibm.aspen.core.transaction.TxAcceptResponse
-import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.network.ClientSideTransactionMessenger
 import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.allocation
@@ -38,22 +33,19 @@ import com.ibm.aspen.core.read
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.base.kvtree.KVTree
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
-import com.ibm.aspen.base.impl.FinalizationActionRegistry
+import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.NoRetry
+import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.Transaction
+import scala.Left
+import scala.Right
+import com.ibm.aspen.base.kvlist.KVList
+import com.ibm.aspen.core.Util._
+import com.ibm.aspen.core.network.NetworkCodec
+import scala.concurrent._
+import scala.concurrent.duration._
 
-/*
- * * Test BasicAspenSystem
-  * Create a MockSystem class
-     - has a map of object pointer -> current state w/ synchronized get/put
-     - Impl ReadManager in terms of this map
-     - Impl Transaction in terms of this map
-     - At Tx commit, run all Finalization Actions
-     - System needs to track all FAs so it can know when all are complete
-        - tests will use this to let the system stabilize then analyze
-     - Can then construct the BasicAspenSystem using these data types and verify basic operation
-        - e.g. alloc object results in creation of alloc tree and entries for the new object plus the tree definition root
- */
 object MockSystem {
   val poolUUID = new UUID(0,0)
   val clientID = ClientID(poolUUID)
@@ -109,7 +101,7 @@ object MockSystem {
       objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, newData.asReadOnlyBuffer()))
     }
     
-    private def overwrite(ptr: ObjectPointer, buf: ByteBuffer): Unit =  {
+    def overwrite(ptr: ObjectPointer, buf: ByteBuffer): Unit =  {
       val orig = objects(ptr.uuid)
         
       val bufLen = buf.limit() - buf.position()
@@ -256,10 +248,12 @@ object MockSystem {
       allocationMessageReceiver: ClientSideAllocationMessageReceiver): Unit = ()
   }
 }
-class MockSystem {
+class MockSystem(val treeNodeSize:Int=1000) {
   import MockSystem._
   
   val storage = new StorageSystem
+  val bootstrapPoolIDA = new Replication(3,2)
+  val noRetry = new NoRetry
   
   val clientTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory _
   val storagePoolFactory = BaseStoragePool.Factory
@@ -268,9 +262,15 @@ class MockSystem {
   def chooseDesignatedLeader(p: ObjectPointer): Byte = 0 
   def isStorageNodeOnline(s: StorageNodeID): Boolean = true
   
-  // Bootstrap the system by creating the StoragePoolTreeDefinition
-  val treeDef = KVTree.defineNewTree(poolUUID, KVTree.KeyComparison.Raw)
-  val storagePoolTreeDefinitionPointer = storage.allocate(new UUID(0,1), ObjectRefcount(0,1), ByteBuffer.wrap(treeDef)).pointer
+  // Bootstrap the system by creating the StoragePoolDefinition for Bootstrapping Pool & StoragePoolTreeDefinition
+  
+  def allocate(content: ByteBuffer): Future[ObjectPointer] = {
+    Future.successful(storage.allocate(UUID.randomUUID(), ObjectRefcount(0,1), content).pointer)
+  }
+  
+  def overwrite(ptr: ObjectPointer, arr: Array[Byte]): Future[Unit] = {
+    Future.successful(storage.overwrite(ptr, ByteBuffer.wrap(arr)))
+  }
   
   var txNumber = 0
   
@@ -279,6 +279,10 @@ class MockSystem {
     txNumber += 1
     new Tx(txn, storage, runTransactionFinalizations)
   }
+  
+  import scala.language.postfixOps
+  
+  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(allocate, overwrite, bootstrapPoolIDA), 100 milliseconds)
   
   val basicAspenSystem = new BasicAspenSystem( 
       chooseDesignatedLeader _,
@@ -289,12 +293,12 @@ class MockSystem {
       new AllocDriverFactory(storage),
       newTx _,
       BaseStoragePool.Factory,
-      storagePoolTreeDefinitionPointer,
-      Replication(3,2),
-      systemTreeNodeCacheFactory _)
+      bootstrapPoolIDA,
+      systemTreeNodeCacheFactory _,
+      radiclePointer,
+      noRetry)
   
-  val noRetry = new NoRetry
-  val kvTreeFactory = new KVTreeSimpleFactory(basicAspenSystem, poolUUID, poolUUID, Replication(3,2), 1000, new KVTreeNodeCache {}, KVTree.KeyComparison.Raw)
+  val kvTreeFactory = new KVTreeSimpleFactory(basicAspenSystem, poolUUID, poolUUID, Replication(3,2), treeNodeSize, new KVTreeNodeCache {}, KVTree.KeyComparison.Raw)
   val finalizationHandler = FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
   
   var finalizationActions: List[Future[Unit]] = Nil

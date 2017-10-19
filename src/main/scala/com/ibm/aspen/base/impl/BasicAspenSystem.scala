@@ -28,22 +28,17 @@ import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.UnsupportedIDA
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.StoreAllocationError
+import com.ibm.aspen.base.RetryStrategy
+import com.google.flatbuffers.FlatBufferBuilder
+import com.ibm.aspen.core.Util
+
 
 
 object BasicAspenSystem {
-  val SystemAllocationPolicyUUID = new UUID(0,0)
-  val BootstrapStoragePoolUUID = new UUID(0,0)
-  val SystemTreeNodeSizeLimit = 64 * 1024
-  val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
   
   import scala.language.implicitConversions
   
-  implicit def uuid2byte(uuid: UUID): Array[Byte] = {
-    val bb = ByteBuffer.allocate(16)
-    bb.putLong(0, uuid.getMostSignificantBits)
-    bb.putLong(8, uuid.getLeastSignificantBits)
-    bb.array()
-  }
+  implicit def uuid2byte(uuid: UUID): Array[Byte] = Util.uuid2byte(uuid)
 }
 
 // StoragePool UUID 0000 is used for bootstrapping pool
@@ -56,13 +51,14 @@ class BasicAspenSystem(
     val defaultAllocationDriverFactory: AllocationDriver.Factory,
     val transactionFactory: (BasicAspenSystem) => Transaction,
     val storagePoolFactory: StoragePoolFactory,
-    val storagePoolTreeDefinition: ObjectPointer,
     val bootstrapPoolIDA: IDA,
-    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache
-    // Probably dont need this. Network should be able to figure it out... val boostrapStorageNodes: Array[StorageNodeID] // Storage nodes ids for each of the stores in the bootstrap pool
+    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
+    val radiclePointer: ObjectPointer,
+    val initializationRetryStrategy: RetryStrategy
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
+  import Bootstrap._
   
   val readManager = new ClientReadManager(messenger)
   val txManager = new ClientTransactionManager(messenger, chooseDesignatedLeader, defaultTransactionDriverFactory)
@@ -76,8 +72,46 @@ class BasicAspenSystem(
   val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
                                                   SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
   
-  // TODO: Add a retry strategy to ensure this eventually succeeds
-  val storagePoolTree: Future[KVTree] = systemTreeFactory.createTree(storagePoolTreeDefinition)
+  val radicle: Future[Radicle] = initializationRetryStrategy.retryUntilSuccessful {
+    readObject(radiclePointer) map { osd => BaseCodec.decodeRadicle(osd.data) }
+  }
+  
+  val systemTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+    radicle.flatMap(r => systemTreeFactory.createTree(r.systemTreeDefinitionPointer))
+  }
+  
+  val storagePoolTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+    
+    def returnOrCreate(sysTree: KVTree, oenc: Option[Array[Byte]]): Future[KVTree] = oenc match {
+      case Some(enc) =>
+        val ptr = NetworkCodec.byteArrayToObjectPointer(enc)
+        systemTreeFactory.createTree(ptr)
+        
+      case None =>
+        implicit val tx = newTransaction()
+        val treeDef = KVTree.defineNewTree(SystemAllocationPolicyUUID, KVTree.KeyComparison.Raw)
+        
+        def allocTree(treeNodePointer: ObjectPointer, treeNodeRevision: ObjectRevision): Future[Array[Byte]] = {
+          allocateObject(treeNodePointer, treeNodeRevision, BootstrapStoragePoolUUID, None, bootstrapPoolIDA, treeDef) map {
+            ptr => NetworkCodec.objectPointerToByteArray(ptr)
+          }
+        }
+        
+        for {
+          encodedPointer <- sysTree.putGeneratedValueIntoTreeNode(StoragePoolTreeUUID, allocTree _) 
+          committed <- tx.commit()
+          newTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(encodedPointer))
+        } yield newTree
+    }
+       
+    for {
+      sysTree <- systemTree
+      oenc <- sysTree.get(StoragePoolTreeUUID)
+      poolTree <- returnOrCreate(sysTree, oenc)
+    } yield {
+      poolTree
+    }
+  }
   
   def readObject(
       objectPointer:ObjectPointer, 
@@ -120,13 +154,20 @@ class BasicAspenSystem(
     }
   }
   
-  def getStoragePool(poolUUID: UUID): Future[StoragePool] = for {
-    spTree <- storagePoolTree
-    encPtr <- spTree.get(poolUUID)
-    if (encPtr.isDefined)
-    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
-    pool <- getStoragePool(poolPtr)
-  } yield pool
+  def getStoragePool(poolUUID: UUID): Future[StoragePool] = if (poolUUID == BootstrapStoragePoolUUID) {
+    radicle.flatMap { 
+      r => getStoragePool(r.bootstrapPoolDefinitionPointer) 
+    }
+  } else {
+    for {
+      spTree <- storagePoolTree
+      encPtr <- spTree.get(poolUUID)
+      if (encPtr.isDefined)
+      poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
+      pool <- getStoragePool(poolPtr)
+    } yield pool
+  }
+  
   
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)

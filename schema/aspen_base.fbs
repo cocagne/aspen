@@ -41,3 +41,11 @@ table AllocationFinalizationActionContent {
     storagePoolDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
     newObjectPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
 }
+
+//---------------------------------------------------------------------------
+//- RadicleContent
+//---------------------------------------------------------------------------
+table RadicleContent {
+    bootstrapPoolDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+    systemTreeDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+}

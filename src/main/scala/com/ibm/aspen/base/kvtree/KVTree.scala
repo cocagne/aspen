@@ -68,6 +68,15 @@ object KVTree {
     val td = KVTreeDefinition(allocationPolicyUUID, keyComparison, Nil)
     KVTreeCodec.encodeTreeDefinition(td)
   }
+  
+  /** Bootstrapping method for defining a tree with an initial tier0 node */
+  def defineNewTreeWithInitialTier0Node(
+      allocationPolicyUUID: UUID, 
+      keyComparison: KVTree.KeyComparison.Value, 
+      tier0HeadNode: ObjectPointer): Array[Byte] = {
+    val td = KVTreeDefinition(allocationPolicyUUID, keyComparison, tier0HeadNode :: Nil)
+    KVTreeCodec.encodeTreeDefinition(td)
+  }
 }
 
 class KVTree(
@@ -114,6 +123,33 @@ class KVTree(
         tpl._2.update((key,value)::Nil, Nil, onListNodeSplit(0)) onComplete {
           case Success(_) => pcommitReady.success(())
           case Failure(cause) => pcommitReady.failure(cause)
+        }
+    }
+    pcommitReady.future
+  }
+  
+  /* Intended primarily for inserting newly allocated object pointers into the tree.
+   * 
+   * genValue - function that will be called with the ObjectPointer and ObjectRevision of the tree node that owns the key space
+   *            for the supplied key
+   *            
+   * Future completes with the generated value when the transaction is ready to commit. 
+   */
+  def putGeneratedValueIntoTreeNode(
+      key: Array[Byte], 
+      genValue: (ObjectPointer, ObjectRevision) => Future[Array[Byte]])(implicit ec: ExecutionContext, t: Transaction): Future[Array[Byte]] = {
+    val pcommitReady = Promise[Array[Byte]]()
+    fetchContainingNode(key) onComplete {
+      case Failure(cause) => pcommitReady.failure(cause)
+      case Success(tpl) =>
+        val (_, node) = tpl
+        genValue(node.nodePointer.objectPointer, node.nodeRevision) onComplete {
+          case Failure(cause) => pcommitReady.failure(cause)
+          case Success(value) =>
+            tpl._2.update((key,value)::Nil, Nil, onListNodeSplit(0)) onComplete {
+              case Success(_) => pcommitReady.success(value)
+              case Failure(cause) => pcommitReady.failure(cause)
+            }
         }
     }
     pcommitReady.future
@@ -213,7 +249,7 @@ class KVTree(
     getTier(targetTier).fetchRoot() flatMap {root => root.fetchContainingNode(key)}
   }
   
-  protected[kvtree] def fetchContainingNode(key: Array[Byte], targetTier:Int=0)(implicit ec: ExecutionContext): Future[(Tier, KVListNode)] = {
+  protected [kvtree] def fetchContainingNode(key: Array[Byte], targetTier:Int=0)(implicit ec: ExecutionContext): Future[(Tier, KVListNode)] = {
     val p = Promise[(Tier, KVListNode)]()
     
     def fetchLower(

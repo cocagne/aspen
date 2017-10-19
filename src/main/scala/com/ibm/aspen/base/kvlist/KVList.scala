@@ -39,4 +39,6 @@ object KVList {
   class KeyOrdering(val keyCompare: (Array[Byte], Array[Byte]) => Int) extends Ordering[Array[Byte]] {
     def compare(a: Array[Byte], b: Array[Byte]) = keyCompare(a, b)
   }
+  
+  def encodeNewListContent(initialContent: List[(Array[Byte], Array[Byte])]): Array[Byte] = KVListCodec.encodeNewListContent(initialContent)
 }

@@ -55,7 +55,7 @@ class BaseStoragePool(
             
             for {
               allocTreePtr <- system.allocateObject(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, uuid, None, poolDefinitionPointer.ida, ByteBuffer.wrap(treeDefinitionContent))
-              newContent = StoragePoolCodec.encode(uuid, hostingStorageNodes, Some(allocTreePtr))
+              newContent = BaseCodec.encode(uuid, hostingStorageNodes, Some(allocTreePtr))
               _ = tx.overwrite(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, newContent)
               committed <- tx.commit()
             } yield allocTreePtr
@@ -81,7 +81,7 @@ object BaseStoragePool {
         isStorageNodeOnline: (StorageNodeID) => Boolean)(implicit ec: ExecutionContext): Future[BaseStoragePool] = {
       system.readObject(poolDefinitionPointer) map { 
         osd => 
-          val (poolUUID, hostingStorageNodes, allocationTreeDefinition) = StoragePoolCodec.decode(osd.data)
+          val (poolUUID, hostingStorageNodes, allocationTreeDefinition) = BaseCodec.decodeStoragePoolDefinition(osd.data)
           new BaseStoragePool(system, poolDefinitionPointer, osd.revision, osd.refcount, 
               poolUUID, hostingStorageNodes, allocationTreeDefinition, isStorageNodeOnline)
       } 
