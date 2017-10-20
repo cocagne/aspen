@@ -11,10 +11,12 @@ case class StorageNodeID(uuid: UUID) extends NetworkID {
     case rhs: StorageNodeID => uuid == rhs.uuid
     case _ => false
   }
+  
+  override def toString = "StorageNodeID(" + uuid.toString + ")"
 }
 
 object StorageNodeID {
   
   def apply(data:Array[Byte]): StorageNodeID = StorageNodeID(NetworkID.decodeUUID(data))
-  
+ 
 }

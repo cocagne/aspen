@@ -38,12 +38,22 @@ object BaseCodec {
       case Some(atd) => NetworkCodec.encode(builder, atd)
       case None => -1
     }
-   
+    
+    val offsets = new Array[Int](hostingStorageNodes.length)
+    
+    P.StoragePoolDefinition.startStoreHostsVector(builder, hostingStorageNodes.length)
+    
+    // Vectors are filled back-to-front
+    for (i <- hostingStorageNodes.length -1 to 0 by -1) {
+      NetworkCodec.encode(builder, hostingStorageNodes(i).uuid)
+    }
+    
+    val storeHostsOffset = builder.endVector()
+    
     P.StoragePoolDefinition.startStoragePoolDefinition(builder)
     P.StoragePoolDefinition.addPoolUUID(builder, NetworkCodec.encode(builder, poolUUID))
+    P.StoragePoolDefinition.addStoreHosts(builder, storeHostsOffset)
     if (treeDefOffset >= 0) P.StoragePoolDefinition.addAllocationTreeDefinition(builder, treeDefOffset)
-    P.StoragePoolDefinition.startStoreHostsVector(builder, hostingStorageNodes.length)
-    hostingStorageNodes.foreach(snid => NetworkCodec.encode(builder, snid.uuid))
     P.StoragePoolDefinition.endStoragePoolDefinition(builder)
   }
   

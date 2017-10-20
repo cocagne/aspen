@@ -128,6 +128,39 @@ class KVTree(
     pcommitReady.future
   }
   
+  def visitRange(
+      startKey: Array[Byte], 
+      stopKey: Option[Array[Byte]], 
+      visitor: (Array[Byte], Array[Byte]) => Unit)(implicit ec: ExecutionContext): Future[Unit] = {
+    val p = Promise[Unit]()
+    fetchContainingNode(startKey, targetTier=0) onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(root) => 
+        def visit(node: KVListNode): Unit = {
+          node.content.foreach( t => visitor(t._1, t._2) )
+          
+          val nextNode = node.rightNode match {
+            case None => None
+            case Some(rp) => stopKey match {
+                case None => Some(rp)
+                case Some(stop) => if (compareKeysFunction(stop, rp.minimum ) < 0) Some(rp) else None
+              }
+          }
+              
+          nextNode match {
+            case None => p.success(())
+            case Some(nextPointer) => tiers(0).fetchNode(nextPointer) onComplete {
+              case Failure(cause) => p.failure(cause)
+              case Success(nextNode) => visit(nextNode)
+            }
+          }
+        }
+        
+        visit(root._2)
+    }
+    p.future
+  }
+  
   /* Intended primarily for inserting newly allocated object pointers into the tree.
    * 
    * genValue - function that will be called with the ObjectPointer and ObjectRevision of the tree node that owns the key space

@@ -37,10 +37,14 @@ class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetr
     def retry(limit: Int): Unit = attempt onComplete {
       case Success(result) => p.success(result)
       
-      case Failure(cause) =>
-        val delay = rand.nextInt(limit)
-        val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
-        getScheduler().schedule(new Runnable { override def run(): Unit = retry(nextLimit) }, delay, TimeUnit.MILLISECONDS)
+      case Failure(cause) => cause match {
+        case StopRetrying(reason) => p.failure(reason)
+        
+        case _ =>
+          val delay = rand.nextInt(limit)
+          val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
+          getScheduler().schedule(new Runnable { override def run(): Unit = retry(nextLimit) }, delay, TimeUnit.MILLISECONDS)
+      }
     }
     
     retry(initialRetryDelay)

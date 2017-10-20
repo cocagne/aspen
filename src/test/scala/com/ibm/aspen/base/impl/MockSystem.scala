@@ -67,6 +67,7 @@ object MockSystem {
       val len = initialContent.limit() - initialContent.position()
       val cpy = ByteBuffer.allocate(len)
       cpy.put(initialContent.asReadOnlyBuffer())
+      cpy.position(0)
       val rev = ObjectRevision(0, len)
       val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
       val osd = ObjectStateAndData(ptr, rev, initialRefcount, cpy.asReadOnlyBuffer())
