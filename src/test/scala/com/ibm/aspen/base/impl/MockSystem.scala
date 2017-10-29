@@ -283,7 +283,7 @@ class MockSystem(val treeNodeSize:Int=1000) {
   
   import scala.language.postfixOps
   
-  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(allocate, overwrite, bootstrapPoolIDA), 100 milliseconds)
+  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(allocate, overwrite, bootstrapPoolIDA), 900 milliseconds)
   
   val basicAspenSystem = new BasicAspenSystem( 
       chooseDesignatedLeader _,

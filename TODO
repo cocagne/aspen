@@ -1,14 +1,7 @@
 
-* Test BasicAspenSystem
-  * Create a MockSystem class
-     - has a map of object pointer -> current state w/ synchronized get/put
-     - Impl ReadManager in terms of this map
-     - Impl Transaction in terms of this map
-     - At Tx commit, run all Finalization Actions
-     - System needs to track all FAs so it can know when all are complete
-        - tests will use this to let the system stabilize then analyze
-     - Can then construct the BasicAspenSystem using these data types and verify basic operation
-        - e.g. alloc object results in creation of alloc tree and entries for the new object plus the tree definition root
+* Finish loading Tx state from CRL. Its close and will help initialization design
+* Need full Storage Node and Client classes
+* Create InProcNet - for message handling.
 
 * Add a bootstrapAllocate() method to DataStore interface. Called only during bootstrap process. Returns Future to object pointer
   basically not allowed to fail. 

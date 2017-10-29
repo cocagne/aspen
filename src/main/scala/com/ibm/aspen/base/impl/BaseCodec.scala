@@ -14,21 +14,21 @@ object BaseCodec {
   //-------------------------------------------------------------------------------------------------------------------
   // StoragePoolDefinition
   //
-  def encode(
+  def encodeStoragePoolDefinition(
      poolUUID: UUID, 
      hostingStorageNodes: Array[StorageNodeID], 
      allocationTreeDefinition: Option[ObjectPointer]): ByteBuffer = {
     
     val builder = new FlatBufferBuilder(2048)
     
-    val d = encodeToOffset(builder, poolUUID, hostingStorageNodes, allocationTreeDefinition)
+    val d = encodeStoragePoolDefinitionToOffset(builder, poolUUID, hostingStorageNodes, allocationTreeDefinition)
 
     builder.finish(d)
     
     builder.dataBuffer().asReadOnlyBuffer()
   }
  
-  def encodeToOffset(
+  def encodeStoragePoolDefinitionToOffset(
       builder: FlatBufferBuilder, 
       poolUUID: UUID, 
       hostingStorageNodes: Array[StorageNodeID], 
@@ -58,10 +58,10 @@ object BaseCodec {
   }
   
   def decodeStoragePoolDefinition(buf: ByteBuffer): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
-    decode(P.StoragePoolDefinition.getRootAsStoragePoolDefinition(buf.asReadOnlyBuffer()))
+    decodeStoragePoolDefinition(P.StoragePoolDefinition.getRootAsStoragePoolDefinition(buf.asReadOnlyBuffer()))
   }
   
-  def decode(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
+  def decodeStoragePoolDefinition(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
     val poolUUID = NetworkCodec.decode(n.poolUUID())
     
     val atd = n.allocationTreeDefinition()
@@ -111,11 +111,9 @@ object BaseCodec {
      
     val builder = new FlatBufferBuilder(1024)
     
-    val bootstrapPoolDefinitionPointerOffset = NetworkCodec.encode(builder, radicle.bootstrapPoolDefinitionPointer)
     val systemTreeDefinitionPointerOffset = NetworkCodec.encode(builder, radicle.systemTreeDefinitionPointer)
     
     P.RadicleContent.startRadicleContent(builder)
-    P.RadicleContent.addBootstrapPoolDefinitionPointer(builder, bootstrapPoolDefinitionPointerOffset)
     P.RadicleContent.addSystemTreeDefinitionPointer(builder, systemTreeDefinitionPointerOffset)
 
     val finalOffset = P.RadicleContent.endRadicleContent(builder)
@@ -128,9 +126,8 @@ object BaseCodec {
   def decodeRadicle(buf: ByteBuffer): Radicle = decode(P.RadicleContent.getRootAsRadicleContent(buf))
   
   def decode(n: P.RadicleContent): Radicle = {
-    val bp = NetworkCodec.decode(n.bootstrapPoolDefinitionPointer())
     val sp = NetworkCodec.decode(n.systemTreeDefinitionPointer())
-    Radicle(bp, sp)
+    Radicle(sp)
   }
   
   

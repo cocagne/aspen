@@ -81,33 +81,11 @@ class BasicAspenSystem(
   }
   
   val storagePoolTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
-    
-    def returnOrCreate(sysTree: KVTree, oenc: Option[Array[Byte]]): Future[KVTree] = oenc match {
-      case Some(enc) =>
-        val ptr = NetworkCodec.byteArrayToObjectPointer(enc)
-        systemTreeFactory.createTree(ptr)
-        
-      case None =>
-        implicit val tx = newTransaction()
-        val treeDef = KVTree.defineNewTree(SystemAllocationPolicyUUID, KVTree.KeyComparison.Raw)
-        
-        def allocTree(treeNodePointer: ObjectPointer, treeNodeRevision: ObjectRevision): Future[Array[Byte]] = {
-          allocateObject(treeNodePointer, treeNodeRevision, BootstrapStoragePoolUUID, None, bootstrapPoolIDA, treeDef) map {
-            ptr => NetworkCodec.objectPointerToByteArray(ptr)
-          }
-        }
-        
-        for {
-          encodedPointer <- sysTree.putGeneratedValueIntoTreeNode(StoragePoolTreeUUID, allocTree _) 
-          committed <- tx.commit()
-          newTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(encodedPointer))
-        } yield newTree
-    }
-       
     for {
       sysTree <- systemTree
       oenc <- sysTree.get(StoragePoolTreeUUID)
-      poolTree <- returnOrCreate(sysTree, oenc)
+      if oenc.isDefined
+      poolTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(oenc.get))
     } yield {
       poolTree
     }
@@ -133,7 +111,6 @@ class BasicAspenSystem(
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    
     val encoded = objectIDA.encode(initialContent)
     val newObjectUUID = UUID.randomUUID()
     
@@ -145,29 +122,22 @@ class BasicAspenSystem(
       result <- allocManager.allocate(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
                                       t.uuid, allocatingObject, allocatingObjectRevision)
     } yield {
-     result match {
-       case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
-       case Right(newObjPtr) =>
-         AllocationFinalizationAction.addToAllocationTree(t, pool.poolDefinitionPointer, newObjPtr)
-         newObjPtr
-     }
+      result match {
+        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
+        case Right(newObjPtr) =>
+          AllocationFinalizationAction.addToAllocationTree(t, pool.poolDefinitionPointer, newObjPtr)
+          newObjPtr
+      }
     }
   }
   
-  def getStoragePool(poolUUID: UUID): Future[StoragePool] = if (poolUUID == BootstrapStoragePoolUUID) {
-    radicle.flatMap { 
-      r => getStoragePool(r.bootstrapPoolDefinitionPointer) 
-    }
-  } else {
-    for {
-      spTree <- storagePoolTree
-      encPtr <- spTree.get(poolUUID)
-      if (encPtr.isDefined)
-      poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
-      pool <- getStoragePool(poolPtr)
-    } yield pool
-  }
-  
+  def getStoragePool(poolUUID: UUID): Future[StoragePool] = for {
+    spTree <- storagePoolTree
+    encPtr <- spTree.get(poolUUID)
+    if (encPtr.isDefined)
+    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
+    pool <- getStoragePool(poolPtr)
+  } yield pool
   
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)

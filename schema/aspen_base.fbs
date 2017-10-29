@@ -46,6 +46,5 @@ table AllocationFinalizationActionContent {
 //- RadicleContent
 //---------------------------------------------------------------------------
 table RadicleContent {
-    bootstrapPoolDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
     systemTreeDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
 }

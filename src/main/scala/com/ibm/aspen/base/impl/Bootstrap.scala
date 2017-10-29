@@ -20,14 +20,25 @@ object Bootstrap {
   val SystemTreeNodeSizeLimit         = 64 * 1024
   val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
   
+  val BootstrapAllocatedObjectCount   = 8
+  
   /** Creates the Radicle object and the minimal set of supporting data structures. Returns a Future to the Radicle ObjectPointer
-   * 
+   * Add StoragePoolTreeDef + tier0
+   * Add system tree tier0 w/ pointer to StoragePoolTreeDef
    * Steps:
-   *   - Allocate the bootstrap allocation tree tier0 object
-   *   - Allocate the bootstrap pool tree definition object (points to tier0 object)
-   *   - Allocate the storage pool definition object for bootstrap pool (points to bootstrap pool tree def object)
-   *   - Allocate the system tree tree definition object
-   *   - Allocate the Radicle (points to system tree tree def object and storage pool def object)
+   *   - Allocate the bootstrap pool allocation tree tier0 object
+   *   - Allocate the bootstrap pool allocation tree definition object (points to tier0 object)
+   *   
+   *   - Allocate the storage pool definition object for bootstrap pool (points to bootstrap pool allocation tree defn object)
+   *   
+   *   - Allocate the storage pool tree tier0 object (points to storage pool defn object)
+   *   - Allocate the storage pool tree definition object (points to tier0 object)
+   *   
+   *   - Allocate system tree tier0 object (points to storage pool tree defn)
+   *   - Allocate the system tree definition object (points to tier0 object)
+   *   
+   *   - Allocate the Radicle (points to system tree def object)
+   *   
    *   - Update tier0 allocation object to include all allocated object pointers
    * 
    */
@@ -39,18 +50,33 @@ object Bootstrap {
     val hostingStorageNodes = List.fill(bootstrapPoolIDA.width)(StorageNodeID(ZeroedUUID)).toArray
     
     def ins(p: ObjectPointer): (Array[Byte], Array[Byte]) = (Util.uuid2byte(p.uuid), NetworkCodec.objectPointerToByteArray(p))
-  
+    
+    def treeNode(key: UUID, ptr: ObjectPointer) = {
+      val inserts = (Util.uuid2byte(key) -> NetworkCodec.objectPointerToByteArray(ptr))::Nil
+      ByteBuffer.wrap(KVListCodec.encodeNewListContent(inserts))
+    }
+    
+    def treeDef(tier0Pointer: ObjectPointer) = ByteBuffer.wrap(KVTree.defineNewTreeWithInitialTier0Node(
+                                                               SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy, tier0Pointer))
+                                                               
     for {
-      tier0AllocTreePtr <- allocate(ByteBuffer.allocate(0))
-      allocTreeDefnPtr <- allocate(ByteBuffer.wrap(KVTree.defineNewTreeWithInitialTier0Node(
-                                                     SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy, tier0AllocTreePtr)))
-      bootstrapPoolDefnPtr <- allocate(BaseCodec.encode(BootstrapStoragePoolUUID, hostingStorageNodes, Some(allocTreeDefnPtr)))
-      systemTreeDefnPtr <- allocate(ByteBuffer.wrap(KVTree.defineNewTree(SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy)))
-      radiclePtr <- allocate(ByteBuffer.wrap(BaseCodec.encode(Radicle(bootstrapPoolDefnPtr, systemTreeDefnPtr))))
+      allocTreeTier0Ptr <- allocate(ByteBuffer.allocate(0))
+      allocTreeDefnPtr <- allocate(treeDef(allocTreeTier0Ptr))
       
-      allocContent = List(tier0AllocTreePtr, allocTreeDefnPtr, bootstrapPoolDefnPtr, systemTreeDefnPtr, radiclePtr) map (ins)
+      bootstrapPoolDefnPtr <- allocate(BaseCodec.encodeStoragePoolDefinition(BootstrapStoragePoolUUID, hostingStorageNodes, Some(allocTreeDefnPtr)))
+                                                     
+      storagePoolTreeTier0Ptr <- allocate(treeNode(BootstrapStoragePoolUUID, bootstrapPoolDefnPtr))
+      storagePoolTreeDefnPtr <- allocate(treeDef(storagePoolTreeTier0Ptr))
+                                                         
+      systemTreeTier0Ptr <- allocate(treeNode(StoragePoolTreeUUID, storagePoolTreeDefnPtr))
+      systemTreeDefnPtr <- allocate(treeDef(systemTreeTier0Ptr))
       
-      overwriteComplete <- overwriteObject(tier0AllocTreePtr, KVListCodec.encodeNewListContent(allocContent))
+      radiclePtr <- allocate(ByteBuffer.wrap(BaseCodec.encode(Radicle(systemTreeDefnPtr))))
+      
+      allocContent = List(allocTreeTier0Ptr, allocTreeDefnPtr, bootstrapPoolDefnPtr, storagePoolTreeTier0Ptr, storagePoolTreeDefnPtr,
+                          systemTreeTier0Ptr, systemTreeDefnPtr, radiclePtr) map (ins)
+      
+      overwriteComplete <- overwriteObject(allocTreeTier0Ptr, KVListCodec.encodeNewListContent(allocContent))
     } 
     yield radiclePtr
   }

@@ -55,7 +55,7 @@ class BaseStoragePool(
             
             for {
               allocTreePtr <- system.allocateObject(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, uuid, None, poolDefinitionPointer.ida, ByteBuffer.wrap(treeDefinitionContent))
-              newContent = BaseCodec.encode(uuid, hostingStorageNodes, Some(allocTreePtr))
+              newContent = BaseCodec.encodeStoragePoolDefinition(uuid, hostingStorageNodes, Some(allocTreePtr))
               _ = tx.overwrite(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, newContent)
               committed <- tx.commit()
             } yield allocTreePtr
