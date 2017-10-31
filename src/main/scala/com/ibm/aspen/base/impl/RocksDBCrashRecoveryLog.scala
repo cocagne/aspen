@@ -17,34 +17,44 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.data_store.DataStoreID
 
 /** 
- *  The content for stored transaction data is split into two separate keys. The "Data" key holds the immutable data consisting of the
- *  transaction description and a copy of the data update content where the "state" key holds the mutable Paxos state and transaction
- *  status/disposition. The primary goal in the separation is to ensure we're not continually re-writing the data updates to disk.
+ *  General idea is that we'll separate transaction Data and State into two separate keys. This allows the state to be continually
+ *  overwritten with the most recent value while allowing the Data to be written only once. 
+ *  
+ *  Key = 17-byte Array
+ *     DataKey  = 16-byte Transaction UUID + 0
+ *     StateKey = 16-byte Transaction UUID + 1
+ *  
  */
 object RocksDBCrashRecoveryLog {
   val TxDataKeyOffset:Byte = 0
   val TxStateKeyOffset:Byte = 1
   
-  private def getKey(transactionId: Long, offset:Byte) = {
-    val bb = ByteBuffer.allocate(9)
-    bb.putLong(0, transactionId)
-    bb.put(8, offset)
+  private def getKey(transactionUUID: UUID, offset:Byte): Array[Byte] = {
+    val bb = ByteBuffer.allocate(17)
+    bb.putLong(0, transactionUUID.getMostSignificantBits)
+    bb.putLong(8, transactionUUID.getLeastSignificantBits)
+    bb.put(16, offset)
     bb.array()
   }
   
-  private def getDataKey(transactionId:Long) = getKey(transactionId, TxDataKeyOffset)
-  private def getStateKey(transactionId:Long) = getKey(transactionId, TxStateKeyOffset)
+  private def getDataKey(transactionUUID: UUID) = getKey(transactionUUID, TxDataKeyOffset)
+  private def getStateKey(transactionUUID: UUID) = getKey(transactionUUID, TxStateKeyOffset)
   
-  private def isDataKey(key: Array[Byte]) = key(8) == TxDataKeyOffset
-  private def isStateKey(key: Array[Byte]) = key(8) == TxStateKeyOffset
+  private def isDataKey(key: Array[Byte]) = key(16) == TxDataKeyOffset
+  private def isStateKey(key: Array[Byte]) = key(16) == TxStateKeyOffset
   
-  private def getTransactionId(key: Array[Byte]) = ByteBuffer.wrap(key).getLong(0)
+  private def getTransactionUUID(key: Array[Byte]): UUID = {
+    val bb = ByteBuffer.wrap(key)
+    val msb = bb.getLong()
+    val lsb = bb.getLong()
+    return new UUID(msb, lsb)
+  }
   
-  private val nulluuid = new UUID(0,0)
-  private val nullstore = DataStoreID(nulluuid, 0)
+  private val NullUUID = new UUID(0,0)
+  private val NullStore = DataStoreID(NullUUID, 0)
   
-  private val nulltxd = new TransactionDescription(nulluuid, 0, 
-                                                   ObjectPointer(nulluuid, nulluuid, None, Replication(0,0), new Array[StorePointer](0)),
+  private val NullTXD = new TransactionDescription(NullUUID, 0, 
+                                                   ObjectPointer(NullUUID, NullUUID, None, Replication(0,0), new Array[StorePointer](0)),
                                                    0, Nil, Nil, Nil, None)
 }
 
@@ -52,85 +62,104 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   private [this] val db = new BufferedConsistentRocksDB(dbPath)
   private [this] var shuttingDown: Option[Future[Unit]] = None
   private [this] var pendingSaves = Set[Future[Unit]]()
-  private [this] var pendingTransactions = Map[UUID,Long]()
-  private [this] var savedUpdateContent = Set[Long]()
-  private [this] var nextTxId:Long = 0
+  private [this] var pendingTransactions = Map[UUID,TransactionRecoveryState]()
   
   import RocksDBCrashRecoveryLog._
   
-  def initialize(): Future[List[TransactionRecoveryState]] = {
-    var states = Map[Long, TransactionRecoveryState]()
+  def initialize(): Future[List[TransactionRecoveryState]] = synchronized {
     
     db.foreach((key, value) => {
-      val txid = getTransactionId(key)
+      val txUUID = getTransactionUUID(key)
       
-      if (txid >= nextTxId)
-        nextTxId = txid + 1
-      
-      states.get(txid) match {
-        case None => 
-          val trs = if (isDataKey(key)) {
+      val trs = pendingTransactions.get(txUUID) match {
+        case None =>
+          // Fill in what we can for initial TransactionRecvoveryState. Later state/data updates will overwrite the placeholder values
+          if (isDataKey(key)) {
             val td = CRLCodec.transactionDataFromByteArray(value)
-            
-            pendingTransactions += (td.txd.transactionUUID -> txid)
              
             TransactionRecoveryState(td.dataStoreId, td.txd, td.dataUpdateContent, TransactionDisposition.Undetermined, 
                 TransactionStatus.Unresolved, PersistentState(None, None))
           } else {
             val ts = CRLCodec.transactionStateFromByteArray(value)
             
-            TransactionRecoveryState(nullstore, nulltxd, None, ts.disposition, ts.status, 
+            TransactionRecoveryState(NullStore, NullTXD, None, ts.disposition, ts.status, 
                 PersistentState(ts.lastPromisedId, ts.lastAccepted))
           }
-          states += (txid -> trs)
           
         case Some(trs) =>
-          val newtrs = if (isDataKey(key)) {
+          // Overwrite the state/data portions of the current value for the TransactionRecoveryState
+          if (isDataKey(key)) {
             val td = CRLCodec.transactionDataFromByteArray(value)
-            
-            pendingTransactions += (td.txd.transactionUUID -> txid)
             
             trs.copy(storeId=td.dataStoreId, txd=td.txd, localUpdates=td.dataUpdateContent)
           } else {
             val ts = CRLCodec.transactionStateFromByteArray(value)
             trs.copy(disposition=ts.disposition, status=ts.status, paxosAcceptorState=PersistentState(ts.lastPromisedId, ts.lastAccepted))
           }
-          states += (txid -> newtrs)
       }
-    }).map(_ => states.values.toList)
+      
+      pendingTransactions += (txUUID -> trs)
+    }).map(_ => pendingTransactions.values.toList)
+  }
+  
+  def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]] = synchronized {
+    var m = Map[DataStoreID, List[TransactionRecoveryState]]()
+    pendingTransactions.valuesIterator.foreach(trs => m.get(trs.storeId) match {
+      case None => m += (trs.storeId -> List(trs))
+      case Some(l) =>
+        val newList = trs:: l
+        m += (trs.storeId -> newList)
+    })
+    m
+  }
+  
+  def getTransactionRecoveryStateForStore(storeId: DataStoreID): List[TransactionRecoveryState] = {
+    // Get a snapshot of the mutable dictionary and iterate over that to minimize the lock duration
+    val pt = synchronized { pendingTransactions }
+    pt.foldLeft(List[TransactionRecoveryState]())( (l, t) => if (t._2.storeId == storeId) t._2 :: l else l )
   }
   
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
-    val (txid, addDataValue, contentSaved) = synchronized { 
-      pendingTransactions.get(state.txd.transactionUUID) match {
-        case None =>
-          val txid = nextTxId
-          nextTxId += 1
-          pendingTransactions += (state.txd.transactionUUID -> txid)
-          (txid, true, false)
-        case Some(txid) => (txid, false, savedUpdateContent.contains(txid))
-      }
-    }
+    val prevTrs = synchronized { pendingTransactions.get(state.txd.transactionUUID) }
     
-    if (addDataValue || (state.localUpdates.isDefined && !contentSaved)) {
-      val dataKey = getDataKey(txid) 
+    class SaveData {
+      val dataKey = getDataKey(state.txd.transactionUUID) 
       val dataValue = CRLCodec.toTransactionDataByteArray(state.storeId, state.txd, state.localUpdates)
-      synchronized {
-        if (state.localUpdates.isDefined)
-          savedUpdateContent += txid
-        db.put(dataKey, dataValue) 
-      }
     }
     
-    val stateKey = getStateKey(txid)
+    val (newTrs, saveData) = prevTrs match {
+      case None => 
+        // First time we've seen this transaction. Ensure data (which includes txd) is saved to disk. If the localUpdates arrive at a later
+        // time, we'll overwrite the data key with no harm done
+        val trs = TransactionRecoveryState(state.storeId, state.txd, state.localUpdates, state.disposition, state.status, state.paxosAcceptorState)
+        val sdata = Some(new SaveData)
+        (trs, sdata)
+        
+      case Some(ptrs) => if (!ptrs.localUpdates.isDefined && state.localUpdates.isDefined) {
+          // We received the local update data late. Ensure it's written to disk and tracked by our in-mem recovery state object
+          val trs = ptrs.copy(localUpdates=state.localUpdates, disposition=state.disposition, status=state.status, paxosAcceptorState=state.paxosAcceptorState)
+          (trs, Some(new SaveData))
+        } else {
+          // Only need to copy and save updated transaction state. Data is already written or we don't have it
+          val trs = ptrs.copy(disposition=state.disposition, status=state.status, paxosAcceptorState=state.paxosAcceptorState)
+          (trs, None)
+        }
+    }
+    
+    val stateKey = getStateKey(state.txd.transactionUUID)
     val stateValue = CRLCodec.toTransactionStateByteArray(state.disposition, state.status, state.paxosAcceptorState.promised, state.paxosAcceptorState.accepted)
     
-    synchronized { 
+    synchronized {
+      
+      saveData.foreach(s => db.put(s.dataKey, s.dataValue))
       val f = db.put(stateKey, stateValue)
+      
       pendingSaves += f
       f onComplete {
         case _ => synchronized { pendingSaves -= f }
       }
+      
+      pendingTransactions += (state.txd.transactionUUID -> newTrs)
       f
     }
   }
@@ -142,9 +171,8 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
       case None => Future.successful(())
       case Some(txid) =>
         pendingTransactions -= txd.transactionUUID
-        savedUpdateContent -= txid
-        db.delete(getDataKey(txid))
-        db.delete(getStateKey(txid))
+        db.delete(getDataKey(txd.transactionUUID))
+        db.delete(getStateKey(txd.transactionUUID))
     }
   }
   

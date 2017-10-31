@@ -4,8 +4,13 @@ import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import scala.concurrent.Future
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
 
 trait CrashRecoveryLog {
+  
+  def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]]
+  
+  def getTransactionRecoveryStateForStore(storeId: DataStoreID): List[TransactionRecoveryState]
   
   /** Returns a Future to successfully saving the transaction state.
    *

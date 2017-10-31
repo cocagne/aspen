@@ -1,7 +1,9 @@
 
-* Finish loading Tx state from CRL. Its close and will help initialization design
+
 * Need full Storage Node and Client classes
 * Create InProcNet - for message handling.
+* Get BasicAspenSystemSuite tests working on full system
+
 
 * Add a bootstrapAllocate() method to DataStore interface. Called only during bootstrap process. Returns Future to object pointer
   basically not allowed to fail. 
