@@ -23,6 +23,8 @@ import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.allocation.Allocate
 import scala.util.Success
 import scala.util.Failure
+import scala.concurrent.Promise
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -39,19 +41,34 @@ class StorageNode(
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
   /** Waits for the store to complete its internal initialization then adds it to the map of active stores */
-  def addStore(store: DataStore): Future[Unit] = store.initialized andThen {
-    case Success(_) => synchronized { stores += (store.storeId -> store) }
-    case Failure(cause) => onStoreInitializationFailure(store, cause)
+  private def initializeStore(store: DataStore, transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = {
+    store.initialize(transactionRecoveryStates) andThen {
+      case Success(_) => synchronized { stores += (store.storeId -> store) }
+      case Failure(cause) => onStoreInitializationFailure(store, cause)
+    }
   }
   
-  /** Completes when all initialStores are fully initialized */
-  val initialized: Future[Unit] = Future.sequence(initialStores.map(addStore)).map(_=>()) andThen { 
-    case Success(_) => messenger.initialize(this) 
+  /** Completes when all initialStores are fully initialized and ready for use */
+  val initialized: Future[Unit] = {
+    val pNetworkReady = Promise[Unit]()
+    val txRecoveryState = crl.getFullTransactionRecoveryState()
+    
+    def initStore(ds: DataStore): Future[Unit] = initializeStore(ds, txRecoveryState.getOrElse(ds.storeId, Nil))
+    
+    for {
+      storesInitialized <- Future.sequence(initialStores.map(initStore)).map(_=>())
+      txMgrReady <- txManager.recoverTransactions(txRecoveryState, pNetworkReady.future)
+      networkReady <- messenger.initialize(this) 
+    } yield {
+      pNetworkReady.success(())
+      ()
+    }
   }
   
   def receive(m: Allocate): Unit = getStore(m.toStore).foreach(store => {
     val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
                                     m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
+    // Failure is communicated by the result not a failed future
     f onSuccess {  case result => 
       messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
     }

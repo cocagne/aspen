@@ -9,14 +9,23 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.core.transaction.TransactionDisposition
 
 trait DataStore {
   
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
   
-  /** Completes when initialization is complete and the store is ready for use. No methods should be invoked prior to completion */
-  def initialized: Future[Unit]
+  /** Called by the StorageNode to initialize the data store. The future completes when the store is ready for use. No methods should be invoked prior to completion 
+   *
+   * A critical requirement of this method is that the store re-establishes locks on the transactions it voted to commit
+   */
+  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit]
+  
+  def getTransactionsToBeLocked(transactionRecoveryStates: List[TransactionRecoveryState]): List[TransactionRecoveryState] = {
+    transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
+  }
   
   /** Allocates a new Object on the store.
    *

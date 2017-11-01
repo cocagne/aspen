@@ -20,6 +20,8 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.TxPrepareResponse
 import scala.annotation.implicitNotFound
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import scala.concurrent.Future
 
 
 class StorageNodeTransactionManager(
@@ -44,6 +46,21 @@ class StorageNodeTransactionManager(
   private def onTransactionDiscarded(t: Transaction) = synchronized { transactions -= t.txd.transactionUUID }
   
   private def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
+  
+  /** Provides the transaction manager with the set of transactions that were pending completion when the storage node was last shut down
+   *  
+   *  This method will be called in the bootstrapping sequence before any network messages are sent or received. To prevent processing
+   *  transaction messages before the transaction manager has finished its internal initialization process, the message handlers will
+   *  block message sends/receives until after the future returned by this method completes. At some point thereafter the networkReady
+   *  future will fire which indicates that the network messengers are ready for use and the recovery process may begin.
+   */
+  def recoverTransactions(
+      txRecoveryState: Map[DataStoreID, List[TransactionRecoveryState]],
+      networkReady: Future[Unit]): Future[Unit] = {
+    
+    // TODO: Implement Transaction Recovery
+    Future.successful(())
+  }
   
   def receive(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = getStore(message.to) foreach ( store => {
     message match {

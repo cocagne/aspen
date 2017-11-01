@@ -10,6 +10,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
 
 /* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
@@ -18,7 +19,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   import NullDataStore._
   
-  def initialized: Future[Unit] = Future.successful(())
+  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = Future.successful(())
   
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 

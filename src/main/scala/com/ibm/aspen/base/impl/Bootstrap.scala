@@ -11,11 +11,14 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.kvlist.KVListCodec
+import com.ibm.aspen.core.data_store.BootstrapDataStore
+import com.ibm.aspen.core.objects.StorePointer
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
   val SystemAllocationPolicyUUID      = ZeroedUUID
   val BootstrapStoragePoolUUID        = ZeroedUUID
+  val BootstrapTransactionUUID        = ZeroedUUID
   val StoragePoolTreeUUID             = ZeroedUUID
   val SystemTreeNodeSizeLimit         = 64 * 1024
   val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
@@ -80,4 +83,42 @@ object Bootstrap {
     } 
     yield radiclePtr
   }
+  
+  def initializeNewSystem(
+      bootstrapStores: List[BootstrapDataStore],
+      bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[ObjectPointer] = {
+    
+    require( bootstrapPoolIDA.width >= bootstrapStores.length)
+    
+    val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
+    val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
+    
+    val objectSize = bootstrapStores.foldLeft(None:Option[Int])((ox,y) => (ox, y.maximumAllowedObjectSize) match {
+      case (None, None) => None
+      case (Some(maxSize), None) => Some(maxSize)
+      case (None, Some(maxSize)) => Some(maxSize)
+      case (Some(cur), Some(nxt)) => if (cur <= nxt) Some(cur) else Some(nxt)
+    })
+    
+    def allocate(initialContent: ByteBuffer): Future[ObjectPointer] = {
+      val objectUUID = UUID.randomUUID()
+      val enc = bootstrapPoolIDA.encode(initialContent)
+      val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
+      val falloc = hosts.map { t => {
+        val (store, storeIndex) = t
+        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex)).map(sp => storePointers(storeIndex) = sp)
+      }}
+      Future.sequence(falloc) map { _ => 
+          ObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
+      }
+    }
+    
+    def overwrite(objectPointer: ObjectPointer, newContent: Array[Byte]): Future[Unit] = {
+      val encodedContent = bootstrapPoolIDA.encode(ByteBuffer.wrap(newContent))
+      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(objectPointer, encodedContent(t._2)))).map(_=>())
+    }
+    
+    initializeNewSystem(allocate, overwrite, bootstrapPoolIDA)
+  }
+  
 }

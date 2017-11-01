@@ -15,6 +15,8 @@ import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.data_store.CurrentObjectState
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.DataUpdateOperation
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.core.data_store.BootstrapDataStore
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -30,6 +32,9 @@ object RocksDBDataStore {
   
   private def stateKey(objectUUID:UUID) = tokey(objectUUID, StateIndex)
   private def dataKey(objectUUID:UUID) = tokey(objectUUID, DataIndex)
+  
+  private def stateKey(objectPointer:ObjectPointer) = tokey(objectPointer.uuid, StateIndex)
+  private def dataKey(objectPointer:ObjectPointer) = tokey(objectPointer.uuid, DataIndex)
   
   private def stateToBytes(rev: ObjectRevision, ref: ObjectRefcount, lastTransactionUUID: UUID): Array[Byte] = {
     val bb = ByteBuffer.allocate(32)
@@ -49,6 +54,14 @@ object RocksDBDataStore {
     (rev, ref, txuuid)
   }
   
+  def bytebufToArray(buf: ByteBuffer): Array[Byte] = if (!buf.isDirect()) 
+      buf.array()
+    else {
+      val a = new Array[Byte](buf.limit - buf.position)
+      buf.get(a)
+      a
+    }
+  
   private class WorkingState(
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
@@ -60,8 +73,7 @@ object RocksDBDataStore {
 
 class RocksDBDataStore(
     val storeId: DataStoreID,
-    initialLockedTransactions: List[TransactionDescription],
-    dbPath:String)(implicit ec: ExecutionContext) extends DataStore {
+    dbPath:String)(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
   
   import RocksDBDataStore._
   
@@ -76,19 +88,35 @@ class RocksDBDataStore(
   
   def close() = db.close()
   
-  val initialized: Future[Unit] = {
+  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = synchronized {
     var flocks = List[Future[Unit]]()
     
-    initialLockedTransactions.foreach(txd => getHostedObjects(txd).foreach(op => {
+    getTransactionsToBeLocked(transactionRecoveryStates).foreach(trs => getHostedObjects(trs.txd).foreach(op => {
       flocks = getObject(op).map(r => r match {
         case Left(err) => // ??? Shouldn't be possible and there's nothing we can do about it. Log?
         case Right((state, data)) => 
-          workingState += (op.uuid -> new WorkingState(state.revision, state.refcount, state.lastCommittedTxUUID, data, Some(txd), Set(txd)))
+          workingState += (op.uuid -> new WorkingState(state.revision, state.refcount, state.lastCommittedTxUUID, data, Some(trs.txd), Set(trs.txd)))
       }) :: flocks
     })
     )
     
     Future.sequence(flocks).map(_=>())
+  }
+  
+  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: ByteBuffer): Future[StorePointer] = synchronized {
+      val initialRevision = ObjectRevision(0, initialContent.limit - initialContent.position)
+      val initialRefcount = ObjectRefcount(0, 1)
+      val buf = bytebufToArray(initialContent)
+      db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, Bootstrap.BootstrapTransactionUUID))
+      db.put(dataKey(objectUUID), buf).map(_ => StorePointer(storeId.poolIndex, new Array[Byte](0)))
+  }
+  
+  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: ByteBuffer): Future[Unit] = synchronized {
+    val initialRevision = ObjectRevision(0, newContent.limit - newContent.position)
+    val initialRefcount = ObjectRefcount(0, 1)
+    val buf = bytebufToArray(newContent)
+    db.put(stateKey(objectPointer), stateToBytes(initialRevision, initialRefcount, Bootstrap.BootstrapTransactionUUID))
+    db.put(dataKey(objectPointer), buf).map(_ => ())
   }
   
   /** TODO Failure handling. Currently we never check to see if the allocation succeeded/failed
@@ -101,15 +129,9 @@ class RocksDBDataStore(
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
     val f = synchronized {
-      val initialRevision = ObjectRevision(0, initialContent.capacity)
+      val initialRevision = ObjectRevision(0, initialContent.limit - initialContent.position)
       db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, allocationTransactionUUID))
-      val buf = if (!initialContent.isDirect()) 
-        initialContent.array()
-        else {
-          val a = new Array[Byte](initialContent.capacity)
-          initialContent.get(a)
-          a
-        }
+      val buf = bytebufToArray(initialContent)
       val fcommitted = db.put(dataKey(objectUUID), buf)
       
       val ws = new WorkingState(initialRevision, initialRefcount, allocationTransactionUUID, initialContent, None, Set())

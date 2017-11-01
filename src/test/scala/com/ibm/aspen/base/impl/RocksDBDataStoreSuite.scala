@@ -6,6 +6,7 @@ import java.io.File
 import com.ibm.aspen.core.data_store.DataStore
 import scala.concurrent.ExecutionContext
 
+// *** NOTE: Tests are inherited from DataStoreSuite
 class RocksDBDataStoreSuite extends DataStoreSuite with BeforeAndAfter {
   var db:RocksDBDataStore = null
   
@@ -13,7 +14,8 @@ class RocksDBDataStoreSuite extends DataStoreSuite with BeforeAndAfter {
     if (db != null)
       db.close()
     val tpath = new File(tdir, "dbdir").getAbsolutePath
-    db = new RocksDBDataStore(DataStoreSuite.storeId, Nil, tpath)(ExecutionContext.Implicits.global)
+    db = new RocksDBDataStore(DataStoreSuite.storeId, tpath)(ExecutionContext.Implicits.global)
+    db.initialize(Nil)
     db
   }
   

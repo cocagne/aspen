@@ -10,6 +10,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation.AllocationErrors
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -27,7 +28,7 @@ class MemoryOnlyDataStore(
     (lp, ByteBuffer.allocate(4).putInt(lp).array())
   }
   
-  def initialized: Future[Unit] = Future.successful(())
+  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = Future.successful(())
   
   private def getObject(ba: Array[Byte]) = objects.get(ByteBuffer.wrap(ba).getInt)
   
