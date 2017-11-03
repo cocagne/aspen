@@ -31,7 +31,7 @@ class SimpleTestSystem extends AspenSystem {
   def getStoragePool(poolUUID: UUID): Future[StoragePool] = Future.failed(new NotImplementedError)
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = Future.failed(new NotImplementedError)
   
-  def client: ClientID = ClientID(poolUUID)
+  def clientId: ClientID = ClientID(poolUUID)
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {

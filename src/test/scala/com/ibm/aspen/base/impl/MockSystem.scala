@@ -232,13 +232,13 @@ object MockSystem {
   }
   
   object cliMessenger extends ClientMessenger with ClientSideAllocationMessenger with ClientSideReadMessenger with ClientSideTransactionMessenger{
-    val client: ClientID = clientID
+    val clientId: ClientID = clientID
     
     // ClientSideAllocationMessenger
-    override def send(toStore: DataStoreID, message: allocation.Message): Unit = ()
+    override def send(toStore: DataStoreID, message: allocation.Allocate): Unit = ()
     
     // ClientSideReadMessenger
-    override def send(toStore: DataStoreID, message: read.Message): Unit = ()
+    override def send(toStore: DataStoreID, message: read.Read): Unit = ()
     
     // ClientSideTransactionMessenger
     override def send(message: TxPrepare, updateContent: List[ByteBuffer]): Unit = ()

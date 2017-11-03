@@ -21,6 +21,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = Future.successful(())
   
+  def close(): Future[Unit] = Future.successful(())
+  
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
                         initialContent: ByteBuffer,

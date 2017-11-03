@@ -20,4 +20,6 @@ trait CrashRecoveryLog {
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit]
   
   def discardTransactionState(txd: TransactionDescription): Unit
+  
+  def close(): Future[Unit]
 }

@@ -46,7 +46,7 @@ class BaseAllocationDriver (
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
       
-      val msg = Allocate(storeId, messenger.client, newObjectUUID, objectSize, objectData, initialRefcount, 
+      val msg = Allocate(storeId, messenger.clientId, newObjectUUID, objectSize, objectData, initialRefcount, 
                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
       messenger.send(storeId, msg)

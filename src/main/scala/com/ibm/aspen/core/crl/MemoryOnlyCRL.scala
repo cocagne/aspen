@@ -13,6 +13,8 @@ object MemoryOnlyCRL extends CrashRecoveryLog {
   
   private val queue = new java.util.concurrent.LinkedBlockingQueue[Promise[Unit]]()
   
+  override def close(): Future[Unit] = Future.successful(())
+  
   override def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]] = synchronized {
     var m = Map[DataStoreID, List[TransactionRecoveryState]]()
     pendingTransactions.valuesIterator.foreach(trs => m.get(trs.storeId) match {

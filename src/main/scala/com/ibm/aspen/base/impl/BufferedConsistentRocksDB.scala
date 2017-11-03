@@ -107,8 +107,9 @@ class BufferedConsistentRocksDB(
     }
   }
   
-  def close() = {
+  def close(): Future[Unit] = {
     db.close()
     nextBatch.close()
+    Future.successful(())
   }
 }

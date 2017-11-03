@@ -66,7 +66,7 @@ class BasicAspenSystem(
   
   messenger.setMessageReceivers(txManager, readManager, allocManager)
   
-  def client = messenger.client
+  def clientId = messenger.clientId
   
   val systemTreeNodeCache = systemTreeNodeCacheFactory(this)
   val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,

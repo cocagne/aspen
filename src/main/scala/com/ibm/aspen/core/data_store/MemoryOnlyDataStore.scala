@@ -30,6 +30,8 @@ class MemoryOnlyDataStore(
   
   def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = Future.successful(())
   
+  def close(): Future[Unit] = Future.successful(())
+  
   private def getObject(ba: Array[Byte]) = objects.get(ByteBuffer.wrap(ba).getInt)
   
   /** Allocates a new Object on the store */

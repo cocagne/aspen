@@ -23,6 +23,10 @@ trait DataStore {
    */
   def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit]
   
+  /** Shuts down the store and releases all runtime resources
+   */
+  def close(): Future[Unit]
+  
   def getTransactionsToBeLocked(transactionRecoveryStates: List[TransactionRecoveryState]): List[TransactionRecoveryState] = {
     transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
   }

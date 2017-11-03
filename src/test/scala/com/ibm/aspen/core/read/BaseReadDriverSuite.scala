@@ -47,11 +47,11 @@ object BaseReadDriverSuite {
   class TMessenger extends ClientSideReadMessenger {
     var mlist = List[(DataStoreID,read.Message)]()
     
-    def send(toStore: DataStoreID, message: read.Message): Unit = mlist = (toStore, message) :: mlist
+    def send(toStore: DataStoreID, message: read.Read): Unit = mlist = (toStore, message) :: mlist
     
     def clear() = mlist = Nil
     
-    val client = BaseReadDriverSuite.client
+    val clientId = BaseReadDriverSuite.client
   }
 }
 
@@ -62,7 +62,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
                objectPointer: ObjectPointer = ptr,
                retrieveObjectData: Boolean = true,
                retrieveLockedTransaction: Boolean = true,
-               readUUID:UUID = readUUID) = new BaseReadDriver(objectPointer, retrieveObjectData, retrieveLockedTransaction, clientMessenger, readUUID)
+               readUUID:UUID = readUUID) = new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)
   
   test("Fail with too many errors") {
     val m = new TMessenger

@@ -25,6 +25,7 @@ import scala.util.Success
 import scala.util.Failure
 import scala.concurrent.Promise
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.core.network.ClientID
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -37,6 +38,8 @@ class StorageNode(
   
   private[this] var stores = Map[DataStoreID, DataStore]()
   private[this] val txManager = new StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory, getStore)
+  
+  def clientId: ClientID = messenger.client
   
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   

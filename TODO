@@ -14,6 +14,11 @@
 
 ** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason
 
+** Add Container Object Support to txd & store
+** Add VersionLock & RefcountLocks to txd & store
+   - These can be shared between Tx. No need for exclusive access
+   - Will mean that Tx conflicts needs to be a list of transactions though
+
 Security Model
   * Foundation is each message has associated client UUID 
   * Client either does or does not have read/write access to a pool

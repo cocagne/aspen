@@ -32,7 +32,7 @@ class ClientTransactionManager(
     val designatedLeader = chooseDesignatedLeader(primaryObject)
     
     val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeader, 
-                                     dataUpdates, refcountUpdates, finalizationActions, Some(messenger.client))
+                                     dataUpdates, refcountUpdates, finalizationActions, Some(messenger.clientId))
                                      
     val td = driverFactory.getOrElse(defaultDriverFactory)(messenger, txd, updateData)
     
@@ -42,13 +42,13 @@ class ClientTransactionManager(
     
   }
   
-  def receive(fromStore: DataStoreID, acceptResponse: TxAcceptResponse): Unit = {
+  def receive(acceptResponse: TxAcceptResponse): Unit = {
     val otd = synchronized { transactions.get(acceptResponse.transactionUUID) }
-    otd.foreach( td => td.receive(fromStore, acceptResponse) )
+    otd.foreach( td => td.receive(acceptResponse) )
   }
-  def receive(fromStore: DataStoreID, finalized: TxFinalized): Unit = {
+  def receive(finalized: TxFinalized): Unit = {
     val otd = synchronized { transactions.get(finalized.transactionUUID) }
-    otd.foreach( td => td.receive(fromStore, finalized) )
+    otd.foreach( td => td.receive(finalized) )
   }
 }
 

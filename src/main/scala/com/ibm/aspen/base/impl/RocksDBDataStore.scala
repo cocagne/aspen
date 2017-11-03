@@ -54,13 +54,11 @@ object RocksDBDataStore {
     (rev, ref, txuuid)
   }
   
-  def bytebufToArray(buf: ByteBuffer): Array[Byte] = if (!buf.isDirect()) 
-      buf.array()
-    else {
-      val a = new Array[Byte](buf.limit - buf.position)
-      buf.get(a)
-      a
-    }
+  def bytebufToArray(buf: ByteBuffer): Array[Byte] = {
+    val a = new Array[Byte](buf.limit - buf.position)
+    buf.asReadOnlyBuffer().get(a)
+    a
+  }
   
   private class WorkingState(
       var revision:ObjectRevision, 

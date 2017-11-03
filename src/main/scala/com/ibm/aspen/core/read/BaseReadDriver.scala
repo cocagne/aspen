@@ -14,10 +14,10 @@ import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
 
 class BaseReadDriver(
+    val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val retrieveObjectData: Boolean,
-    val retrieveLockedTransaction: Boolean,
-    val clientMessenger: ClientSideReadMessenger, 
+    val retrieveLockedTransaction: Boolean, 
     val readUUID:UUID)(implicit ec: ExecutionContext) extends ReadDriver {
   
   import BaseReadDriver._
@@ -31,7 +31,7 @@ class BaseReadDriver(
   
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
-      Read(dataStoreId, clientMessenger.client, readUUID, objectPointer, retrieveObjectData, retrieveLockedTransaction))
+      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, retrieveObjectData, retrieveLockedTransaction))
       
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
@@ -150,4 +150,15 @@ object BaseReadDriver {
       refcount: ObjectRefcount,
       objectData: Option[ByteBuffer],
       lockedTransaction: Option[TransactionDescription])
+      
+  def noErrorRecoveryReadDriver(ec: ExecutionContext)(
+      clientMessenger: ClientSideReadMessenger,
+      objectPointer: ObjectPointer,
+      retrieveObjectData: Boolean,
+      retrieveLockedTransaction: Boolean,
+      readUUID:UUID): ReadDriver = {
+    val rd = new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
+    rd.start()
+    rd
+  }
 }

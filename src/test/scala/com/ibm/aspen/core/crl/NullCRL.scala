@@ -14,4 +14,6 @@ class NullCRL extends CrashRecoveryLog {
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = Future.successful(())
   
   def discardTransactionState(txd: TransactionDescription): Unit = ()
+  
+  def close(): Future[Unit] = Future.successful(())
 }

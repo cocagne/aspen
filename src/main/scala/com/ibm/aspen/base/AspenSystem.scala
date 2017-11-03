@@ -12,7 +12,7 @@ import com.ibm.aspen.core.ida.IDA
 
 trait AspenSystem {
   
-  def client: ClientID
+  def clientId: ClientID
   
   /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData]

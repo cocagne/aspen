@@ -27,7 +27,7 @@ class ClientTransactionDriver(
   // Send initial set of messages
   sendPrepareMessages()
   
-  def receive(fromStore: DataStoreID, acceptResponse: TxAcceptResponse): Unit = synchronized {
+  def receive(acceptResponse: TxAcceptResponse): Unit = synchronized {
     if (promise.isCompleted)
       return
       
@@ -41,7 +41,7 @@ class ClientTransactionDriver(
     }
   }
   
-  def receive(fromStore: DataStoreID, finalized: TxFinalized): Unit = synchronized {
+  def receive(finalized: TxFinalized): Unit = synchronized {
     if (!promise.isCompleted)
       promise.success(finalized.committed)
   }
