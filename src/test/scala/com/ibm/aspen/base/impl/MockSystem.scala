@@ -45,6 +45,7 @@ import com.ibm.aspen.core.Util._
 import com.ibm.aspen.core.network.NetworkCodec
 import scala.concurrent._
 import scala.concurrent.duration._
+import com.ibm.aspen.core.transaction.ClientTransactionManager
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -180,7 +181,7 @@ object MockSystem {
       finalizationActions += (finalizationActionUUID -> serializedContent)
     }
     
-    def commit(): Future[Unit] = synchronized {
+    def commit()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
       if (!p.isCompleted) {
         invalidatedReason match {
           case None =>
@@ -275,7 +276,7 @@ class MockSystem(val treeNodeSize:Int=1000) {
   
   var txNumber = 0
   
-  def newTx(s: BasicAspenSystem) = synchronized {
+  def newTx(txMgr: ClientTransactionManager, fn: (ObjectPointer) => Byte, o: Option[ClientTransactionDriver.Factory]) = synchronized {
     val txn = txNumber
     txNumber += 1
     new Tx(txn, storage, runTransactionFinalizations)

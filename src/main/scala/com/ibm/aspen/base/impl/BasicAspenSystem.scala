@@ -39,6 +39,11 @@ object BasicAspenSystem {
   import scala.language.implicitConversions
   
   implicit def uuid2byte(uuid: UUID): Array[Byte] = Util.uuid2byte(uuid)
+  
+  type TransactionFactory = (ClientTransactionManager,  
+                             (ObjectPointer) => Byte, // Choose the designatedLeader for the Tx based on online/offline peer knowledge
+                             Option[ClientTransactionDriver.Factory] // Strategy for driving the Tx to completion. Default will be used if None
+                             ) => Transaction
 }
 
 // StoragePool UUID 0000 is used for bootstrapping pool
@@ -49,7 +54,7 @@ class BasicAspenSystem(
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
     val defaultAllocationDriverFactory: AllocationDriver.Factory,
-    val transactionFactory: (BasicAspenSystem) => Transaction,
+    val transactionFactory: BasicAspenSystem.TransactionFactory,
     val storagePoolFactory: StoragePoolFactory,
     val bootstrapPoolIDA: IDA,
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
@@ -60,9 +65,9 @@ class BasicAspenSystem(
   import BasicAspenSystem._
   import Bootstrap._
   
-  val readManager = new ClientReadManager(messenger)
-  val txManager = new ClientTransactionManager(messenger, chooseDesignatedLeader, defaultTransactionDriverFactory)
-  val allocManager = new ClientAllocationManager(messenger, defaultAllocationDriverFactory)
+  protected val readManager = new ClientReadManager(messenger)
+  protected val txManager = new ClientTransactionManager(messenger, defaultTransactionDriverFactory)
+  protected val allocManager = new ClientAllocationManager(messenger, defaultAllocationDriverFactory)
   
   messenger.setMessageReceivers(txManager, readManager, allocManager)
   
@@ -102,7 +107,11 @@ class BasicAspenSystem(
             }
           })
           
-  def newTransaction(): Transaction = transactionFactory(this)
+  def newTransaction(): Transaction = transactionFactory(txManager, chooseDesignatedLeader, None)
+  
+  override def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = {
+    transactionFactory(txManager, chooseDesignatedLeader, Some(transactionDriverStrategy))
+  }
   
   def allocateObject(
       allocatingObject: ObjectPointer,

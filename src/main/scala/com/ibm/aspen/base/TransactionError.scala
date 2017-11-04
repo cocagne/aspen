@@ -1,14 +1,22 @@
 package com.ibm.aspen.base
 
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.objects.ObjectPointer
 
-sealed abstract class TransactionError 
+sealed abstract class TransactionError extends Throwable
 
-abstract class TransactionCreationError extends TransactionError {
-  def reason: Throwable
-}
+abstract class TransactionCreationError extends TransactionError 
 
-/* Used when procedure adding content to a transaction detects a logical flaw that causes the overall
+/** Used if multiple data modifications are attempted on the same object within a single transaction */
+final case class MultipleDataUpdatesToObject(objectPointer:ObjectPointer) extends TransactionCreationError
+
+/** Used if multiple refcount modifications are attempted on the same object within a single transaction */
+final case class MultipleRefcountUpdatesToObject(objectPointer:ObjectPointer) extends TransactionCreationError
+
+/** Thrown if attempts are made to add content to a transaction that has already had commit() called */
+final case class PostCommitTransactionModification() extends TransactionCreationError
+
+/** Used when procedure adding content to a transaction detects a logical flaw that causes the overall
  * Transaction to become invalid. 
  * 
  * For example, while attempting to insert key/value pairs into a BTree node it could be discovered that one or more
@@ -17,7 +25,6 @@ abstract class TransactionCreationError extends TransactionError {
  * 
  */
 final case class InvalidTransaction(reason: Throwable) extends TransactionCreationError
-
 
 
 abstract class TransactionProcessingError extends TransactionError {

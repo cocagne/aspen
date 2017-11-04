@@ -68,7 +68,7 @@ object KVListSuite {
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = ()
     
-    def commit(): Future[Unit] = {
+    def commit()(implicit ec: ExecutionContext): Future[Unit] = {
       p.success(())
       p.future
     }

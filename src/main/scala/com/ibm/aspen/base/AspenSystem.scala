@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.transaction.ClientTransactionDriver
 
 trait AspenSystem {
   
@@ -21,6 +22,8 @@ trait AspenSystem {
   def readObject(pointer:ObjectPointer): Future[ObjectStateAndData] = readObject(pointer, None)
   
   def newTransaction(): Transaction
+  
+  def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
   
   def allocateObject(
       allocatingObject: ObjectPointer,

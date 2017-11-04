@@ -7,39 +7,30 @@ import com.ibm.aspen.core.transaction.paxos.Learner
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.ClientSideTransactionMessageReceiver
 import com.ibm.aspen.core.data_store.DataStoreID
+import scala.concurrent.Future
 
 class ClientTransactionManager(
     messenger: ClientSideTransactionMessenger,
-    chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
     val defaultDriverFactory: ClientTransactionDriver.Factory
     ) extends ClientSideTransactionMessageReceiver {
   import ClientTransactionManager._
   
+  val clientId = messenger.clientId
+  
   private[this] var transactions = Map[UUID, ClientTransactionDriver]()
   
   def runTransaction(
-      transactionUUID: UUID, 
-      startTimestamp: Long, 
-      dataUpdates: List[DataUpdate],
+      txd: TransactionDescription,
       updateData: List[Map[Byte,ByteBuffer]],
-      refcountUpdates: List[RefcountUpdate],
-      finalizationActions: List[SerializedFinalizationAction],
-      driverFactory: Option[(ClientSideTransactionMessenger, TransactionDescription, List[Map[Byte,ByteBuffer]]) => ClientTransactionDriver]) = {
-    
-    val objectsIterator = dataUpdates.iterator.map(_.objectPointer) ++ refcountUpdates.iterator.map(_.objectPointer)
-    val primaryObject = objectsIterator.reduce( (op1, op2) => if (op1.ida.failureTolerance > op2.ida.failureTolerance) op1 else op2 )
-   
-    val designatedLeader = chooseDesignatedLeader(primaryObject)
-    
-    val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeader, 
-                                     dataUpdates, refcountUpdates, finalizationActions, Some(messenger.clientId))
-                                     
+      driverFactory: Option[ClientTransactionDriver.Factory]): Future[Boolean] = {
+                                 
     val td = driverFactory.getOrElse(defaultDriverFactory)(messenger, txd, updateData)
     
     synchronized {
-      transactions += (transactionUUID -> td)
+      transactions += (txd.transactionUUID -> td)
     }
     
+    td.result
   }
   
   def receive(acceptResponse: TxAcceptResponse): Unit = {

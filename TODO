@@ -1,6 +1,22 @@
 
+* Need TransactionDriver for Storage Node
+   - Need to think through how we can drive a Tx to completion
+      - No error recovery
+      - Very simple but robust error recovery (maybe a dedicated thread?)
+   - Need a passed-in interface for executing FinalizationActions
+      - StorageNodes need a way to provide a Future to all transactions complete
+          - Tx isn't done till FA is done. So if no Tx are left, all FA must be complete
+   - Need a tx recovery strategy for FAs
+      - Probably don't need to code it just yet
+      - can probably just resume the Tx from the start
+      
+   - Transaction unit tests are *really* light. May want to beef this up as part of working on FA & error-recovery logic
 
-* Create InProcNet - for message handling.
+* Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
+
+* Create aspen.base.impl.TransactionBuilder - Implment base.Transaction interface. Builds txd and initiates transaction from the client side
+
+* Will need to figure out how to handle Finalization actions and detect when none are left
 
 * Get BasicAspenSystemSuite tests working on full system
 

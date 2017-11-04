@@ -119,7 +119,7 @@ class SimpleTestSystem extends AspenSystem {
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = fas += (finalizationActionUUID -> serializedContent)
     
-    def commit(): Future[Unit] = {
+    def commit()(implicit ec: ExecutionContext): Future[Unit] = {
       ops.foreach(fn => fn())
       p.success(())
       p.future

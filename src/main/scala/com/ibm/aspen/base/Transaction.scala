@@ -6,6 +6,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import java.nio.ByteBuffer
+import scala.concurrent.ExecutionContext
 
 trait Transaction {
   
@@ -33,6 +34,6 @@ trait Transaction {
    *  
    *  The future successfully completes if the transaction commits. Otherwise it will fail with a TransactionError subclass.  
    */
-  def commit(): Future[Unit]
+  def commit()(implicit ec: ExecutionContext): Future[Unit]
   
 }
