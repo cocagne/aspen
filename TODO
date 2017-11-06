@@ -1,4 +1,13 @@
 
+* Transaction Changes
+  * Need to send messages to each store via messenger API (currently relying on messenger to do so)
+     => Add send(list-of-messages) to messenger API
+  * TxDriver Prepare messages must be sent to allStores in order for decision to be made and establish locks
+  * Leave message delay / RTT opz for later. 
+      * Initial proposer & primary receive Accepted messages but not many-to-many store interaction
+      * Rely on TransactionDriver sending out a TxResolved message as soon as it's detected
+      * Tx driver also sends out a TxFinalized @ end of Tx
+
 * Need TransactionDriver for Storage Node
    - Need to think through how we can drive a Tx to completion
       - No error recovery

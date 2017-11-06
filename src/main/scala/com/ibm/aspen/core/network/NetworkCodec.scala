@@ -34,6 +34,7 @@ import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.TxResolved
 
 
 
@@ -530,6 +531,26 @@ object NetworkCodec {
       TxAcceptResponse(to, from, transactionUUID, proposalId, Left(TxAcceptResponse.Nack(decode(n.promisedId()))))
     else
       TxAcceptResponse(to, from, transactionUUID, proposalId, Right(TxAcceptResponse.Accepted(n.value())))
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxResolved): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    
+    P.TxResolved.startTxResolved(builder)
+    P.TxResolved.addTo(builder, to)
+    P.TxResolved.addFrom(builder, from)
+    P.TxResolved.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxResolved.addCommitted(builder, o.committed)
+    P.TxResolved.endTxResolved(builder)
+  }
+  def decode(n: P.TxResolved): TxResolved = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    
+    TxResolved(to, from, transactionUUID, n.committed())
   }
   
   

@@ -37,7 +37,7 @@ class Transaction(
     case None => TransactionStatus.Unresolved
     case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
   }
-  private[this] def isResolved = learner.finalValue.isDefined
+  private[this] var resolved = false
   
   import Transaction._
   
@@ -228,34 +228,39 @@ class Transaction(
     case Left(nack) => None
     
     case Right(accepted) => synchronized {
-      val previouslyResolved = isResolved
+      val previouslyResolved = learner.finalValue.isDefined
       
       learner.receiveAccepted(Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
       
-      if (!previouslyResolved && isResolved) {
-        if (learner.finalValue.get) 
-          commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
-          
-        else 
-          discardTransactionState()
-      }
+      if (!previouslyResolved && learner.finalValue.isDefined) 
+        onResolution(learner.finalValue.get)
       
       learner.finalValue
     }
   }
   
-  def receiveFinalized(msg: TxFinalized): Unit = synchronized {
+  // Must be called from within a synchronized block
+  protected def onResolution(txCommitted: Boolean): Unit = if (!resolved) {
+    resolved = true
     
-    // If we missed some of the AcceptResponse messages, we may see the Finalized message before realizing
-    // that the commit decision was made. If so, we'll want to commit our local changes before discarding 
-    // the transaction state
-    if (learner.finalValue.isEmpty && msg.committed) 
-        commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
+    if (txCommitted) 
+      commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
+    else
+      discardTransactionState()
+  }
   
-    commitFuture match {
-      case Some(f) => f onSuccess({case _ => discardTransactionState()})
-      case None => discardTransactionState()
-    }
+  def receiveResolved(msg: TxResolved): Unit = synchronized {
+    // May learn of successful commit from TransactionDriver rather than by way of Paxos
+    onResolution(msg.committed)
+  }
+  
+  def receiveFinalized(msg: TxFinalized): Unit = synchronized {
+    // My have missed learning of commit via Paxos and TxResolved
+    onResolution(msg.committed)
+    
+    // If transaction committed (which it must have in order for a TxFinalized to be received...) discard
+    // transaction state once our commit operation is complete
+    commitFuture.foreach(_ => discardTransactionState())
   }
   
   private[this] def discardTransactionState(): Unit = {

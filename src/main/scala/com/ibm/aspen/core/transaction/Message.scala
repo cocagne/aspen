@@ -47,6 +47,12 @@ object TxAcceptResponse {
   case class Nack(promisedId: ProposalID)
   case class Accepted(value: Boolean)
 }
+
+final case class TxResolved(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID,
+    committed: Boolean) extends Message
     
 final case class TxFinalized(
     to: DataStoreID,

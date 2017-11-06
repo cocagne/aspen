@@ -22,6 +22,7 @@ import com.ibm.aspen.core.transaction.TxPrepareResponse
 import scala.annotation.implicitNotFound
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import scala.concurrent.Future
+import com.ibm.aspen.core.transaction.TxResolved
 
 
 class StorageNodeTransactionManager(
@@ -114,6 +115,10 @@ class StorageNodeTransactionManager(
       case m: TxAcceptResponse =>
         getTransaction(m.transactionUUID).foreach( tx => tx.receiveAcceptResponse(m) )
         getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxAcceptResponse(m) )
+        
+      case m: TxResolved =>
+        getTransaction(m.transactionUUID).foreach( tx => tx.receiveResolved(m) )
+        getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxResolved(m) )
         
       case m: TxFinalized =>
         getTransaction(m.transactionUUID).foreach( tx => tx.receiveFinalized(m) )

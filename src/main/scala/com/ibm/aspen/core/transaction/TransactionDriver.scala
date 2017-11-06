@@ -31,6 +31,9 @@ abstract class TransactionDriver(
   protected var acceptedPeers = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
   
+  protected var primaryStores = initialPrepare.txd.primaryObject.storePointers.map(sp => DataStoreID(initialPrepare.txd.primaryObject.poolUUID, sp.poolIndex))
+  protected var allStores = initialPrepare.txd.allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex))) 
+  
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == initialPrepare.txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
   
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {
@@ -121,11 +124,11 @@ abstract class TransactionDriver(
             if (committed) {
               val f = finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger)
               f.complete onSuccess {
-                case _ => complete(committed) 
+                case _ => onFinalized(committed) 
               }
               finalizer = Some(f)
             } else 
-              complete(false)
+              onFinalized(false)
             
             onResolution(committed)
           }
@@ -133,14 +136,16 @@ abstract class TransactionDriver(
     }
   }
   
+  def receiveTxResolved(msg: TxResolved): Unit = {}
+  
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
     finalizer.foreach( _.cancel() )
-    complete(msg.committed)
+    onFinalized(msg.committed)
   }
   
   def mayBeDiscarded: Boolean = synchronized { finalized }
   
-  protected def complete(committed: Boolean) = synchronized {
+  protected def onFinalized(committed: Boolean) = synchronized {
     if (!finalized) {
       finalized = true
       onComplete(initialPrepare.txd.transactionUUID)
@@ -148,6 +153,8 @@ abstract class TransactionDriver(
       initialPrepare.txd.originatingClient.foreach(client => {
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, initialPrepare.txd.transactionUUID, committed))
       })
+      
+      allStores.foreach(toStoreId => messenger.send(TxFinalized(toStoreId, storeId, initialPrepare.txd.transactionUUID, committed)))
     }
   }
   
@@ -166,11 +173,8 @@ abstract class TransactionDriver(
     
     accept.foreach(t => {
       val (paxAccept, acceptedPeers) = t
-      initialPrepare.txd.primaryObject.storePointers.foreach(sp => {
-        val to = DataStoreID(poolUUID, sp.poolIndex)
-        val txAccept = TxAccept(to, storeId, initialPrepare.txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
-        if (!t._2.contains(to))
-          messenger.send(txAccept)
+      primaryStores.filter(!t._2.contains(_)).foreach(toStoreId => {
+        messenger.send(TxAccept(toStoreId, storeId, initialPrepare.txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue))
       })
     })
   }
