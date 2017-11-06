@@ -3,6 +3,7 @@ package com.ibm.aspen.core.transaction
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.network.ClientID
+import com.ibm.aspen.core.data_store.DataStoreID
 
 final case class TransactionDescription(
   
@@ -43,5 +44,9 @@ final case class TransactionDescription(
   originatingClient: Option[ClientID] = None) {
 
   def allReferencedObjectsSet = (dataUpdates.iterator.map(_.objectPointer) ++ refcountUpdates.iterator.map(_.objectPointer)).toSet
+  
+  def primaryObjectDataStores: Set[DataStoreID] = primaryObject.storePointers.foldLeft(Set[DataStoreID]())((s, sp) => s + DataStoreID(primaryObject.poolUUID, sp.poolIndex))
+  
+  def allDataStores = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex))) 
   
 }
