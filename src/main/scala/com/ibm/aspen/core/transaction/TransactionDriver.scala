@@ -17,21 +17,22 @@ abstract class TransactionDriver(
   
   import TransactionDriver._
   
-  val ida = initialPrepare.txd.primaryObject.ida
+  val txd = initialPrepare.txd
+  def ida = txd.primaryObject.ida
   
   protected val proposer = new Proposer(storeId.poolIndex, ida.width, ida.writeThreshold)
   protected val learner = new Learner(ida.width, ida.writeThreshold)
-  protected val validAcceptorSet = initialPrepare.txd.primaryObject.storePointers.iterator.map(sp => sp.poolIndex).toSet
-  protected val allObjects = initialPrepare.txd.allReferencedObjectsSet
-  protected val primaryObjectDataStores = initialPrepare.txd.primaryObjectDataStores
-  protected val allDataStores = initialPrepare.txd.allDataStores
+  protected val validAcceptorSet = txd.primaryObject.storePointers.iterator.map(sp => sp.poolIndex).toSet
+  protected val allObjects = txd.allReferencedObjectsSet
+  protected val primaryObjectDataStores = txd.primaryObjectDataStores
+  protected val allDataStores = txd.allDataStores
   
   protected var finalized = false
   protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
   protected var acceptedPeers = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
  
-  protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == initialPrepare.txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
+  protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
   
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {
       proposer.updateHighestProposalId(msg.proposalId)
@@ -119,7 +120,7 @@ abstract class TransactionDriver(
             // TODO: Wait a bit for additional responses before finalizing. This approach always shows only write-threshold
             //       peers successfully processed the transaction
             if (committed) {
-              val f = finalizerFactory.create(initialPrepare.txd, acceptedPeers, messenger)
+              val f = finalizerFactory.create(txd, acceptedPeers, messenger)
               f.complete onSuccess {
                 case _ => onFinalized(committed) 
               }
@@ -145,13 +146,13 @@ abstract class TransactionDriver(
   protected def onFinalized(committed: Boolean) = synchronized {
     if (!finalized) {
       finalized = true
-      onComplete(initialPrepare.txd.transactionUUID)
+      onComplete(txd.transactionUUID)
       
-      initialPrepare.txd.originatingClient.foreach(client => {
-        messenger.send(client, TxFinalized(NullDataStoreId, storeId, initialPrepare.txd.transactionUUID, committed))
+      txd.originatingClient.foreach(client => {
+        messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))
       })
       
-      allDataStores.foreach(toStoreId => messenger.send(TxFinalized(toStoreId, storeId, initialPrepare.txd.transactionUUID, committed)))
+      allDataStores.foreach(toStoreId => messenger.send(TxFinalized(toStoreId, storeId, txd.transactionUUID, committed)))
     }
   }
   
@@ -162,7 +163,7 @@ abstract class TransactionDriver(
   }
   
   protected def sendAcceptMessages(): Unit = {
-    val poolUUID = initialPrepare.txd.primaryObject.poolUUID
+    val poolUUID = txd.primaryObject.poolUUID
     
     val accept = synchronized {
       proposer.currentAcceptMessage().map(paxAccept => (paxAccept, acceptedPeers))
@@ -171,7 +172,7 @@ abstract class TransactionDriver(
     accept.foreach(t => {
       val (paxAccept, acceptedPeers) = t
       primaryObjectDataStores.filter(!t._2.contains(_)).foreach(toStoreId => {
-        messenger.send(TxAccept(toStoreId, storeId, initialPrepare.txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue))
+        messenger.send(TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue))
       })
     })
   }
