@@ -121,8 +121,8 @@ abstract class TransactionDriver(
             //       peers successfully processed the transaction
             if (committed) {
               val f = finalizerFactory.create(txd, acceptedPeers, messenger)
-              f.complete onSuccess {
-                case _ => onFinalized(committed) 
+              f.complete foreach {
+                _ => onFinalized(committed) 
               }
               finalizer = Some(f)
             } else 

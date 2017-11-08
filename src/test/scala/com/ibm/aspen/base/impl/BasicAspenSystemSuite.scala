@@ -2,7 +2,6 @@ package com.ibm.aspen.base.impl
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
 import org.scalatest._
 import scala.language.postfixOps
 import com.ibm.aspen.base.NoRetry
@@ -12,6 +11,8 @@ import com.ibm.aspen.core.objects.ObjectPointer
 
 class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
   import Bootstrap._
+  
+  override implicit val executionContext = ExecutionContext.Implicits.global
   
   test("Test Bootstrapping Logic") {
     val ms = new MockSystem

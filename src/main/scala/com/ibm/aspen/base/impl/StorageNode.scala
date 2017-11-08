@@ -72,7 +72,7 @@ class StorageNode(
     val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
                                     m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
     // Failure is communicated by the result not a failed future
-    f onSuccess {  case result => 
+    f foreach {  result => 
       messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
     }
   })
@@ -84,8 +84,8 @@ class StorageNode(
   def receive(message: Read): Unit = getStore(message.toStore).foreach(store => {
     val f = store.getObject(message.objectPointer)
                                  
-    f onSuccess {
-      case result => 
+    f foreach {
+      result => 
         val response = result match {
           case Left(err) => err match {
             case ObjectError.InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)

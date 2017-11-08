@@ -54,9 +54,10 @@ class KVListNode(
     val promise = Promise[Future[(KVListNode, Option[KVListNode])]]()
     
     // Update cache on successful modification
-    promise.future onSuccess {
-      case f => f onSuccess {
-        case (updatedNode, splitNode) => 
+    promise.future foreach {
+      f => f foreach {
+        t =>
+          val (updatedNode, splitNode) = t
           list.updateCachedNode(updatedNode)
           splitNode.foreach(list.updateCachedNode)
       }

@@ -2,7 +2,6 @@ package com.ibm.aspen.base.kvlist
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
 import org.scalatest._
 import scala.util.Success
 import scala.util.Failure

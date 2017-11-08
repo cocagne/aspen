@@ -16,7 +16,7 @@ lazy val root = (project in file(".")).
   settings(
     name         := "aspen",
     version      := "0.1",
-    scalaVersion := "2.11.8",
+    scalaVersion := "2.12.3",
     organization := "com.ibm",
       
     scalacOptions ++= Seq("-feature", "-deprecation"),
@@ -24,9 +24,9 @@ lazy val root = (project in file(".")).
     resolvers += "mvnrepository" at "http://mvnrepository.com/artifact/",
 
     libraryDependencies ++= Seq(
-      "org.scalatest"       %% "scalatest"      % "3.0.1" % "test",
-      "com.github.blemale"  %% "scaffeine"      % "2.1.0" % "compile",
-      "org.zeromq"          % "jeromq"          % "0.4.1",
+      "org.scalatest"       %% "scalatest"      % "3.0.4" % "test",
+      "com.github.blemale"  %% "scaffeine"      % "2.3.0" % "compile",
+      "org.zeromq"          % "jeromq"          % "0.4.2",
       "org.rocksdb"         % "rocksdbjni"      % "5.5.1"
     )
   )

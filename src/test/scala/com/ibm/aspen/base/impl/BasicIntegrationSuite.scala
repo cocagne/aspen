@@ -2,7 +2,6 @@ package com.ibm.aspen.base.impl
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
 import org.scalatest._
 import scala.language.postfixOps
 import com.ibm.aspen.base.NoRetry
@@ -31,6 +30,8 @@ object BasicIntegrationSuite {
 class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndAfter {
   import BasicIntegrationSuite._
   import Bootstrap._
+  
+  override implicit val executionContext = ExecutionContext.Implicits.global
   
   var tdir:File = _
   var tdirMgr: TempDirManager = _

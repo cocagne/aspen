@@ -62,7 +62,7 @@ class Transaction(
             
       case Right(promise) =>
         
-        store.getCurrentObjectState(txd).onSuccess({ case currentState => 
+        store.getCurrentObjectState(txd).foreach({  currentState => 
           
           val errs = getUpdateErrors(currentState) match {
             case Some(errs) => Some(errs)
@@ -111,7 +111,7 @@ class Transaction(
           //       that the node will be in this state for a significant period of time. Leave it to the 
           //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => messenger.send(response)})
+          crl.saveTransactionRecoveryState(recoveryState).foreach(_ => messenger.send(response))
         })
     }
   }
@@ -217,10 +217,10 @@ class Transaction(
             Right(TxAcceptResponse.Accepted(accept.proposalValue)))
             
         // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
-        crl.saveTransactionRecoveryState(recoveryState).onSuccess({case _ => 
+        crl.saveTransactionRecoveryState(recoveryState).foreach{ _ => 
           messenger.send(response)
           txd.originatingClient.foreach( client => messenger.send(client, response) )
-        })
+        }
     }
   }
   

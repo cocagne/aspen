@@ -1,7 +1,6 @@
 package com.ibm.aspen.core.transaction
 
 import scala.concurrent._
-import ExecutionContext.Implicits.global
 import org.scalatest._
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.Replication

@@ -2,7 +2,6 @@ package com.ibm.aspen.core.data_store
 
 import scala.concurrent._
 import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
 import org.scalatest._
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -51,6 +50,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
             
     val expected = (CurrentObjectState(uuid0, irev, oneRef, txUUID, None), icontent0)
+    
+    implicit val executionContext = ExecutionContext.Implicits.global
     
     val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, txUUID, allocObj, allocRev) flatMap { either => either match {
       case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, txUUID, allocObj, allocRev).flatMap(er => er match {
