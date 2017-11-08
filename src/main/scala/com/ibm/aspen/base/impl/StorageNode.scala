@@ -26,6 +26,9 @@ import scala.util.Failure
 import scala.concurrent.Promise
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.network.ClientID
+import com.ibm.aspen.core.data_store.InvalidLocalPointer
+import com.ibm.aspen.core.data_store.ObjectMismatch
+import com.ibm.aspen.core.data_store.CorruptedObject
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -88,15 +91,9 @@ class StorageNode(
       result => 
         val response = result match {
           case Left(err) => err match {
-            case ObjectError.InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
-            case ObjectError.ObjectMismatch => Left(ReadError.ObjectMismatch)
-            case ObjectError.CorruptedObject => Left(ReadError.CorruptedObject)
-            //
-            // The following two should not be possible for a simple read since we're not checking versions/counts
-            // This probably means we should break out object read errors from object check errors
-            //
-            case ObjectError.RefcountMismatch => Left(ReadError.UnexpectedInternalError)
-            case ObjectError.RevisionMismatch => Left(ReadError.UnexpectedInternalError)
+            case e: InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
+            case e: ObjectMismatch => Left(ReadError.ObjectMismatch)
+            case e: CorruptedObject => Left(ReadError.CorruptedObject)
           }
           
           case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, if (message.returnObjectData) Some(data) else None,

@@ -48,14 +48,14 @@ trait DataStore {
   
   
   /** Reads an object on the store */
-  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]]
+  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]]
   
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = {
     objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
       case Some(sp) => getObject(objectPointer, sp)
-      case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
+      case None => Future.successful(Left(new InvalidLocalPointer))
     }
   }
   
@@ -65,14 +65,14 @@ trait DataStore {
    *  This method always returns a Success(). Any errors encountered along the way are noted within the CurrentObjectState
    *  associated with the object(s) for which errors were encountered. 
    */
-  def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectError.Value, CurrentObjectState]]] 
+  def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectReadError, CurrentObjectState]]] 
   
   
   /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors. Note that this method
    *  must detect Revision and Refcount mismatch errors. getCurrentObjectState is used by transactions to do initial error
    *  checking on the refcount and revision but it is possible for those values to change between that call and this call.
    */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]]
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.

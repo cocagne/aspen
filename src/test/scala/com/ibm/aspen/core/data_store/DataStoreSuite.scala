@@ -196,8 +196,14 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
         
     Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
     
+    
     ds.lockOrCollide(txd2) match {
-      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid2 -> Left(ObjectError.InvalidLocalPointer))))
+      case Some(m) => 
+        m.contains(uuid0) should be (true)
+        m.contains(uuid2) should be (true)
+        m(uuid0) should be (Right(txd))
+        m(uuid2) should matchPattern {case Left(_:InvalidLocalPointer) =>}
+        //m should be (Map((uuid0 -> Right(txd)), (uuid2 -> Left(new InvalidLocalPointer))))
       case None => fail("Shouldn't have succeeded")
     }
   }
@@ -217,7 +223,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     Await.result(ds.getCurrentObjectState(txd), awaitDuration)
     
     ds.lockOrCollide(txd) match {
-      case Some(m) => m should be (Map((uuid0->Left(ObjectError.RevisionMismatch)),(uuid1->Left(ObjectError.RefcountMismatch))))
+      case Some(m) =>
+        m.contains(uuid0) should be (true)
+        m.contains(uuid1) should be (true)
+        m(uuid0) should matchPattern {case Left(_:RevisionMismatch) =>}
+        m(uuid1) should matchPattern {case Left(_:RefcountMismatch) =>}
+        //m should be (Map((uuid0->Left(new RevisionMismatch)),(uuid1->Left(new RefcountMismatch))))
       case None => fail("Should have encountered errors")
     }
     
@@ -298,8 +309,11 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.contains(uuid0) should be (true)
     m.contains(uuid2) should be (true)
     m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    val s = Set[Either[ObjectError.Value, CurrentObjectState]](Left(ObjectError.ObjectMismatch), Left(ObjectError.InvalidLocalPointer))
-    s.contains(m(uuid2)) should be (true)
+    
+    m(uuid2) should matchPattern {
+      case Left(e: ObjectMismatch) => 
+      case Left(e: InvalidLocalPointer) =>
+    }
   }
   
   test("Get Object State With Object Mistmatch") {
@@ -317,8 +331,11 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     m.contains(uuid0) should be (true)
     m.contains(badUUID) should be (true)
     m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    val s = Set[Either[ObjectError.Value, CurrentObjectState]](Left(ObjectError.ObjectMismatch), Left(ObjectError.InvalidLocalPointer))
-    s.contains(m(badUUID)) should be (true)
+    
+    m(badUUID) should matchPattern {
+      case Left(e: ObjectMismatch) => 
+      case Left(e: InvalidLocalPointer) =>
+    }
   }
   
   test("Allocate New Object") {
@@ -357,7 +374,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     futureResponse map { either => either match {
       case Right(_) => fail("Should have failed read")
-      case Left(err) => err should be (ObjectError.InvalidLocalPointer)
+      case Left(err) => err should matchPattern{ case _:InvalidLocalPointer => }
     }}
 	}
   

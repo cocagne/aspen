@@ -17,6 +17,8 @@ import java.util.UUID
 import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.data_store.CurrentObjectState
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.data_store.InvalidLocalPointer
 
 object TransactionSuite {
   
@@ -204,8 +206,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
+      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
+        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
         txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), refcount, new UUID(0,0), None))))
         txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), refcount, new UUID(0,0), None))))
         Future.successful(m)
@@ -240,8 +242,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
+      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
+        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
         txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, ObjectRefcount(9,9), new UUID(0,0), None))))
         txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, ObjectRefcount(9,9), new UUID(0,0), None))))
         Future.successful(m)
@@ -276,8 +278,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectError.Value, CurrentObjectState]]()
+      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
+        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
         txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), new UUID(0,0), None))))
         txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), new UUID(0,0), None))))
         Future.successful(m)
@@ -322,8 +324,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = Some(
-          Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = Some(
+          Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -358,8 +360,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = Some(
-          Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Left(ObjectError.InvalidLocalPointer))))
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = Some(
+          Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Left(new InvalidLocalPointer))))
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -394,9 +396,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       var ncalls = 0
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = if (ncalls == 0){
+      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = if (ncalls == 0){
         ncalls += 1
-        Some(Map[UUID, Either[ObjectError.Value, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
+        Some(Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
       }
       else
         None

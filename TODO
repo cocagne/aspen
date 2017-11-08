@@ -3,9 +3,6 @@
   - lockTransaction(txd): Future[Unit] on failure it fails with a TransactionLockError with an embedded error list
      - Allows the data store to implement this however necessary
      - removes the race between getObjectState and lockOrCollide
-
-* Split ObjectError into ObjectReadError and ObjectTransactionError
-  - Where Tx error includes and extends all ReadErrors (will cleanup that todo)
   
 * Switch localUpdates to UpdateContent instances
 

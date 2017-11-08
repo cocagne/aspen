@@ -15,6 +15,15 @@ import com.ibm.aspen.core.transaction.paxos.Accept
 import com.ibm.aspen.core.transaction.paxos.Accepted
 import scala.concurrent.Future
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.data_store.ObjectError
+import com.ibm.aspen.core.data_store.ObjectError
+import com.ibm.aspen.core.data_store.InvalidLocalPointer
+import com.ibm.aspen.core.data_store.CorruptedObject
+import com.ibm.aspen.core.data_store.ObjectMismatch
+import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.data_store.RevisionMismatch
+import com.ibm.aspen.core.data_store.ObjectError
+import com.ibm.aspen.core.data_store.RefcountMismatch
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -116,13 +125,13 @@ class Transaction(
     }
   }
 
-  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = {
+  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectReadError, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = {
     var errs: List[UpdateErrorResponse] = Nil
     
-    def convertErr(e: ObjectError.Value) = e match {
-      case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
-      case ObjectError.CorruptedObject => UpdateError.CorruptedObject
-      case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
+    def convertErr(e: ObjectReadError) = e match {
+      case e: InvalidLocalPointer => UpdateError.InvalidLocalPointer
+      case e: CorruptedObject => UpdateError.CorruptedObject
+      case e: ObjectMismatch => UpdateError.ObjectMismatch
     }
     
     txd.dataUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
@@ -160,7 +169,7 @@ class Transaction(
       Some(errs.reverse)
   }
   
-  private[this] def lockObjectsToTransaction(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = { 
+  private[this] def lockObjectsToTransaction(currentState: Map[UUID, Either[ObjectReadError, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = { 
     store.lockOrCollide(txd).map(collisions => {  
       val duerrs = txd.dataUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
         case None => l
@@ -294,11 +303,11 @@ object Transaction {
       store: DataStore,
       trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, store, trs)
   
-  def objectErrorToUpdateError(objErr: ObjectError.Value): UpdateError.Value = objErr match {
-    case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
-    case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
-    case ObjectError.CorruptedObject => UpdateError.CorruptedObject
-    case ObjectError.RevisionMismatch => UpdateError.RevisionMismatch
-    case ObjectError.RefcountMismatch => UpdateError.RefcountMismatch
+  def objectErrorToUpdateError(objErr: ObjectError): UpdateError.Value = objErr match {
+    case e: InvalidLocalPointer => UpdateError.InvalidLocalPointer
+    case e: ObjectMismatch => UpdateError.ObjectMismatch
+    case e: CorruptedObject => UpdateError.CorruptedObject
+    case e: RevisionMismatch => UpdateError.RevisionMismatch
+    case e: RefcountMismatch => UpdateError.RefcountMismatch
   }
 }

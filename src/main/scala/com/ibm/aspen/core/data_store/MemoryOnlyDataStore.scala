@@ -50,12 +50,12 @@ class MemoryOnlyDataStore(
   }
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = synchronized {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
-      return Future.successful(Left(ObjectError.InvalidLocalPointer))
+      return Future.successful(Left(new InvalidLocalPointer))
     
     getObject(storePointer.data) match {
-      case None => Future.successful(Left(ObjectError.InvalidLocalPointer))
+      case None => Future.successful(Left(new InvalidLocalPointer))
       case Some(obj) =>
         val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock)
         Future.successful(Right( (cstate, obj.data) ))
@@ -67,7 +67,7 @@ class MemoryOnlyDataStore(
    *  This method always returns a Success(). Any errors encountered along the way are noted within the CurrentObjectState
    *  associated with the object(s) for which errors were encountered. 
    */
-  def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectError.Value, CurrentObjectState]] ] = {
+  def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
     
     val m = synchronized {
       for {
@@ -75,13 +75,13 @@ class MemoryOnlyDataStore(
          
         spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
         if spo.isDefined
-        
-        result: Either[ObjectError.Value, CurrentObjectState] = getObject(spo.get.data) match {
-          case None => Left(ObjectError.InvalidLocalPointer)
+        storePointer = spo.get
+        result: Either[ObjectReadError, CurrentObjectState] = getObject(storePointer.data) match {
+          case None => Left(new InvalidLocalPointer)
           case Some(obj) => if (op.uuid == obj.uuid) 
             Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock))
           else  
-            Left(ObjectError.ObjectMismatch)
+            Left(new ObjectMismatch)
         }
       } yield (op.uuid -> result)
     }
@@ -90,7 +90,7 @@ class MemoryOnlyDataStore(
   }
   
   /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]] = synchronized {
     var localObjects = Set[Object]()
     
     val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
@@ -100,9 +100,9 @@ class MemoryOnlyDataStore(
       op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
       spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
       if spo.isDefined
-      
-      result: Option[Either[ObjectError.Value, TransactionDescription]] = getObject(spo.get.data) match {
-        case None => Some(Left(ObjectError.InvalidLocalPointer))
+      storePointer = spo.get
+      result: Option[Either[ObjectError, TransactionDescription]] = getObject(storePointer.data) match {
+        case None => Some(Left(new InvalidLocalPointer))
         case Some(obj) =>
           if (op.uuid == obj.uuid) 
             obj.lock match {
@@ -120,14 +120,14 @@ class MemoryOnlyDataStore(
                 None
               } else {
                 if (!revision_ok)
-                  Some(Left(ObjectError.RevisionMismatch))
+                  Some(Left(new RevisionMismatch))
                 else
-                  Some(Left(ObjectError.RefcountMismatch))
+                  Some(Left(new RefcountMismatch))
               }
             case Some(txd) => Some(Right(txd))
           }
           else  
-            Some(Left(ObjectError.ObjectMismatch))
+            Some(Left(new ObjectMismatch))
       }
       if result.isDefined
     } yield (op.uuid -> result.get)

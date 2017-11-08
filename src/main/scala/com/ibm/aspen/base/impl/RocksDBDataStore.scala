@@ -17,6 +17,10 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.data_store.BootstrapDataStore
+import com.ibm.aspen.core.data_store.InvalidLocalPointer
+import com.ibm.aspen.core.data_store.RevisionMismatch
+import com.ibm.aspen.core.data_store.RefcountMismatch
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -149,7 +153,7 @@ class RocksDBDataStore(
     f.map(_ => Right(StorePointer(storeId.poolIndex, new Array[Byte](0))))
   }
   
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectError.Value, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = {
     synchronized {
       workingState.get(objectPointer.uuid)} match {
       case Some(ws) => Future.successful(Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.lastTxUUID, ws.lockedTransaction), ws.data)))
@@ -164,7 +168,7 @@ class RocksDBDataStore(
             case (Some(stateBuf), Some(dataBuf)) =>
               val (revision, refcount, lastTxUUID) = bytesToState(stateBuf)
               Right((CurrentObjectState(objectPointer.uuid, revision, refcount, lastTxUUID, None), ByteBuffer.wrap(dataBuf)))
-            case _ => Left(ObjectError.InvalidLocalPointer)
+            case _ => Left(new InvalidLocalPointer)
           }
         }
     }
@@ -174,7 +178,7 @@ class RocksDBDataStore(
    * immediately and without preforming any I/O, we'll load all local objects into the workingState map and keep them there until the
    * transaction commits/aborts.
    */
-  def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectError.Value, CurrentObjectState]]] = {
+  def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectReadError, CurrentObjectState]]] = {
     val localObjects = getHostedObjects(txd)
     
     val futureSet = localObjects.map(op => getObject(op).map(r => r match {
@@ -197,17 +201,17 @@ class RocksDBDataStore(
    *  must detect Revision and Refcount mismatch errors. getCurrentObjectState is used by transactions to do initial error
    *  checking on the refcount and revision but it is possible for those values to change between that call and this call.
    */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError.Value, TransactionDescription]]] = synchronized {
+  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]] = synchronized {
     // Note that objects can be deleted between getCurrentObjectState and the call here. If they're not in the working set, provide an error.
     // Also, we can only report one error per object so subsequent checks will overwrite previously found errors
     //
     var localObjects = Map[UUID, WorkingState]()
-    var errs =  Map[UUID, Either[ObjectError.Value, TransactionDescription]]()
+    var errs =  Map[UUID, Either[ObjectError, TransactionDescription]]()
     
     // Check for object existence and locked transactions
     for (op <- getHostedObjects(txd)) {
       workingState.get(op.uuid) match {
-        case None => errs += (op.uuid -> Left(ObjectError.InvalidLocalPointer))
+        case None => errs += (op.uuid -> Left(new InvalidLocalPointer))
         case Some(ws) =>
           localObjects += (op.uuid -> ws)
           ws.lockedTransaction.foreach( lockedTxd => errs += (op.uuid -> Right(lockedTxd)) )
@@ -217,13 +221,13 @@ class RocksDBDataStore(
     // Check Refcounts
     txd.refcountUpdates.foreach(ru => localObjects.get(ru.objectPointer.uuid).foreach(ws =>{
       if (ws.refcount != ru.requiredRefcount)
-        errs += (ru.objectPointer.uuid -> Left(ObjectError.RefcountMismatch))
+        errs += (ru.objectPointer.uuid -> Left(new RefcountMismatch))
     }))
     
     // Check Revisions
     txd.dataUpdates.foreach(du => localObjects.get(du.objectPointer.uuid).foreach(ws =>{
       if (ws.revision != du.requiredRevision)
-        errs += (du.objectPointer.uuid -> Left(ObjectError.RevisionMismatch))
+        errs += (du.objectPointer.uuid -> Left(new RevisionMismatch))
     }))
     
     if (errs.isEmpty) {
