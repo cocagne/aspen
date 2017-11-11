@@ -364,7 +364,6 @@ object NetworkCodec {
   
   
   def encode(builder:FlatBufferBuilder, o:UpdateErrorResponse): Int = {
-    val updateType = encodeUpdateType(o.updateType)
     val updateError = encodeUpdateError(o.updateError)
     var collidingTx = -1
     
@@ -372,8 +371,7 @@ object NetworkCodec {
       collidingTx = encode(builder, o.conflictingTransaction.get)
     
     P.UpdateErrorResponse.startUpdateErrorResponse(builder)
-    P.UpdateErrorResponse.addUpdateType(builder, updateType)
-    P.UpdateErrorResponse.addUpdateIndex(builder, o.updateIndex)
+    P.UpdateErrorResponse.addObjectUuid(builder, encode(builder, o.objectUUID))
     P.UpdateErrorResponse.addUpdateError(builder, updateError)
     if (o.currentRevision.isDefined)
       P.UpdateErrorResponse.addCurrentRevision(builder, encode(builder, o.currentRevision.get))
@@ -384,14 +382,13 @@ object NetworkCodec {
     P.UpdateErrorResponse.endUpdateErrorResponse(builder)
   }
   def decode(n: P.UpdateErrorResponse): UpdateErrorResponse = {
-    val updateType =  decodeUpdateType(n.updateType())
-    val updateIndex = n.updateIndex()
+    val objectUUID = decode(n.objectUuid())
     val updateError = decodeUpdateErrore(n.updateError())
     val currentRev = if(n.currentRevision() == null) None else Some(decode(n.currentRevision()))
     val currentRef = if(n.currentRefcount() == null) None else Some(decode(n.currentRefcount()))
     val collidingTx = if(n.collidingTransaction() == null) None else Some(decode(n.collidingTransaction()))
     
-    UpdateErrorResponse(updateType, updateIndex, updateError, currentRev, currentRef, collidingTx)
+    UpdateErrorResponse(objectUUID, updateError, currentRev, currentRef, collidingTx)
   }
   
   

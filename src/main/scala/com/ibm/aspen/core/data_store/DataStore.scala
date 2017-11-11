@@ -27,6 +27,9 @@ trait DataStore {
    */
   def close(): Future[Unit]
   
+  /** Used during the initialization process to determine which objects should start off in a locked state.
+   * 
+   */
   def getTransactionsToBeLocked(transactionRecoveryStates: List[TransactionRecoveryState]): List[TransactionRecoveryState] = {
     transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
   }
@@ -47,7 +50,11 @@ trait DataStore {
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]]
   
   
-  /** Reads an object on the store */
+  /** Reads an object on the store 
+   *
+   *  This is the method that should be overridden by subclasses. The getObject method that accepts only the objectPointer checks to ensure that
+   *  this store hosts the object before calling this method to do the actual fetch.  
+   */
   protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]]
   
   
@@ -60,19 +67,12 @@ trait DataStore {
   }
   
   
-  /** Returns a future to a map of the current object state for all hosted objects referenced by the TransactionDescription
+  /** Attempts to locks all objects referenced by the transaction that are hosted by this store.
    *  
-   *  This method always returns a Success(). Any errors encountered along the way are noted within the CurrentObjectState
-   *  associated with the object(s) for which errors were encountered. 
+   *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,
+   *  no object locks are granted.
    */
-  def getCurrentObjectState(txd: TransactionDescription): Future[Map[UUID, Either[ObjectReadError, CurrentObjectState]]] 
-  
-  
-  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors. Note that this method
-   *  must detect Revision and Refcount mismatch errors. getCurrentObjectState is used by transactions to do initial error
-   *  checking on the refcount and revision but it is possible for those values to change between that call and this call.
-   */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]]
+  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.

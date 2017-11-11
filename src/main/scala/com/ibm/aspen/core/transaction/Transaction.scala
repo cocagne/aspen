@@ -24,6 +24,9 @@ import com.ibm.aspen.core.data_store.ObjectReadError
 import com.ibm.aspen.core.data_store.RevisionMismatch
 import com.ibm.aspen.core.data_store.ObjectError
 import com.ibm.aspen.core.data_store.RefcountMismatch
+import com.ibm.aspen.core.data_store.ObjectTransactionError
+import com.ibm.aspen.core.data_store.TransactionReadError
+import com.ibm.aspen.core.data_store.TransactionCollision
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -50,6 +53,52 @@ class Transaction(
   
   import Transaction._
   
+  /*
+   *  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = {
+    var errs: List[UpdateErrorResponse] = Nil
+
+    def convertErr(e: ObjectError.Value) = e match {
+      case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
+      case ObjectError.CorruptedObject => UpdateError.CorruptedObject
+      case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
+    }
+
+    txd.dataUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
+      case Left(err) =>
+        val (du, updateIndex) = t
+
+        errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, convertErr(err), None, None, None) :: errs
+
+      case Right(cs) =>
+        val (du, updateIndex) = t
+
+        if ( !(localUpdates.isDefined && localUpdates.get.size > updateIndex) )
+          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.MissingUpdateData, None, None, None) :: errs
+
+        if (cs.revision != du.requiredRevision)
+          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.RevisionMismatch, Some(cs.revision), None, None) :: errs
+    }))
+
+    txd.refcountUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
+      case Left(err) =>
+        val (ru, updateIndex) = t
+
+        errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, convertErr(err), None, None, None) :: errs
+
+      case Right(cs) =>
+        val (ru, updateIndex) = t
+
+        if (cs.refcount != ru.requiredRefcount)
+          errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, UpdateError.RefcountMismatch, None, Some(cs.refcount), None) :: errs
+    }))
+
+    if (errs.isEmpty)
+      None
+    else
+      Some(errs.reverse)
+  }
+   */
+  
   def receivePrepare(prepare: TxPrepare): Unit = {
     
     val (response, acceptorState, originalDisposition) = synchronized {
@@ -70,31 +119,33 @@ class Transaction(
         messenger.send(response)
             
       case Right(promise) =>
-        
-        store.getCurrentObjectState(txd).foreach({  currentState => 
-          
-          val errs = getUpdateErrors(currentState) match {
-            case Some(errs) => Some(errs)
-            case None => lockObjectsToTransaction(currentState)
-          }
+        /* 
+         * Refactor lockTransaction to take the localUpdates: Option
+         * 
+         * Refactor tx update error checking function into a standard method on the DataStore trait
+         * that takes the DataUpdate/RefcountUpdate info plus the current object state and optionally returns
+         * a TransactionError
+         * 
+         * Then have mem & rocks use this.
+         * 
+         * Need to detect missing local updates and error when it happens
+         * 
+         */
+        store.lockTransaction(txd).foreach { errors =>
           
           val recoveryState = synchronized {
             
             txdisposition = txdisposition match {
               
-              case TransactionDisposition.Undetermined => errs match {
-                  case Some(_) => TransactionDisposition.VoteAbort
-                  case None => TransactionDisposition.VoteCommit
-              }
+              case TransactionDisposition.Undetermined => if (errors.isEmpty) 
+                TransactionDisposition.VoteCommit else  TransactionDisposition.VoteAbort
               
               // We can change our vote from Abort to Commit. An example scenario is two conflicting transactions. If
               // one of them aborts, the conflict will be resolved so the next Prepare message for the remaining
               // transaction will successfully lock our local objects to the transaction, thereby allowing us to
               // change our vote.
-              case TransactionDisposition.VoteAbort => errs match { 
-                  case Some(_) => TransactionDisposition.VoteAbort
-                  case None => TransactionDisposition.VoteCommit
-              }
+              case TransactionDisposition.VoteAbort => if (errors.isEmpty) 
+                TransactionDisposition.VoteCommit else  TransactionDisposition.VoteAbort
               
               // Once we've voted to commit, we're committed to committing :-)
               case TransactionDisposition.VoteCommit => TransactionDisposition.VoteCommit
@@ -110,90 +161,18 @@ class Transaction(
               Right(TxPrepareResponse.Promise(recoveryState.paxosAcceptorState.accepted)),
               prepare.proposalId,
               recoveryState.disposition,
-              errs match {
-                case Some(errList) => errList
-                case None => Nil
-              })
+              errors.map(createUpdateErrorResponse))
               
           // Note: Saving the state can fail and in that event we cannot send the message since it would violate the
           //       Paxos safety requirements. Logging the failure here probably isn't a good idea as it is likely 
           //       that the node will be in this state for a significant period of time. Leave it to the 
-          //       CrashRecoveryHandler to do the appropriate logging. In the mean time, we should still do
+          //       CrashRecoveryLog to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
           crl.saveTransactionRecoveryState(recoveryState).foreach(_ => messenger.send(response))
-        })
+        }
     }
   }
 
-  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectReadError, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = {
-    var errs: List[UpdateErrorResponse] = Nil
-    
-    def convertErr(e: ObjectReadError) = e match {
-      case e: InvalidLocalPointer => UpdateError.InvalidLocalPointer
-      case e: CorruptedObject => UpdateError.CorruptedObject
-      case e: ObjectMismatch => UpdateError.ObjectMismatch
-    }
-    
-    txd.dataUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
-      case Left(err) =>
-        val (du, updateIndex) = t
-        
-        errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, convertErr(err), None, None, None) :: errs
-        
-      case Right(cs) =>
-        val (du, updateIndex) = t
-        
-        if ( !(localUpdates.isDefined && localUpdates.get.size > updateIndex) )
-          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.MissingUpdateData, None, None, None) :: errs
-        
-        if (cs.revision != du.requiredRevision)
-          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.RevisionMismatch, Some(cs.revision), None, None) :: errs
-    }))
-    
-    txd.refcountUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
-      case Left(err) =>
-        val (ru, updateIndex) = t
-        
-        errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, convertErr(err), None, None, None) :: errs
-        
-      case Right(cs) =>
-        val (ru, updateIndex) = t
-        
-        if (cs.refcount != ru.requiredRefcount)
-          errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, UpdateError.RefcountMismatch, None, Some(cs.refcount), None) :: errs
-    }))
-    
-    if (errs.isEmpty)
-      None
-    else
-      Some(errs.reverse)
-  }
-  
-  private[this] def lockObjectsToTransaction(currentState: Map[UUID, Either[ObjectReadError, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = { 
-    store.lockOrCollide(txd).map(collisions => {  
-      val duerrs = txd.dataUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
-        case None => l
-        case Some(err) => 
-          val e = err match {
-            case Left(objErr) => UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, objectErrorToUpdateError(objErr), None, None, None)
-            case Right(collidingTxd) => UpdateErrorResponse(UpdateType.Data, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
-          }
-          e :: l
-      })
-      
-      val ruerrs = txd.refcountUpdates.zipWithIndex.foldLeft(List[UpdateErrorResponse]())((l, tpl) => collisions.get(tpl._1.objectPointer.uuid) match {
-        case None => l
-        case Some(err) =>
-          val e = err match {
-            case Left(objErr) => UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, objectErrorToUpdateError(objErr), None, None, None)
-            case Right(collidingTxd) => UpdateErrorResponse(UpdateType.Refcount, tpl._2.toByte, UpdateError.Collision, None, None, Some(collidingTxd))
-          }
-          e :: l
-      })
-      
-      duerrs ++ ruerrs
-    })
-  }
   
   def receiveAccept(msg: TxAccept): Unit = {
     val (paxosReply, acceptorState) = synchronized { 
@@ -303,11 +282,15 @@ object Transaction {
       store: DataStore,
       trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, store, trs)
   
-  def objectErrorToUpdateError(objErr: ObjectError): UpdateError.Value = objErr match {
-    case e: InvalidLocalPointer => UpdateError.InvalidLocalPointer
-    case e: ObjectMismatch => UpdateError.ObjectMismatch
-    case e: CorruptedObject => UpdateError.CorruptedObject
-    case e: RevisionMismatch => UpdateError.RevisionMismatch
-    case e: RefcountMismatch => UpdateError.RefcountMismatch
+  def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
+    case e: TransactionReadError => e.kind match {
+      case r: InvalidLocalPointer => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
+      case r: ObjectMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
+      case r: CorruptedObject     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
+    }
+    case e: RevisionMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
+    case e: RefcountMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
+    case e: TransactionCollision  => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, Some(e.lockedTransaction))
   }
+  
 }

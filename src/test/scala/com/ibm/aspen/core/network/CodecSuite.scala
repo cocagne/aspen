@@ -325,9 +325,11 @@ object ReadResponse {
     val ds = DataStoreID(txd.primaryObject.poolUUID, 3)
     val pid = ProposalID(4, 3)
     val pid2 = ProposalID(1, 0)
+    val uuid1 = new UUID(1,1)
+    val uuid2 = new UUID(2,2)
     
-    val e1 = UpdateErrorResponse(UpdateType.Data, 0, UpdateError.Collision, Some(ObjectRevision(1,150)), Some(ObjectRefcount(1,1)), Some(txd2))
-    val e2 = UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, None, None, None)
+    val e1 = UpdateErrorResponse(uuid1, UpdateError.Collision, Some(ObjectRevision(1,150)), Some(ObjectRefcount(1,1)), Some(txd2))
+    val e2 = UpdateErrorResponse(uuid2, UpdateError.Collision, None, None, None)
     
     val prep = TxPrepareResponse(
         to,

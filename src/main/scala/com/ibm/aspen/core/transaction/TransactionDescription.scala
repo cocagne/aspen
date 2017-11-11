@@ -47,6 +47,6 @@ final case class TransactionDescription(
   
   def primaryObjectDataStores: Set[DataStoreID] = primaryObject.storePointers.foldLeft(Set[DataStoreID]())((s, sp) => s + DataStoreID(primaryObject.poolUUID, sp.poolIndex))
   
-  def allDataStores = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex))) 
+  def allDataStores = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex)))
   
 }

@@ -1,8 +1,25 @@
+ 
+/* 
+         * Refactor lockTransaction to take the localUpdates: Option
+         * 
+         * Refactor tx update error checking function into a standard method on the DataStore trait
+         * that takes the DataUpdate/RefcountUpdate info plus the current object state and optionally returns
+         * a TransactionError
+         * 
+         * Then have mem & rocks use this.
+         * 
+         * Need to detect missing local updates and error when it happens
+         * 
+         */
   
-* Refactor Transaction & DataStore.
-  - lockTransaction(txd): Future[Unit] on failure it fails with a TransactionLockError with an embedded error list
-     - Allows the data store to implement this however necessary
-     - removes the race between getObjectState and lockOrCollide
+* Refactor dataUpdates and refcountUpdates lists into a single requirements list
+   * use final abstract class TxRequirement
+   * derive case classes for DataUpdate, RefcountUpdate, etc
+   * will allow easy extension for RevisionLock and the like
+     
+* Add additionalResultNotifiers: List[DataStoreID] to TransactionDescription
+  - Allocation Tx will use this to ensure we at least attempt to notify stores of the completion of alloc transactions
+  - Then add support to DataStore API & Impls
   
 * Switch localUpdates to UpdateContent instances
 
@@ -57,6 +74,9 @@ TransactionBuilder is screwed up as is ClientTransactionDriver & TransactionDriv
 * Will need to figure out how to handle Finalization actions and detect when none are left
 
 * Get BasicAspenSystemSuite tests working on full system
+
+* Consider refactoring RocksDBDataStore into a generic Key-Value data store that takes an object with an API
+  similar to that of BufferedConsistentRocksDB
 
 ** Potential Read enhancement
    - When reading an object that's locked for update, send both current and locked data

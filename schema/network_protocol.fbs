@@ -128,8 +128,7 @@ enum TxPrepareResponseType:byte {
 }
 
 table UpdateErrorResponse {
-  update_type: UpdateType;
-  update_index: byte;
+  object_uuid: UUID;
   update_error: UpdateError;
   current_revision: ObjectRevision;
   current_refcount: ObjectRefcount;

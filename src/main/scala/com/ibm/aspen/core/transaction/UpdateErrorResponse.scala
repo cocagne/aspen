@@ -2,11 +2,11 @@ package com.ibm.aspen.core.transaction
 
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
+import java.util.UUID
 
 
 case class UpdateErrorResponse(
-    updateType: UpdateType.Value,
-    updateIndex: Byte,
+    objectUUID: UUID,
     updateError: UpdateError.Value,
     currentRevision: Option[ObjectRevision],
     currentRefcount: Option[ObjectRefcount],

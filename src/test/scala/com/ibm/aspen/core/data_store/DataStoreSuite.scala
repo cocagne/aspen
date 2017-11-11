@@ -64,6 +64,17 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     Await.result(f, awaitDuration)
   }
   
+  // Helper method that reads an object and validates it's state
+  def checkState(ds: DataStore, op: ObjectPointer, cs: CurrentObjectState, obuf: Option[ByteBuffer] = None) = {
+    val r = Await.result(ds.getObject(op), awaitDuration)
+    r match {      
+      case Left(_) => fail
+      case Right(t) => 
+        obuf.foreach(buf => t._2 should be (buf))
+        t._1 should be (cs)
+    }
+  }
+  
   test("Discard Locked Transaction") {
     val (ds, sp0, sp1) = initObjects()
     
@@ -73,13 +84,11 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val op1 = mkObjPtr(uuid1, sp1)
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
-                    
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+                  
+    val err1 = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail(s"Shouldn't have encountered errors: $m")
-      case None => succeed
-    }
+    if (!err1.isEmpty)
+       fail(s"Shouldn't have encountered errors: $err1")
     
     ds.discardTransaction(txd)
     
@@ -89,12 +98,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
-    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    val err2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
     
-    ds.lockOrCollide(txd2) match {
-      case Some(m) => fail(s"Shouldn't have encountered errors: $m")
-      case None => succeed
-    }
+    if (!err2.isEmpty)
+       fail(s"Shouldn't have encountered errors: $err2")
+    else
+      succeed
   }
   
   test("Read Locked Object") {
@@ -107,20 +116,13 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
               
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs.isEmpty should be (true)
     
-    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, Some(txd)))
+    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txUUID, Some(txd)))
     
-    m.size should be (2)
-    m.contains(uuid0) should be (true)
-    m.contains(uuid1) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, Some(txd))))
-    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, txUUID, Some(txd))))
   }
   
   test("Commit Locked Transaction") {
@@ -133,12 +135,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs.isEmpty should be (true)
     
     val newContent = ByteBuffer.wrap(List[Byte](7,8,9,10).toArray)
     
@@ -148,14 +147,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val newRev = ObjectRevision(1,4)
     
-    val expected0 = Right((CurrentObjectState(uuid0, newRev, oneRef, txd.transactionUUID, None), newContent))
-    val expected1 = Right((CurrentObjectState(uuid1, ObjectRevision(0,3), newRef, txd.transactionUUID, None), icontent1))
-    
-    val cs0 = Await.result(ds.getObject(op0), awaitDuration)
-    val cs1 = Await.result(ds.getObject(op1), awaitDuration)
-    
-    cs0 should be (expected0)
-    cs1 should be (expected1)
+    checkState(ds, op0, CurrentObjectState(uuid0, newRev, oneRef, txd.transactionUUID, None), Some(newContent))
+    checkState(ds, op1, CurrentObjectState(uuid1, ObjectRevision(0,3), newRef, txd.transactionUUID, None), Some(icontent1))
     
     // Ensure new Tx can lock against updated attributes
     val tx2UUID = new UUID(99,99)
@@ -164,12 +157,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
-    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
     
-    ds.lockOrCollide(txd2) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs2.isEmpty should be (true)
   }
   
   test("Lock With Collision and Error") {
@@ -180,12 +170,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs.isEmpty should be (true)
     
     val tx2UUID = new UUID(99,99)
     
@@ -194,18 +181,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
         
-    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
     
-    
-    ds.lockOrCollide(txd2) match {
-      case Some(m) => 
-        m.contains(uuid0) should be (true)
-        m.contains(uuid2) should be (true)
-        m(uuid0) should be (Right(txd))
-        m(uuid2) should matchPattern {case Left(_:InvalidLocalPointer) =>}
-        //m should be (Map((uuid0 -> Right(txd)), (uuid2 -> Left(new InvalidLocalPointer))))
-      case None => fail("Shouldn't have succeeded")
-    }
+    errs2 should be (List(TransactionCollision(op0, txd), TransactionReadError(op3, InvalidLocalPointer())))
   }
   
   test("Lock With Revision and Refcount Errors") {
@@ -219,18 +197,10 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, badRef, oneRef) :: Nil)
-                    
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+         
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) =>
-        m.contains(uuid0) should be (true)
-        m.contains(uuid1) should be (true)
-        m(uuid0) should matchPattern {case Left(_:RevisionMismatch) =>}
-        m(uuid1) should matchPattern {case Left(_:RefcountMismatch) =>}
-        //m should be (Map((uuid0->Left(new RevisionMismatch)),(uuid1->Left(new RefcountMismatch))))
-      case None => fail("Should have encountered errors")
-    }
+    errs should be (List(RevisionMismatch(op0, badRev, irev), RefcountMismatch(op1, badRef, oneRef)))
     
   }
   
@@ -242,24 +212,18 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs.isEmpty should be (true)
     
     val tx2UUID = new UUID(99,99)
     
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
         
-    Await.result(ds.getCurrentObjectState(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
     
-    ds.lockOrCollide(txd2) match {
-      case Some(m) => m should be (Map((uuid0 -> Right(txd)), (uuid1 -> Right(txd))))
-      case None => fail("Shouldn't have encountered errors")
-    }
+    errs2 should be (List(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
   }
   
   test("Lock No Collisions") {
@@ -270,12 +234,9 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
     
-    ds.lockOrCollide(txd) match {
-      case Some(m) => fail("Shouldn't have encountered errors")
-      case None => succeed
-    }
+    errs.isEmpty should be (true)
   }
   
   test("Get Object State") {
@@ -286,13 +247,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
-    
-    m.size should be (2)
-    m.contains(uuid0) should be (true)
-    m.contains(uuid1) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    m(uuid1) should be (Right(CurrentObjectState(uuid1, irev, oneRef, txUUID, None)))
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
+    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txUUID, None))
   }
   
   test("Get Invalid Object State") {
@@ -303,17 +259,10 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op2, oneRef, oneRef) :: Nil)
                     
-    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
     
-    m.size should be (2)
-    m.contains(uuid0) should be (true)
-    m.contains(uuid2) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    
-    m(uuid2) should matchPattern {
-      case Left(e: ObjectMismatch) => 
-      case Left(e: InvalidLocalPointer) =>
-    }
+    val r = Await.result(ds.getObject(op2), awaitDuration)
+    r should matchPattern { case Left(e: InvalidLocalPointer) => }
   }
   
   test("Get Object State With Object Mistmatch") {
@@ -325,16 +274,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    val m = Await.result(ds.getCurrentObjectState(txd), awaitDuration)
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
     
-    m.size should be (2)
-    m.contains(uuid0) should be (true)
-    m.contains(badUUID) should be (true)
-    m(uuid0) should be (Right(CurrentObjectState(uuid0, irev, oneRef, txUUID, None)))
-    
-    m(badUUID) should matchPattern {
-      case Left(e: ObjectMismatch) => 
-      case Left(e: InvalidLocalPointer) =>
+    val r = Await.result(ds.getObject(op1), awaitDuration)
+    r should matchPattern { 
+      case Left(e: ObjectMismatch) =>
+      case Left(e: InvalidLocalPointer) => 
     }
   }
   

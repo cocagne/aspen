@@ -32,7 +32,7 @@ class MemoryOnlyDataStore(
   
   def close(): Future[Unit] = Future.successful(())
   
-  private def getObject(ba: Array[Byte]) = objects.get(ByteBuffer.wrap(ba).getInt)
+  private def getObject(ba: Array[Byte]): Option[Object] = objects.get(ByteBuffer.wrap(ba).getInt)
   
   /** Allocates a new Object on the store */
   def allocateNewObject(objectUUID: UUID, 
@@ -57,88 +57,51 @@ class MemoryOnlyDataStore(
     getObject(storePointer.data) match {
       case None => Future.successful(Left(new InvalidLocalPointer))
       case Some(obj) =>
-        val cstate = CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock)
-        Future.successful(Right( (cstate, obj.data) ))
+        val r = if (obj.uuid != objectPointer.uuid)
+          Left(ObjectMismatch())
+        else
+          Right((CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock), obj.data))
+        
+        Future.successful(r)
     }
   }
   
-  /** Returns a future to a map of the current object state for all hosted objects referenced by the TransactionDescription
-   *  
-   *  This method always returns a Success(). Any errors encountered along the way are noted within the CurrentObjectState
-   *  associated with the object(s) for which errors were encountered. 
-   */
-  def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
-    
-    val m = synchronized {
-      for {
-        op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
-         
-        spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
-        if spo.isDefined
-        storePointer = spo.get
-        result: Either[ObjectReadError, CurrentObjectState] = getObject(storePointer.data) match {
-          case None => Left(new InvalidLocalPointer)
-          case Some(obj) => if (op.uuid == obj.uuid) 
-            Right(CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock))
-          else  
-            Left(new ObjectMismatch)
-        }
-      } yield (op.uuid -> result)
-    }
-    
-    Future.successful(m.toMap)
-  }
-  
-  /** Locks all objects referenced by the transaction or returns a map of collisions and/or errors */
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]] = synchronized {
-    var localObjects = Set[Object]()
-    
+  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = synchronized {
     val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
     val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
     
-    val errs = for {
-      op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
-      spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
-      if spo.isDefined
-      storePointer = spo.get
-      result: Option[Either[ObjectError, TransactionDescription]] = getObject(storePointer.data) match {
-        case None => Some(Left(new InvalidLocalPointer))
-        case Some(obj) =>
-          if (op.uuid == obj.uuid) 
-            obj.lock match {
-            case None => 
-              val revision_ok = requiredRevisions.get(obj.uuid) match {
-                case Some(required) => obj.revision == required
-                case None => true
-              }
-              val refcount_ok = requiredRefcounts.get(obj.uuid) match {
-                case Some(required) => obj.refcount == required
-                case None => true
-              }
-              if (revision_ok && refcount_ok) {
-                localObjects += obj
-                None
-              } else {
-                if (!revision_ok)
-                  Some(Left(new RevisionMismatch))
-                else
-                  Some(Left(new RefcountMismatch))
-              }
-            case Some(txd) => Some(Right(txd))
-          }
-          else  
-            Some(Left(new ObjectMismatch))
-      }
-      if result.isDefined
-    } yield (op.uuid -> result.get)
+    val localObjects = txd.allReferencedObjectsSet.foldLeft(List[(ObjectPointer, StorePointer)]())((l, op) => {
+      if (op.poolUUID == storeId.poolUUID) {
+        op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
+          case Some(sp) => (op, sp) :: l
+          case None => l
+        }
+      } else
+        l
+    })
     
-    if (errs.isEmpty) {
-      val lock = Some(txd)
-      localObjects.foreach(_.lock = lock)
-      None
-    } else {
-      Some(errs.toMap)
+    val errors = localObjects.foldLeft(List[ObjectTransactionError]()) { (l, t) =>
+      val (op, sp) = t
+      getObject(sp.data) match {
+        case None => new TransactionReadError(op, new InvalidLocalPointer) :: l
+        case Some(obj) =>
+          if (!requiredRevisions.contains(obj.uuid) && !requiredRefcounts.contains(obj.uuid))
+            new TransactionReadError(op, ObjectMismatch()) :: l
+          else if (requiredRevisions.contains(obj.uuid) && requiredRevisions(obj.uuid) != obj.revision)
+            new RevisionMismatch(op, requiredRevisions(obj.uuid), obj.revision) :: l
+          else if (requiredRefcounts.contains(obj.uuid) && requiredRefcounts(obj.uuid) != obj.refcount)
+            new RefcountMismatch(op, requiredRefcounts(obj.uuid), obj.refcount) :: l
+          else if (obj.lock.isDefined && obj.lock.get.transactionUUID != txd.transactionUUID)
+            new TransactionCollision(op, obj.lock.get) :: l
+          else
+            l
+      }
     }
+    
+    if (errors.isEmpty)
+      localObjects.foreach(t => getObject(t._2.data).foreach(obj => obj.lock = Some(txd)))
+    
+    Future.successful(errors)
   }
   
   

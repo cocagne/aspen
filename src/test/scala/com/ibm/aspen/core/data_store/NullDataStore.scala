@@ -37,14 +37,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
     Future.successful(Left(new InvalidLocalPointer))
   }
   
-  def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
-    var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
-    txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, refcount, new UUID(0,0), None))))
-    txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, refcount, new UUID(0,0), None))))
-    Future.successful(m)
-  }
-  
-  def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectError, TransactionDescription]]] = None
+  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = Future.successful(Nil)
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = Future.successful(())
   

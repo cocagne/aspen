@@ -19,6 +19,11 @@ import com.ibm.aspen.core.data_store.CurrentObjectState
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.ObjectReadError
 import com.ibm.aspen.core.data_store.InvalidLocalPointer
+import com.ibm.aspen.core.data_store.ObjectTransactionError
+import com.ibm.aspen.core.data_store.RevisionMismatch
+import com.ibm.aspen.core.data_store.RefcountMismatch
+import com.ibm.aspen.core.data_store.TransactionCollision
+import com.ibm.aspen.core.data_store.TransactionReadError
 
 object TransactionSuite {
   
@@ -197,28 +202,29 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(UpdateType.Data, 0, UpdateError.MissingUpdateData, None, None, None)))
+            List(UpdateErrorResponse(op.uuid, UpdateError.MissingUpdateData, None, None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
   
   test("Vote abort on revision mismatch") {
-    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      import NullDataStore._
-      
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), refcount, new UUID(0,0), None))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), refcount, new UUID(0,0), None))))
-        Future.successful(m)
-      }
-    }
-    val messenger = new TMessenger
-    val crl = new NullCRL
+    
     val op = mkobj
     val txd = mktxd(
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
+        
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      import NullDataStore._
+      
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9,100))))
+      }
+    }
+    
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
@@ -233,28 +239,27 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(UpdateType.Data, 0, UpdateError.RevisionMismatch, Some(ObjectRevision(9,100)), None, None)))
+            List(UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(9,100)), None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
   
   test("Vote abort on refcount mismatch") {
-    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      import NullDataStore._
-      
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, revision, ObjectRefcount(9,9), new UUID(0,0), None))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, revision, ObjectRefcount(9,9), new UUID(0,0), None))))
-        Future.successful(m)
-      }
-    }
-    val messenger = new TMessenger
-    val crl = new NullCRL
     val op = mkobj
     val txd = mktxd(
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
+        
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      import NullDataStore._
+      
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(new RefcountMismatch(op, NullDataStore.refcount, ObjectRefcount(9,9))))
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
+    
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
@@ -269,28 +274,28 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
+            List(UpdateErrorResponse(op.uuid, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
   
   test("Vote abort on revision & refcount mismatch") {
-    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
-      import NullDataStore._
-      
-      override def getCurrentObjectState(txd: TransactionDescription): Future[ Map[UUID, Either[ObjectReadError, CurrentObjectState]] ] = {
-        var m = Map[UUID, Either[ObjectReadError, CurrentObjectState]]()
-        txd.dataUpdates.foreach(du => m += (du.objectPointer.uuid -> Right(CurrentObjectState(du.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), new UUID(0,0), None))))
-        txd.dataUpdates.foreach(ru => m += (ru.objectPointer.uuid -> Right(CurrentObjectState(ru.objectPointer.uuid, ObjectRevision(9,100), ObjectRefcount(9,9), new UUID(0,0), None))))
-        Future.successful(m)
-      }
-    }
-    val messenger = new TMessenger
-    val crl = new NullCRL
     val op = mkobj
     val txd = mktxd(
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
+        
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      import NullDataStore._
+      
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(
+            new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9,100)),
+            new RefcountMismatch(op, NullDataStore.refcount, ObjectRefcount(9,9))))
+      }
+    }
+    val messenger = new TMessenger
+    val crl = new NullCRL
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
     
@@ -306,8 +311,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(UpdateType.Data, 0, UpdateError.RevisionMismatch, Some(ObjectRevision(9,100)), None, None),
-                UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
+                UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(9,100)), None, None),
+                UpdateErrorResponse(op.uuid, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -324,8 +329,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = Some(
-          Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(new TransactionCollision(op, collidingTxd)))
+      }
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -342,8 +348,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(UpdateType.Data, 0, UpdateError.Collision, None, None, Some(collidingTxd)),
-                UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, None, None, Some(collidingTxd))))
+                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some(collidingTxd))))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -360,8 +365,9 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = Some(
-          Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Left(new InvalidLocalPointer))))
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(new TransactionReadError(op, new InvalidLocalPointer)))
+      }
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -378,8 +384,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(UpdateType.Data, 0, UpdateError.InvalidLocalPointer, None, None, None),
-                UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.InvalidLocalPointer, None, None, None)))
+                UpdateErrorResponse(op.uuid, UpdateError.InvalidLocalPointer, None, None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -396,12 +401,11 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       var ncalls = 0
-      override def lockOrCollide(txd: TransactionDescription): Option[Map[UUID, Either[ObjectReadError, TransactionDescription]]] = if (ncalls == 0){
+      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = if (ncalls == 0) {
         ncalls += 1
-        Some(Map[UUID, Either[ObjectReadError, TransactionDescription]]((op.uuid -> Right(collidingTxd))))
-      }
-      else
-        None
+        Future.successful(List(new TransactionCollision(op, collidingTxd)))
+      } else
+        Future.successful(Nil)
     }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, HaveContent)
@@ -418,8 +422,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(UpdateType.Data, 0, UpdateError.Collision, None, None, Some(collidingTxd)),
-                UpdateErrorResponse(UpdateType.Refcount, 0, UpdateError.Collision, None, None, Some(collidingTxd))))
+                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some(collidingTxd))))
             
     futureResponse map { 
       
