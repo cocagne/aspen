@@ -54,19 +54,17 @@ class ClientTransactionDriver(
   protected def sendPrepareMessages(): Unit = {
     val poolUUID = txd.primaryObject.poolUUID
     
-    val heardFrom = learner.peerBitset
+    val fromStore = DataStoreID(poolUUID, txd.designatedLeaderUID)
     
-    txd.primaryObject.storePointers.foreach(sp => {
-      val to = DataStoreID(poolUUID, sp.poolIndex)
-      val from = DataStoreID(poolUUID, txd.designatedLeaderUID)
-      val initialPrepare = TxPrepare(to, from, txd, ProposalID(0, txd.designatedLeaderUID))
-      if (!heardFrom.get(sp.poolIndex)) {
-        val updateContent = updateData.get(to) match {
-          case None => Nil
-          case Some(lst) => lst
-        }
-        messenger.send(initialPrepare, updateContent)
+    txd.allDataStores.foreach { toStore =>
+      val initialPrepare = TxPrepare(toStore, fromStore, txd, ProposalID(0, txd.designatedLeaderUID))
+      
+      val updateContent = updateData.get(toStore) match {
+        case None => Nil
+        case Some(lst) => lst
       }
-    })
+      
+      messenger.send(initialPrepare, updateContent)
+    }
   }
 }
