@@ -34,6 +34,8 @@ object DataStoreSuite {
   
   def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = TransactionDescription(txdUUID, 100, allocObj, 0, du, ru, Nil)
   
+  def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, ByteBuffer.allocate(0))))
+  
   val storeId = DataStoreID(poolUUID, 1)
   
   val icontent0 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
@@ -86,7 +88,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                   
-    val err1 = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val err1 = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     if (!err1.isEmpty)
        fail(s"Shouldn't have encountered errors: $err1")
@@ -99,7 +101,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
-    val err2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
+    val err2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
     if (!err2.isEmpty)
        fail(s"Shouldn't have encountered errors: $err2")
@@ -117,7 +119,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
               
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.isEmpty should be (true)
     
@@ -136,7 +138,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.isEmpty should be (true)
     
@@ -158,7 +160,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
-    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
     errs2.isEmpty should be (true)
   }
@@ -171,7 +173,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.isEmpty should be (true)
     
@@ -182,7 +184,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
         
-    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
     errs2 should be (List(TransactionCollision(op0, txd), TransactionReadError(op3, InvalidLocalPointer())))
   }
@@ -199,7 +201,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, badRef, oneRef) :: Nil)
          
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs should be (List(RevisionMismatch(op0, badRev, irev), RefcountMismatch(op1, badRef, oneRef)))
     
@@ -213,7 +215,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.isEmpty should be (true)
     
@@ -222,7 +224,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
         
-    val errs2 = Await.result(ds.lockTransaction(txd2), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
     errs2 should be (List(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
   }
@@ -235,7 +237,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    val errs = Await.result(ds.lockTransaction(txd), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.isEmpty should be (true)
   }

@@ -1,21 +1,4 @@
  
- 
- * Then update lockTransaction to use LocalUpdate for error detection
-     * Create common checkError method & share it between storeImpls
- 
-/* 
-         * Refactor lockTransaction to take the localUpdates: Option
-         * 
-         * Refactor tx update error checking function into a standard method on the DataStore trait
-         * that takes the DataUpdate/RefcountUpdate info plus the current object state and optionally returns
-         * a TransactionError
-         * 
-         * Then have mem & rocks use this.
-         * 
-         * Need to detect missing local updates and error when it happens
-         * 
-         */
-  
 * Refactor dataUpdates and refcountUpdates lists into a single requirements list
    * use final abstract class TxRequirement
    * derive case classes for DataUpdate, RefcountUpdate, etc

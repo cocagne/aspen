@@ -73,7 +73,7 @@ trait DataStore {
    *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,
    *  no object locks are granted.
    */
-  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]]
+  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.
@@ -91,4 +91,55 @@ trait DataStore {
    * 
    */
   def discardTransaction(txd: TransactionDescription): Unit
+  
+  protected class TransactionErrorChecker(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]) {
+    
+    val localObjects = txd.allReferencedObjectsSet.foldLeft(List[(ObjectPointer, StorePointer)]())((l, op) => {
+      if (op.poolUUID == storeId.poolUUID) {
+        op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
+          case Some(sp) => (op, sp) :: l
+          case None => l
+        }
+      } else
+        l
+    })
+    val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
+    val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
+    val requiredData = txd.dataUpdates.map(du => du.objectPointer.uuid).toSet
+    val updates = updateData match {
+      case None => Set[UUID]()
+      case Some(lst) => lst.foldLeft(Set[UUID]())((s, lu) => s + lu.objectUUID)
+    }
+    
+    def getErrors( getCurrentState: (ObjectPointer, StorePointer) => Either[ObjectReadError, (ObjectRevision, ObjectRefcount, Option[TransactionDescription])] 
+                 ): List[ObjectTransactionError] = {
+      localObjects.foldLeft(List[ObjectTransactionError]()) { (l, t) =>
+        val (op, sp) = t
+        case class Err(e: ObjectTransactionError) extends Throwable
+        try {
+          getCurrentState(op, sp) match {
+            case Left(err) => throw Err(TransactionReadError(op, err))
+            
+            case Right((currentRevision, currentRefcount, lockedTransaction)) =>
+              
+              if (!requiredRevisions.contains(op.uuid) && !requiredRefcounts.contains(op.uuid))
+                throw Err(TransactionReadError(op, ObjectMismatch()))
+              
+              if (requiredData.contains(op.uuid) && !updates.contains(op.uuid)) throw Err(MissingUpdateContent(op))
+              
+              requiredRevisions.get(op.uuid).foreach(req => if (req != currentRevision) throw Err(RevisionMismatch(op, req, currentRevision)))
+                
+              requiredRefcounts.get(op.uuid).foreach(req => if (req != currentRefcount) throw Err(RefcountMismatch(op, req, currentRefcount)))
+              
+              lockedTransaction.foreach(ltxd => if (ltxd.transactionUUID != txd.transactionUUID) throw Err(TransactionCollision(op, ltxd)))
+              
+              l
+          }
+        } catch {
+          case Err(e) => e :: l
+        }
+      }
+    }
+  }
 }
+

@@ -38,7 +38,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
     Future.successful(Left(new InvalidLocalPointer))
   }
   
-  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = Future.successful(Nil)
+  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = Future.successful(())
   

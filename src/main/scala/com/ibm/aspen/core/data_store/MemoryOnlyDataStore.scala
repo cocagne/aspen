@@ -67,44 +67,23 @@ class MemoryOnlyDataStore(
     }
   }
   
-  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = synchronized {
-    val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
-    val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
+  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
+    val checker = new TransactionErrorChecker(txd, updateData)
     
-    val localObjects = txd.allReferencedObjectsSet.foldLeft(List[(ObjectPointer, StorePointer)]())((l, op) => {
-      if (op.poolUUID == storeId.poolUUID) {
-        op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
-          case Some(sp) => (op, sp) :: l
-          case None => l
-        }
-      } else
-        l
-    })
-    
-    val errors = localObjects.foldLeft(List[ObjectTransactionError]()) { (l, t) =>
-      val (op, sp) = t
+    def getCurrentState(op: ObjectPointer, sp:StorePointer): Either[ObjectReadError, (ObjectRevision, ObjectRefcount, Option[TransactionDescription])] = {
       getObject(sp.data) match {
-        case None => new TransactionReadError(op, new InvalidLocalPointer) :: l
-        case Some(obj) =>
-          if (!requiredRevisions.contains(obj.uuid) && !requiredRefcounts.contains(obj.uuid))
-            new TransactionReadError(op, ObjectMismatch()) :: l
-          else if (requiredRevisions.contains(obj.uuid) && requiredRevisions(obj.uuid) != obj.revision)
-            new RevisionMismatch(op, requiredRevisions(obj.uuid), obj.revision) :: l
-          else if (requiredRefcounts.contains(obj.uuid) && requiredRefcounts(obj.uuid) != obj.refcount)
-            new RefcountMismatch(op, requiredRefcounts(obj.uuid), obj.refcount) :: l
-          else if (obj.lock.isDefined && obj.lock.get.transactionUUID != txd.transactionUUID)
-            new TransactionCollision(op, obj.lock.get) :: l
-          else
-            l
+        case None => Left(new InvalidLocalPointer)
+        case Some(obj) => Right((obj.revision, obj.refcount, obj.lock))
       }
     }
     
+    val errors = checker.getErrors(getCurrentState)
+    
     if (errors.isEmpty)
-      localObjects.foreach(t => getObject(t._2.data).foreach(obj => obj.lock = Some(txd)))
+      checker.localObjects.foreach(t => getObject(t._2.data).foreach(obj => obj.lock = Some(txd)))
     
     Future.successful(errors)
   }
-  
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.
    *  

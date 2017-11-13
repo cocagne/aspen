@@ -252,40 +252,44 @@ class RocksDBDataStore(
    *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,
    *  no object locks are granted.
    */
-  def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
-    val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
-    val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
-    val ptrMap = txd.allReferencedObjectsSet.map(op => (op.uuid -> op)).toMap
+  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
     
-    def checkWs(ws: WorkingState): Option[ObjectTransactionError] = {
-      if (requiredRevisions.contains(ws.objectUUID) && requiredRevisions(ws.objectUUID) != ws.revision)
-        Some(new RevisionMismatch(ptrMap(ws.objectUUID), requiredRevisions(ws.objectUUID), ws.revision)) 
-      else if (requiredRefcounts.contains(ws.objectUUID) && requiredRefcounts(ws.objectUUID) != ws.refcount)
-        Some(RefcountMismatch(ptrMap(ws.objectUUID), requiredRefcounts(ws.objectUUID), ws.refcount))
-      else if (ws.lockedTransaction.isDefined && ws.lockedTransaction.get.transactionUUID != txd.transactionUUID)
-        Some(new TransactionCollision(ptrMap(ws.objectUUID), ws.lockedTransaction.get))
-      else
-        None
-    }
+    val checker = new TransactionErrorChecker(txd, updateData)
     
     val floadWs = Future.sequence(getHostedObjects(txd).map(op => loadWorkingState(op, txd.transactionUUID).map(e => (op,e))))
     
-    floadWs map { rset => synchronized {
-      val (errList, wslist) = rset.foldLeft((List[ObjectTransactionError](), List[WorkingState]())){ (t,e) => e match {
-        case (op, Left(err)) => (new TransactionReadError(op, err) :: t._1, t._2)
-        case (op, Right(ws)) => checkWs(ws) match {
-          case None => (t._1, ws :: t._2)
-          case Some(err) => (err :: t._1, ws:: t._2)
+    floadWs map { rset =>
+ 
+      val omap = rset.foldLeft(Map[UUID, Either[ObjectReadError, WorkingState]]()) { (m, t) => 
+        t._2 match {
+            case Left(err) => m + (t._1.uuid -> Left(err))
+            case Right(ws) => m + (t._1.uuid -> Right(ws))
         }
-      }}
+      }
       
-      if (errList.isEmpty) 
-        wslist.foreach(ws => ws.lockedTransaction = Some(txd))
-      else
-        wslist.foreach(ws => completeWorkingStateOperation(ws.objectUUID, ws, txd.transactionUUID))
+      synchronized {
+      
+        def getCurrentState(op: ObjectPointer, sp:StorePointer): Either[ObjectReadError, (ObjectRevision, ObjectRefcount, Option[TransactionDescription])] = {
+          omap.get(op.uuid) match {
+            case None => Left(new InvalidLocalPointer)
+            case Some(e) => e match {
+              case Left(err) => Left(err)
+              case Right(ws) => Right((ws.revision, ws.refcount, ws.lockedTransaction))
+            }
+          }
+        }
         
-      errList.reverse
-    }}
+        val errors = checker.getErrors(getCurrentState)
+        
+        if (errors.isEmpty)
+          omap.foreach(t => t._2 match {
+            case Left(_) =>
+            case Right(ws) => ws.lockedTransaction = Some(txd)
+          })
+        
+        errors
+      }
+    }
   }
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation.

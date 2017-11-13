@@ -27,6 +27,7 @@ import com.ibm.aspen.core.data_store.RefcountMismatch
 import com.ibm.aspen.core.data_store.ObjectTransactionError
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.TransactionCollision
+import com.ibm.aspen.core.data_store.MissingUpdateContent
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -77,7 +78,7 @@ class Transaction(
             
       case Right(promise) =>
         
-        store.lockTransaction(txd).foreach { errors =>
+        store.lockTransaction(txd, dataUpdates).foreach { errors =>
           
           val recoveryState = synchronized {
             
@@ -237,6 +238,7 @@ object Transaction {
     case e: RevisionMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
     case e: RefcountMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
     case e: TransactionCollision  => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, Some(e.lockedTransaction))
+    case e: MissingUpdateContent  => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.MissingUpdateData, None, None, None)
   }
   
 }

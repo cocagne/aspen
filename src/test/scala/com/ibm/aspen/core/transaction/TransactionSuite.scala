@@ -24,6 +24,7 @@ import com.ibm.aspen.core.data_store.RevisionMismatch
 import com.ibm.aspen.core.data_store.RefcountMismatch
 import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.data_store.TransactionReadError
+import com.ibm.aspen.core.data_store.MissingUpdateContent
 
 object TransactionSuite {
   
@@ -183,13 +184,20 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
 	}
   
   test("Vote abort when missing local updates") {
-    val store = new NullDataStore(DataStoreID(poolUUID,0)) 
     val messenger = new TMessenger
     val crl = new NullCRL
     val op = mkobj
     val txd = mktxd(
         DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
+        
+    val store = new NullDataStore(DataStoreID(poolUUID,0)) {
+      import NullDataStore._
+      
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
+        Future.successful(List(new MissingUpdateContent(op)))
+      }
+    }
     
     val tx = Transaction(crl, messenger, t => (), store, txd, LackContent)
     
@@ -219,7 +227,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9,100))))
       }
     }
@@ -255,7 +263,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(new RefcountMismatch(op, NullDataStore.refcount, ObjectRefcount(9,9))))
       }
     }
@@ -290,7 +298,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(
             new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9,100)),
             new RefcountMismatch(op, NullDataStore.refcount, ObjectRefcount(9,9))))
@@ -331,7 +339,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(new TransactionCollision(op, collidingTxd)))
       }
     }
@@ -367,7 +375,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(new TransactionReadError(op, new InvalidLocalPointer)))
       }
     }
@@ -403,7 +411,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
       import NullDataStore._
       var ncalls = 0
-      override def lockTransaction(txd: TransactionDescription): Future[List[ObjectTransactionError]] = if (ncalls == 0) {
+      override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = if (ncalls == 0) {
         ncalls += 1
         Future.successful(List(new TransactionCollision(op, collidingTxd)))
       } else

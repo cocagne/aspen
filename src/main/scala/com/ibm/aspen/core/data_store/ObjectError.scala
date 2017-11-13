@@ -50,4 +50,8 @@ case class RefcountMismatch(objectPointer: ObjectPointer, required: ObjectRefcou
  *  
  */
 case class TransactionCollision(objectPointer: ObjectPointer, lockedTransaction: TransactionDescription) extends ObjectTransactionError
-  
+
+/** Indicates that the update data was not received by the DataStore
+ *  
+ */
+case class MissingUpdateContent(objectPointer: ObjectPointer) extends ObjectTransactionError
