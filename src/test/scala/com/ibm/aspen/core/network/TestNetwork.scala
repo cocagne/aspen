@@ -23,6 +23,7 @@ import com.ibm.aspen.core.read.ObjectState
 import com.ibm.aspen.core.read.ReadResponse
 import scala.concurrent.Promise
 import com.ibm.aspen.core.read.BaseReadDriver
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 
 class TestNetwork {
@@ -37,7 +38,7 @@ class TestNetwork {
       Future.successful(())
     }
     
-    def send(message: transaction.Message, updateContent: Option[Array[ByteBuffer]] = None): Unit = storeToNode.get(message.to).foreach(sn => sn.receive(message, updateContent))
+    def send(message: transaction.Message, updateContent: Option[List[LocalUpdate]] = None): Unit = storeToNode.get(message.to).foreach(sn => sn.receive(message, updateContent))
     def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = clients.get(client).foreach(c => c.receive(acceptResponse))
     def send(client: ClientID, finalized: TxFinalized): Unit = clients.get(client).foreach(c => c.receive(finalized))
     
@@ -52,8 +53,8 @@ class TestNetwork {
   class CliMessenger(val clientId: ClientID) extends ClientMessenger {
     def send(toStore: DataStoreID, message: allocation.Allocate): Unit = storeToNode.get(toStore).foreach(sn => sn.receive(message))
     def send(toStore: DataStoreID, message: read.Read): Unit = storeToNode.get(toStore).foreach(sn => sn.receive(message))
-    def send(message: TxPrepare, updateContent: List[ByteBuffer]): Unit = storeToNode.get(message.to).foreach(sn => {
-      val oarr = if (updateContent.isEmpty) None else Some(updateContent.toArray)
+    def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = storeToNode.get(message.to).foreach(sn => {
+      val oarr = if (updateContent.isEmpty) None else Some(updateContent)
       sn.receive(message, oarr)
     })
   }

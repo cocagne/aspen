@@ -29,6 +29,7 @@ import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.data_store.InvalidLocalPointer
 import com.ibm.aspen.core.data_store.ObjectMismatch
 import com.ibm.aspen.core.data_store.CorruptedObject
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -80,7 +81,7 @@ class StorageNode(
     }
   })
   
-  def receive(message: transaction.Message, updateContent: Option[Array[ByteBuffer]]): Unit  = {
+  def receive(message: transaction.Message, updateContent: Option[List[LocalUpdate]]): Unit  = {
     txManager.receive(message, updateContent)
   }
   

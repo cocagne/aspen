@@ -1,4 +1,8 @@
  
+ 
+ * Then update lockTransaction to use LocalUpdate for error detection
+     * Create common checkError method & share it between storeImpls
+ 
 /* 
          * Refactor lockTransaction to take the localUpdates: Option
          * 

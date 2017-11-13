@@ -9,18 +9,18 @@ import scala.concurrent.Promise
 import scala.concurrent.Future
 
 object ClientTransactionDriver {
-  type Factory = (ClientSideTransactionMessenger, TransactionDescription, List[Map[Byte,ByteBuffer]]) => ClientTransactionDriver
+  type Factory = (ClientSideTransactionMessenger, TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) => ClientTransactionDriver
  
   def noErrorRecoveryFactory(
     messenger: ClientSideTransactionMessenger,
     txd: TransactionDescription, 
-    updateData: List[Map[Byte,ByteBuffer]]): ClientTransactionDriver = new ClientTransactionDriver(messenger, txd, updateData)
+    updateData: Map[DataStoreID, List[LocalUpdate]]): ClientTransactionDriver = new ClientTransactionDriver(messenger, txd, updateData)
 }
 
 class ClientTransactionDriver(
     val messenger: ClientSideTransactionMessenger,
     val txd: TransactionDescription, 
-    val updateData: List[Map[Byte,ByteBuffer]]) {
+    val updateData: Map[DataStoreID, List[LocalUpdate]]) {
   
   protected val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
   protected val promise = Promise[Boolean]()
@@ -61,7 +61,10 @@ class ClientTransactionDriver(
       val from = DataStoreID(poolUUID, txd.designatedLeaderUID)
       val initialPrepare = TxPrepare(to, from, txd, ProposalID(0, txd.designatedLeaderUID))
       if (!heardFrom.get(sp.poolIndex)) {
-        val updateContent = updateData.map( m => m(sp.poolIndex) )
+        val updateContent = updateData.get(to) match {
+          case None => Nil
+          case Some(lst) => lst
+        }
         messenger.send(initialPrepare, updateContent)
       }
     })

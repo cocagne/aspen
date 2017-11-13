@@ -8,6 +8,8 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.paxos.ProposalID
+import com.ibm.aspen.core.transaction.LocalUpdate
+import java.util.UUID
 
 object CRLCodec {
   import com.ibm.aspen.core.network.NetworkCodec
@@ -15,7 +17,7 @@ object CRLCodec {
   case class TransactionData( 
       dataStoreId: DataStoreID,
       txd: TransactionDescription,
-      dataUpdateContent: Option[Array[ByteBuffer]])
+      dataUpdateContent: Option[List[LocalUpdate]])
   
   case class TransactionState(
       disposition:TransactionDisposition.Value,
@@ -23,7 +25,7 @@ object CRLCodec {
       lastPromisedId: Option[ProposalID],
       lastAccepted: Option[(ProposalID, Boolean)])
       
-  def toTransactionDataByteArray(storeId:DataStoreID, txd: TransactionDescription, dataUpdateContent: Option[Array[ByteBuffer]]): Array[Byte] = {
+  def toTransactionDataByteArray(storeId:DataStoreID, txd: TransactionDescription, dataUpdateContent: Option[List[LocalUpdate]]): Array[Byte] = {
     val builder = new FlatBufferBuilder(8192)
     
     val td = CRLCodec.TransactionData(storeId, txd, dataUpdateContent)
@@ -73,16 +75,29 @@ object CRLCodec {
     val dataStoreId = NetworkCodec.encode(builder, o.dataStoreId)
     val txd = NetworkCodec.encode(builder, o.txd)
     
-    val (updateData, updateSizes) = o.dataUpdateContent match {
-      case None => (-1, -1)
+    val (updateData, updateSizes, objectUUIDs) = o.dataUpdateContent match {
+      case None => (-1, -1, -1)
       case Some(uc) => 
-        val totalDataSize = uc.foldLeft(0)( (sz, bb) => sz + bb.capacity )
+        def bbSize(bb: ByteBuffer) = bb.limit() - bb.position()
+        
+        val totalDataSize = uc.foldLeft(0)( (sz, lu) => sz + bbSize(lu.data) )
         val dbuff = builder.createUnintializedVector(1, totalDataSize, 1)
-        uc.foreach(db => dbuff.put( db.asReadOnlyBuffer() ) )
+        uc.foreach(lu => dbuff.put( lu.data.asReadOnlyBuffer() ) )
         
         val updateData = builder.endVector()
-        val updateSizes = C.CRLTransactionData.createUpdateSizesVector(builder, uc.map( bb => bb.capacity ))
-        (updateData, updateSizes)
+        val updateSizes = C.CRLTransactionData.createUpdateSizesVector(builder, uc.map(lu => bbSize(lu.data)).toArray)
+        
+        val uuidArray = new Array[Byte](16 * uc.size)
+        val uuidbb = ByteBuffer.wrap(uuidArray)
+        
+        uc.foreach(lu => {
+          uuidbb.putLong(lu.objectUUID.getMostSignificantBits)
+          uuidbb.putLong(lu.objectUUID.getLeastSignificantBits)
+        })
+        
+        val objectUUIDs = C.CRLTransactionData.createUpdateUUIDsVector(builder, uuidArray)
+        
+        (updateData, updateSizes, objectUUIDs)
     }
     
     C.CRLTransactionData.startCRLTransactionData(builder)
@@ -92,6 +107,7 @@ object CRLCodec {
     if (updateData > 0) {
       C.CRLTransactionData.addUpdateData(builder, updateData)
       C.CRLTransactionData.addUpdateSizes(builder, updateSizes)
+      C.CRLTransactionData.addUpdateUUIDs(builder, objectUUIDs)
     }
     C.CRLTransactionData.endCRLTransactionData(builder)
   }
@@ -103,7 +119,9 @@ object CRLCodec {
     } else {
       
       val buffs = new Array[ByteBuffer](e.updateSizesLength())
-      val dbuff = e.updateDataAsByteBuffer()
+      val uuids = new Array[UUID](e.updateSizesLength())
+      val dbuff = e.updateDataAsByteBuffer().asReadOnlyBuffer()
+      val ubuff = e.updateUUIDsAsByteBuffer().asReadOnlyBuffer()
       var offset = dbuff.position()
       
       for (i <- 0 until e.updateSizesLength()) {
@@ -115,10 +133,18 @@ object CRLCodec {
         buffs(i) = ByteBuffer.allocate(size)
         buffs(i).put(dbuff)
         buffs(i).position(0)
+        
+        val msig = ubuff.getLong()
+        val lsig = ubuff.getLong()
+        
+        uuids(i) = new UUID(msig, lsig)
+        
         offset += size
       }
       
-      Some(buffs)
+      val localUpdates = for( i <- 0 until uuids.length) yield LocalUpdate(uuids(i), buffs(i))
+      
+      Some(localUpdates.toList)
     }
     
     TransactionData(dataStoreId, txd, dataUpdateContent)

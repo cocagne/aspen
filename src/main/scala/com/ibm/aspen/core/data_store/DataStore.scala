@@ -11,6 +11,7 @@ import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.TransactionDisposition
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 trait DataStore {
   
@@ -80,7 +81,7 @@ trait DataStore {
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit]
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit]
   
   
   /** Called at the end of each transaction to ensure all object locks are released.

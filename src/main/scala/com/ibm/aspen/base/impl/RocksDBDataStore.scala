@@ -26,6 +26,7 @@ import com.ibm.aspen.core.data_store.ObjectTransactionError
 import com.ibm.aspen.core.data_store.ObjectTransactionError
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.TransactionCollision
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -292,7 +293,7 @@ class RocksDBDataStore(
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = synchronized {
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
     
     var localObjects = Map[UUID, WorkingState]()
     var dataUpdates = Set[WorkingState]()
@@ -301,25 +302,34 @@ class RocksDBDataStore(
     
     txd.refcountUpdates.foreach(ru => localObjects.get(ru.objectPointer.uuid).foreach(ws => ws.refcount = ru.newRefcount)) 
     
-    // Update object data only if we have the data to do so
-    localUpdates.foreach( updateData => if (updateData.size == txd.dataUpdates.size) {
-      txd.dataUpdates.zipWithIndex.foreach(t => localObjects.get(t._1.objectPointer.uuid).foreach(ws =>{
-        dataUpdates += ws
-        t._1.operation match {
-          case DataUpdateOperation.Overwrite => 
-            ws.data = updateData(t._2)
-            ws.revision = ObjectRevision(ws.revision.overwriteCount + 1, ws.data.capacity)
+    val objectUpdates = localUpdates match {
+      case None => Map[UUID, ByteBuffer]()
+      case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
+    }
+    
+    txd.dataUpdates.foreach { du =>
+      localObjects.get(du.objectPointer.uuid).foreach { ws =>
+        objectUpdates.get(du.objectPointer.uuid).foreach { data =>
+          dataUpdates += ws
+          
+          val dataLen = data.limit() - data.position()
+          
+          du.operation match {
+            case DataUpdateOperation.Overwrite => 
+            ws.data = data
+            ws.revision = ws.revision.overwrite(dataLen)
+            
           case DataUpdateOperation.Append =>
-            val app = updateData(t._2)
-            val buf = ByteBuffer.allocate( ws.data.capacity + app.capacity )
+            val buf = ByteBuffer.allocate( (ws.data.limit - ws.data.position()) + dataLen )
             buf.put(ws.data)
-            buf.put(app)
+            buf.put(data.asReadOnlyBuffer())
             buf.position(0)
             ws.data = buf
-            ws.revision = ObjectRevision(ws.revision.overwriteCount, ws.data.capacity)
+            ws.revision = ws.revision.append(dataLen)
+          }
         }
-      }))
-    })
+      }
+    }
     
     var commits = List[Future[Unit]]()
     

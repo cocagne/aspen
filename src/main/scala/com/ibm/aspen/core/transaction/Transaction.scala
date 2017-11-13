@@ -36,8 +36,8 @@ class Transaction(
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   
   val txd: TransactionDescription = trs.txd
-  val localUpdates: Option[Array[ByteBuffer]] = trs.localUpdates
   
+  private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates  
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
   private[this] var commitFuture: Option[Future[Unit]] = None
   
@@ -53,56 +53,13 @@ class Transaction(
   
   import Transaction._
   
-  /*
-   *  private[this] def getUpdateErrors(currentState: Map[UUID, Either[ObjectError.Value, CurrentObjectState]]): Option[List[UpdateErrorResponse]] = {
-    var errs: List[UpdateErrorResponse] = Nil
-
-    def convertErr(e: ObjectError.Value) = e match {
-      case ObjectError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
-      case ObjectError.CorruptedObject => UpdateError.CorruptedObject
-      case ObjectError.ObjectMismatch => UpdateError.ObjectMismatch
-    }
-
-    txd.dataUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
-      case Left(err) =>
-        val (du, updateIndex) = t
-
-        errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, convertErr(err), None, None, None) :: errs
-
-      case Right(cs) =>
-        val (du, updateIndex) = t
-
-        if ( !(localUpdates.isDefined && localUpdates.get.size > updateIndex) )
-          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.MissingUpdateData, None, None, None) :: errs
-
-        if (cs.revision != du.requiredRevision)
-          errs = UpdateErrorResponse(UpdateType.Data, updateIndex.toByte, UpdateError.RevisionMismatch, Some(cs.revision), None, None) :: errs
-    }))
-
-    txd.refcountUpdates.zipWithIndex.foreach(t => currentState.get(t._1.objectPointer.uuid).foreach( s => s match {
-      case Left(err) =>
-        val (ru, updateIndex) = t
-
-        errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, convertErr(err), None, None, None) :: errs
-
-      case Right(cs) =>
-        val (ru, updateIndex) = t
-
-        if (cs.refcount != ru.requiredRefcount)
-          errs = UpdateErrorResponse(UpdateType.Refcount, updateIndex.toByte, UpdateError.RefcountMismatch, None, Some(cs.refcount), None) :: errs
-    }))
-
-    if (errs.isEmpty)
-      None
-    else
-      Some(errs.reverse)
-  }
-   */
-  
-  def receivePrepare(prepare: TxPrepare): Unit = {
+  def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
     
-    val (response, acceptorState, originalDisposition) = synchronized {
-       (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition)
+    val (response, acceptorState, originalDisposition, dataUpdates) = synchronized {
+      if (localUpdates.isEmpty && optDataUpdates.isDefined)
+        localUpdates = optDataUpdates
+        
+       (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition, localUpdates)
     }
     
     response match {
@@ -119,18 +76,7 @@ class Transaction(
         messenger.send(response)
             
       case Right(promise) =>
-        /* 
-         * Refactor lockTransaction to take the localUpdates: Option
-         * 
-         * Refactor tx update error checking function into a standard method on the DataStore trait
-         * that takes the DataUpdate/RefcountUpdate info plus the current object state and optionally returns
-         * a TransactionError
-         * 
-         * Then have mem & rocks use this.
-         * 
-         * Need to detect missing local updates and error when it happens
-         * 
-         */
+        
         store.lockTransaction(txd).foreach { errors =>
           
           val recoveryState = synchronized {
@@ -265,7 +211,7 @@ object Transaction {
       onDiscard: (Transaction) => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
-      localUpdates: Option[Array[ByteBuffer]])(implicit ec: ExecutionContext): Transaction = {
+      localUpdates: Option[List[LocalUpdate]])(implicit ec: ExecutionContext): Transaction = {
     new Transaction(crl, messenger, onDiscard, store, TransactionRecoveryState(
         store.storeId,
         txd, 

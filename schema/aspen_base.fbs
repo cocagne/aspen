@@ -9,7 +9,9 @@ table CRLTransactionData {
     dataStoreId: com.ibm.aspen.core.network.protocol.DataStoreID;
     txd: com.ibm.aspen.core.network.protocol.TransactionDescription;
     updateData: [byte]; // Concatenated array of update data.
-    updateSizes: [int]; // Number of bytes in each update 
+    updateSizes: [int]; // Number of bytes in each update
+    updateUUIDs: [byte]; // Concatenated array of object UUIDs corresponding to each updateData entry
+                         // length of this array is 16 times the length of updateSizes 
 }
 
 table CRLTransactionState {

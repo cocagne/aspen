@@ -23,6 +23,7 @@ import scala.annotation.implicitNotFound
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import scala.concurrent.Future
 import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 
 class StorageNodeTransactionManager(
@@ -63,7 +64,7 @@ class StorageNodeTransactionManager(
     Future.successful(())
   }
   
-  def receive(message: Message, updateContent: Option[Array[ByteBuffer]]): Unit = getStore(message.to) foreach ( store => {
+  def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = getStore(message.to) foreach ( store => {
     message match {
       case m: TxPrepare => 
         val tx = synchronized { 
@@ -88,7 +89,7 @@ class StorageNodeTransactionManager(
             t
           }
         }
-        tx.receivePrepare(m)
+        tx.receivePrepare(m, updateContent)
         getTransactionDriver(m.txd.transactionUUID).foreach( td => td.receiveTxPrepare(m) )
    
       case m: TxPrepareResponse =>

@@ -21,7 +21,7 @@ class ClientTransactionManager(
   
   def runTransaction(
       txd: TransactionDescription,
-      updateData: List[Map[Byte,ByteBuffer]],
+      updateData: Map[DataStoreID, List[LocalUpdate]],
       driverFactory: Option[ClientTransactionDriver.Factory]): Future[Boolean] = {
                                  
     val td = driverFactory.getOrElse(defaultDriverFactory)(messenger, txd, updateData)

@@ -13,6 +13,8 @@ import com.ibm.aspen.base.MultipleDataUpdatesToObject
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.base.MultipleRefcountUpdatesToObject
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 class TransactionBuilder(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
@@ -25,7 +27,7 @@ class TransactionBuilder(
   private [this] var refcountUpdates = List[RefcountUpdate]()
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   
-  def buildTranaction(transactionUUID: UUID): (TransactionDescription, List[Map[Byte,ByteBuffer]]) = synchronized {
+  def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
     val startTimestamp = System.currentTimeMillis()
     val primaryObject = (dataObjects.iterator ++ refcountObjects.iterator).maxBy(ptr => ptr.ida)
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)
@@ -33,14 +35,29 @@ class TransactionBuilder(
     
     val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeaderUID, 
                                      dataUpdates, refcountUpdates, finalizationActions, originatingClient)
-                                     
+           
+    var updates = Map[DataStoreID, List[LocalUpdate]]()
+    
     val encodedUpdates = dataUpdates zip dataBuffers map { t => 
-      val encoded = t._1.objectPointer.ida.encode(t._2.asReadOnlyBuffer()) 
-      val idx2buff = t._1.objectPointer.storePointers zip encoded map(x => (x._1.poolIndex -> x._2))
-      idx2buff.toMap
+      val (du, buf) = t
+      
+      val encoded = du.objectPointer.ida.encode(buf.asReadOnlyBuffer()) 
+      val idx2buff = du.objectPointer.storePointers zip encoded foreach { x =>
+        val (sp, bb) = x
+        val storeId = DataStoreID(du.objectPointer.poolUUID, sp.poolIndex)
+        val lu = LocalUpdate(du.objectPointer.uuid, bb)
+        
+        updates.get(storeId) match {
+          case None => updates += (storeId -> List(lu))
+          case Some(lst) => 
+            val newList = lu :: lst
+            updates += (storeId -> newList)
+        }
+      }
+      
     } 
                                      
-    (txd, encodedUpdates)
+    (txd, updates)
   }
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {

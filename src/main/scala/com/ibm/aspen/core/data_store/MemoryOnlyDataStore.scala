@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -110,7 +111,7 @@ class MemoryOnlyDataStore(
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[Array[ByteBuffer]]): Future[Unit] = synchronized {
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
     val localSet = for {
       op <- txd.allReferencedObjectsSet if op.poolUUID == storeId.poolUUID
       spo = op.storePointers.find(_.poolIndex == storeId.poolIndex)
@@ -123,31 +124,33 @@ class MemoryOnlyDataStore(
     
     val localObjects = localSet.toMap
     
-    // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
+    val objectUpdates = localUpdates match {
+      case None => Map[UUID, ByteBuffer]()
+      case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
+    }
     
-    for ((du, idx) <- txd.dataUpdates.zipWithIndex) {
-      localObjects.get(du.objectPointer.uuid).foreach(obj => {
-        assert(localUpdates.isDefined, "Attempted to commit data update without having data update content!")
-        assert(localUpdates.get.size > idx, "Attempted to commit with data update index greater than size of content array!")
-        if (du.requiredRevision == obj.revision) {
+    // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
+    txd.dataUpdates.foreach { du =>
+      objectUpdates.get(du.objectPointer.uuid).foreach { data =>
+        localObjects.get(du.objectPointer.uuid).foreach { obj =>
           obj.revision = du.operation match {
             case DataUpdateOperation.Append => 
-              val appendData = localUpdates.get.apply(idx)
-              val newData = ByteBuffer.allocateDirect(obj.data.capacity + appendData.capacity)
+              
+              val newData = ByteBuffer.allocateDirect(obj.data.capacity + (data.limit() - data.position()))
 
               newData.put(obj.data)
-              newData.put(appendData)
+              newData.put(data.asReadOnlyBuffer())
               newData.position(0)
               
               obj.data = newData
-              ObjectRevision(obj.revision.overwriteCount, obj.data.capacity)
+              obj.revision.append(obj.data.capacity)
               
             case DataUpdateOperation.Overwrite => 
-              obj.data = localUpdates.get.apply(idx)
-              ObjectRevision(obj.revision.overwriteCount+1, obj.data.capacity)
+              obj.data = data.asReadOnlyBuffer()
+              obj.revision.overwrite(obj.data.limit() - obj.data.position())
           }
         }
-      })  
+      }
     }
     
     for ((ru, idx) <- txd.refcountUpdates.zipWithIndex) {

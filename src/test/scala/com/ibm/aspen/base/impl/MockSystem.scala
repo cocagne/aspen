@@ -46,6 +46,7 @@ import com.ibm.aspen.core.network.NetworkCodec
 import scala.concurrent._
 import scala.concurrent.duration._
 import com.ibm.aspen.core.transaction.ClientTransactionManager
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -242,7 +243,7 @@ object MockSystem {
     override def send(toStore: DataStoreID, message: read.Read): Unit = ()
     
     // ClientSideTransactionMessenger
-    override def send(message: TxPrepare, updateContent: List[ByteBuffer]): Unit = ()
+    override def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = ()
     
     override def setMessageReceivers(
       transactionMessageReceiver: ClientSideTransactionMessageReceiver,

@@ -12,6 +12,8 @@ import scala.concurrent.duration._
 import java.io.File
 import scala.concurrent.ExecutionContext
 import java.nio.ByteBuffer
+import java.util.UUID
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 object RocksDBCrashRecoveryLogSuite {
   import TransactionSuite._
@@ -88,7 +90,12 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val d1 = List[Byte](1,2,3).toArray
     val d2 = List[Byte](4,5,6).toArray
-    val DataContent = Some(List(ByteBuffer.wrap(d1), ByteBuffer.wrap(d2)).toArray)
+    val uuid1 = new UUID(1,1)
+    val uuid2 = new UUID(2,2)
+    val lu1 = LocalUpdate(uuid1, ByteBuffer.wrap(d1))
+    val lu2 = LocalUpdate(uuid2, ByteBuffer.wrap(d2))
+    
+    val DataContent = Some(List(lu1, lu2))
     
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
@@ -109,10 +116,15 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val a2 = lst.head.localUpdates.get
     a2.size should be (a1.size)
     
-    for (i <- 0 until a1.size) {
-      val buf = new Array[Byte](a2(i).capacity)
-      a2(i).get(buf)
-      java.util.Arrays.equals(a1(i).array(), buf) should be (true)
+    def bb2arr(bb:ByteBuffer) = {
+      val a = new Array[Byte](bb.capacity)
+      bb.asReadOnlyBuffer().get(a)
+      a
+    }
+    
+    a1 zip a2 foreach { t => 
+      t._1.objectUUID should be (t._2.objectUUID)
+      java.util.Arrays.equals(bb2arr(t._1.data), bb2arr(t._2.data))  
     }
     
     1 should be (1)
@@ -124,7 +136,12 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val d1 = List[Byte](1,2,3).toArray
     val d2 = List[Byte](4,5,6).toArray
-    val DataContent = Some(List(ByteBuffer.wrap(d1), ByteBuffer.wrap(d2)).toArray)
+    val uuid1 = new UUID(1,1)
+    val uuid2 = new UUID(2,2)
+    val lu1 = LocalUpdate(uuid1, ByteBuffer.wrap(d1))
+    val lu2 = LocalUpdate(uuid2, ByteBuffer.wrap(d2))
+    
+    val DataContent = Some(List(lu1, lu2))
     
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))

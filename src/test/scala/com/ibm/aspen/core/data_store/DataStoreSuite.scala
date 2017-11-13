@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.util.Success
 import scala.util.Failure
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.LocalUpdate
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -141,7 +142,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val newContent = ByteBuffer.wrap(List[Byte](7,8,9,10).toArray)
     
-    val lu = Some(List(newContent).toArray)
+    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     
