@@ -66,7 +66,7 @@ class BaseTransaction(
       builder.foreach { bldr =>
         val (txd, encodedDataUpdates) = bldr.buildTranaction(uuid)
         builder = None
-        if (txd.dataUpdates.isEmpty && txd.refcountUpdates.isEmpty)
+        if (txd.requirements.isEmpty)
           promise.success(())
         else {
             txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {

@@ -38,7 +38,7 @@ object TransactionSuite {
   def mkobj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   
   def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate]) = TransactionDescription(
-      java.util.UUID.randomUUID(), 100, mkobj, 0, du, ru, Nil)
+      java.util.UUID.randomUUID(), 100, mkobj, 0, du ++ ru, Nil)
       
   // All TxPrepare messages are sent to store 0
   def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,0), DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))

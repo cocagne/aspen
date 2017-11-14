@@ -40,8 +40,8 @@ object CodecSuite {
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
     val client = ClientID(cliUUID)
     
-    (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, Nil, finalz),
-        TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, Nil, refcountUpdates, finalz, Some(client)))
+    (TransactionDescription(txuuid, startTs, op, leader, dataUpdates, finalz),
+        TransactionDescription(java.util.UUID.randomUUID(), startTs, op, leader, refcountUpdates, finalz, Some(client)))
         
   }
 }

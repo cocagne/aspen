@@ -15,37 +15,38 @@ import com.ibm.aspen.base.MultipleRefcountUpdatesToObject
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.TransactionRequirement
 
 class TransactionBuilder(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
     clientId: ClientID) {
   
-  private [this] var dataObjects = Set[ObjectPointer]()
-  private [this] var refcountObjects = Set[ObjectPointer]()
-  private [this] var dataUpdates = List[DataUpdate]()
-  private [this] var dataBuffers = List[ByteBuffer]()
-  private [this] var refcountUpdates = List[RefcountUpdate]()
+  private [this] var requirements = List[TransactionRequirement]()
+  
+  private [this] var refcountUpdates = Set[ObjectPointer]()
+  private [this] var objectUpdates = Map[ObjectPointer, ByteBuffer]()
+  
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
     val startTimestamp = System.currentTimeMillis()
-    val primaryObject = (dataObjects.iterator ++ refcountObjects.iterator).maxBy(ptr => ptr.ida)
+    val primaryObject = requirements.map(_.objectPointer).maxBy(ptr => ptr.ida)
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)
     val originatingClient = Some(clientId)
     
     val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeaderUID, 
-                                     dataUpdates, refcountUpdates, finalizationActions, originatingClient)
+                                     requirements, finalizationActions, originatingClient)
            
     var updates = Map[DataStoreID, List[LocalUpdate]]()
     
-    val encodedUpdates = dataUpdates zip dataBuffers map { t => 
-      val (du, buf) = t
+    objectUpdates foreach { t => 
+      val (objectPointer, buf) = t
       
-      val encoded = du.objectPointer.ida.encode(buf.asReadOnlyBuffer()) 
-      val idx2buff = du.objectPointer.storePointers zip encoded foreach { x =>
+      val encoded = objectPointer.ida.encode(buf.asReadOnlyBuffer()) 
+      val idx2buff = objectPointer.storePointers zip encoded foreach { x =>
         val (sp, bb) = x
-        val storeId = DataStoreID(du.objectPointer.poolUUID, sp.poolIndex)
-        val lu = LocalUpdate(du.objectPointer.uuid, bb)
+        val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
+        val lu = LocalUpdate(objectPointer.uuid, bb)
         
         updates.get(storeId) match {
           case None => updates += (storeId -> List(lu))
@@ -54,40 +55,37 @@ class TransactionBuilder(
             updates += (storeId -> newList)
         }
       }
-      
     } 
                                      
     (txd, updates)
   }
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {
-    if (dataObjects.contains(objectPointer))
+    if (objectUpdates.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     
-    dataObjects += objectPointer
-    dataUpdates  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: dataUpdates
-    dataBuffers  = data.asReadOnlyBuffer() :: dataBuffers
+    objectUpdates += (objectPointer -> data.asReadOnlyBuffer())
+    requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: requirements
     
     requiredRevision.append(data.limit() - data.position())
   }
   
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {
-    if (dataObjects.contains(objectPointer))
+    if (objectUpdates.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     
-    dataObjects += objectPointer
-    dataUpdates  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: dataUpdates
-    dataBuffers  = data.asReadOnlyBuffer() :: dataBuffers
+    objectUpdates += (objectPointer -> data.asReadOnlyBuffer())
+    requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: requirements
     
     requiredRevision.overwrite(data.limit() - data.position())
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
-    if (refcountObjects.contains(objectPointer))
+    if (refcountUpdates.contains(objectPointer))
       throw MultipleRefcountUpdatesToObject(objectPointer)
     
-    refcountObjects += objectPointer
-    refcountUpdates  = RefcountUpdate(objectPointer, requiredRefcount, refcount) :: refcountUpdates
+    refcountUpdates += objectPointer
+    requirements  = RefcountUpdate(objectPointer, requiredRefcount, refcount) :: requirements
     
     refcount
   }

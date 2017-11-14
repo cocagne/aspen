@@ -27,6 +27,8 @@ import com.ibm.aspen.core.data_store.ObjectTransactionError
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.RefcountUpdate
+import com.ibm.aspen.core.transaction.DataUpdate
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -304,32 +306,36 @@ class RocksDBDataStore(
     
     getHostedObjects(txd).foreach(op => workingStates.get(op.uuid).foreach(ws => localObjects += (op.uuid -> ws)))
     
-    txd.refcountUpdates.foreach(ru => localObjects.get(ru.objectPointer.uuid).foreach(ws => ws.refcount = ru.newRefcount)) 
-    
     val objectUpdates = localUpdates match {
       case None => Map[UUID, ByteBuffer]()
       case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
     }
     
-    txd.dataUpdates.foreach { du =>
-      localObjects.get(du.objectPointer.uuid).foreach { ws =>
-        objectUpdates.get(du.objectPointer.uuid).foreach { data =>
-          dataUpdates += ws
+    txd.requirements.foreach { r =>
+      localObjects.get(r.objectPointer.uuid).foreach { ws => r match {
+        case ru: RefcountUpdate => ws.refcount = ru.newRefcount
           
-          val dataLen = data.limit() - data.position()
-          
-          du.operation match {
-            case DataUpdateOperation.Overwrite => 
-            ws.data = data
-            ws.revision = ws.revision.overwrite(dataLen)
+        case du: DataUpdate =>
+          objectUpdates.get(r.objectPointer.uuid).foreach { data =>
+            dataUpdates += ws
             
-          case DataUpdateOperation.Append =>
-            val buf = ByteBuffer.allocate( (ws.data.limit - ws.data.position()) + dataLen )
-            buf.put(ws.data)
-            buf.put(data.asReadOnlyBuffer())
-            buf.position(0)
-            ws.data = buf
-            ws.revision = ws.revision.append(dataLen)
+            val dataLen = data.limit() - data.position()
+            
+            du.operation match {
+              case DataUpdateOperation.Overwrite => 
+              ws.data = data
+              ws.revision = ws.revision.overwrite(dataLen)
+              
+            case DataUpdateOperation.Append => 
+              if (ws.revision == du.requiredRevision) {
+                val buf = ByteBuffer.allocate( (ws.data.limit - ws.data.position()) + dataLen )
+                buf.put(ws.data)
+                buf.put(data.asReadOnlyBuffer())
+                buf.position(0)
+                ws.data = buf
+                ws.revision = ws.revision.append(dataLen)
+              }
+            }
           }
         }
       }

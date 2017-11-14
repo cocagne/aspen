@@ -93,6 +93,11 @@ table RefcountUpdate {
   new_refcount: ObjectRefcount;
 }
 
+table TransactionRequirement {
+  data_update: DataUpdate;
+  refcount_update: RefcountUpdate;
+}
+
 table SerializedFinalizationAction {
   type_uuid: UUID;
   data: [byte];
@@ -103,8 +108,7 @@ table TransactionDescription {
   start_timestamp: long;
   primary_object: ObjectPointer;
   designated_leader_uid: byte;
-  data_updates: [DataUpdate];
-  refcount_updates: [RefcountUpdate];
+  requirements: [TransactionRequirement];
   finalization_actions: [SerializedFinalizationAction];
   originating_client: [byte];
 }

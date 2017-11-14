@@ -37,13 +37,13 @@ final case class TransactionDescription(
    */
   designatedLeaderUID: Byte,
   
-  dataUpdates: List[DataUpdate],
-  refcountUpdates: List[RefcountUpdate],
+  requirements: List[TransactionRequirement],
+  
   finalizationActions: List[SerializedFinalizationAction],
   
   originatingClient: Option[ClientID] = None) {
 
-  def allReferencedObjectsSet = (dataUpdates.iterator.map(_.objectPointer) ++ refcountUpdates.iterator.map(_.objectPointer)).toSet
+  def allReferencedObjectsSet = requirements.map(_.objectPointer).toSet
   
   def primaryObjectDataStores: Set[DataStoreID] = primaryObject.storePointers.foldLeft(Set[DataStoreID]())((s, sp) => s + DataStoreID(primaryObject.poolUUID, sp.poolIndex))
   

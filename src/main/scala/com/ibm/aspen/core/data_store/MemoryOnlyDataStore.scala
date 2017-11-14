@@ -12,6 +12,8 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.DataUpdate
+import com.ibm.aspen.core.transaction.RefcountUpdate
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -109,34 +111,37 @@ class MemoryOnlyDataStore(
     }
     
     // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
-    txd.dataUpdates.foreach { du =>
-      objectUpdates.get(du.objectPointer.uuid).foreach { data =>
-        localObjects.get(du.objectPointer.uuid).foreach { obj =>
-          obj.revision = du.operation match {
-            case DataUpdateOperation.Append => 
-              
-              val newData = ByteBuffer.allocateDirect(obj.data.capacity + (data.limit() - data.position()))
-
-              newData.put(obj.data)
-              newData.put(data.asReadOnlyBuffer())
-              newData.position(0)
-              
-              obj.data = newData
-              obj.revision.append(obj.data.capacity)
-              
-            case DataUpdateOperation.Overwrite => 
-              obj.data = data.asReadOnlyBuffer()
-              obj.revision.overwrite(obj.data.limit() - obj.data.position())
-          }
+    txd.requirements.foreach { r =>
+      localObjects.get(r.objectPointer.uuid).foreach { obj =>
+        r match {
+          case du: DataUpdate =>
+            objectUpdates.get(r.objectPointer.uuid).foreach { data =>
+              du.operation match {
+                case DataUpdateOperation.Append => 
+                  if (obj.revision == du.requiredRevision) {
+                    // Unlike overwrite which sets the full state of the object, appends can only be applied if
+                    // our current state matches the expected value. We can safely ignore this commit since we
+                    // cannot have voted for it to complete. The catch-up process will repair the object.
+                    val newData = ByteBuffer.allocateDirect(obj.data.capacity + (data.limit() - data.position()))
+      
+                    newData.put(obj.data)
+                    newData.put(data.asReadOnlyBuffer())
+                    newData.position(0)
+                    
+                    obj.data = newData
+                    obj.revision = obj.revision.append(obj.data.capacity)
+                  }
+                  
+                case DataUpdateOperation.Overwrite =>
+                  obj.data = data.asReadOnlyBuffer()
+                  obj.revision = obj.revision.overwrite(obj.data.limit() - obj.data.position())
+              }
+            }
+            
+          case ru: RefcountUpdate =>
+            obj.refcount = ru.newRefcount
         }
       }
-    }
-    
-    for ((ru, idx) <- txd.refcountUpdates.zipWithIndex) {
-      localObjects.get(ru.objectPointer.uuid).foreach(obj => {
-        if (ru.requiredRefcount == obj.refcount)
-          obj.refcount = ru.newRefcount
-      })  
     }
     
     // It is possible for transactions to commit even if the objects are currently locked to some other

@@ -55,7 +55,7 @@ object RocksDBCrashRecoveryLog {
   
   private val NullTXD = new TransactionDescription(NullUUID, 0, 
                                                    ObjectPointer(NullUUID, NullUUID, None, Replication(0,0), new Array[StorePointer](0)),
-                                                   0, Nil, Nil, Nil, None)
+                                                   0, Nil, Nil, None)
 }
 
 class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) extends CrashRecoveryLog {

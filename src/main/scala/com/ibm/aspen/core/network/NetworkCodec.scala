@@ -35,6 +35,9 @@ import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.transaction.TransactionRequirement
 
 
 
@@ -260,6 +263,27 @@ object NetworkCodec {
   }
   
   
+  def encode(builder:FlatBufferBuilder, o:TransactionRequirement): Int = {
+    val offset = o match {
+      case du: DataUpdate => encode(builder, du)
+      case ru: RefcountUpdate => encode(builder, ru)
+    }
+    
+    P.TransactionRequirement.startTransactionRequirement(builder)
+    o match {
+      case _: DataUpdate => P.TransactionRequirement.addDataUpdate(builder, offset)
+      case _: RefcountUpdate => P.TransactionRequirement.addRefcountUpdate(builder, offset)
+    }
+    P.TransactionRequirement.endTransactionRequirement(builder)
+  }
+  def decode(n: P.TransactionRequirement): TransactionRequirement = {
+    if (n.dataUpdate() != null)
+      decode(n.dataUpdate())
+    else 
+      decode(n.refcountUpdate())
+  }
+  
+  
   def encode(builder:FlatBufferBuilder, o:SerializedFinalizationAction): Int = {
     val data = P.SerializedFinalizationAction.createDataVector(builder, o.data)
     P.SerializedFinalizationAction.startSerializedFinalizationAction(builder)
@@ -277,8 +301,7 @@ object NetworkCodec {
   
   def encode(builder:FlatBufferBuilder, o:TransactionDescription): Int = {
     val primaryObject = encode(builder, o.primaryObject)
-    val dataUpdates = P.TransactionDescription.createDataUpdatesVector(builder, o.dataUpdates.map(du => encode(builder, du)).toArray)
-    val refcountUpdates = P.TransactionDescription.createRefcountUpdatesVector(builder, o.refcountUpdates.map(ru => encode(builder, ru)).toArray)
+    val requirements = P.TransactionDescription.createRequirementsVector(builder, o.requirements.map(r => encode(builder, r)).toArray)
     val finalizationActions = P.TransactionDescription.createFinalizationActionsVector(builder, o.finalizationActions.map(fa => encode(builder, fa)).toArray)
     
     val originatingClient = o.originatingClient match {
@@ -291,8 +314,7 @@ object NetworkCodec {
     P.TransactionDescription.addStartTimestamp(builder, o.startTimestamp)
     P.TransactionDescription.addPrimaryObject(builder, primaryObject)
     P.TransactionDescription.addDesignatedLeaderUid(builder, o.designatedLeaderUID)
-    P.TransactionDescription.addDataUpdates(builder, dataUpdates)
-    P.TransactionDescription.addRefcountUpdates(builder, refcountUpdates)
+    P.TransactionDescription.addRequirements(builder, requirements)
     P.TransactionDescription.addFinalizationActions(builder, finalizationActions)
     if (originatingClient != -1)
       P.TransactionDescription.addOriginatingClient(builder, originatingClient)
@@ -310,16 +332,10 @@ object NetworkCodec {
         n.originatingClientAsByteBuffer().get(buf)
         Some(ClientID(buf))
     }
-      
-    def dataUpdates(idx: Int, l:List[DataUpdate]): List[DataUpdate] = if (idx == -1) 
+    def requirements(idx: Int, l:List[TransactionRequirement]): List[TransactionRequirement] = if (idx == -1)
         l
-      else 
-        dataUpdates(idx-1, decode(n.dataUpdates(idx)) :: l)
-    
-    def refcountUpdates(idx: Int, l:List[RefcountUpdate]): List[RefcountUpdate] = if (idx == -1) 
-        l
-      else 
-        refcountUpdates(idx-1, decode(n.refcountUpdates(idx)) :: l)
+      else
+        requirements(idx-1, decode(n.requirements(idx)) :: l)
         
     def finalizationActions(idx: Int, l:List[SerializedFinalizationAction]): List[SerializedFinalizationAction] = if (idx == -1) 
         l
@@ -331,8 +347,7 @@ object NetworkCodec {
         startTimestamp,
         primaryObject,
         designatedLeaderUID,
-        dataUpdates(n.dataUpdatesLength()-1, Nil),
-        refcountUpdates(n.refcountUpdatesLength()-1, Nil),
+        requirements(n.requirementsLength()-1, Nil),
         finalizationActions(n.finalizationActionsLength()-1, Nil),
         originatingClient)
   }

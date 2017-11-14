@@ -32,7 +32,9 @@ object DataStoreSuite {
   
   def mkObjPtr(objUUID:UUID, sp:StorePointer) = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
   
-  def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = TransactionDescription(txdUUID, 100, allocObj, 0, du, ru, Nil)
+  def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = {
+    TransactionDescription(txdUUID, 100, allocObj, 0, du ++ ru, Nil)
+  }
   
   def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, ByteBuffer.allocate(0))))
   

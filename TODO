@@ -1,33 +1,18 @@
  
-* Refactor dataUpdates and refcountUpdates lists into a single requirements list
-   * use final abstract class TxRequirement
-   * derive case classes for DataUpdate, RefcountUpdate, etc
-   * will allow easy extension for RevisionLock and the like
-     
-* Add additionalResultNotifiers: List[DataStoreID] to TransactionDescription
-  - Allocation Tx will use this to ensure we at least attempt to notify stores of the completion of alloc transactions
-  - Then add support to DataStore API & Impls
-  
-* Switch localUpdates to UpdateContent instances
-
 * Switch ByteBuffer to DataBuffer - Read-Only wrapper around ByteBuffer instance
   - Start with top-level interfaces and work down
   - Only returns new copies of readOnlyByteBuffer 
   - Has constructors from arrays & byte buffers
   - Factory functions for copy and create
   - only add methods on an as-needed basis (no need to go overboard)
-
-* Need to change how we handle LocalUpdateContent
-  - Switch local update content to a list of (dataUpdateIndex, ByteBuffer)
-  - Can convert to map in Transaction for error detection
-
-TransactionBuilder is screwed up as is ClientTransactionDriver & TransactionDriver
-  * Each store needs an array of localUpdateContent where length == number of dataUpdates
-      |-> Switch localUpdates to tuples of (dataUpdateIndex, ByteBuffer)
-  * 
-  * Needs to be generated on a DataStoreID basis.
-  * Only 1 message goes to each store.
-
+     
+* Add notifyStoresOnResolution: List[DataStoreID] to TransactionDescription
+  - Allocation Tx will use this to ensure we at least attempt to notify stores of the completion of alloc transactions
+  - Then add support to DataStore API & Impls
+  
+* Consider adding error-handling info to TxResolution message sent to the client
+   - Can describe why Abort was chosen for resolution
+  
 * TransactionDriver Changes
   * Total re-think of workflow & messaging approach
       - use multi-message send where appropriate

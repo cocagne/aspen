@@ -31,7 +31,7 @@ object TransactionDriverSuite {
   //def mkobj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   
   def mktxd(optr: ObjectPointer, du: List[DataUpdate] = Nil, ru: List[RefcountUpdate] = Nil) = TransactionDescription(
-      java.util.UUID.randomUUID(), 100, optr, 0, du, ru, Nil)
+      java.util.UUID.randomUUID(), 100, optr, 0, du ++ ru, Nil)
       
   def mkprep(paxosRound: Int, toPeer: Byte, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,toPeer), DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
   

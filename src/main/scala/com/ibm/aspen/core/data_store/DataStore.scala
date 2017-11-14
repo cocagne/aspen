@@ -12,6 +12,8 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.DataUpdate
+import com.ibm.aspen.core.transaction.RefcountUpdate
 
 trait DataStore {
   
@@ -103,9 +105,18 @@ trait DataStore {
       } else
         l
     })
-    val requiredRevisions = txd.dataUpdates.map(du => (du.objectPointer.uuid -> du.requiredRevision)).toMap
-    val requiredRefcounts = txd.refcountUpdates.map( ru => (ru.objectPointer.uuid -> ru.requiredRefcount)).toMap
-    val requiredData = txd.dataUpdates.map(du => du.objectPointer.uuid).toSet
+    
+    val requiredRevisions = txd.requirements.foldLeft(Map[UUID, ObjectRevision]())((m, r) => r match {
+      case du: DataUpdate => m + (r.objectPointer.uuid -> du.requiredRevision)
+      case _ => m
+    })
+    
+    val requiredRefcounts = txd.requirements.foldLeft(Map[UUID, ObjectRefcount]())((m, r) => r match {
+      case ru: RefcountUpdate => m + (r.objectPointer.uuid -> ru.requiredRefcount)
+      case _ => m
+    })
+    
+    val requiredData = requiredRevisions.keySet
     val updates = updateData match {
       case None => Set[UUID]()
       case Some(lst) => lst.foldLeft(Set[UUID]())((s, lu) => s + lu.objectUUID)
