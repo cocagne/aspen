@@ -24,6 +24,7 @@ import com.ibm.aspen.core.read.ReadResponse
 import scala.concurrent.Promise
 import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.DataBuffer
 
 
 class TestNetwork {
@@ -47,7 +48,7 @@ class TestNetwork {
       case m: allocation.AllocateResponse => clients.get(client).foreach(c => c.receive(m))
     }
     
-    def send(client: ClientID, message: read.ReadResponse, data:Option[ByteBuffer]): Unit = clients.get(client).foreach(c => c.receive(message))
+    def send(client: ClientID, message: read.ReadResponse, data:Option[DataBuffer]): Unit = clients.get(client).foreach(c => c.receive(message))
   }
   
   class CliMessenger(val clientId: ClientID) extends ClientMessenger {

@@ -29,6 +29,7 @@ import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
+import com.ibm.aspen.core.DataBuffer
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -83,7 +84,7 @@ object RocksDBDataStore {
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
       var lastTxUUID: UUID,
-      var data: ByteBuffer, 
+      var data: DataBuffer, 
       var lockedTransaction: Option[TransactionDescription],
       var pendingOperations: Set[UUID])
       
@@ -136,18 +137,18 @@ class RocksDBDataStore(
     Future.sequence(flocks).map(_=>())
   }
   
-  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: ByteBuffer): Future[StorePointer] = synchronized {
-      val initialRevision = ObjectRevision(0, initialContent.limit - initialContent.position)
+  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer): Future[StorePointer] = synchronized {
+      val initialRevision = ObjectRevision(0, initialContent.size)
       val initialRefcount = ObjectRefcount(0, 1)
-      val buf = bytebufToArray(initialContent)
+      val buf = initialContent.getByteArray()
       db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, Bootstrap.BootstrapTransactionUUID))
       db.put(dataKey(objectUUID), buf).map(_ => StorePointer(storeId.poolIndex, new Array[Byte](0)))
   }
   
-  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: ByteBuffer): Future[Unit] = synchronized {
-    val initialRevision = ObjectRevision(0, newContent.limit - newContent.position)
+  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer): Future[Unit] = synchronized {
+    val initialRevision = ObjectRevision(0, newContent.size)
     val initialRefcount = ObjectRefcount(0, 1)
-    val buf = bytebufToArray(newContent)
+    val buf = newContent.getByteArray()
     db.put(stateKey(objectPointer), stateToBytes(initialRevision, initialRefcount, Bootstrap.BootstrapTransactionUUID))
     db.put(dataKey(objectPointer), buf).map(_ => ())
   }
@@ -162,15 +163,15 @@ class RocksDBDataStore(
    */
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: ByteBuffer,
+                        initialContent: DataBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
     val f = synchronized {
-      val initialRevision = ObjectRevision(0, initialContent.limit - initialContent.position)
+      val initialRevision = ObjectRevision(0, initialContent.size)
       db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, allocationTransactionUUID))
-      val buf = bytebufToArray(initialContent)
+      val buf = initialContent.getByteArray()
       val fcommitted = db.put(dataKey(objectUUID), buf)
       
       val ws = new WorkingState(objectUUID, initialRevision, initialRefcount, allocationTransactionUUID, initialContent, None, Set(allocationTransactionUUID))
@@ -187,7 +188,7 @@ class RocksDBDataStore(
     f.map(_ => Right(StorePointer(storeId.poolIndex, new Array[Byte](0))))
   }
   
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
     getWorkingState(objectPointer, None) map { e => e match {
       case Left(err) => Left(err)
       case Right(ws) => Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.lastTxUUID, ws.lockedTransaction), ws.data))
@@ -234,7 +235,7 @@ class RocksDBDataStore(
         case (Some(stateBuf), Some(dataBuf)) =>
           val (revision, refcount, lastTxUUID) = bytesToState(stateBuf)
           synchronized {
-            val ws = new WorkingState(objectPointer.uuid, revision, refcount, lastTxUUID, ByteBuffer.wrap(dataBuf), None, loadingState.pendingOperations)
+            val ws = new WorkingState(objectPointer.uuid, revision, refcount, lastTxUUID, DataBuffer(dataBuf), None, loadingState.pendingOperations)
             loadingStates -= objectPointer.uuid
             workingStates += (objectPointer.uuid -> ws)
             loadingState.loadPromise.success(Right(ws))
@@ -307,7 +308,7 @@ class RocksDBDataStore(
     getHostedObjects(txd).foreach(op => workingStates.get(op.uuid).foreach(ws => localObjects += (op.uuid -> ws)))
     
     val objectUpdates = localUpdates match {
-      case None => Map[UUID, ByteBuffer]()
+      case None => Map[UUID, DataBuffer]()
       case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
     }
     
@@ -319,21 +320,19 @@ class RocksDBDataStore(
           objectUpdates.get(r.objectPointer.uuid).foreach { data =>
             dataUpdates += ws
             
-            val dataLen = data.limit() - data.position()
-            
             du.operation match {
               case DataUpdateOperation.Overwrite => 
               ws.data = data
-              ws.revision = ws.revision.overwrite(dataLen)
+              ws.revision = ws.revision.overwrite(data.size)
               
             case DataUpdateOperation.Append => 
               if (ws.revision == du.requiredRevision) {
-                val buf = ByteBuffer.allocate( (ws.data.limit - ws.data.position()) + dataLen )
-                buf.put(ws.data)
+                val buf = ByteBuffer.allocate( ws.data.size + data.size )
+                buf.put(ws.data.asReadOnlyBuffer())
                 buf.put(data.asReadOnlyBuffer())
                 buf.position(0)
-                ws.data = buf
-                ws.revision = ws.revision.append(dataLen)
+                ws.data = DataBuffer(buf)
+                ws.revision = ws.revision.append(data.size)
               }
             }
           }
@@ -346,15 +345,8 @@ class RocksDBDataStore(
     localObjects.foreach(t => {
       commits = db.put(stateKey(t._1), stateToBytes(t._2.revision, t._2.refcount, txd.transactionUUID)) :: commits
       
-      if (dataUpdates.contains(t._2)) {
-        val data = if (t._2.data.isDirect) {
-          val buf = new Array[Byte](t._2.data.capacity)
-          t._2.data.asReadOnlyBuffer().get(buf)
-          buf
-        } else
-          t._2.data.array
-        db.put(dataKey(t._1), data)
-      }
+      if (dataUpdates.contains(t._2))   
+        db.put(dataKey(t._1), t._2.data.getByteArray())
       
       t._2.lockedTransaction = None
       

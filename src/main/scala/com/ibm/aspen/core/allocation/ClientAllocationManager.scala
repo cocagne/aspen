@@ -10,6 +10,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import scala.concurrent.Future
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
+import com.ibm.aspen.core.DataBuffer
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
@@ -28,7 +29,7 @@ class ClientAllocationManager(
                newObjectUUID: UUID,
                objectSize: Option[Int],
                objectIDA: IDA,
-               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
+               objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,

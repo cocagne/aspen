@@ -31,6 +31,7 @@ import com.ibm.aspen.base.StoreAllocationError
 import com.ibm.aspen.base.RetryStrategy
 import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.Util
+import com.ibm.aspen.core.DataBuffer
 
 
 
@@ -102,7 +103,7 @@ class BasicAspenSystem(
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
             case Right(os) => os.data match {
-              case Some(data) => ObjectStateAndData(objectPointer, os.revision, os.refcount, data.asReadOnlyBuffer())
+              case Some(data) => ObjectStateAndData(objectPointer, os.revision, os.refcount, data)
               case None => throw DataRetrievalFailed()
             }
           })
@@ -119,7 +120,7 @@ class BasicAspenSystem(
       poolUUID: UUID, 
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
     val encoded = objectIDA.encode(initialContent)
     val newObjectUUID = UUID.randomUUID()
     

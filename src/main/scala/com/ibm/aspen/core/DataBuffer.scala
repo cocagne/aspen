@@ -10,10 +10,10 @@ import java.nio.ByteBuffer
  *  Implemented as an AnyVal so no run-time allocation overhead is required by this wrapper.  
  *  
  */
-class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
+final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
   
   /** Creates a new read-only copy of the wrapped byte buffer */
-  def asReadOnlyByteBuffer: ByteBuffer = buf.asReadOnlyBuffer()
+  def asReadOnlyBuffer(): ByteBuffer = buf.asReadOnlyBuffer()
   
   def size: Int = buf.limit() - buf.position()
   
@@ -28,9 +28,12 @@ class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
   /** Creates a copy of the wrapped byte buffer content */
   def getByteArray(): Array[Byte] = {
     val arr = new Array[Byte](size)
-    buf.get(arr)
+    buf.asReadOnlyBuffer().get(arr)
     arr
   }
+  
+  def compareTo(that: DataBuffer): Int = buf.compareTo(that.buf)
+  
 }
 
 object DataBuffer {

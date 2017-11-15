@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.base.impl.AllocationFinalizationAction.FAContent
 import java.util.UUID
 import com.ibm.aspen.core.network.StorageNodeID
+import com.ibm.aspen.core.DataBuffer
 
 object BaseCodec {
   
@@ -17,7 +18,7 @@ object BaseCodec {
   def encodeStoragePoolDefinition(
      poolUUID: UUID, 
      hostingStorageNodes: Array[StorageNodeID], 
-     allocationTreeDefinition: Option[ObjectPointer]): ByteBuffer = {
+     allocationTreeDefinition: Option[ObjectPointer]): DataBuffer = {
     
     val builder = new FlatBufferBuilder(2048)
     
@@ -25,7 +26,7 @@ object BaseCodec {
 
     builder.finish(d)
     
-    builder.dataBuffer().asReadOnlyBuffer()
+    DataBuffer(builder.dataBuffer())
   }
  
   def encodeStoragePoolDefinitionToOffset(
@@ -57,7 +58,7 @@ object BaseCodec {
     P.StoragePoolDefinition.endStoragePoolDefinition(builder)
   }
   
-  def decodeStoragePoolDefinition(buf: ByteBuffer): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
+  def decodeStoragePoolDefinition(buf: DataBuffer): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
     decodeStoragePoolDefinition(P.StoragePoolDefinition.getRootAsStoragePoolDefinition(buf.asReadOnlyBuffer()))
   }
   
@@ -123,7 +124,7 @@ object BaseCodec {
     NetworkCodec.byteBufferToArray(builder.dataBuffer())
   }
   
-  def decodeRadicle(buf: ByteBuffer): Radicle = decode(P.RadicleContent.getRootAsRadicleContent(buf))
+  def decodeRadicle(buf: DataBuffer): Radicle = decode(P.RadicleContent.getRootAsRadicleContent(buf.asReadOnlyBuffer()))
   
   def decode(n: P.RadicleContent): Radicle = {
     val sp = NetworkCodec.decode(n.systemTreeDefinitionPointer())

@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.DataBuffer
 
 class TransactionBuilder(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
@@ -24,7 +25,7 @@ class TransactionBuilder(
   private [this] var requirements = List[TransactionRequirement]()
   
   private [this] var refcountUpdates = Set[ObjectPointer]()
-  private [this] var objectUpdates = Map[ObjectPointer, ByteBuffer]()
+  private [this] var objectUpdates = Map[ObjectPointer, DataBuffer]()
   
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   
@@ -42,7 +43,7 @@ class TransactionBuilder(
     objectUpdates foreach { t => 
       val (objectPointer, buf) = t
       
-      val encoded = objectPointer.ida.encode(buf.asReadOnlyBuffer()) 
+      val encoded = objectPointer.ida.encode(buf) 
       val idx2buff = objectPointer.storePointers zip encoded foreach { x =>
         val (sp, bb) = x
         val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
@@ -60,24 +61,24 @@ class TransactionBuilder(
     (txd, updates)
   }
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {
+  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
     if (objectUpdates.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     
-    objectUpdates += (objectPointer -> data.asReadOnlyBuffer())
+    objectUpdates += (objectPointer -> data)
     requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: requirements
     
-    requiredRevision.append(data.limit() - data.position())
+    requiredRevision.append(data.size)
   }
   
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {
+  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
     if (objectUpdates.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     
-    objectUpdates += (objectPointer -> data.asReadOnlyBuffer())
+    objectUpdates += (objectPointer -> data)
     requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: requirements
     
-    requiredRevision.overwrite(data.limit() - data.position())
+    requiredRevision.overwrite(data.size)
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {

@@ -7,6 +7,7 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 import scala.collection.immutable.SortedMap
+import com.ibm.aspen.core.DataBuffer
 
 private [base] object KVListCodec {
   
@@ -16,9 +17,9 @@ private [base] object KVListCodec {
   
   def decodeNodeContent(
       compareKeys: (Array[Byte], Array[Byte]) => Int, 
-      data: ByteBuffer): (SortedMap[Array[Byte], Array[Byte]], Option[KVListNodePointer]) = {
+      data: DataBuffer): (SortedMap[Array[Byte], Array[Byte]], Option[KVListNodePointer]) = {
     implicit val keyOrder = new KVListCodec.KeyOrdering(compareKeys)
-    val ops = KVListCodec.decodeOperations(data)
+    val ops = KVListCodec.decodeOperations(data.asReadOnlyBuffer())
     val i: (SortedMap[Array[Byte], Array[Byte]], Option[KVListNodePointer]) = (SortedMap(), None)
     
     ops.foldLeft(i)((t, op) => op match {
@@ -31,7 +32,7 @@ private [base] object KVListCodec {
   def encodeNewListContent(initialContent: List[(Array[Byte], Array[Byte])]): Array[Byte] = {
     val opsList = initialContent.map(t => Insert(t._1, t._2))
     val (appendOps, appendSize, appendOpCount) = KVListCodec.encodeOperations(opsList)
-    opsToByteBuffer(appendOps, appendSize).array
+    opsToDataBuffer(appendOps, appendSize).getByteArray()
   }
 
   def encodeListDescription(allocationPolicyUUID: UUID, rootObject: ObjectPointer): Array[Byte] = {
@@ -55,7 +56,7 @@ private [base] object KVListCodec {
     arr
   }
 
-  def decodeListDescription(bb: ByteBuffer): (UUID, ObjectPointer) = {
+  def decodeListDescription(bb: DataBuffer): (UUID, ObjectPointer) = {
     val m = K.KVListDescription.getRootAsKVListDescription(bb.asReadOnlyBuffer())
     val allocationPolicyUUID = NetworkCodec.decode(m.allocationPolicyUUID())
     val rootObject = NetworkCodec.decode(m.rootObject())
@@ -253,13 +254,13 @@ private [base] object KVListCodec {
 
   def mkSetRight(nodePointer: KVListNodePointer): SetRightPointerOp = mkSetRight(nodePointer.objectPointer, nodePointer.minimum)
   
-  def encode(operations: List[KVListOperation]): ByteBuffer = {
+  def encode(operations: List[KVListOperation]): DataBuffer = {
     val (ops, size, _) = encodeOperations(operations)
-    opsToByteBuffer(ops, size)
+    opsToDataBuffer(ops, size)
   }
   
   /** For unit tests */
-  def testEncodeContent(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): ByteBuffer = {
+  def testEncodeContent(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): DataBuffer = {
     val ins = content.map(t => Insert(t._1, t._2))
     val ops = rptr match {
       case None => ins
@@ -286,11 +287,11 @@ private [base] object KVListCodec {
     (ops, size, opCount)
   }
 
-  def opsToByteBuffer(ops: List[OpCode], encodedSize: Int): ByteBuffer = {
+  def opsToDataBuffer(ops: List[OpCode], encodedSize: Int): DataBuffer = {
     val bb = ByteBuffer.allocate(encodedSize)
     ops.foreach(_.encode(bb))
     bb.position(0)
-    bb
+    DataBuffer(bb)
   }
 
   /** Returns a sorted list of insert operations and the current right pointer */

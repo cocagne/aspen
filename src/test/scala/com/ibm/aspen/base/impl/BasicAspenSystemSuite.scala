@@ -8,6 +8,7 @@ import com.ibm.aspen.base.NoRetry
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.DataBuffer
 
 class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
   import Bootstrap._
@@ -44,7 +45,7 @@ class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
     def allocObj(r: Radicle): Future[ObjectPointer] = {
       implicit val tx = ms.basicAspenSystem.newTransaction()
       val ffp = ms.basicAspenSystem.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
-                                                   None, ms.bootstrapPoolIDA, ByteBuffer.allocate(5))
+                                                   None, ms.bootstrapPoolIDA, DataBuffer(ByteBuffer.allocate(5)))
       for {
         fp <- ffp
         committed <- tx.commit()

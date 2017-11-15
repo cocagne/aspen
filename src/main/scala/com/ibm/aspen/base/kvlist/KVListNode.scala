@@ -91,7 +91,7 @@ class KVListNode(
       val (appendOps, appendSize, appendOpCount) = KVListCodec.encodeOperations(opsList)
         
       if (appendSize <= nodeSizeLimit - nodeRevision.currentSize) {
-          transaction.append(nodePointer.objectPointer, nodeRevision, KVListCodec.opsToByteBuffer(appendOps, appendSize))
+          transaction.append(nodePointer.objectPointer, nodeRevision, KVListCodec.opsToDataBuffer(appendOps, appendSize))
           val newRevision = nodeRevision.append(appendSize)
           val updatedNode = new KVListNode(list, nodePointer, newRevision, rightNode, compactedContent)
           
@@ -113,9 +113,9 @@ class KVListNode(
         
         if (overwriteSize <= sizeLimit) {
           
-          val buf = KVListCodec.opsToByteBuffer(overwriteOps, overwriteSize)
+          val buf = KVListCodec.opsToDataBuffer(overwriteOps, overwriteSize)
           
-          assert(buf.limit - buf.position == overwriteSize)
+          assert(buf.size == overwriteSize)
           
           transaction.overwrite(nodePointer.objectPointer, nodeRevision, buf)
           
@@ -143,17 +143,17 @@ class KVListNode(
             KVListCodec.encodeOperations(lst)
           }
 
-          val rightData = KVListCodec.opsToByteBuffer(rightEncoded, rightSize)
+          val rightData = KVListCodec.opsToDataBuffer(rightEncoded, rightSize)
           
-          if (rightData.limit - rightData.position > nodeSizeLimit)
+          if (rightData.size > nodeSizeLimit)
             throw new InsertOverflow
          
           list.objectAllocater.allocate(nodePointer.objectPointer, nodeRevision, rightData) map { newNodePointer => 
             val (leftEncoded, leftSize, _) = KVListCodec.encodeOperations(KVListCodec.SetRightPointer(newNodePointer, rightInsertOps.head.key) :: leftInsertOps)
 
-            val leftData = KVListCodec.opsToByteBuffer(leftEncoded, leftSize)
+            val leftData = KVListCodec.opsToDataBuffer(leftEncoded, leftSize)
             
-            assert(leftData.limit - leftData.position == leftSize)
+            assert(leftData.size == leftSize)
             
             if (leftSize > sizeLimit) {
               val err = new InsertOverflow

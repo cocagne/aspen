@@ -3,6 +3,7 @@ package com.ibm.aspen.core.ida
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.read.IDAError
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 sealed abstract class IDA extends Ordered[IDA] {
   
@@ -23,10 +24,10 @@ sealed abstract class IDA extends Ordered[IDA] {
   def writeThreshold: Int
   
   /** Restores the data or throws an Exception if the restore operation fails. 
-   *  Accepts a list of (EncodingIndex, Option[Array[Byte]).
+   *  Accepts a list of (EncodingIndex, Option[DataBuffer]).
    *  Where the encoding index is the index of this data within the corresponding encode() call 
    */
-  def restore(segments: List[(Byte,Option[ByteBuffer])]): ByteBuffer
+  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer
   
   /** Encodes the object into an array of ByteBuffers
    *  
@@ -34,7 +35,7 @@ sealed abstract class IDA extends Ordered[IDA] {
    *  corresponding decode operation. The correct index in this array must be used during the decoding
    *  process.
    */
-  def encode(objectContent: ByteBuffer): Array[ByteBuffer]
+  def encode(objectContent: DataBuffer): Array[DataBuffer]
   
   def failureTolerance: Int = width - writeThreshold
   
@@ -47,7 +48,7 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
   
   def consistentRestoreThreshold: Int = width / 2 + 1
   
-  def restore(segments: List[(Byte,Option[ByteBuffer])]): ByteBuffer = segments.find(t => t._2 match {
+  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = segments.find(t => t._2 match {
     case None => false
     case Some(_) => true
   }) match {
@@ -55,10 +56,10 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
     case Some(t) => t._2.get
   }
   
-  def encode(objectContent: ByteBuffer): Array[ByteBuffer] = {
-    val arr = new Array[ByteBuffer](width)
+  def encode(objectContent: DataBuffer): Array[DataBuffer] = {
+    val arr = new Array[DataBuffer](width)
     for (i <- 0 until width)
-      arr(i) = objectContent.asReadOnlyBuffer()
+      arr(i) = objectContent
     arr
   }
 }
@@ -68,7 +69,7 @@ case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int)
   
   def consistentRestoreThreshold: Int = restoreThreshold
   
-  def restore(segments: List[(Byte,Option[ByteBuffer])]): ByteBuffer = throw new IDAError("Read Solomon not yet supported")
+  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = throw new IDAError("Read Solomon not yet supported")
   
-  def encode(objectContent: ByteBuffer): Array[ByteBuffer] = throw new IDAError("Read Solomon not yet supported")
+  def encode(objectContent: DataBuffer): Array[DataBuffer] = throw new IDAError("Read Solomon not yet supported")
 }

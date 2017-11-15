@@ -13,6 +13,7 @@ import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.core.data_store.BootstrapDataStore
 import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.core.DataBuffer
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -46,7 +47,7 @@ object Bootstrap {
    * 
    */
   def initializeNewSystem(
-      allocate: (ByteBuffer) => Future[ObjectPointer],
+      allocate: (DataBuffer) => Future[ObjectPointer],
       overwriteObject: (ObjectPointer, Array[Byte]) => Future[Unit],
       bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[ObjectPointer] = {
     
@@ -61,6 +62,10 @@ object Bootstrap {
     
     def treeDef(tier0Pointer: ObjectPointer) = ByteBuffer.wrap(KVTree.defineNewTreeWithInitialTier0Node(
                                                                SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy, tier0Pointer))
+                                                               
+    // Gets a little tiresome to constantly type out ByteBuffer -> DataBuffer conversions
+    import scala.language.implicitConversions                                                        
+    implicit def bb2db(bb: ByteBuffer): DataBuffer = DataBuffer(bb)
                                                                
     for {
       allocTreeTier0Ptr <- allocate(ByteBuffer.allocate(0))
@@ -100,7 +105,7 @@ object Bootstrap {
       case (Some(cur), Some(nxt)) => if (cur <= nxt) Some(cur) else Some(nxt)
     })
     
-    def allocate(initialContent: ByteBuffer): Future[ObjectPointer] = {
+    def allocate(initialContent: DataBuffer): Future[ObjectPointer] = {
       val objectUUID = UUID.randomUUID()
       val enc = bootstrapPoolIDA.encode(initialContent)
       val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
@@ -114,7 +119,7 @@ object Bootstrap {
     }
     
     def overwrite(objectPointer: ObjectPointer, newContent: Array[Byte]): Future[Unit] = {
-      val encodedContent = bootstrapPoolIDA.encode(ByteBuffer.wrap(newContent))
+      val encodedContent = bootstrapPoolIDA.encode(DataBuffer(newContent))
       Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(objectPointer, encodedContent(t._2)))).map(_=>())
     }
     

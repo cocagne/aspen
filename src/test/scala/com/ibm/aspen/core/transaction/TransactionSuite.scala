@@ -25,6 +25,7 @@ import com.ibm.aspen.core.data_store.RefcountMismatch
 import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.MissingUpdateContent
+import com.ibm.aspen.core.DataBuffer
 
 object TransactionSuite {
   
@@ -43,7 +44,7 @@ object TransactionSuite {
   // All TxPrepare messages are sent to store 0
   def mkprep(paxosRound: Int, fromPeer: Byte, txd: TransactionDescription) = TxPrepare(DataStoreID(poolUUID,0), DataStoreID(poolUUID,fromPeer), txd, ProposalID(paxosRound,fromPeer))
   
-  def mkLU(uuids: UUID*): Option[List[LocalUpdate]] = Some(uuids.map(u => LocalUpdate(u, ByteBuffer.wrap(new Array[Byte](0)))).toList)
+  def mkLU(uuids: UUID*): Option[List[LocalUpdate]] = Some(uuids.map(u => LocalUpdate(u, DataBuffer(new Array[Byte](0)))).toList)
   
   //val HaveContent = Some(List(ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0)), ByteBuffer.wrap(new Array[Byte](0))).toArray)
   val LackContent = None

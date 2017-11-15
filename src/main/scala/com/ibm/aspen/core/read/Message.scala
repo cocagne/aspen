@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 sealed abstract class Message
 
@@ -28,7 +29,7 @@ object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
       refcount: ObjectRefcount,
-      objectData: Option[ByteBuffer],
+      objectData: Option[DataBuffer],
       lockedTransaction: Option[TransactionDescription]) {
     
     override def equals(other: Any): Boolean = other match {

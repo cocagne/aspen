@@ -8,12 +8,12 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.allocation.AllocationErrors
-import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
+import com.ibm.aspen.core.DataBuffer
 
 trait DataStore {
   
@@ -46,7 +46,7 @@ trait DataStore {
    */
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: ByteBuffer,
+                        initialContent: DataBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
@@ -58,11 +58,11 @@ trait DataStore {
    *  This is the method that should be overridden by subclasses. The getObject method that accepts only the objectPointer checks to ensure that
    *  this store hosts the object before calling this method to do the actual fetch.  
    */
-  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]]
+  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]]
   
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
     objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
       case Some(sp) => getObject(objectPointer, sp)
       case None => Future.successful(Left(new InvalidLocalPointer))

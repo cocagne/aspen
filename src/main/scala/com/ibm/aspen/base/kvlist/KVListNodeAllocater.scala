@@ -7,13 +7,14 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 trait KVListNodeAllocater {
   val allocationPolicyUUID: UUID
   
   def allocate(
       targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-      initialContent: ByteBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer]
+      initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer]
   
   val nodeSizeLimit: Int
 }

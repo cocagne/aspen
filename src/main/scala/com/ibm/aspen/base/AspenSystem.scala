@@ -10,6 +10,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
+import com.ibm.aspen.core.DataBuffer
 
 trait AspenSystem {
   
@@ -31,7 +32,7 @@ trait AspenSystem {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
+      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
   
   def allocateObject(
       allocatingObject: ObjectPointer,
@@ -40,7 +41,7 @@ trait AspenSystem {
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, ByteBuffer.wrap(initialContent))
+    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent))
   }
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool]

@@ -10,6 +10,7 @@ import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
+import com.ibm.aspen.core.DataBuffer
 
 object CRLCodec {
   import com.ibm.aspen.core.network.NetworkCodec
@@ -78,14 +79,13 @@ object CRLCodec {
     val (updateData, updateSizes, objectUUIDs) = o.dataUpdateContent match {
       case None => (-1, -1, -1)
       case Some(uc) => 
-        def bbSize(bb: ByteBuffer) = bb.limit() - bb.position()
         
-        val totalDataSize = uc.foldLeft(0)( (sz, lu) => sz + bbSize(lu.data) )
+        val totalDataSize = uc.foldLeft(0)( (sz, lu) => sz + lu.data.size )
         val dbuff = builder.createUnintializedVector(1, totalDataSize, 1)
         uc.foreach(lu => dbuff.put( lu.data.asReadOnlyBuffer() ) )
         
         val updateData = builder.endVector()
-        val updateSizes = C.CRLTransactionData.createUpdateSizesVector(builder, uc.map(lu => bbSize(lu.data)).toArray)
+        val updateSizes = C.CRLTransactionData.createUpdateSizesVector(builder, uc.map(lu => lu.data.size).toArray)
         
         val uuidArray = new Array[Byte](16 * uc.size)
         val uuidbb = ByteBuffer.wrap(uuidArray)
@@ -142,7 +142,7 @@ object CRLCodec {
         offset += size
       }
       
-      val localUpdates = for( i <- 0 until uuids.length) yield LocalUpdate(uuids(i), buffs(i))
+      val localUpdates = for( i <- 0 until uuids.length) yield LocalUpdate(uuids(i), DataBuffer(buffs(i)))
       
       Some(localUpdates.toList)
     }

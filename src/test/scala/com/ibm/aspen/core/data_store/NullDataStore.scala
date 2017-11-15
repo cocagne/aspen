@@ -12,6 +12,7 @@ import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.DataBuffer
 
 /* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
@@ -26,7 +27,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: ByteBuffer,
+                        initialContent: DataBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
@@ -34,7 +35,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
     Future.successful(Left(AllocationErrors.InsufficientSpace))
   }
   
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
     Future.successful(Left(new InvalidLocalPointer))
   }
   

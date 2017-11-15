@@ -17,6 +17,7 @@ import scala.util.Success
 import scala.util.Failure
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.DataBuffer
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -36,12 +37,12 @@ object DataStoreSuite {
     TransactionDescription(txdUUID, 100, allocObj, 0, du ++ ru, Nil)
   }
   
-  def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, ByteBuffer.allocate(0))))
+  def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, DataBuffer(ByteBuffer.allocate(0)))))
   
   val storeId = DataStoreID(poolUUID, 1)
   
-  val icontent0 = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
-  val icontent1 = ByteBuffer.wrap(List[Byte](4,5,6).toArray)
+  val icontent0 = DataBuffer(List[Byte](1,2,3).toArray)
+  val icontent1 = DataBuffer(List[Byte](4,5,6).toArray)
   val irev = ObjectRevision(0,3)
 }
 
@@ -53,7 +54,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   // Helper method that creates a store and adds two objects. Returns (DataStore, Obj0StorePointer, Obj1StorePointer)
   def initObjects(): (DataStore, StorePointer, StorePointer) = {
     val ds = newStore
-            
+    
     val expected = (CurrentObjectState(uuid0, irev, oneRef, txUUID, None), icontent0)
     
     implicit val executionContext = ExecutionContext.Implicits.global
@@ -70,7 +71,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   }
   
   // Helper method that reads an object and validates it's state
-  def checkState(ds: DataStore, op: ObjectPointer, cs: CurrentObjectState, obuf: Option[ByteBuffer] = None) = {
+  def checkState(ds: DataStore, op: ObjectPointer, cs: CurrentObjectState, obuf: Option[DataBuffer] = None) = {
     val r = Await.result(ds.getObject(op), awaitDuration)
     r match {      
       case Left(_) => fail
@@ -123,7 +124,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
               
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
-    errs.isEmpty should be (true)
+    errs should be (Nil)
     
     checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, Some(txd)))
     checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txUUID, Some(txd)))
@@ -144,7 +145,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     errs.isEmpty should be (true)
     
-    val newContent = ByteBuffer.wrap(List[Byte](7,8,9,10).toArray)
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
     val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
     
@@ -241,7 +242,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
-    errs.isEmpty should be (true)
+    errs should be (Nil)
   }
   
   test("Get Object State") {
@@ -291,7 +292,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   test("Allocate New Object") {
     val ds = newStore
     
-    val icontent = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
+    val icontent = DataBuffer(List[Byte](1,2,3).toArray)
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
             
     futureResponse map { either => either match {
@@ -303,7 +304,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   test("Allocate and Read New Object") {
     val ds = newStore
     
-    val icontent = ByteBuffer.wrap(List[Byte](1,2,3).toArray)
+    val icontent = DataBuffer(List[Byte](1,2,3).toArray)
     val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
             
     val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, txUUID, None), icontent)

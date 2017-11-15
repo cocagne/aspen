@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 sealed abstract class Message
 
@@ -16,7 +17,7 @@ final case class Allocate(
     fromClient: ClientID,
     newObjectUUID: UUID,
     objectSize: Option[Int],
-    objectData: ByteBuffer,
+    objectData: DataBuffer,
     initialRefcount: ObjectRefcount,
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,

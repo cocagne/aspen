@@ -47,6 +47,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.DataBuffer
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -56,8 +57,8 @@ object MockSystem {
   class RefcountMismatch extends Throwable
   
   sealed abstract class ObjectOp
-  case class Append(ptr: ObjectPointer, requiredRevision: ObjectRevision, buf: ByteBuffer) extends ObjectOp
-  case class Overwrite(ptr: ObjectPointer, requiredRevision: ObjectRevision, buf: ByteBuffer) extends ObjectOp
+  case class Append(ptr: ObjectPointer, requiredRevision: ObjectRevision, buf: DataBuffer) extends ObjectOp
+  case class Overwrite(ptr: ObjectPointer, requiredRevision: ObjectRevision, buf: DataBuffer) extends ObjectOp
   case class SetRef(ptr: ObjectPointer, requiredRefcount: ObjectRefcount, newRefcount: ObjectRefcount) extends ObjectOp
   
   class StorageSystem {
@@ -65,14 +66,13 @@ object MockSystem {
     
     def read(ptr: ObjectPointer): Option[ObjectStateAndData] = synchronized { objects.get(ptr.uuid) }
     
-    def allocate(newObjectUUID: UUID, initialRefcount: ObjectRefcount, initialContent: ByteBuffer): ObjectStateAndData = synchronized {
-      val len = initialContent.limit() - initialContent.position()
-      val cpy = ByteBuffer.allocate(len)
+    def allocate(newObjectUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer): ObjectStateAndData = synchronized {
+      val cpy = ByteBuffer.allocate(initialContent.size)
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
-      val rev = ObjectRevision(0, len)
+      val rev = ObjectRevision(0, initialContent.size)
       val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
-      val osd = ObjectStateAndData(ptr, rev, initialRefcount, cpy.asReadOnlyBuffer())
+      val osd = ObjectStateAndData(ptr, rev, initialRefcount, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
       osd
     }
@@ -90,30 +90,28 @@ object MockSystem {
       })
     }
     
-    private def append(ptr: ObjectPointer, buf: ByteBuffer): Unit = {
+    private def append(ptr: ObjectPointer, buf: DataBuffer): Unit = {
       val orig = objects(ptr.uuid)
       
-      val bufLen = buf.limit() - buf.position()
-      val newSize = orig.data.capacity() + bufLen
+      val newSize = orig.data.size + buf.size
       val newData = ByteBuffer.allocate(newSize)
       newData.put(orig.data.asReadOnlyBuffer())
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.copy(currentSize = newSize)
+      val newRev = orig.revision.append(buf.size)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, newData.asReadOnlyBuffer()))
+      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, DataBuffer(newData)))
     }
     
-    def overwrite(ptr: ObjectPointer, buf: ByteBuffer): Unit =  {
+    def overwrite(ptr: ObjectPointer, buf: DataBuffer): Unit =  {
       val orig = objects(ptr.uuid)
         
-      val bufLen = buf.limit() - buf.position()
-      val newData = ByteBuffer.allocate(bufLen)
+      val newData = ByteBuffer.allocate(buf.size)
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.copy(overwriteCount=orig.revision.overwriteCount+1, currentSize=bufLen)
+      val newRev = orig.revision.overwrite(buf.size)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, newData.asReadOnlyBuffer()))
+      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, DataBuffer(newData)))
     }
     
     private def setref(ptr:ObjectPointer, newRef: ObjectRefcount): Unit = {
@@ -159,16 +157,14 @@ object MockSystem {
     
     private var invalidatedReason: Option[Throwable] = None
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized {
-      val len = data.limit() - data.position()
+    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
       ops = Append(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.append(len)
+      requiredRevision.append(data.size)
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision =  synchronized {
-      val len = data.limit - data.position
+    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  synchronized {
       ops = Overwrite(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.overwrite(len)
+      requiredRevision.overwrite(data.size)
     }
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
@@ -203,7 +199,7 @@ object MockSystem {
   class AllocDriver(
       val store: StorageSystem,
       val newObjectUUID: UUID,
-      val objectData: Map[Byte,ByteBuffer],
+      val objectData: Map[Byte,DataBuffer],
       val initialRefcount: ObjectRefcount) extends AllocationDriver {
     
     val objectPointer = store.allocate(newObjectUUID, initialRefcount, objectData.head._2).pointer
@@ -225,7 +221,7 @@ object MockSystem {
                newObjectUUID: UUID,
                objectSize: Option[Int],
                objectIDA: IDA,
-               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
+               objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
@@ -267,12 +263,12 @@ class MockSystem(val treeNodeSize:Int=1000) {
   
   // Bootstrap the system by creating the StoragePoolDefinition for Bootstrapping Pool & StoragePoolTreeDefinition
   
-  def allocate(content: ByteBuffer): Future[ObjectPointer] = {
+  def allocate(content: DataBuffer): Future[ObjectPointer] = {
     Future.successful(storage.allocate(UUID.randomUUID(), ObjectRefcount(0,1), content).pointer)
   }
   
   def overwrite(ptr: ObjectPointer, arr: Array[Byte]): Future[Unit] = {
-    Future.successful(storage.overwrite(ptr, ByteBuffer.wrap(arr)))
+    Future.successful(storage.overwrite(ptr, DataBuffer(arr)))
   }
   
   var txNumber = 0

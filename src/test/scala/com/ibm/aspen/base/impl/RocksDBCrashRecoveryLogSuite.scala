@@ -14,6 +14,7 @@ import scala.concurrent.ExecutionContext
 import java.nio.ByteBuffer
 import java.util.UUID
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.DataBuffer
 
 object RocksDBCrashRecoveryLogSuite {
   import TransactionSuite._
@@ -92,8 +93,8 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val d2 = List[Byte](4,5,6).toArray
     val uuid1 = new UUID(1,1)
     val uuid2 = new UUID(2,2)
-    val lu1 = LocalUpdate(uuid1, ByteBuffer.wrap(d1))
-    val lu2 = LocalUpdate(uuid2, ByteBuffer.wrap(d2))
+    val lu1 = LocalUpdate(uuid1, DataBuffer(d1))
+    val lu2 = LocalUpdate(uuid2, DataBuffer(d2))
     
     val DataContent = Some(List(lu1, lu2))
     
@@ -124,7 +125,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     a1 zip a2 foreach { t => 
       t._1.objectUUID should be (t._2.objectUUID)
-      java.util.Arrays.equals(bb2arr(t._1.data), bb2arr(t._2.data))  
+      java.util.Arrays.equals(t._1.data.getByteArray(), t._2.data.getByteArray())  
     }
     
     1 should be (1)
@@ -138,8 +139,8 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val d2 = List[Byte](4,5,6).toArray
     val uuid1 = new UUID(1,1)
     val uuid2 = new UUID(2,2)
-    val lu1 = LocalUpdate(uuid1, ByteBuffer.wrap(d1))
-    val lu2 = LocalUpdate(uuid2, ByteBuffer.wrap(d2))
+    val lu1 = LocalUpdate(uuid1, DataBuffer(d1))
+    val lu2 = LocalUpdate(uuid2, DataBuffer(d2))
     
     val DataContent = Some(List(lu1, lu2))
     

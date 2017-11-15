@@ -12,6 +12,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -46,7 +47,7 @@ class BaseReadDriver(
   /** Successfully complete the read operation or throw and IDAError. Must be called from within a synchronized block */
   protected def complete(): Unit = {
     
-    val segments = objectPointer.storePointers.foldLeft(List[(Byte,Option[ByteBuffer])]())( (l, sp) => {
+    val segments = objectPointer.storePointers.foldLeft(List[(Byte,Option[DataBuffer])]())( (l, sp) => {
       responses.get(DataStoreID(objectPointer.poolUUID, sp.poolIndex)) match {
         case None => (sp.poolIndex, None) :: l
         case Some(either) => either match {
@@ -148,7 +149,7 @@ object BaseReadDriver {
       storeId: DataStoreID,
       revision: ObjectRevision,
       refcount: ObjectRefcount,
-      objectData: Option[ByteBuffer],
+      objectData: Option[DataBuffer],
       lockedTransaction: Option[TransactionDescription])
       
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(

@@ -17,13 +17,14 @@ import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.DataBuffer
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
   
   def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
  
-  class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: ByteBuffer)
+  class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: DataBuffer)
   
   var content = Map[UUID, Obj]()
   var allocCount = 0
@@ -35,7 +36,7 @@ class SimpleTestSystem extends AspenSystem {
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {
-      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data.asReadOnlyBuffer()))
+      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data))
       case None => Future.failed(new DataRetrievalFailed)
     }
   }
@@ -48,14 +49,13 @@ class SimpleTestSystem extends AspenSystem {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: ByteBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
     
     val id = allocCount
     allocCount += 1
     val ptr = mkptr(id)
-    val len = initialContent.limit - initialContent.position
     
-    content += (ptr.uuid -> new Obj(ObjectRevision(0,len), ObjectRefcount(0,1), initialContent))
+    content += (ptr.uuid -> new Obj(ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), initialContent))
     
     Future.successful(ptr)
   }
@@ -73,36 +73,35 @@ class SimpleTestSystem extends AspenSystem {
     
     var invalidatedReason: Option[Throwable] = None
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {
-      val len = data.limit - data.position
+    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {
       
       def fn() = {
         val o = content(objectPointer.uuid) 
-        o.rev = requiredRevision.append(len)
-        val orig_data = o.data
-        o.data = ByteBuffer.allocate(o.data.capacity + len)
-        o.data.put(orig_data)
-        o.data.put(data)
-        o.data.position(0)
+        o.rev = requiredRevision.append(data.size)
+        val cpy = ByteBuffer.allocate(o.data.size + data.size)
+        cpy.put(o.data.asReadOnlyBuffer())
+        cpy.put(data.asReadOnlyBuffer())
+        cpy.position(0)
+        o.data = DataBuffer(cpy)
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.append(len)
+      requiredRevision.append(data.size)
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision =  {
-      val len = data.limit - data.position
+    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       
       def fn() = {
         val o = content(objectPointer.uuid) 
-        o.rev = requiredRevision.overwrite(len)
-        o.data = ByteBuffer.allocate(len)
-        o.data.put(data)
-        o.data.position(0)
+        o.rev = requiredRevision.overwrite(data.size)
+        val cpy = ByteBuffer.allocate(data.size)
+        cpy.put(data.asReadOnlyBuffer())
+        cpy.position(0)
+        o.data = DataBuffer(cpy)
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.overwrite(len)
+      requiredRevision.overwrite(data.size)
     }
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = {

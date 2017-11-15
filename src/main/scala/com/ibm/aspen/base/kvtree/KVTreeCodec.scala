@@ -9,10 +9,11 @@ import java.nio.ByteBuffer
 import scala.collection.immutable.SortedMap
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.base.kvlist.KVListCodec
+import com.ibm.aspen.core.DataBuffer
 
 private[kvtree] object KVTreeCodec {
   
-  def encode(ic: List[KVListNodePointer], rptr: Option[KVListNodePointer]): ByteBuffer = {
+  def encode(ic: List[KVListNodePointer], rptr: Option[KVListNodePointer]): DataBuffer = {
     val iops = ic.map(np => KVListCodec.Insert(np.minimum, NetworkCodec.objectPointerToByteArray(np.objectPointer)))
     val fullOps = rptr match {
       case None => iops
@@ -52,10 +53,10 @@ private[kvtree] object KVTreeCodec {
   case class InsertIntoUpperTierData(treeDefinitionPointer: ObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
   
   def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = {
-    decodeInsertIntoUpperTierFinalizationAction(ByteBuffer.wrap(arr))
+    decodeInsertIntoUpperTierFinalizationAction(DataBuffer(arr))
   }
   
-  def decodeInsertIntoUpperTierFinalizationAction(bb: ByteBuffer): InsertIntoUpperTierData = {
+  def decodeInsertIntoUpperTierFinalizationAction(bb: DataBuffer): InsertIntoUpperTierData = {
     val m = K.InsertIntoUpperTier.getRootAsInsertIntoUpperTier(bb.asReadOnlyBuffer())
     decodeInsertIntoUpperTierFinalizationActionImpl(m)
   }
@@ -109,9 +110,9 @@ private[kvtree] object KVTreeCodec {
     arr
   }
   
-  def decodeTreeDefinition(arr: Array[Byte]): KVTreeDefinition = decodeTreeDefinition(ByteBuffer.wrap(arr))
+  def decodeTreeDefinition(arr: Array[Byte]): KVTreeDefinition = decodeTreeDefinition(DataBuffer(arr))
   
-  def decodeTreeDefinition(bb: ByteBuffer): KVTreeDefinition = {
+  def decodeTreeDefinition(bb: DataBuffer): KVTreeDefinition = {
     val m = K.KVTreeDefinition.getRootAsKVTreeDefinition(bb.asReadOnlyBuffer())
     decodeTreeDefinitionImpl(m)
   }

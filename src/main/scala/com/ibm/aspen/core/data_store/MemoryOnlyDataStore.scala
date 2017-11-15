@@ -14,6 +14,7 @@ import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
+import com.ibm.aspen.core.DataBuffer
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -40,20 +41,20 @@ class MemoryOnlyDataStore(
   /** Allocates a new Object on the store */
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
-                        initialContent: ByteBuffer,
+                        initialContent: DataBuffer,
                         initialRefcount: ObjectRefcount,
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = synchronized {
     val (objId, lpArray) = nextLocalPointer()
     
-    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.capacity), initialRefcount, initialContent, allocationTransactionUUID, None))
+    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.size), initialRefcount, initialContent, allocationTransactionUUID, None))
     
     Future.successful(Right(StorePointer(storeId.poolIndex, lpArray)))
   }
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,ByteBuffer)]] = synchronized {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
       return Future.successful(Left(new InvalidLocalPointer))
     
@@ -106,7 +107,7 @@ class MemoryOnlyDataStore(
     val localObjects = localSet.toMap
     
     val objectUpdates = localUpdates match {
-      case None => Map[UUID, ByteBuffer]()
+      case None => Map[UUID, DataBuffer]()
       case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
     }
     
@@ -122,19 +123,19 @@ class MemoryOnlyDataStore(
                     // Unlike overwrite which sets the full state of the object, appends can only be applied if
                     // our current state matches the expected value. We can safely ignore this commit since we
                     // cannot have voted for it to complete. The catch-up process will repair the object.
-                    val newData = ByteBuffer.allocateDirect(obj.data.capacity + (data.limit() - data.position()))
+                    val newData = ByteBuffer.allocateDirect(obj.data.size + data.size)
       
-                    newData.put(obj.data)
+                    newData.put(obj.data.asReadOnlyBuffer())
                     newData.put(data.asReadOnlyBuffer())
                     newData.position(0)
                     
-                    obj.data = newData
-                    obj.revision = obj.revision.append(obj.data.capacity)
+                    obj.data = DataBuffer(newData)
+                    obj.revision = obj.revision.append(obj.data.size)
                   }
                   
                 case DataUpdateOperation.Overwrite =>
-                  obj.data = data.asReadOnlyBuffer()
-                  obj.revision = obj.revision.overwrite(obj.data.limit() - obj.data.position())
+                  obj.data = data
+                  obj.revision = obj.revision.overwrite(obj.data.size)
               }
             }
             
@@ -177,7 +178,7 @@ object MemoryOnlyDataStore {
       val uuid: UUID, 
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
-      var data: ByteBuffer, 
+      var data: DataBuffer, 
       var lastCommittedTxUUID: UUID,
       var lock: Option[TransactionDescription])
 }

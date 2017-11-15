@@ -24,6 +24,7 @@ import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.base.kvlist.KVListNode
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.FinalizationAction
+import com.ibm.aspen.core.DataBuffer
 
 object KVTreeSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -79,7 +80,7 @@ object KVTreeSuite {
     def mktree(tiers: List[ObjectPointer]): Future[ObjectPointer] = {
       implicit val tx = new system.Tx
       val td = KVTreeDefinition(treePolicyUUID, KVTree.KeyComparison.BigInt, tiers)
-      val data = ByteBuffer.wrap(KVTreeCodec.encodeTreeDefinition(td))
+      val data = KVTreeCodec.encodeTreeDefinition(td)
       val f = system.allocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, data)
       tx.commit()
       f
@@ -91,7 +92,7 @@ object KVTreeSuite {
       
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-          initialContent: ByteBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
         system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, initialContent)(t, ec)
       }
     }
@@ -108,7 +109,7 @@ object KVTreeSuite {
       
       def allocateRootLeafNode(
           targetObject: ObjectPointer, targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, ByteBuffer.allocate(0))(t, ec)
+        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, DataBuffer(ByteBuffer.allocate(0)))(t, ec)
       }
       
       def getListNodeAllocaterForTier(tier: Int): KVListNodeAllocater = new ListAlloc(nodeSizeLimit)

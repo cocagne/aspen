@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.IDA
 import java.nio.ByteBuffer
 import scala.concurrent.Future
+import com.ibm.aspen.core.DataBuffer
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -38,7 +39,7 @@ object AllocationDriver {
                newObjectUUID: UUID,
                objectSize: Option[Int],
                objectIDA: IDA,
-               objectData: Map[Byte,ByteBuffer], // Map DataStore pool index -> store-specific ObjectData
+               objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,

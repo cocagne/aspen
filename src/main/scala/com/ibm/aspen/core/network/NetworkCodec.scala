@@ -38,6 +38,7 @@ import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.DataBuffer
 
 
 
@@ -592,8 +593,7 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Allocate.createFromClientVector(builder, o.fromClient.serialized)
-    builder.createUnintializedVector(1, o.objectData.capacity, 1).put(o.objectData)
-    o.objectData.position(0)
+    builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
     val objectData = builder.endVector()
     val allocObj = encode(builder, o.allocatingObject)
     
@@ -623,7 +623,7 @@ object NetworkCodec {
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val allocatingObject = decode(n.allocatingObject())
     val allocatingObjectRevision = decode(n.allocatingObjectRevision())
-    Allocate(toStore, ClientID(fromClient), newObjectUUID, objectSize, objectData, initialRefcount, 
+    Allocate(toStore, ClientID(fromClient), newObjectUUID, objectSize, DataBuffer(objectData), initialRefcount, 
         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
   
@@ -696,8 +696,7 @@ object NetworkCodec {
         val od = cs.objectData match {
           case None => -1
           case Some(d) =>
-            builder.createUnintializedVector(1, d.capacity, 1).put(d)
-            d.position(0)
+            builder.createUnintializedVector(1, d.size, 1).put(d.asReadOnlyBuffer())
             builder.endVector()
         }
         val td = cs.lockedTransaction match {
@@ -747,7 +746,7 @@ object NetworkCodec {
         Some(buff)
       }
       val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }
-      Right(ReadResponse.CurrentState(revision, refcount, objectData, lockedTransaction))
+      Right(ReadResponse.CurrentState(revision, refcount, objectData.map(DataBuffer(_)), lockedTransaction))
     }
     ReadResponse(fromStore, readUUID, result)
   }

@@ -16,6 +16,7 @@ import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.core.DataBuffer
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -49,16 +50,16 @@ object KVListSuite {
     var overwriteOp: Op = null
     var invalidated: Throwable = null
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = {  
+    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {  
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       appendOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
-      requiredRevision.append(data.limit - data.position)
+      requiredRevision.append(data.size)
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision =  {
+    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       overwriteOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
-      requiredRevision.overwrite(data.limit - data.position)
+      requiredRevision.overwrite(data.size)
     }
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = throw new Exception("Should not be used")
@@ -89,11 +90,11 @@ object KVListSuite {
       
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-          initialContent: ByteBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
-        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0,initialContent.capacity()), ObjectRefcount(0,1), initialContent))
+        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), initialContent))
         
         Future.successful(p)
       }
@@ -105,7 +106,7 @@ object KVListSuite {
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     
-    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), ByteBuffer.allocate(0)))
+    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), DataBuffer(ByteBuffer.allocate(0))))
     
     def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }

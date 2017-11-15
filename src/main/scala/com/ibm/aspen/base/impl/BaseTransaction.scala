@@ -15,6 +15,7 @@ import scala.concurrent.ExecutionContext
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.base.TransactionAborted
+import com.ibm.aspen.core.DataBuffer
 
 object BaseTransaction {
   def Factory(
@@ -32,11 +33,11 @@ class BaseTransaction(
   private [this] val promise = Promise[Unit]
   private [this] var builder: Option[TransactionBuilder] = Some(new TransactionBuilder(chooseDesignatedLeader, txManager.clientId))
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized { builder } match {
+  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.append(objectPointer, requiredRevision, data)
     case None => throw PostCommitTransactionModification()
   }
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: ByteBuffer): ObjectRevision = synchronized { builder } match {
+  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
     case None => throw PostCommitTransactionModification()
   }
