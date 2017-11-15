@@ -12,6 +12,8 @@
  * 
  */
 
+import scala.sys.process._
+
 lazy val root = (project in file(".")).
   settings(
     name         := "aspen",
@@ -43,7 +45,7 @@ sourceGenerators in Compile += Def.task {
 
   if (net_generate) {
     println(s"Generating Network Protocol Source Files")
-    val stdout = s"flatc --java -o $base schema/network_protocol.fbs".!
+    val stdout:Int = s"flatc --java -o $base schema/network_protocol.fbs".!
     println(s"Result: $stdout")  
   }
   
@@ -56,7 +58,7 @@ sourceGenerators in Compile += Def.task {
 
   if (abase_generate) {
     println(s"Generating Aspen Base Serialization Source Files")
-    val stdout = s"flatc --java -o $base schema/aspen_base.fbs".!
+    val stdout:Int = s"flatc --java -o $base schema/aspen_base.fbs".!
     println(s"Result: $stdout")  
   }
   
@@ -69,7 +71,7 @@ sourceGenerators in Compile += Def.task {
 
   if (kvt_generate) {
     println(s"Generating KVTree Serialization Source Files")
-    val stdout = s"flatc --java -o $base schema/kvtree.fbs".!
+    val stdout:Int = s"flatc --java -o $base schema/kvtree.fbs".!
     println(s"Result: $stdout")  
   }
   
@@ -82,7 +84,7 @@ sourceGenerators in Compile += Def.task {
 
   if (kvl_generate) {
     println(s"Generating KVList Serialization Source Files")
-    val stdout = s"flatc --java -o $base schema/kvlist.fbs".!
+    val stdout:Int = s"flatc --java -o $base schema/kvlist.fbs".!
     println(s"Result: $stdout")  
   }
   
