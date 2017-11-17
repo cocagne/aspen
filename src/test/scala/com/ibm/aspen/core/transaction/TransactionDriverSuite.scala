@@ -38,7 +38,9 @@ object TransactionDriverSuite {
   class TMessenger extends NullMessenger {
     var messages = List[Message]()
     
-    override def send(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = messages = message :: messages
+    override def send(message: Message): Unit = messages = message :: messages
+    
+    override def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = messages = message :: messages
     
     def clear(): Unit = messages = List()
   }

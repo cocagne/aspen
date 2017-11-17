@@ -28,6 +28,7 @@ class TransactionBuilder(
   private [this] var objectUpdates = Map[ObjectPointer, DataBuffer]()
   
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
+  private [this] var notifyOnResolution = Set[DataStoreID]()
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
     val startTimestamp = System.currentTimeMillis()
@@ -36,7 +37,7 @@ class TransactionBuilder(
     val originatingClient = Some(clientId)
     
     val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeaderUID, 
-                                     requirements, finalizationActions, originatingClient)
+                                     requirements, finalizationActions, originatingClient, notifyOnResolution.toList)
            
     var updates = Map[DataStoreID, List[LocalUpdate]]()
     
@@ -93,5 +94,9 @@ class TransactionBuilder(
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {
     finalizationActions = SerializedFinalizationAction(finalizationActionUUID, serializedContent) :: finalizationActions
+  }
+  
+  def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized {
+    notifyOnResolution = notifyOnResolution ++ storesToNotify
   }
 }

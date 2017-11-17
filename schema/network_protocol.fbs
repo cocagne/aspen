@@ -111,6 +111,7 @@ table TransactionDescription {
   requirements: [TransactionRequirement];
   finalization_actions: [SerializedFinalizationAction];
   originating_client: [byte];
+  notify_on_resolution: [DataStoreID];
 }
 
 //---------------------------------------------------------------------------

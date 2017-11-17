@@ -14,6 +14,7 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.base.kvtree.KVTree
+import com.ibm.aspen.core.data_store.DataStoreID
 
 class AllocationFinalizationAction(
     val retryStrategy: RetryStrategy,
@@ -74,5 +75,8 @@ object AllocationFinalizationAction {
   def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer): Unit = {
     val serializedContent = BaseCodec.encode(FAContent(storagePoolDefinitionPointer, newNodePointer))
     transaction.addFinalizationAction(AddToAllocationTreeUUID, serializedContent)
+    
+    val notifyStores = newNodePointer.storePointers.map(sp => DataStoreID(newNodePointer.poolUUID, sp.poolIndex)).toSet
+    transaction.addNotifyOnResolution(notifyStores)
   }
 }

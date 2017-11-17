@@ -54,7 +54,7 @@ object TransactionSuite {
     
     def futureMessage = p.future
     
-    override def send(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+    override def send(message: Message): Unit = {
       val t = p
       p = Promise[(DataStoreID,Message)]()
       t success (message.to, message)
@@ -127,7 +127,11 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+      override def send(message: Message): Unit = {
+        stateSavedBeforeMessageSent = crlStateSaved
+        super.send(message)
+      }
+      override def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       }
@@ -525,10 +529,14 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       }
     }
     val messenger = new TMessenger {
-      override def send(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+      override def send(message: Message): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       }
+      override def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
+        stateSavedBeforeMessageSent = crlStateSaved
+        super.send(message)
+      } 
     }
     
     val txd = mktxd(Nil, Nil)

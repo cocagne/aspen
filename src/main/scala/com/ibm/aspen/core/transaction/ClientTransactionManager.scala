@@ -37,6 +37,10 @@ class ClientTransactionManager(
     val otd = synchronized { transactions.get(acceptResponse.transactionUUID) }
     otd.foreach( td => td.receive(acceptResponse) )
   }
+  def receive(resolved: TxResolved): Unit = {
+    val otd = synchronized { transactions.get(resolved.transactionUUID) }
+    otd.foreach( td => td.receive(resolved) )
+  }
   def receive(finalized: TxFinalized): Unit = {
     val otd = synchronized { transactions.get(finalized.transactionUUID) }
     otd.foreach( td => td.receive(finalized) )

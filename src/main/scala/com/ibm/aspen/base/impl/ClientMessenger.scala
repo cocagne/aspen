@@ -10,6 +10,7 @@ import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxFinalized
+import com.ibm.aspen.core.transaction.TxResolved
 
 trait ClientMessenger extends ClientSideAllocationMessenger with ClientSideReadMessenger with ClientSideTransactionMessenger with
                               ClientSideAllocationMessageReceiver with ClientSideReadMessageReceiver with ClientSideTransactionMessageReceiver {
@@ -30,6 +31,7 @@ trait ClientMessenger extends ClientSideAllocationMessenger with ClientSideReadM
   def receive(message: AllocateResponse): Unit = synchronized { allocReceiver } foreach { r => r.receive(message) }
   def receive(message: ReadResponse): Unit = synchronized { readReceiver } foreach { r => r.receive(message) }
   def receive(acceptResponse: TxAcceptResponse): Unit = synchronized { txReceiver } foreach { r => r.receive(acceptResponse) }
+  def receive(resolved: TxResolved): Unit = synchronized { txReceiver } foreach { r => r.receive(resolved) }
   def receive(finalized: TxFinalized): Unit = synchronized { txReceiver } foreach { r => r.receive(finalized) }
   
 }

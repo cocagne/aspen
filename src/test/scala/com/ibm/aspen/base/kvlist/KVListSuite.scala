@@ -17,6 +17,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -67,6 +68,8 @@ object KVListSuite {
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = ()
+    
+    def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = ()
     
     def commit()(implicit ec: ExecutionContext): Future[Unit] = {
       p.success(())

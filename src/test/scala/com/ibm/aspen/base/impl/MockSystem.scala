@@ -157,6 +157,8 @@ object MockSystem {
     
     private var invalidatedReason: Option[Throwable] = None
     
+    private var notifyOnResolution = Set[DataStoreID]()
+    
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
       ops = Append(objectPointer, requiredRevision, data) :: ops
       requiredRevision.append(data.size)
@@ -177,6 +179,8 @@ object MockSystem {
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {
       finalizationActions += (finalizationActionUUID -> serializedContent)
     }
+    
+    def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = notifyOnResolution ++ storesToNotify
     
     def commit()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
       if (!p.isCompleted) {

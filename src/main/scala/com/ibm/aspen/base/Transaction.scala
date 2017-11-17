@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
 
 trait Transaction {
   
@@ -22,6 +23,8 @@ trait Transaction {
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = overwrite(objectPointer, requiredRevision, DataBuffer(data))
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
+  
+  def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit
   
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
    * 

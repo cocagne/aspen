@@ -16,6 +16,7 @@ import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.base.TransactionAborted
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
 
 object BaseTransaction {
   def Factory(
@@ -47,6 +48,11 @@ class BaseTransaction(
   }
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized { builder } match {
     case Some(bldr) => bldr.addFinalizationAction(finalizationActionUUID, serializedContent)
+    case None => throw PostCommitTransactionModification()
+  }
+  
+  def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized { builder } match {
+    case Some(bldr) => bldr.addNotifyOnResolution(storesToNotify)
     case None => throw PostCommitTransactionModification()
   }
   

@@ -1,17 +1,61 @@
- 
-* Switch ByteBuffer to DataBuffer - Read-Only wrapper around ByteBuffer instance
-  - Start with top-level interfaces and work down
-  - Only returns new copies of readOnlyByteBuffer 
-  - Has constructors from arrays & byte buffers
-  - Factory functions for copy and create
-  - only add methods on an as-needed basis (no need to go overboard)
-     
+* Track at Node or Store level
+  - Transaction stores CRL entries on behalf of DataStore (keeps stores simpler)
+  - CRL just needs to provide a list of PendingAllocations that match the data store (all must fit in memory anyway)
+  - StorageNode will see when allocs happen and can load PendingAllocs from CRL on store addition.
+  - Though, if we go store direct, the AllocResolution can directly invoke allocCommit/allocAbort
+  
+  - Change workflow. On Alloc, store allocates a StorePointer and writes a PendingAllocation to the CRL (including data)
+      - When that future returns, future for allocation triggers
+      - Stores keep this in an outstanding allocations map (Provide Mixin for basic, shareable IMPL)
+         - reads hit this first
+      - On commit resolution, we commit to disk, remove outstanding allocation, and delete CRL entry
+      
+* AllocManager (similar to TxManager)
+  - At init, store is given all pending allocation records so it can initialize its internal alloc/tracking
+  - Also given reference to AllocManager
+  - On alloc:
+     - Store assigns a StorePointer and calls AllocManager->trackAlloc(): Future[PendingAlloc]
+         - This returns when written to CRL. Alloc method subsequently returns
+     - On TxResolution, TxFinalized, or Read for pending object allocation
+         - Trigger commit/abort
+      
+* ObjectReadTriggersCommit?
+  - new UUID is created for each allocation
+  - Reads *should* not be done until after a successful commit (could just make this an app-level requirement)
+  - Requirement is that in order to read an object its allocation transaction must have succeeded
+  - Reads of pending object could then be used to trigger commits   
+
+* AllocationResolutionStrategy
+  * Problem: Failed allocations are not detected and resources not released.
+  * Solutions:
+      1. Ignore problem completely. Put it off for later?
+      2. StorageNode keeps 10 second cache of txUUID -> Set[AllocRecord] (AllocRecord = info needed to release on failed alloc Tx)
+          - On TxResolved we free the alloc if the Tx failed
+          - still leaks data in error scenarios
+      3. Full solution (not attractive for prototype)
+      
+* Create AllocationResolutionStrategy
+   * This is given to storage node
+   * interfaces with CRL to load/store PendingAllocations
+   * StorageNode sets callback for onAllocationFailed
+   * Near-term strategy uses kaffiene cache with no solid error handling (just TxResolved/TxFinalized messages)
+
+*** Near-term goal: Get full, basic system up and running (integration tests work)
+   * solid if ineffiicent alloc handling
+   * solve intermittent threading problem
+   
+  
+**** PART WAY THROUGH THIS  
 * Add notifyStoresOnResolution: List[DataStoreID] to TransactionDescription
   - Allocation Tx will use this to ensure we at least attempt to notify stores of the completion of alloc transactions
   - Then add support to DataStore API & Impls
   
+  
+* Send PrepareResponse messages to originatingClient (allows 1RTT notice of successful commit in common case)
+  
 * Consider adding error-handling info to TxResolution message sent to the client
    - Can describe why Abort was chosen for resolution
+   - Use Option[], no need to send this info to other stores, only the client
   
 * TransactionDriver Changes
   * Total re-think of workflow & messaging approach
@@ -19,7 +63,7 @@
       - Can probably drop the 'localUpdates' from the StorageMessenger --- only client will ever send local updates.
       - Prepare, Resolution, & Finalize are multicast
   * Need to send messages to each store via messenger API (currently relying on messenger to do so)
-     => Add send(list-of-messages) to messenger API
+     => Add send(list-of-messages) to messenger API. Maybe add send(List[(prepare, localUpdate)]) as well
   * TxDriver Prepare messages must be sent to allStores in order for decision to be made and establish locks
   * Leave message delay / RTT opz for later. 
       * Initial proposer & primary receive Accepted messages but not many-to-many store interaction

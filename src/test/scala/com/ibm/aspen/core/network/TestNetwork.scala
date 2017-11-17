@@ -25,6 +25,7 @@ import scala.concurrent.Promise
 import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.transaction.TxResolved
 
 
 class TestNetwork {
@@ -39,9 +40,12 @@ class TestNetwork {
       Future.successful(())
     }
     
-    def send(message: transaction.Message, updateContent: Option[List[LocalUpdate]] = None): Unit = storeToNode.get(message.to).foreach(sn => sn.receive(message, updateContent))
+    def send(message: transaction.Message): Unit = storeToNode.get(message.to).foreach(sn => sn.receive(message, None))
     def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = clients.get(client).foreach(c => c.receive(acceptResponse))
+    def send(client: ClientID, resolved: TxResolved): Unit = clients.get(client).foreach(c => c.receive(resolved))
     def send(client: ClientID, finalized: TxFinalized): Unit = clients.get(client).foreach(c => c.receive(finalized))
+    
+    def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = storeToNode.get(message.to).foreach(sn => sn.receive(message, updateContent))
     
     def send(client: ClientID, message: allocation.Message): Unit = message match {
       case m: allocation.Allocate => storeToNode.get(m.toStore).foreach(sn => sn.receive(m))

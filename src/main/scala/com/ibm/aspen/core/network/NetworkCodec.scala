@@ -310,6 +310,10 @@ object NetworkCodec {
       case Some(client) => P.TransactionDescription.createOriginatingClientVector(builder, client.serialized)
     }
     
+    val notifyOnResolution = if (o.notifyOnResolution.isEmpty) -1 else {
+      P.TransactionDescription.createNotifyOnResolutionVector(builder, o.notifyOnResolution.map(n => encode(builder, n)).toArray)
+    }
+    
     P.TransactionDescription.startTransactionDescription(builder)
     P.TransactionDescription.addTransactionUuid(builder, encode(builder, o.transactionUUID))
     P.TransactionDescription.addStartTimestamp(builder, o.startTimestamp)
@@ -319,6 +323,8 @@ object NetworkCodec {
     P.TransactionDescription.addFinalizationActions(builder, finalizationActions)
     if (originatingClient != -1)
       P.TransactionDescription.addOriginatingClient(builder, originatingClient)
+    if (notifyOnResolution != -1)
+      P.TransactionDescription.addNotifyOnResolution(builder, notifyOnResolution)
     P.TransactionDescription.endTransactionDescription(builder)
   }
   def decode(n: P.TransactionDescription): TransactionDescription = {
@@ -333,6 +339,7 @@ object NetworkCodec {
         n.originatingClientAsByteBuffer().get(buf)
         Some(ClientID(buf))
     }
+    
     def requirements(idx: Int, l:List[TransactionRequirement]): List[TransactionRequirement] = if (idx == -1)
         l
       else
@@ -342,6 +349,11 @@ object NetworkCodec {
         l
       else 
         finalizationActions(idx-1, decode(n.finalizationActions(idx)) :: l)
+        
+    def notifyOnResolution(idx: Int, l:List[DataStoreID]): List[DataStoreID] = if (idx == -1)
+        l
+      else
+        notifyOnResolution(idx-1, decode(n.notifyOnResolution(idx)) :: l)
     
     TransactionDescription(
         transactionUUID,
@@ -350,7 +362,8 @@ object NetworkCodec {
         designatedLeaderUID,
         requirements(n.requirementsLength()-1, Nil),
         finalizationActions(n.finalizationActionsLength()-1, Nil),
-        originatingClient)
+        originatingClient,
+        notifyOnResolution(n.notifyOnResolutionLength()-1, Nil))
   }
   
   //-----------------------------------------------------------------------------------------------

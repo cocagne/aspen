@@ -25,7 +25,7 @@ abstract class TransactionDriver(
   protected val validAcceptorSet = txd.primaryObject.storePointers.iterator.map(sp => sp.poolIndex).toSet
   protected val allObjects = txd.allReferencedObjectsSet
   protected val primaryObjectDataStores = txd.primaryObjectDataStores
-  protected val allDataStores = txd.allDataStores
+  protected val allDataStores = txd.allDataStores.toList
   
   protected var finalized = false
   protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
@@ -152,7 +152,8 @@ abstract class TransactionDriver(
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))
       })
       
-      allDataStores.foreach(toStoreId => messenger.send(TxFinalized(toStoreId, storeId, txd.transactionUUID, committed)))
+      val messages = allDataStores.map(toStoreId => TxFinalized(toStoreId, storeId, txd.transactionUUID, committed))
+      messenger.send(messages)
     }
   }
   
@@ -171,9 +172,10 @@ abstract class TransactionDriver(
     
     accept.foreach(t => {
       val (paxAccept, acceptedPeers) = t
-      primaryObjectDataStores.filter(!t._2.contains(_)).foreach(toStoreId => {
-        messenger.send(TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue))
-      })
+      val messages = primaryObjectDataStores.filter(!acceptedPeers.contains(_)).map(toStoreId => 
+        TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
+      ).toList
+      messenger.send(messages)
     })
   }
   
@@ -182,7 +184,11 @@ abstract class TransactionDriver(
     nextRound()
   }
   
-  protected def onResolution(committed: Boolean): Unit = {}
+  protected def onResolution(committed: Boolean): Unit = {
+    val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map(toStoreId => TxResolved(toStoreId, storeId, txd.transactionUUID, committed)).toList
+    messenger.send(messages)
+    txd.originatingClient.foreach(clientId => messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed)))
+  }
 }
 
 object TransactionDriver {

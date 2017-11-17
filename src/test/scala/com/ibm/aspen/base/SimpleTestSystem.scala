@@ -18,6 +18,7 @@ import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -73,6 +74,8 @@ class SimpleTestSystem extends AspenSystem {
     
     var invalidatedReason: Option[Throwable] = None
     
+    var notifyOnResolution = Set[DataStoreID]()
+    
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {
       
       def fn() = {
@@ -117,6 +120,8 @@ class SimpleTestSystem extends AspenSystem {
     def invalidateTransaction(reason: Throwable): Unit = invalidatedReason = Some(reason)
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = fas += (finalizationActionUUID -> serializedContent)
+    
+    def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = notifyOnResolution ++ storesToNotify
     
     def commit()(implicit ec: ExecutionContext): Future[Unit] = {
       ops.foreach(fn => fn())

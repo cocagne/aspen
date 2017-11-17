@@ -51,6 +51,11 @@ class ClientTransactionDriver(
       promise.success(finalized.committed)
   }
   
+  def receive(resolved: TxResolved): Unit = synchronized {
+    if (!promise.isCompleted)
+      promise.success(resolved.committed)
+  }
+  
   protected def sendPrepareMessages(): Unit = {
     val poolUUID = txd.primaryObject.poolUUID
     

@@ -30,6 +30,7 @@ import com.ibm.aspen.core.data_store.InvalidLocalPointer
 import com.ibm.aspen.core.data_store.ObjectMismatch
 import com.ibm.aspen.core.data_store.CorruptedObject
 import com.ibm.aspen.core.transaction.LocalUpdate
+import java.util.UUID
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -77,7 +78,7 @@ class StorageNode(
                                     m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
     // Failure is communicated by the result not a failed future
     f foreach {  result => 
-      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result)) 
+      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result))
     }
   })
   

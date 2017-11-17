@@ -41,7 +41,15 @@ final case class TransactionDescription(
   
   finalizationActions: List[SerializedFinalizationAction],
   
-  originatingClient: Option[ClientID] = None) {
+  /** Specifies which client initiated the transaction. Transaction resolution messages will be sent
+   *  here as well as to the participating data stores.
+   */
+  originatingClient: Option[ClientID] = None,
+  
+  /** Specifies an additional set of stores to receive transaction resolution notices. Primary use case
+   *  is for notifying stores of the result of an object allocation attempt.
+   */
+  notifyOnResolution: List[DataStoreID] = Nil ) {
 
   def allReferencedObjectsSet = requirements.map(_.objectPointer).toSet
   
