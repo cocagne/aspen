@@ -15,6 +15,10 @@ import java.nio.ByteBuffer
 import java.util.UUID
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.ObjectRevision
 
 object RocksDBCrashRecoveryLogSuite {
   import TransactionSuite._
@@ -54,9 +58,10 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     newCRL()
     
-    val lst = Await.result(crl.initialize(), awaitDuration)
+    val (lst, alst) = Await.result(crl.initialize(), awaitDuration)
     
     lst should be ( trs :: Nil )
+    alst should be (Nil)
   }
   
   test("Update Entry") {
@@ -80,9 +85,10 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     newCRL()
     
-    val lst = Await.result(crl.initialize(), awaitDuration)
+    val (lst, alst) = Await.result(crl.initialize(), awaitDuration)
     
     lst should be ( trs2 :: Nil )
+    alst should be (Nil)
   }
   
   test("Save with data") {
@@ -95,21 +101,26 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val uuid2 = new UUID(2,2)
     val lu1 = LocalUpdate(uuid1, DataBuffer(d1))
     val lu2 = LocalUpdate(uuid2, DataBuffer(d2))
+    val sp = StorePointer(1, d1)
+    val obj = mkobj
     
     val DataContent = Some(List(lu1, lu2))
     
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
     
+    val ars = AllocationRecoveryState(storeId, sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1), uuid2, obj, ObjectRevision(2,2))
+    
     newCRL()
     
     Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
+    Await.result(crl.saveAllocationRecoveryState(ars), awaitDuration)
     
     crl.immediateClose()
     
     newCRL()
     
-    val lst = Await.result(crl.initialize(), awaitDuration)
+    val (lst, alst) = Await.result(crl.initialize(), awaitDuration)
     
     lst.length should be ( 1 )
     lst.head.copy(localUpdates=None) should be ( trs.copy(localUpdates=None)  )
@@ -125,8 +136,21 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     a1 zip a2 foreach { t => 
       t._1.objectUUID should be (t._2.objectUUID)
-      java.util.Arrays.equals(t._1.data.getByteArray(), t._2.data.getByteArray())  
+      java.util.Arrays.equals(t._1.data.getByteArray(), t._2.data.getByteArray()) should be (true)  
     }
+    
+    alst.length should be (1)
+    val n = alst.head
+    
+    n.storeId should be (ars.storeId)
+    n.storePointer should be (ars.storePointer)
+    n.newObjectUUID should be (ars.newObjectUUID)
+    n.objectSize should be (ars.objectSize)
+    java.util.Arrays.equals(n.objectData.getByteArray(), ars.objectData.getByteArray()) should be (true)
+    n.initialRefcount should be (ars.initialRefcount)
+    n.allocationTransactionUUID should be (ars.allocationTransactionUUID)
+    n.allocatingObject should be (ars.allocatingObject)
+    n.allocatingObjectRevision should be (ars.allocatingObjectRevision)
     
     1 should be (1)
   }
@@ -141,24 +165,31 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val uuid2 = new UUID(2,2)
     val lu1 = LocalUpdate(uuid1, DataBuffer(d1))
     val lu2 = LocalUpdate(uuid2, DataBuffer(d2))
+    val sp = StorePointer(1, d1)
+    val obj = mkobj
     
     val DataContent = Some(List(lu1, lu2))
     
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
+        
+    val ars = AllocationRecoveryState(storeId, sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1), uuid2, obj, ObjectRevision(2,2))
     
     newCRL()
     
+    Await.result(crl.saveAllocationRecoveryState(ars), awaitDuration)
     Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
+    crl.discardAllocationState(ars.allocationTransactionUUID)
     Await.result(crl.confirmedDiscardTransactionState(txd), awaitDuration)
     
     crl.immediateClose()
     
     newCRL()
     
-    val lst = Await.result(crl.initialize(), awaitDuration)
+    val (lst, alst) = Await.result(crl.initialize(), awaitDuration)
     
     lst should be ( Nil )
+    alst should be (Nil)
   }
 }

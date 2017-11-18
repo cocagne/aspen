@@ -5,15 +5,25 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import java.util.UUID
 
 class NullCRL extends CrashRecoveryLog {
   def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]] = Map()
   
   def getTransactionRecoveryStateForStore(storeId: DataStoreID): List[TransactionRecoveryState] = Nil
   
+  def getFullAllocationRecoveryState(): Map[DataStoreID, List[AllocationRecoveryState]] = Map()
+  
+  def getAllocationRecoveryStateForStore(storeId: DataStoreID): List[AllocationRecoveryState] = Nil
+  
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = Future.successful(())
   
   def discardTransactionState(txd: TransactionDescription): Unit = ()
+  
+  def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit] = Future.successful(())
+  
+  def discardAllocationState(allocationTransactionUUID: UUID): Unit = ()
   
   def close(): Future[Unit] = Future.successful(())
 }

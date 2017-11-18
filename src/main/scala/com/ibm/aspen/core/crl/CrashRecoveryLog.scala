@@ -5,12 +5,18 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import java.util.UUID
 
 trait CrashRecoveryLog {
   
   def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]]
   
   def getTransactionRecoveryStateForStore(storeId: DataStoreID): List[TransactionRecoveryState]
+  
+  def getFullAllocationRecoveryState(): Map[DataStoreID, List[AllocationRecoveryState]]
+  
+  def getAllocationRecoveryStateForStore(storeId: DataStoreID): List[AllocationRecoveryState]
   
   /** Returns a Future to successfully saving the transaction state.
    *
@@ -20,6 +26,10 @@ trait CrashRecoveryLog {
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit]
   
   def discardTransactionState(txd: TransactionDescription): Unit
+  
+  def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit]
+  
+  def discardAllocationState(allocationTransactionUUID: UUID): Unit
   
   def close(): Future[Unit]
 }

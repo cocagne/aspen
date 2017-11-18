@@ -23,6 +23,7 @@ table CRLTransactionState {
 }
 
 table CRLAllocationRecoveryState {
+    dataStoreID: com.ibm.aspen.core.network.protocol.DataStoreID;
     storePointer: com.ibm.aspen.core.network.protocol.StorePointer;
     newObjectUUID: com.ibm.aspen.core.network.protocol.UUID;
     objectSize: int;
