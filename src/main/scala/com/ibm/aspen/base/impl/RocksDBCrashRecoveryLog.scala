@@ -31,35 +31,23 @@ object RocksDBCrashRecoveryLog {
   val TxStateKeyOffset:Byte = 1
   val AllocKeyOffset: Byte = 2
   
-  private def getKey(transactionUUID: UUID, offset:Byte): Array[Byte] = {
-    val bb = ByteBuffer.allocate(17)
-    bb.putLong(0, transactionUUID.getMostSignificantBits)
-    bb.putLong(8, transactionUUID.getLeastSignificantBits)
-    bb.put(16, offset)
+  // Key = XOR of poolUUID & transactionUUID with the first byte set to the poolIndex and the last to the key offset
+  private def getKey(storeId: DataStoreID, transactionUUID: UUID, offset:Byte): Array[Byte] = {
+    val bb = ByteBuffer.allocate(16)
+    bb.putLong(0, transactionUUID.getMostSignificantBits ^ storeId.poolUUID.getMostSignificantBits)
+    bb.putLong(8, transactionUUID.getLeastSignificantBits ^ storeId.poolUUID.getLeastSignificantBits)
+    bb.put(0, storeId.poolIndex)
+    bb.put(15, offset)
     bb.array()
   }
   
-  private def getDataKey(transactionUUID: UUID) = getKey(transactionUUID, TxDataKeyOffset)
-  private def getStateKey(transactionUUID: UUID) = getKey(transactionUUID, TxStateKeyOffset)
-  private def getAllocKey(transactionUUID: UUID) = getKey(transactionUUID, AllocKeyOffset)
+  private def getDataKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, TxDataKeyOffset)
+  private def getStateKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, TxStateKeyOffset)
+  private def getAllocKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, AllocKeyOffset)
   
-  private def isDataKey(key: Array[Byte]) = key(16) == TxDataKeyOffset
-  private def isStateKey(key: Array[Byte]) = key(16) == TxStateKeyOffset
-  private def isAllocKey(key: Array[Byte]) = key(16) == AllocKeyOffset
-  
-  private def getTransactionUUID(key: Array[Byte]): UUID = {
-    val bb = ByteBuffer.wrap(key)
-    val msb = bb.getLong()
-    val lsb = bb.getLong()
-    return new UUID(msb, lsb)
-  }
-  
-  private val NullUUID = new UUID(0,0)
-  private val NullStore = DataStoreID(NullUUID, 0)
-  
-  private val NullTXD = new TransactionDescription(NullUUID, 0, 
-                                                   ObjectPointer(NullUUID, NullUUID, None, Replication(0,0), new Array[StorePointer](0)),
-                                                   0, Nil, Nil, None)
+  private def isDataKey(key: Array[Byte]) = key(15) == TxDataKeyOffset
+  private def isStateKey(key: Array[Byte]) = key(15) == TxStateKeyOffset
+  private def isAllocKey(key: Array[Byte]) = key(15) == AllocKeyOffset
 }
 
 class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) extends CrashRecoveryLog {
@@ -72,44 +60,45 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   import RocksDBCrashRecoveryLog._
   
   def initialize(): Future[(List[TransactionRecoveryState], List[AllocationRecoveryState])] = synchronized {
+    var txData = Map[UUID, CRLCodec.TransactionData]()
+    var txState = Map[UUID, CRLCodec.TransactionState]()
+    
+    // Creates a UUID from the key with the offset zeored (so state & data keys resolve to the same UUID)
+    def keyToUUID(key: Array[Byte]): UUID = {
+      val bb = ByteBuffer.allocate(16)
+      bb.put(key)
+      bb.put(15, 0)
+      bb.position(0)
+      val msb = bb.getLong()
+      val lsb = bb.getLong()
+      return new UUID(msb, lsb)
+    }
     
     db.foreach((key, value) => {
-      val txUUID = getTransactionUUID(key)
-      
+    
       if (isAllocKey(key)) {
-        pendingAllocations += (txUUID -> CRLCodec.allocationFromByteArray(value))
-      } else {
-      
-        val trs = pendingTransactions.get(txUUID) match {
-          case None =>
-            // Fill in what we can for initial TransactionRecvoveryState. Later state/data updates will overwrite the placeholder values
-            if (isDataKey(key)) {
-              val td = CRLCodec.transactionDataFromByteArray(value)
-               
-              TransactionRecoveryState(td.dataStoreId, td.txd, td.dataUpdateContent, TransactionDisposition.Undetermined, 
-                  TransactionStatus.Unresolved, PersistentState(None, None))
-            } else {
-              val ts = CRLCodec.transactionStateFromByteArray(value)
-              
-              TransactionRecoveryState(NullStore, NullTXD, None, ts.disposition, ts.status, 
-                  PersistentState(ts.lastPromisedId, ts.lastAccepted))
-            }
-            
-          case Some(trs) =>
-            // Overwrite the state/data portions of the current value for the TransactionRecoveryState
-            if (isDataKey(key)) {
-              val td = CRLCodec.transactionDataFromByteArray(value)
-              
-              trs.copy(storeId=td.dataStoreId, txd=td.txd, localUpdates=td.dataUpdateContent)
-            } else {
-              val ts = CRLCodec.transactionStateFromByteArray(value)
-              trs.copy(disposition=ts.disposition, status=ts.status, paxosAcceptorState=PersistentState(ts.lastPromisedId, ts.lastAccepted))
-            }
-        }
-        
-        pendingTransactions += (txUUID -> trs)
+        val ars = CRLCodec.allocationFromByteArray(value)
+        pendingAllocations += (ars.allocationTransactionUUID -> ars)
       }
-    }).map(_ => (pendingTransactions.values.toList, pendingAllocations.values.toList))
+      else if(isDataKey(key)) {
+        txData = txData + (keyToUUID(key) -> CRLCodec.transactionDataFromByteArray(value))
+      }
+      else {
+        txState = txState + (keyToUUID(key) -> CRLCodec.transactionStateFromByteArray(value))
+      }
+    }) map { _ =>
+      
+      txState foreach { t =>
+        val (key, ts) = t
+        txData.get(key) foreach { td =>
+          val trs = TransactionRecoveryState(td.dataStoreId, td.txd, td.dataUpdateContent, ts.disposition, ts.status, 
+                                             PersistentState(ts.lastPromisedId, ts.lastAccepted))
+          pendingTransactions += (td.txd.transactionUUID -> trs)
+        }
+      }
+      
+      (pendingTransactions.values.toList, pendingAllocations.values.toList)
+    }
   }
   
   def getFullTransactionRecoveryState(): Map[DataStoreID, List[TransactionRecoveryState]] = synchronized {
@@ -150,7 +139,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     val prevTrs = synchronized { pendingTransactions.get(state.txd.transactionUUID) }
     
     class SaveData {
-      val dataKey = getDataKey(state.txd.transactionUUID) 
+      val dataKey = getDataKey(state.storeId, state.txd.transactionUUID) 
       val dataValue = CRLCodec.toTransactionDataByteArray(state.storeId, state.txd, state.localUpdates)
     }
     
@@ -173,7 +162,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
         }
     }
     
-    val stateKey = getStateKey(state.txd.transactionUUID)
+    val stateKey = getStateKey(state.storeId, state.txd.transactionUUID)
     val stateValue = CRLCodec.toTransactionStateByteArray(state.disposition, state.status, state.paxosAcceptorState.promised, state.paxosAcceptorState.accepted)
     
     synchronized {
@@ -191,27 +180,27 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     }
   }
   
-  def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit = confirmedDiscardTransactionState(txd)
+  def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit = confirmedDiscardTransactionState(storeId, txd)
   
-  def confirmedDiscardTransactionState(txd: TransactionDescription): Future[Unit] = synchronized {
+  def confirmedDiscardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Future[Unit] = synchronized {
     pendingTransactions.get(txd.transactionUUID) match {
       case None => Future.successful(())
       case Some(txid) =>
         pendingTransactions -= txd.transactionUUID
-        db.delete(getDataKey(txd.transactionUUID))
-        db.delete(getStateKey(txd.transactionUUID))
+        db.delete(getDataKey(storeId, txd.transactionUUID))
+        db.delete(getStateKey(storeId, txd.transactionUUID))
     }
   }
   
   def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit] = {
     val value = CRLCodec.toAllocationByteArray(state)
     synchronized {
-      db.put(getAllocKey(state.allocationTransactionUUID), value)
+      db.put(getAllocKey(state.storeId, state.allocationTransactionUUID), value)
     }
   }
   
   def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = synchronized { 
-    db.delete(getAllocKey(allocationTransactionUUID))
+    db.delete(getAllocKey(storeId, allocationTransactionUUID))
   }
   
   def close(): Future[Unit] = synchronized {
