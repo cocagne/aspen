@@ -21,10 +21,6 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
  *  General idea is that we'll separate transaction Data and State into two separate keys. This allows the state to be continually
  *  overwritten with the most recent value while allowing the Data to be written only once. 
  *  
- *  Key = 17-byte Array
- *     DataKey  = 16-byte Transaction UUID + 0
- *     StateKey = 16-byte Transaction UUID + 1
- *  
  */
 object RocksDBCrashRecoveryLog {
   val TxDataKeyOffset:Byte = 0
