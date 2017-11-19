@@ -199,7 +199,7 @@ class Transaction(
   }
   
   private[this] def discardTransactionState(): Unit = {
-    crl.discardTransactionState(txd)
+    crl.discardTransactionState(store.storeId, txd)
     store.discardTransaction(txd)
     onDiscard(this)
   }

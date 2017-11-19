@@ -191,7 +191,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     }
   }
   
-  def discardTransactionState(txd: TransactionDescription): Unit = confirmedDiscardTransactionState(txd)
+  def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit = confirmedDiscardTransactionState(txd)
   
   def confirmedDiscardTransactionState(txd: TransactionDescription): Future[Unit] = synchronized {
     pendingTransactions.get(txd.transactionUUID) match {
@@ -210,7 +210,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     }
   }
   
-  def discardAllocationState(allocationTransactionUUID: UUID): Unit = synchronized { 
+  def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = synchronized { 
     db.delete(getAllocKey(allocationTransactionUUID))
   }
   

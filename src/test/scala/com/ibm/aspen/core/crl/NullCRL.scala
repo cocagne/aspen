@@ -19,11 +19,11 @@ class NullCRL extends CrashRecoveryLog {
   
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = Future.successful(())
   
-  def discardTransactionState(txd: TransactionDescription): Unit = ()
+  def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit = ()
   
   def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit] = Future.successful(())
   
-  def discardAllocationState(allocationTransactionUUID: UUID): Unit = ()
+  def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = ()
   
   def close(): Future[Unit] = Future.successful(())
 }

@@ -180,7 +180,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     Await.result(crl.saveAllocationRecoveryState(ars), awaitDuration)
     Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
-    crl.discardAllocationState(ars.allocationTransactionUUID)
+    crl.discardAllocationState(storeId, ars.allocationTransactionUUID)
     Await.result(crl.confirmedDiscardTransactionState(txd), awaitDuration)
     
     crl.immediateClose()

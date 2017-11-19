@@ -25,11 +25,11 @@ trait CrashRecoveryLog {
    */
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit]
   
-  def discardTransactionState(txd: TransactionDescription): Unit
+  def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit
   
   def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit]
   
-  def discardAllocationState(allocationTransactionUUID: UUID): Unit
+  def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit
   
   def close(): Future[Unit]
 }
