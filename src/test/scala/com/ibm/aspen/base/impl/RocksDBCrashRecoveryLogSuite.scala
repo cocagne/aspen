@@ -109,7 +109,10 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
     
-    val ars = AllocationRecoveryState(storeId, sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1), uuid2, obj, ObjectRevision(2,2))
+    val ars = AllocationRecoveryState(
+            storeId, 
+            List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            uuid2, obj, ObjectRevision(2,2))
     
     newCRL()
     
@@ -142,12 +145,15 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     alst.length should be (1)
     val n = alst.head
     
+    val a = ars.newObjects.head
+    val b = n.newObjects.head
+    
     n.storeId should be (ars.storeId)
-    n.storePointer should be (ars.storePointer)
-    n.newObjectUUID should be (ars.newObjectUUID)
-    n.objectSize should be (ars.objectSize)
-    java.util.Arrays.equals(n.objectData.getByteArray(), ars.objectData.getByteArray()) should be (true)
-    n.initialRefcount should be (ars.initialRefcount)
+    b.storePointer should be (a.storePointer)
+    b.newObjectUUID should be (a.newObjectUUID)
+    b.objectSize should be (a.objectSize)
+    java.util.Arrays.equals(b.objectData.getByteArray(), a.objectData.getByteArray()) should be (true)
+    b.initialRefcount should be (a.initialRefcount)
     n.allocationTransactionUUID should be (ars.allocationTransactionUUID)
     n.allocatingObject should be (ars.allocatingObject)
     n.allocatingObjectRevision should be (ars.allocatingObjectRevision)
@@ -173,7 +179,10 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
         
-    val ars = AllocationRecoveryState(storeId, sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1), uuid2, obj, ObjectRevision(2,2))
+    val ars = AllocationRecoveryState(
+            storeId, 
+            List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            uuid2, obj, ObjectRevision(2,2))
     
     newCRL()
     

@@ -203,27 +203,21 @@ object CRLCodec {
     TransactionState(disposition, status, lastPromisedId, lastAccepted)
   }
   
-  def encode(builder:FlatBufferBuilder, o:AllocationRecoveryState): Int = {
-    val storeId = NetworkCodec.encode(builder, o.storeId)
+  def encode(builder:FlatBufferBuilder, o:AllocationRecoveryState.NewObject): Int = {
     val storePointer = NetworkCodec.encode(builder, o.storePointer)
-    val allocatingObject = NetworkCodec.encode(builder, o.allocatingObject)
     builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
     val objectData = builder.endVector()
     
-    C.CRLAllocationRecoveryState.startCRLAllocationRecoveryState(builder)
-    C.CRLAllocationRecoveryState.addDataStoreID(builder, storeId)
-    C.CRLAllocationRecoveryState.addStorePointer(builder, storePointer)
-    C.CRLAllocationRecoveryState.addNewObjectUUID(builder, NetworkCodec.encode(builder, o.newObjectUUID))
-    C.CRLAllocationRecoveryState.addObjectSize(builder, o.objectSize.getOrElse(0))
-    C.CRLAllocationRecoveryState.addObjectData(builder, objectData)
-    C.CRLAllocationRecoveryState.addInitialRefcount(builder, NetworkCodec.encode(builder, o.initialRefcount))
-    C.CRLAllocationRecoveryState.addAllocationTransactionUUID(builder, NetworkCodec.encode(builder, o.allocationTransactionUUID))
-    C.CRLAllocationRecoveryState.addAllocatingObject(builder, allocatingObject)
-    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encode(builder, o.allocatingObjectRevision))
-    C.CRLAllocationRecoveryState.endCRLAllocationRecoveryState(builder)
+    C.CRLNewObject.startCRLNewObject(builder)
+    C.CRLNewObject.addStorePointer(builder, storePointer)
+    C.CRLNewObject.addNewObjectUUID(builder, NetworkCodec.encode(builder, o.newObjectUUID))
+    C.CRLNewObject.addObjectSize(builder, o.objectSize.getOrElse(0))
+    C.CRLNewObject.addObjectData(builder, objectData)
+    C.CRLNewObject.addInitialRefcount(builder, NetworkCodec.encode(builder, o.initialRefcount))
+    C.CRLNewObject.endCRLNewObject(builder)
   }
-  def decode(e: C.CRLAllocationRecoveryState): AllocationRecoveryState = {
-    val dataStoreId = NetworkCodec.decode(e.dataStoreID())
+  def decode(e: C.CRLNewObject): AllocationRecoveryState.NewObject = {
+    
     val storePointer = NetworkCodec.decode(e.storePointer())
     val newObjectUUID = NetworkCodec.decode(e.newObjectUUID())
     val objectSize = if (e.objectSize() == 0) None else Some(e.objectSize())
@@ -231,10 +225,35 @@ object CRLCodec {
     data.put(e.objectDataAsByteBuffer().asReadOnlyBuffer())
     data.position(0)
     val initialRefcount = NetworkCodec.decode(e.initialRefcount())
+    
+    AllocationRecoveryState.NewObject(storePointer, newObjectUUID, objectSize, DataBuffer(data), initialRefcount)
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:AllocationRecoveryState): Int = {
+    val storeId = NetworkCodec.encode(builder, o.storeId)
+    val newObjects = C.CRLAllocationRecoveryState.createNewObjectsVector(builder, o.newObjects.map(encode(builder, _)).toArray)
+    val allocatingObject = NetworkCodec.encode(builder, o.allocatingObject)
+    
+    
+    C.CRLAllocationRecoveryState.startCRLAllocationRecoveryState(builder)
+    C.CRLAllocationRecoveryState.addDataStoreID(builder, storeId)
+    C.CRLAllocationRecoveryState.addNewObjects(builder, newObjects)
+    C.CRLAllocationRecoveryState.addAllocationTransactionUUID(builder, NetworkCodec.encode(builder, o.allocationTransactionUUID))
+    C.CRLAllocationRecoveryState.addAllocatingObject(builder, allocatingObject)
+    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encode(builder, o.allocatingObjectRevision))
+    C.CRLAllocationRecoveryState.endCRLAllocationRecoveryState(builder)
+  }
+  def decode(e: C.CRLAllocationRecoveryState): AllocationRecoveryState = {
+    val dataStoreId = NetworkCodec.decode(e.dataStoreID())
     val allocationTransactionUUID = NetworkCodec.decode(e.allocationTransactionUUID())
     val allocatingObject = NetworkCodec.decode(e.allocatingObject())
     val allocatingObjectRevision = NetworkCodec.decode(e.allocatingObjectRevision())
-    AllocationRecoveryState(dataStoreId, storePointer, newObjectUUID, objectSize, DataBuffer(data), 
-        initialRefcount, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    
+    def newObjects(idx: Int, l:List[AllocationRecoveryState.NewObject]): List[AllocationRecoveryState.NewObject] = if (idx == -1)
+        l
+      else
+        newObjects(idx-1, decode(e.newObjects(idx)) :: l)
+    
+    AllocationRecoveryState(dataStoreId, newObjects(e.newObjectsLength()-1, Nil), allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
 }

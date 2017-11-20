@@ -8,13 +8,17 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.data_store.DataStoreID
 
+object AllocationRecoveryState { 
+  case class NewObject(
+      storePointer: StorePointer,
+      newObjectUUID: UUID,
+      objectSize: Option[Int],
+      objectData: DataBuffer,
+      initialRefcount: ObjectRefcount)
+}
 case class AllocationRecoveryState(
   storeId: DataStoreID,
-  storePointer: StorePointer,
-  newObjectUUID: UUID,
-  objectSize: Option[Int],
-  objectData: DataBuffer,
-  initialRefcount: ObjectRefcount,
+  newObjects: List[AllocationRecoveryState.NewObject],
   allocationTransactionUUID: UUID,
   allocatingObject: ObjectPointer,
   allocatingObjectRevision: ObjectRevision 
