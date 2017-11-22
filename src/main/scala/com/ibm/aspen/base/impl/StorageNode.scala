@@ -32,9 +32,12 @@ import com.ibm.aspen.core.data_store.CorruptedObject
 import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.transaction.TxFinalized
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
+  val allocationManager: AllocationManager,
   val messenger: StorageNodeMessenger,
   val driverFactory: TransactionDriver.Factory,
   val finalizerFactory: TransactionFinalizer.Factory,
@@ -89,6 +92,12 @@ class StorageNode(
   
   def receive(message: transaction.Message, updateContent: Option[List[LocalUpdate]]): Unit  = {
     txManager.receive(message, updateContent)
+    
+    message match {
+      case m: TxResolved => allocationManager.receive(m)
+      case m: TxFinalized => allocationManager.receive(m)
+      case _ =>
+    }
   }
   
   def receive(message: Read): Unit = getStore(message.toStore).foreach(store => {
