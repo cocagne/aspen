@@ -26,6 +26,7 @@ object DataStoreSuite {
   val uuid2 = new UUID(0,4)
   val poolUUID = new UUID(0,2)
   val txUUID = new UUID(0,3)
+  val allocUUID = new UUID(0,4)
   
   val allocObj = ObjectPointer(new UUID(0,4), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   val allocRev = ObjectRevision(0,1)
@@ -59,8 +60,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     implicit val executionContext = ExecutionContext.Implicits.global
     
-    val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, txUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, txUUID, allocObj, allocRev).flatMap(er => er match {
+    val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, allocUUID, allocObj, allocRev) flatMap { either => either match {
+      case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, allocUUID, allocObj, allocRev).flatMap(er => er match {
         case Right(sp1) => Future.successful((ds, sp0, sp1))
         case Left(err) => fail("Returned failure instead of object content")
       })
@@ -126,8 +127,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, Some(txd)))
-    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txUUID, Some(txd)))
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, allocUUID, Some(txd)))
+    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, allocUUID, Some(txd)))
     
   }
   
@@ -253,8 +254,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
-    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txUUID, None))
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, allocUUID, None))
+    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, allocUUID, None))
   }
   
   test("Get Invalid Object State") {
@@ -265,7 +266,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op2, oneRef, oneRef) :: Nil)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, allocUUID, None))
     
     val r = Await.result(ds.getObject(op2), awaitDuration)
     r should matchPattern { case Left(e: InvalidLocalPointer) => }
@@ -280,7 +281,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
                     RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txUUID, None))
+    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, allocUUID, None))
     
     val r = Await.result(ds.getObject(op1), awaitDuration)
     r should matchPattern { 

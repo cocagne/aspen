@@ -30,6 +30,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -100,7 +101,8 @@ object RocksDBDataStore {
 
 class RocksDBDataStore(
     val storeId: DataStoreID,
-    dbPath:String)(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
+    dbPath:String,
+    val allocationManager: AllocationManager)(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
   
   import RocksDBDataStore._
   
@@ -116,13 +118,17 @@ class RocksDBDataStore(
   /** Holds the current object state while transactions are outstanding and/or data has yet to be committed to disk. */
   private[this] var workingStates = Map[UUID, WorkingState]()
   
+  private[this] var allocations = Map[UUID, AllocationRecoveryState]()
+  
   private[this] def isHostedObject(op: ObjectPointer) = op.poolUUID == storeId.poolUUID && op.storePointers.find(_.poolIndex == storeId.poolIndex).isDefined
   
   private[this] def getHostedObjects(txd:TransactionDescription) = txd.allReferencedObjectsSet.filter(isHostedObject)
   
   def close() = db.close()
   
-  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = synchronized {
+  def initialize(
+      transactionRecoveryStates: List[TransactionRecoveryState], 
+      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = synchronized {
     var flocks = List[Future[Unit]]()
     
     getTransactionsToBeLocked(transactionRecoveryStates).foreach(trs => getHostedObjects(trs.txd).foreach(op => {
@@ -134,7 +140,17 @@ class RocksDBDataStore(
     })
     )
     
-    Future.sequence(flocks).map(_=>())
+    val allocs = allocationRecoveryStates.map { ars =>
+      ars.newObjects.foreach(no => allocations += (no.newObjectUUID -> ars))
+      
+      val ts = allocationManager.trackAllocation(ars)
+      
+      ts.resolved.foreach( result => allocationResolved(ars, result) )
+      
+      ts.saved
+    }
+    
+    Future.sequence(flocks ++ allocs).map(_=>())
   }
   
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer): Future[StorePointer] = synchronized {
@@ -168,24 +184,55 @@ class RocksDBDataStore(
                         allocationTransactionUUID: UUID,
                         allocatingObject: ObjectPointer,
                         allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
-    val f = synchronized {
-      val initialRevision = ObjectRevision(0, initialContent.size)
-      db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, allocationTransactionUUID))
-      val buf = initialContent.getByteArray()
-      val fcommitted = db.put(dataKey(objectUUID), buf)
+    
+    val sp = StorePointer(storeId.poolIndex, new Array[Byte](0))
+    val no = AllocationRecoveryState.NewObject(sp, objectUUID, size, initialContent, initialRefcount)
+    val ars = AllocationRecoveryState(storeId, List(no), allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    
+    synchronized {
       
-      val ws = new WorkingState(objectUUID, initialRevision, initialRefcount, allocationTransactionUUID, initialContent, None, Set(allocationTransactionUUID))
-      
-      workingStates += (objectUUID -> ws)
-      
-      fcommitted onComplete {
-        case _ => completeWorkingStateOperation(objectUUID, ws, allocationTransactionUUID)
+      ars.newObjects.foreach { newObj =>
+        
+        val ws = new WorkingState(newObj.newObjectUUID, ObjectRevision(0, newObj.objectData.size), newObj.initialRefcount, 
+                                  ars.allocationTransactionUUID, newObj.objectData, None, Set(ars.allocationTransactionUUID))
+        
+        allocations += (newObj.newObjectUUID -> ars)
+        workingStates += (newObj.newObjectUUID -> ws)
       }
-      
-      fcommitted
     }
     
-    f.map(_ => Right(StorePointer(storeId.poolIndex, new Array[Byte](0))))
+    val ts = allocationManager.trackAllocation(ars)
+      
+    ts.resolved.foreach( result => allocationResolved(ars, result) )
+      
+    ts.saved.map(_ => Right(sp))
+  }
+  
+  private def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
+    var flist = List[Future[Unit]]()
+    
+    ars.newObjects.foreach { newObj =>
+      // Reads of mid-allocation objects force a commit to ensure that transactions against those objects
+      // wont be accidentally overwritten by the initial state if the initial write to disk is slow for some
+      // reason. That causes this method to be called twice.
+      if (allocations.contains(newObj.newObjectUUID)) {
+        
+        allocations -= newObj.newObjectUUID
+        
+        workingStates.get(newObj.newObjectUUID).foreach { ws =>
+  
+          db.put(stateKey(newObj.newObjectUUID), stateToBytes(ws.revision, ws.refcount, ars.allocationTransactionUUID))
+          
+          flist = db.put(dataKey(newObj.newObjectUUID), newObj.objectData.getByteArray()) :: flist 
+          
+          flist.head onComplete {
+            case _ => completeWorkingStateOperation(newObj.newObjectUUID, ws, ars.allocationTransactionUUID)
+          }
+        }
+      }
+    }
+    
+    Future.sequence(flist) map (_=>())
   }
   
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
@@ -197,7 +244,19 @@ class RocksDBDataStore(
   
   private def getWorkingState(objectPointer: ObjectPointer, transactionUUID: Option[UUID]): Future[Either[ObjectReadError, WorkingState]] = synchronized {
     workingStates.get(objectPointer.uuid) match {
-      case Some(ws) => Future.successful(Right(ws))
+      case Some(ws) => 
+        allocations.get(objectPointer.uuid) match { 
+          case Some(ars) =>
+            // Objects cannot be read until after they are successfully allocated. We must be slow in realizing this so force the write to occur now
+            // to ensure we cannot have some other transaction successfully commit before the initial state is written to disk.
+            val fsave = allocationResolved(ars, true)
+            allocationManager.stopTracking(storeId, ars.allocationTransactionUUID, true)
+            fsave.map(_ => Right(ws))
+            
+          case None =>
+            Future.successful(Right(ws))
+        }
+        
       case None =>
         val operationUUID = transactionUUID.getOrElse(UUID.randomUUID())
         val fws = loadWorkingState(objectPointer, operationUUID)

@@ -35,7 +35,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
   
   var crl: RocksDBCrashRecoveryLog = null
   
-  override def preTempDirDeletion(): Unit = if (crl!=null) crl.immediateClose()
+  override def preTempDirDeletion(): Unit = if (crl!=null) Await.result(crl.close(), awaitDuration)
   
   def newCRL() = {
     val tpath = new File(tdir, "dbdir").getAbsolutePath
@@ -54,7 +54,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     
-    crl.immediateClose()
+    Await.result(crl.close(), awaitDuration)
     
     newCRL()
     
@@ -81,7 +81,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     Await.result(crl.saveTransactionRecoveryState(trs2), awaitDuration)
     
-    crl.immediateClose()
+     Await.result(crl.close(), awaitDuration)
     
     newCRL()
     
@@ -119,7 +119,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     Await.result(crl.saveTransactionRecoveryState(trs), awaitDuration)
     Await.result(crl.saveAllocationRecoveryState(ars), awaitDuration)
     
-    crl.immediateClose()
+    Await.result(crl.close(), awaitDuration)
     
     newCRL()
     
@@ -192,7 +192,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     crl.discardAllocationState(storeId, ars.allocationTransactionUUID)
     Await.result(crl.confirmedDiscardTransactionState(storeId, txd), awaitDuration)
     
-    crl.immediateClose()
+    Await.result(crl.close(), awaitDuration)
     
     newCRL()
     

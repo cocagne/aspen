@@ -202,22 +202,13 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   def close(): Future[Unit] = synchronized {
     shuttingDown match {
       case None =>
-        val f = Future.sequence(pendingSaves) 
+        val f = Future.sequence(pendingSaves).flatMap(_=> db.close())
         
-        f onComplete { 
-          case _ => db.close()
-        }
+        shuttingDown = Some(f)
         
-        val fu = f.map(_ => ())
-        
-        shuttingDown = Some(fu)
-        
-        fu
+        f
         
       case Some(f) => f
     }
   }
-  
-  // For unit tests only
-  private [impl] def immediateClose() = db.close()
 }

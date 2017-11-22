@@ -15,6 +15,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -32,7 +33,9 @@ class MemoryOnlyDataStore(
     (lp, ByteBuffer.allocate(4).putInt(lp).array())
   }
   
-  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = Future.successful(())
+  def initialize(
+      transactionRecoveryStates: List[TransactionRecoveryState], 
+      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = Future.successful(())
   
   def close(): Future[Unit] = Future.successful(())
   
@@ -114,6 +117,7 @@ class MemoryOnlyDataStore(
     // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
     txd.requirements.foreach { r =>
       localObjects.get(r.objectPointer.uuid).foreach { obj =>
+        obj.lastCommittedTxUUID = txd.transactionUUID
         r match {
           case du: DataUpdate =>
             objectUpdates.get(r.objectPointer.uuid).foreach { data =>

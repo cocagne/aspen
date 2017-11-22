@@ -37,7 +37,7 @@ class BufferedConsistentRocksDBSuite extends TempDirSuiteBase {
     
     Await.result(db.delete(bar), awaitDuration)
     
-    db.close()
+    Await.result(db.close(), Duration(10000, MILLISECONDS))
     
     db = new BufferedConsistentRocksDB(tpath)(ExecutionContext.Implicits.global)
     

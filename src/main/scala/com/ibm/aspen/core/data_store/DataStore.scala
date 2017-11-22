@@ -14,6 +14,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 trait DataStore {
   
@@ -24,7 +25,9 @@ trait DataStore {
    *
    * A critical requirement of this method is that the store re-establishes locks on the transactions it voted to commit
    */
-  def initialize(transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit]
+  def initialize(
+      transactionRecoveryStates: List[TransactionRecoveryState],
+      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit]
   
   /** Shuts down the store and releases all runtime resources
    */

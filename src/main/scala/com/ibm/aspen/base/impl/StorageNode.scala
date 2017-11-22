@@ -31,6 +31,7 @@ import com.ibm.aspen.core.data_store.ObjectMismatch
 import com.ibm.aspen.core.data_store.CorruptedObject
 import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 class StorageNode(
   val crl: CrashRecoveryLog, 
@@ -49,8 +50,11 @@ class StorageNode(
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
   /** Waits for the store to complete its internal initialization then adds it to the map of active stores */
-  private def initializeStore(store: DataStore, transactionRecoveryStates: List[TransactionRecoveryState]): Future[Unit] = {
-    store.initialize(transactionRecoveryStates) andThen {
+  private def initializeStore(
+      store: DataStore, 
+      transactionRecoveryStates: List[TransactionRecoveryState],
+      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = {
+    store.initialize(transactionRecoveryStates, allocationRecoveryStates) andThen {
       case Success(_) => synchronized { stores += (store.storeId -> store) }
       case Failure(cause) => onStoreInitializationFailure(store, cause)
     }
@@ -60,8 +64,9 @@ class StorageNode(
   val initialized: Future[Unit] = {
     val pNetworkReady = Promise[Unit]()
     val txRecoveryState = crl.getFullTransactionRecoveryState()
+    val allocRecoveryState = crl.getFullAllocationRecoveryState()
     
-    def initStore(ds: DataStore): Future[Unit] = initializeStore(ds, txRecoveryState.getOrElse(ds.storeId, Nil))
+    def initStore(ds: DataStore): Future[Unit] = initializeStore(ds, txRecoveryState.getOrElse(ds.storeId, Nil), allocRecoveryState.getOrElse(ds.storeId, Nil))
     
     for {
       storesInitialized <- Future.sequence(initialStores.map(initStore)).map(_=>())

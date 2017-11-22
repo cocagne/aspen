@@ -1,5 +1,7 @@
 package com.ibm.aspen.base.impl
 
+import scala.concurrent._
+import scala.concurrent.duration._
 import com.ibm.aspen.core.data_store.DataStoreSuite
 import org.scalatest.BeforeAndAfter
 import java.io.File
@@ -12,10 +14,10 @@ class RocksDBDataStoreSuite extends DataStoreSuite with BeforeAndAfter {
   
   def newStore: DataStore = {
     if (db != null)
-      db.close()
+      Await.result(db.close(), Duration(10000, MILLISECONDS))
     val tpath = new File(tdir, "dbdir").getAbsolutePath
-    db = new RocksDBDataStore(DataStoreSuite.storeId, tpath)(ExecutionContext.Implicits.global)
-    db.initialize(Nil)
+    db = new RocksDBDataStore(DataStoreSuite.storeId, tpath, new NullAllocationManager)(ExecutionContext.Implicits.global)
+    db.initialize(Nil, Nil)
     db
   }
   
@@ -28,7 +30,7 @@ class RocksDBDataStoreSuite extends DataStoreSuite with BeforeAndAfter {
   }
 
   after {
-    db.close()
+    Await.result(db.close(), Duration(10000, MILLISECONDS))
     db = null
     
     tdirMgr.delete()
