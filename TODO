@@ -1,107 +1,85 @@
-* Next is AllocManager (similar to TxManager)
-  - At init, store is given all pending allocation records so it can initialize its internal alloc/tracking
-  - Also given reference to AllocManager
-  - On alloc:
-     - Store assigns a StorePointer and calls AllocManager->trackAlloc(AllocationRecoveryState): (Future[Unit], Future[Boolean])
-         - First future completes when written to CRL (so StorePointer can be returned)
-         - Second completes with commit/abort decision
-         - On init, trackAlloc is called immediately for all pending allocations and the first future is ignored
-     - On TxResolution, TxFinalized, or Read for pending object allocation
-         - Trigger commit/abort
-      
-* ObjectReadTriggersCommit?
-  - new UUID is created for each allocation
-  - Reads *should* not be done until after a successful commit (could just make this an app-level requirement)
-  - Requirement is that in order to read an object its allocation transaction must have succeeded
-  - Reads of pending object could then be used to trigger commits   
 
-* AllocationResolutionStrategy
-  * Problem: Failed allocations are not detected and resources not released.
-  * Solutions:
-      1. Ignore problem completely. Put it off for later?
-      2. StorageNode keeps 10 second cache of txUUID -> Set[AllocRecord] (AllocRecord = info needed to release on failed alloc Tx)
-          - On TxResolved we free the alloc if the Tx failed
-          - still leaks data in error scenarios
-      3. Full solution (not attractive for prototype)
-      
-* Create AllocationResolutionStrategy
-   * This is given to storage node
-   * interfaces with CRL to load/store PendingAllocations
-   * StorageNode sets callback for onAllocationFailed
-   * Near-term strategy uses kaffiene cache with no solid error handling (just TxResolved/TxFinalized messages)
+* StorageNodes need a way to provide a Future to all transactions complete
+    - Tx isn't done till FA is done. So if no Tx are left, all FAs must be complete
+    
+* Need a class to bridge
+    - FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
+    - to TransactionFinalizer & TransactionFinalizer.Factory
 
-*** Near-term goal: Get full, basic system up and running (integration tests work)
-   * solid if ineffiicent alloc handling
-   * solve intermittent threading problem
-   
-  
-**** PART WAY THROUGH THIS  
-* Add notifyStoresOnResolution: List[DataStoreID] to TransactionDescription
-  - Allocation Tx will use this to ensure we at least attempt to notify stores of the completion of alloc transactions
-  - Then add support to DataStore API & Impls
-  
-  
-* Send PrepareResponse messages to originatingClient (allows 1RTT notice of successful commit in common case)
-  
-* Consider adding error-handling info to TxResolution message sent to the client
-   - Can describe why Abort was chosen for resolution
-   - Use Option[], no need to send this info to other stores, only the client
-  
-* TransactionDriver Changes
-  * Total re-think of workflow & messaging approach
-      - use multi-message send where appropriate
-      - Can probably drop the 'localUpdates' from the StorageMessenger --- only client will ever send local updates.
-      - Prepare, Resolution, & Finalize are multicast
-  * Need to send messages to each store via messenger API (currently relying on messenger to do so)
-     => Add send(list-of-messages) to messenger API. Maybe add send(List[(prepare, localUpdate)]) as well
-  * TxDriver Prepare messages must be sent to allStores in order for decision to be made and establish locks
-  * Leave message delay / RTT opz for later. 
-      * Initial proposer & primary receive Accepted messages but not many-to-many store interaction
-      * Rely on TransactionDriver sending out a TxResolved message as soon as it's detected
-      * Tx driver also sends out a TxFinalized @ end of Tx
-
-* Need TransactionDriver for Storage Node
-   - Need to think through how we can drive a Tx to completion
-      - No error recovery
-      - Very simple but robust error recovery (maybe a dedicated thread?)
-   - Need a passed-in interface for executing FinalizationActions
-      - StorageNodes need a way to provide a Future to all transactions complete
-          - Tx isn't done till FA is done. So if no Tx are left, all FA must be complete
-   - Need a tx recovery strategy for FAs
-      - Probably don't need to code it just yet
-      - can probably just resume the Tx from the start
-      
-   - Transaction unit tests are *really* light. May want to beef this up as part of working on FA & error-recovery logic
-
-* Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
-
-* Create aspen.base.impl.TransactionBuilder - Implment base.Transaction interface. Builds txd and initiates transaction from the client side
-
-* Will need to figure out how to handle Finalization actions and detect when none are left
 
 * Get BasicAspenSystemSuite tests working on full system
+    - Bootstrap and shut down stores
+    - Bring up the full client then bring up a StorageNode that loads all the stores
+    - May want to convert to a factory function for data stores instead of passing in instances
+        - Allows the allocManager passed in to the StorageNode to be cleanly handed to the stores
 
-* Consider refactoring RocksDBDataStore into a generic Key-Value data store that takes an object with an API
-  similar to that of BufferedConsistentRocksDB
-
-** Potential Read enhancement
-   - When reading an object that's locked for update, send both current and locked data
-   - Reader can then determine whether locked or current data is the most recent and return accordingly
-
-* Add a bootstrapAllocate() method to DataStore interface. Called only during bootstrap process. Returns Future to object pointer
-  basically not allowed to fail. 
-    - Should never need to call this from over the network. Assume bootstrapping happens locally on a single system.
-    - Stores are then shut down and transferred off to new hosts 
-
-* Tie base FA registry to transaction
-
-** In transaction handling, check for unknown FinalizationActions. Vote Abort if found w/ that reason
-
-** Add Container Object Support to txd & store
+* Useful
+   
+   - Very Basic Error Handling
+      - read driver
+      - transaction recovery
+          - failed leader
+          - cold boot (might be the same thing)
+      - allocation recovery
+      - Transaction unit tests are *really* light. May want to beef this up as part of working on error-recovery logic
+      
+   - Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
+   
+** Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
+   - Send PrepareResponse messages to originatingClient (allows 1RTT notice of successful commit in common case)
+   - Consider adding error-handling info to TxResolution message sent by TxDriver to the client
+   - Can describe why Abort was chosen for resolution
+   - Use Option[], no need to send this info to other stores, only the client
+   
 ** Add VersionLock & RefcountLocks to txd & store
    - These can be shared between Tx. No need for exclusive access
    - Will mean that Tx conflicts needs to be a list of transactions though
+   
+** Add Container Object Support to txd & store
+   
+** DataStore Transfers
+   - Shut down store
+   - Update store location to point at new host
+   - Copy all CRL entries to separate file & delete from CRL DB
+   - Send TAR of crl state + all data store files
+   - Extract files, load CRL and it's up and running
+   
+** Live DataStore Transfers
+   * Put store in Read-Only mode
+   * Instantaneously transfer ownership to new host
+   * Host forwards reads to old node while state transfer is in progress
+   * Use the RAM-Only DataStore backend to maintain a durable in-mem copy of all modified objects while StoreTransfer is in progress
+   * Load new DataStore
+   * Begin process of write cached object to new store + delete from in-mem db
+   * When all objects are removed, transfer is complete
 
+** RAM-Only DataStore
+   - Can be implemented on top of BufferredConsistentRocksDB
+   - On start, load all kv w/ visit method
+   - Eschews most of the complexity of the RocksDBStore impl
+   
+** Consider refactoring RocksDBDataStore into a generic Key-Value data store that takes an object with an API
+   similar to that of BufferedConsistentRocksDB
+   
+** Error handling approaches
+   - Can differ for different pools
+   - Per-node error logs (like before)
+   - Foster objects
+   - Scanning
+       - Background task periodically scans alloc trees and repairs nodes
+   - Bitmask
+       - Optimized variant of per-node error log
+       - For mem-only, fixed-sized objects could maintain a bitmask for all peer stores
+       - Set bits for suspected misses
+   
+System-Level FinalizationAction handlers
+  * Not all Finalizers are appropriate for running in the core system. Take end-user code, for example.
+  * Rather than requiring the storage nodes to understand all finalizers, we could instead have a
+    finalizer service that could be leveraged to execute the FA on the storge node's behalf. Possibly
+    as end-user code within a dedicated container
+  * Tie this in with the client application having hte primary responsibility for executing the FA.
+  * Storage nodes only do this as a fallback if the client heartbeat of "im still working on the FAs" stops
+  
 Security Model
   * Foundation is each message has associated client UUID 
   * Client either does or does not have read/write access to a pool
@@ -111,138 +89,7 @@ Security Model
   * PoolAuthGroups point to individual clients and/or CertAuthAuthorities
   * Storage nodes pre-load cred info on startup for all PoolAuthGroups referenced by its hosted pools
   
-* System-Level FinalizationAction handlers
-  * Not all Finalizers are appropriate for running in the core system. Take end-user code, for example.
-  * Rather than requiring the storage nodes to understand all finalizers, we could instead have a
-    finalizer service that could be leveraged to execute the FA on the storge node's behalf. Possibly
-    as end-user code within a dedicated container
-  * Tie this in with the client application having hte primary responsibility for executing the FA.
-  * Storage nodes only do this as a fallback if the client heartbeat of "im still working on the FAs" stops
-
-aspen.base.FinalizationActionsRegistrar
-  * object that uses a list of FinalizationActionFactory
-  * kvtree.FinalizationActions implements the Factory and provides UUIDs for the FAs it supports
-  * Need to implement stubbed section
-  * Need to consider having Client run the FA list (maybe heartbeat to designated node so it delays action)
-
-
-         
-SystemTrees
-  * allocationPolicies
-  * storagePoolDefinitions
-      * PoolDefinition
-          * allocTree
-
-* Allocation Strategy could be referenced via UUID
-  * allows policy definition external to data structure
-  * but then how does the DS provide hints or make intelligent allocation choices?
-  * May just have to encode the alloc policy info directly into DataStructureDescriptor node
-  * aspenSytem provides an allocateObject(objectToUpdate, poolUUID, size, initialContent)(implicit Transaction)
-  * Just need something simple for now 
-
-* Would the B-Tree be simpler if we switched to Array[Byte] for key/value pairs and a KeyCompare function?
-   - Consistent and simple API that can then be wrapped by convenience APIs
-   - we're not locked to a single BTree impl so we can afford to go simple
-   - rename to KVTree. 
-      * Port code to KVTree then delete btree 
-
-* Finish B-Tree implementation
-    * Have generic B-Tree navigation and a generic Updater that uses EncodedKey instances
-    * may need a getRawNodeForUpdate that scans to the appropriate node and returns a RawBTreeNode instance
-    
-* Top-level insert mechanism for multi-key/value pairs will need to fork searching potentially for each key
-  since multiple leaf nodes may need to be updated as part of the tx
-   
-* Could use a TreeDefinition Object
-   - contains a flatbuffers encoded definition of the tree
-   - tier pointers
-   - per-tier allocation policy (eventually)
- |-> Will want BTree to have pointer to BTreeDefinition instead of root pointer
- 
-* BTreeUpdater will need a updateTreeDefinition method for use by split
-   - Also useful for adding the first node of tier 0
-   - Tree is created by creating it's definition. Can be read and written from there. Tier nodes created on demand 
-    
-* Need FinalizationAction impl
-   * On split we need to add an InsertIntoUpperTier FA
-     - will either alloc a new node and overwrite the TreeDefinition object
-     - OR just fetch the containing node in the specified tier and insert the object pointer
-     
-   * Need mechanism to register FA handlers with AspenSystem
-       - Maybe a base.FinalizationHandlers object that references all other FA handler objects
-      
-* Impl B-tree to support allocation trees
-
-* Then impl bootstrapping logic in terms of the B-tree
-
-* Then impl basic allocation error recovery
-
-* Then basic error recovery for transactions & reads 
-
-* Think through the allocation problem
-  - This is a major need. How far down the error recovery track do we need to go?
-  - Is there a higher-level alternative that we could use instead?
-     * Update an object with intent-to-allocate, then allocate w/ that record, then clean up?
-     * Or is there an easy tx recovery mechanism? Performance doesn't matter here
-
-* Can probably go a ways yet within the unit test environment
-  StorageNode to aggregate CRL, Stores, Per-store TxManagers, and network interface implementers
-  AspenSystem to implement client interface (constructor takes a UUID for client identifier, default to random)
-  InProc Network
-    - Could go ZMQ and use inproc
-    - Full-stack tests then but introduces non-determinism. Though Futures already do that to a degree
-    
-* For Store Transfer
-    - No need to wait for all transactions to complete. Instead, bundle the CRL entries for that store along with the store data.
-      * Slightly bigger coding effort but it minimizes the special cases. Store transfer is simply store temporarily offline
-    
-
-* Useful
-   - RocksDB store (there is a java wrapper)
-      - keep all objects in RAM (** this is just an option. Can do the queries via RocksDB api as well **)
-      - use key-value DB for backing store
-         - Write performance wont be as good as possible but we can ignore a huge number of issues
-         - Use a WriteBatch to aggregate all changes while a commit is outstanding then immediately do another commit if next batch isn't empty
-   - RocksDB for CRL
-      - similar batched-commit strategy
-      - Use a write-batch to aggregate all changes while synchronous commit is outstanding
-      - Could use this to simplify file-store impl. Write impending changes here so they can be re-done on crash.
-   - very basic error handling
-      - read driver
-      - transaction driver
-   - offline store transfer
-      - get this for free if we simply don't do error recovery
-         - or only do client-driven error recovery
-         - repair only objects that are seen to be defective during a read operation
-         **** Could use this for a simple scan-like rebuild process. Have a background task constantly walking the allocation trees and fetching object state (not data)
-         **** When errors are seen, repair them.
-         **** No need for error logging. 
-         ****** Gossip-based error recovery for in-mem stores. Periodically gossip about object version/refcount with nearby stores.
-         ****** Mask based error recovery for in-mem stores. With each object, keep a bitmask of peer stores. set ones for all stores seen to have accepted the latest value
-                 *** This is probably the easiest proactive rebuild mechanism
-                 *** TxDriver should send a TxResult message with minimum-set of known-good recipients
-                 *** Also eliminates need to delay, "late" Tx messages are valid for updating bitmask if version/refcount match
-   - Live transfer between nodes
-       * ideally not needing to offline the store
-       * Ownership transfers instantaneously (via commit). Use log + in-mem copies of all modified objects while download of read-only store state is in progress
-
-* Will need a StorageNode class. This wraps data stores on a single machine.
-   - Has an IP:port for network connections
-   - Maintains zmq network
-   - Implements message send/receive
-   - Has DataStores, CRL, TransactionManager (from local config file)
-   - Has a System instance for interfacing with the rest of the system
-   
- * Will need an AspenSystem implementation.
-    * Implements a Client
-    * Identified by a generated UUID
-        - Set this as ZMQ socket identity
-        - Use this as the Array[Byte] for Client messenger identity
-        - StorageNodes use Router socket so they know where to send replies
-    * Bootstraps from a config file that defines Map[NetworkEndpoint, List[data-store-id]]
-  
-  
-Figure out the allocation/bootstrapping issues
+# --------------- Architecture ---------------
 
 * Core package is message-handling centric.
   * only generated messages are in response to other messages
@@ -253,9 +100,6 @@ Figure out the allocation/bootstrapping issues
   * Transaction, Allocation, & Read are all implemented with Managers and Drivers. Each operation gets a
     UUID and a driver instance drives the operation to completion.
           
-  * network.MessageReceiver instance
-     - dispatches messages to appropriate store.TransactionManager
-         - dispatches to appropriate Transaction/TransactionDriver
   
 * Transaction
    - Fills the Acceptor & Learner Paxos roles
@@ -272,35 +116,33 @@ Figure out the allocation/bootstrapping issues
    - Create via factory object passed to TxManager
    - Totally encapsulates the retransmit/retry logic
    		
-
-  
-* How to handle the data?
-  * Want to allow it to live off-heap
-  * No need to split it up in memory
-  * LocalUpdates could be a BufferPointer,
-      * Constructor reads buffer header to generate: List[(DataUpdateIndex,BufferOffset,Length)]
-      
-Mid-Term Enhancements:
-* Add support for PrepareResponse messages received before corresponding Prepare message
       
       
 BackLog
+
+Error Handling:
+   * Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
+                  allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
+                  
+   * Transaction
+       - Failed leader detection
+       - Recovery
+           - In progress
+           - After commit/abort w/ cached response
+           - After commit w/ lastTxUUID = in-progress TxUUID
+           - After commit w/different last committed txUUID
+           - Same commit + version bump
+           
+   * Refuse to vote on transaction if any FinalizationAction is unknown
+   
+** Potential Read enhancement
+   - When reading an object that's locked for update, send both current and locked data
+   - Reader can then determine whether locked or current data is the most recent and return accordingly
 
 * Allocation trees use same IDA as their StoragePoolDefinition node and all tree nodes are stored on the pool itself
    - This will need to be configurable
    - Will need to update isIDASupported() method to return false when requested IDA is more reliable than the alloc tree
    - also missing a way to specify the tree object size
-
-* Refuse to vote on transaction if any FinalizationAction is unknown
-
-* Add store-side failed allocation detection and recovery
-
-* Add detection & handling of leader failure
-
-* Add detection and handling for Transaction recovery
-   - While Tx is still in progress
-   - After Tx commit/abort
-   - After one or more objects have been updated *after* the Tx committed/aborted
 
 * Add special messages for "PartiallyAccepted" and "SuccessfullyCommitted"
    |-> Use these in lieu of the normal messages if the crash recovery log is down. Peers use these to avoid
