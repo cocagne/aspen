@@ -30,24 +30,42 @@ class StorageNodeTransactionManager(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
-    val finalizerFactory: TransactionFinalizer.Factory,
-    val getStore: (DataStoreID) => Option[DataStore])(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
+    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
+  
+  private[this] var stores = Map[DataStoreID, StoreState]()
  
-  private[this] var transactions = Map[UUID, Transaction]()
-  private[this] var transactionDrivers = Map[UUID, TransactionDriver]()
-  
-  private[this] def getTransaction(txuuid: UUID): Option[Transaction] = synchronized { transactions.get(txuuid) }
-  
-  private[this] def getTransactionDriver(txuuid: UUID): Option[TransactionDriver] = synchronized { transactionDrivers.get(txuuid) }
-  
-  private[this] val prepareResponseCache = Scaffeine().recordStats()
-                                                      .expireAfterWrite(10.seconds)
+  private[this] val prepareResponseCache = Scaffeine().expireAfterWrite(10.seconds)
                                                       .maximumSize(1000)
-                                                      .build[UUID, Map[DataStoreID,TxPrepareResponse]]()
+                                                      .build[UUID, List[TxPrepareResponse]]()
+                                                      
+  private[this] val resultCache = Scaffeine().maximumSize(1000)
+                                             .build[UUID, Boolean]()
   
-  private def onTransactionDiscarded(t: Transaction) = synchronized { transactions -= t.txd.transactionUUID }
+  def addStore(store: DataStore): Unit = synchronized {
+    stores += (store.storeId -> new StoreState(store))
+  }
   
-  private def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
+  def removeStore(storeId: DataStoreID): Unit = synchronized {
+    stores -= storeId
+  }
+  
+  private[this] def getStore(storeId: DataStoreID): Option[StoreState] = synchronized {
+    stores.get(storeId)
+  }
+  
+  private def cachePrepareResponse(m: TxPrepareResponse): Unit = synchronized {
+    // Do this in a synchronized block to serialize updates to the cached list
+    val l = prepareResponseCache.getIfPresent(m.transactionUUID) match {
+      case Some(l) => l
+      case None => Nil
+    }
+    prepareResponseCache.put(m.transactionUUID, m :: l)
+  }
+  
+  /** (unit test only) returns true if all transactions are complete */
+  def allTransactionsComplete: Boolean = synchronized { 
+    stores.forall(t => t._2.allTransactionsComplete)
+  }
   
   /** Provides the transaction manager with the set of transactions that were pending completion when the storage node was last shut down
    *  
@@ -64,67 +82,93 @@ class StorageNodeTransactionManager(
     Future.successful(())
   }
   
-  def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = getStore(message.to) foreach ( store => {
-    message match {
-      case m: TxPrepare => 
-        val tx = synchronized { 
-          transactions.get(m.txd.transactionUUID).getOrElse {
-            val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent)
+  def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+    getStore(message.to).foreach(ss => ss.receive(message, updateContent))
+  }
+  
+  private class StoreState(val store: DataStore) {
+    private[this] var transactions = Map[UUID, Transaction]()
+    private[this] var transactionDrivers = Map[UUID, TransactionDriver]()
+    
+    def allTransactionsComplete: Boolean = synchronized { transactions.isEmpty }
+    
+    def getTransaction(txUUID: UUID) = synchronized { transactions.get(txUUID) }
+    
+    def getTransactionDriver(txUUID: UUID) = synchronized { transactionDrivers.get(txUUID) }
+    
+    def onTransactionDiscarded(t: Transaction) = synchronized { transactions -= t.txd.transactionUUID }
+  
+    def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
+    
+    def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+      message match {
+        case m: TxPrepare =>  
+          val (tx, driver) = synchronized {
+            val tx = transactions.get(m.txd.transactionUUID).getOrElse {
             
-            transactions += (m.txd.transactionUUID -> t)
-            
-            if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
-              val driver = driverFactory.create(message.to, messenger, m, finalizerFactory, onTransactionDriverComplete _)
+              val t = Transaction(crl, messenger, onTransactionDiscarded _, store, m.txd, updateContent)
               
-              transactionDrivers += (m.txd.transactionUUID -> driver)
+              transactions += (m.txd.transactionUUID -> t)
               
-              // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
-              prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach( pmap => {
-                pmap.foreach( t => driver.receiveTxPrepareResponse(t._2) )
-              })
-            }
-            
-            // No need to keep the cached entries around (if any) the driver will receive the messages directly
-            prepareResponseCache.invalidate(m.txd.transactionUUID)
-            t
-          }
-        }
-        tx.receivePrepare(m, updateContent)
-        getTransactionDriver(m.txd.transactionUUID).foreach( td => td.receiveTxPrepare(m) )
-   
-      case m: TxPrepareResponse =>
-        getTransactionDriver(m.transactionUUID) match {
-          case Some(td) => td.receiveTxPrepareResponse(m)
-          
-          case None =>
-            // TxPrepareResponse messages are unicast to the transaction leader. That we're receiving one probably means we're
-            // the designated leader for the transaction. We'll hold on to these for a while so that if we receive the prepare
-            // message, we can immediately process the replies rather than having to rely on the driver to recover the transaction
-            // via retransmissions or another Paxos round.
-            synchronized {
-              // Do this in a synchronized block to serialize updates to the immutable map
-              val pm = prepareResponseCache.getIfPresent(m.transactionUUID) match {
-                case Some(pmap) => pmap
-                case None => Map[DataStoreID,TxPrepareResponse]()
+              if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
+                val driver = driverFactory.create(message.to, messenger, m, finalizerFactory, onTransactionDriverComplete _)
+                
+                transactionDrivers += (m.txd.transactionUUID -> driver)
+                
+                // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
+                prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach { lst => 
+                  lst.foreach(driver.receiveTxPrepareResponse)
+                  
+                  // No need to keep the cached entries around
+                  prepareResponseCache.invalidate(m.txd.transactionUUID)
+                }
               }
-              prepareResponseCache.put(m.transactionUUID, pm + (m.from -> m))
+              
+              t
             }
-        }
-      
-      case m: TxAccept => getTransaction(m.transactionUUID).foreach( tx => tx.receiveAccept(m) )
-      
-      case m: TxAcceptResponse =>
-        getTransaction(m.transactionUUID).foreach( tx => tx.receiveAcceptResponse(m) )
-        getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxAcceptResponse(m) )
+            
+            (tx, transactionDrivers.get(m.txd.transactionUUID))
+          }
+          
+          tx.receivePrepare(m, updateContent)
+          driver.foreach(td => td.receiveTxPrepare(m)) 
+          
+     
+        case m: TxPrepareResponse => 
+          getTransactionDriver(m.transactionUUID)  match {
+            case Some(td) => td.receiveTxPrepareResponse(m)
+            
+            case None =>
+              // TxPrepareResponse messages are unicast to the transaction leader. That we're receiving one probably means we're
+              // the designated leader for the transaction that either recently completed or we haven't discovered yet. If it's not
+              // in the result cache, We'll hold on to these for a while so that if we receive the prepare message, we can immediately
+              // process the replies rather than having to rely on the driver to recover the transaction via retransmissions or 
+              // another Paxos round.
+              resultCache.getIfPresent(m.transactionUUID) match {
+                case Some(result) => messenger.send(TxResolved(m.from, store.storeId, m.transactionUUID, result))
+                
+                case None => cachePrepareResponse(m)
+              }              
+          }
         
-      case m: TxResolved =>
-        getTransaction(m.transactionUUID).foreach( tx => tx.receiveResolved(m) )
-        getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxResolved(m) )
+        case m: TxAccept => 
+          getTransaction(m.transactionUUID).foreach( _.receiveAccept(m) )
         
-      case m: TxFinalized =>
-        getTransaction(m.transactionUUID).foreach( tx => tx.receiveFinalized(m) )
-        getTransactionDriver(m.transactionUUID).foreach( td => td.receiveTxFinalized(m) )
+        case m: TxAcceptResponse =>
+          getTransaction(m.transactionUUID).foreach( _.receiveAcceptResponse(m) )
+          getTransactionDriver(m.transactionUUID).foreach( _.receiveTxAcceptResponse(m) )
+          
+        case m: TxResolved =>
+          resultCache.put(m.transactionUUID, m.committed)
+          getTransaction(m.transactionUUID).foreach( _.receiveResolved(m) )
+          getTransactionDriver(m.transactionUUID).foreach( _.receiveTxResolved(m) )
+          
+        case m: TxFinalized =>
+          resultCache.put(m.transactionUUID, m.committed)
+          getTransaction(m.transactionUUID).foreach( _.receiveFinalized(m) )
+          getTransactionDriver(m.transactionUUID).foreach( _.receiveTxFinalized(m) )
+      }
     }
-  })
+  }
  
 }

@@ -1,10 +1,16 @@
 
-* StorageNodes need a way to provide a Future to all transactions complete
-    - Tx isn't done till FA is done. So if no Tx are left, all FAs must be complete
+* DataStore initialization - pass a factory to StorageNode instead of a class instance
+
+* Detecting all transactions complete
+    - create method that calls storageNode.allTransactionsComplete in a loop
+    - 5ms sleeps between checks
+    - probably need to do this within a Future {} to avoid threading issues
+    
     
 * Need a class to bridge
     - FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
     - to TransactionFinalizer & TransactionFinalizer.Factory
+    - This goes to TransactionDriver... for which we already pass in a factory
 
 
 * Get BasicAspenSystemSuite tests working on full system

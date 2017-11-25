@@ -46,7 +46,7 @@ class StorageNode(
 )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val txManager = new StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory, getStore)
+  private[this] val txManager = new StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory)
   
   def clientId: ClientID = messenger.client
   
@@ -58,10 +58,16 @@ class StorageNode(
       transactionRecoveryStates: List[TransactionRecoveryState],
       allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = {
     store.initialize(transactionRecoveryStates, allocationRecoveryStates) andThen {
-      case Success(_) => synchronized { stores += (store.storeId -> store) }
+      case Success(_) => 
+        synchronized { stores += (store.storeId -> store) }
+        txManager.addStore(store)
+        
       case Failure(cause) => onStoreInitializationFailure(store, cause)
     }
   }
+  
+  /** (unit test only) returns true if all transactions are complete */
+  def allTransactionsComplete: Boolean = txManager.allTransactionsComplete
   
   /** Completes when all initialStores are fully initialized and ready for use */
   val initialized: Future[Unit] = {
