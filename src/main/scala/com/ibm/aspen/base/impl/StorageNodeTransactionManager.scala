@@ -41,7 +41,8 @@ class StorageNodeTransactionManager(
   private[this] val resultCache = Scaffeine().maximumSize(1000)
                                              .build[UUID, Boolean]()
   
-  def addStore(store: DataStore): Unit = synchronized {
+  def addStore(store: DataStore, txRecoveryState: List[TransactionRecoveryState]): Unit = synchronized {
+    // TODO: Implement Transaction Recovery
     stores += (store.storeId -> new StoreState(store))
   }
   
@@ -65,21 +66,6 @@ class StorageNodeTransactionManager(
   /** (unit test only) returns true if all transactions are complete */
   def allTransactionsComplete: Boolean = synchronized { 
     stores.forall(t => t._2.allTransactionsComplete)
-  }
-  
-  /** Provides the transaction manager with the set of transactions that were pending completion when the storage node was last shut down
-   *  
-   *  This method will be called in the bootstrapping sequence before any network messages are sent or received. To prevent processing
-   *  transaction messages before the transaction manager has finished its internal initialization process, the message handlers will
-   *  block message sends/receives until after the future returned by this method completes. At some point thereafter the networkReady
-   *  future will fire which indicates that the network messengers are ready for use and the recovery process may begin.
-   */
-  def recoverTransactions(
-      txRecoveryState: Map[DataStoreID, List[TransactionRecoveryState]],
-      networkReady: Future[Unit]): Future[Unit] = {
-    
-    // TODO: Implement Transaction Recovery
-    Future.successful(())
   }
   
   def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {

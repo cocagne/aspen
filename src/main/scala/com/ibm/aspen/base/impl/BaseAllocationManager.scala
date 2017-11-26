@@ -8,6 +8,7 @@ import java.util.UUID
 import scala.concurrent.Future
 import scala.concurrent.Promise
 import com.ibm.aspen.core.transaction.TxFinalized
+import com.ibm.aspen.core.allocation.StoreAllocationManager
 
 object BaseAllocationManager {
   case class Key(storeId: DataStoreID, transactionUUID: UUID)
@@ -17,8 +18,8 @@ object BaseAllocationManager {
   }
 }
 
-class BaseAllocationManager(crl: CrashRecoveryLog) extends AllocationManager {
-  import AllocationManager._
+class BaseAllocationManager(crl: CrashRecoveryLog) extends StoreAllocationManager {
+  import StoreAllocationManager._
   import BaseAllocationManager._
   
   protected var allocations = Map[Key, Value]()

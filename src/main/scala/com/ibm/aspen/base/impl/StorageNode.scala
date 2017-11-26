@@ -34,58 +34,37 @@ import java.util.UUID
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxFinalized
+import com.ibm.aspen.core.allocation.StoreAllocationManager
 
+// addStore(fact: DataStore.Factory): Future[Unit]
 class StorageNode(
   val crl: CrashRecoveryLog, 
-  val allocationManager: AllocationManager,
   val messenger: StorageNodeMessenger,
-  val driverFactory: TransactionDriver.Factory,
-  val finalizerFactory: TransactionFinalizer.Factory,
-  val initialStores: List[DataStore],
-  val onStoreInitializationFailure: (DataStore, Throwable) => Unit
-)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
+  private[this] val allocationManager: StoreAllocationManager,
+  private[this] val transactionManager: StorageNodeTransactionManager
+  )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val txManager = new StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory)
+  private[this] val networkInitialized = messenger.initialize(this)
   
   def clientId: ClientID = messenger.client
   
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
-  /** Waits for the store to complete its internal initialization then adds it to the map of active stores */
-  private def initializeStore(
-      store: DataStore, 
-      transactionRecoveryStates: List[TransactionRecoveryState],
-      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = {
-    store.initialize(transactionRecoveryStates, allocationRecoveryStates) andThen {
-      case Success(_) => 
-        synchronized { stores += (store.storeId -> store) }
-        txManager.addStore(store)
-        
-      case Failure(cause) => onStoreInitializationFailure(store, cause)
+  def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = networkInitialized.flatMap { case _ =>
+    val trs = crl.getTransactionRecoveryStateForStore(storeId)
+    val ars = crl.getAllocationRecoveryStateForStore(storeId)
+    factory(storeId, allocationManager, trs, ars).initialized map { case store => 
+      synchronized {
+        stores += (storeId -> store)
+        transactionManager.addStore(store, trs)
+      }
+      store
     }
   }
-  
+    
   /** (unit test only) returns true if all transactions are complete */
-  def allTransactionsComplete: Boolean = txManager.allTransactionsComplete
-  
-  /** Completes when all initialStores are fully initialized and ready for use */
-  val initialized: Future[Unit] = {
-    val pNetworkReady = Promise[Unit]()
-    val txRecoveryState = crl.getFullTransactionRecoveryState()
-    val allocRecoveryState = crl.getFullAllocationRecoveryState()
-    
-    def initStore(ds: DataStore): Future[Unit] = initializeStore(ds, txRecoveryState.getOrElse(ds.storeId, Nil), allocRecoveryState.getOrElse(ds.storeId, Nil))
-    
-    for {
-      storesInitialized <- Future.sequence(initialStores.map(initStore)).map(_=>())
-      txMgrReady <- txManager.recoverTransactions(txRecoveryState, pNetworkReady.future)
-      networkReady <- messenger.initialize(this) 
-    } yield {
-      pNetworkReady.success(())
-      ()
-    }
-  }
+  def allTransactionsComplete: Boolean = transactionManager.allTransactionsComplete
   
   def receive(m: Allocate): Unit = getStore(m.toStore).foreach(store => {
     val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
@@ -97,7 +76,7 @@ class StorageNode(
   })
   
   def receive(message: transaction.Message, updateContent: Option[List[LocalUpdate]]): Unit  = {
-    txManager.receive(message, updateContent)
+    transactionManager.receive(message, updateContent)
     
     message match {
       case m: TxResolved => allocationManager.receive(m)

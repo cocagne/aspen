@@ -33,9 +33,7 @@ class MemoryOnlyDataStore(
     (lp, ByteBuffer.allocate(4).putInt(lp).array())
   }
   
-  def initialize(
-      transactionRecoveryStates: List[TransactionRecoveryState], 
-      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = Future.successful(())
+  def initialized: Future[DataStore] = Future.successful(this)
   
   def close(): Future[Unit] = Future.successful(())
   

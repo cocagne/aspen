@@ -22,9 +22,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   import NullDataStore._
   
-  def initialize(
-      transactionRecoveryStates: List[TransactionRecoveryState],
-      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = Future.successful(())
+  def initialized: Future[DataStore] = Future.successful(this)
   
   def close(): Future[Unit] = Future.successful(())
   

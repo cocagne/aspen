@@ -16,8 +16,7 @@ class RocksDBDataStoreSuite extends DataStoreSuite with BeforeAndAfter {
     if (db != null)
       Await.result(db.close(), Duration(10000, MILLISECONDS))
     val tpath = new File(tdir, "dbdir").getAbsolutePath
-    db = new RocksDBDataStore(DataStoreSuite.storeId, tpath, new NullAllocationManager)(ExecutionContext.Implicits.global)
-    db.initialize(Nil, Nil)
+    db = new RocksDBDataStore(DataStoreSuite.storeId, tpath, new NullAllocationManager, Nil, Nil)(ExecutionContext.Implicits.global)
     db
   }
   

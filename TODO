@@ -1,5 +1,26 @@
 
-* DataStore initialization - pass a factory to StorageNode instead of a class instance
+* DataStore initialization - pass a factory to StorageNode instead of a class instance (done)
+
+* Move allocation manager to same pattern as txManager
+    - standard allocationResolved method the allocMgr calls on resolution
+    - Move alloc track begin to successful alloc response
+    - allocResolved returns future to when CRL entry may be deleted, same as commitTransactionUpdates
+    - remove reference to alloManager in DataStore factory / rocksdb constructor
+    - add addStore(store, allocRecoverState) to allocManager
+    - remove old init code
+    
+- Stop using Reads to trigger AllocationComplete from AllocManager perspective
+    - Resolved & Finalized shouldn't often be missed
+    - Proper error handling will catch up eventually
+    
+- Above should complete initialization restrucutre for storage node
+
+* Initialization for unit testing:
+    - StorageNode init is dependent only upon network Messenger
+    - DataStore initialization is complete via returned Future
+    - For testing of AllocManager, use a Mixin that logs all calls that would initiate immediate action
+        - call to super after a future to "ready to do stuff" is triggered
+        - allows unit test to detect completion of all nodes and stores before triggering action
 
 * Detecting all transactions complete
     - create method that calls storageNode.allTransactionsComplete in a loop

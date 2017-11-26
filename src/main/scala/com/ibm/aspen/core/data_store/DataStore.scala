@@ -15,19 +15,28 @@ import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.StoreAllocationManager
+
+object DataStore {
+  trait Factory {
+    def apply(
+        storeId: DataStoreID,
+        allocationManager: StoreAllocationManager,
+        transactionRecoveryStates: List[TransactionRecoveryState],
+        allocationRecoveryStates: List[AllocationRecoveryState]): DataStore
+  }
+}
 
 trait DataStore {
   
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
   
-  /** Called by the StorageNode to initialize the data store. The future completes when the store is ready for use. No methods should be invoked prior to completion 
+  /** The future completes with a reference to itself when the store is ready for use. No methods should be invoked prior to completion 
    *
-   * A critical requirement of this method is that the store re-establishes locks on the transactions it voted to commit
+   * A critical requirement is that the store re-establishes all object locks for outstanding transactions it voted to commit
    */
-  def initialize(
-      transactionRecoveryStates: List[TransactionRecoveryState],
-      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit]
+  def initialized: Future[DataStore]
   
   /** Shuts down the store and releases all runtime resources
    */

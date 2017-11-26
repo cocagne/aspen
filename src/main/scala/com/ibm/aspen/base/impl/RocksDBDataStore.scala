@@ -31,6 +31,7 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.StoreAllocationManager
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -102,7 +103,9 @@ object RocksDBDataStore {
 class RocksDBDataStore(
     val storeId: DataStoreID,
     dbPath:String,
-    val allocationManager: AllocationManager)(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
+    val allocationManager: StoreAllocationManager,
+    transactionRecoveryStates: List[TransactionRecoveryState], 
+    allocationRecoveryStates: List[AllocationRecoveryState])(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
   
   import RocksDBDataStore._
   
@@ -126,19 +129,17 @@ class RocksDBDataStore(
   
   def close() = db.close()
   
-  def initialize(
-      transactionRecoveryStates: List[TransactionRecoveryState], 
-      allocationRecoveryStates: List[AllocationRecoveryState]): Future[Unit] = synchronized {
+  val initialized: Future[DataStore] = synchronized {
     var flocks = List[Future[Unit]]()
     
-    getTransactionsToBeLocked(transactionRecoveryStates).foreach(trs => getHostedObjects(trs.txd).foreach(op => {
+    getTransactionsToBeLocked(transactionRecoveryStates).foreach { trs => getHostedObjects(trs.txd).foreach(op => {
       flocks = getObject(op).map(r => r match {
         case Left(err) => // ??? Shouldn't be possible (except may be for corruption) and there's nothing we can do about it. Log & continue on?
         case Right((state, data)) => 
           workingStates += (op.uuid -> new WorkingState(op.uuid, state.revision, state.refcount, state.lastCommittedTxUUID, data, Some(trs.txd), Set(trs.txd.transactionUUID)))
       }) :: flocks
     })
-    )
+    }
     
     val allocs = allocationRecoveryStates.map { ars =>
       ars.newObjects.foreach(no => allocations += (no.newObjectUUID -> ars))
@@ -150,7 +151,7 @@ class RocksDBDataStore(
       ts.saved
     }
     
-    Future.sequence(flocks ++ allocs).map(_=>())
+    Future.sequence(flocks ++ allocs).map(_=> this)
   }
   
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer): Future[StorePointer] = synchronized {
@@ -211,28 +212,32 @@ class RocksDBDataStore(
   private def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
     var flist = List[Future[Unit]]()
     
-    ars.newObjects.foreach { newObj =>
-      // Reads of mid-allocation objects force a commit to ensure that transactions against those objects
-      // wont be accidentally overwritten by the initial state if the initial write to disk is slow for some
-      // reason. That causes this method to be called twice.
-      if (allocations.contains(newObj.newObjectUUID)) {
-        
-        allocations -= newObj.newObjectUUID
-        
-        workingStates.get(newObj.newObjectUUID).foreach { ws =>
-  
-          db.put(stateKey(newObj.newObjectUUID), stateToBytes(ws.revision, ws.refcount, ars.allocationTransactionUUID))
+    if (committed) {
+      ars.newObjects.foreach { newObj =>
+        // Reads of mid-allocation objects force a commit to ensure that transactions against those objects
+        // wont be accidentally overwritten by the initial state if the initial write to disk is slow for some
+        // reason. That causes this method to be called twice.
+        if (allocations.contains(newObj.newObjectUUID)) {
           
-          flist = db.put(dataKey(newObj.newObjectUUID), newObj.objectData.getByteArray()) :: flist 
+          allocations -= newObj.newObjectUUID
           
-          flist.head onComplete {
-            case _ => completeWorkingStateOperation(newObj.newObjectUUID, ws, ars.allocationTransactionUUID)
+          workingStates.get(newObj.newObjectUUID).foreach { ws =>
+    
+            db.put(stateKey(newObj.newObjectUUID), stateToBytes(ws.revision, ws.refcount, ars.allocationTransactionUUID))
+            
+            flist = db.put(dataKey(newObj.newObjectUUID), newObj.objectData.getByteArray()) :: flist 
+            
+            flist.head onComplete {
+              case _ => completeWorkingStateOperation(newObj.newObjectUUID, ws, ars.allocationTransactionUUID)
+            }
           }
         }
       }
+    } else {
+      List(Future.successful(()))
     }
     
-    Future.sequence(flist) map (_=>())
+    Future.sequence(flist) map (_=> allocationManager.stopTracking(storeId, ars.allocationTransactionUUID, committed))
   }
   
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
@@ -250,7 +255,6 @@ class RocksDBDataStore(
             // Objects cannot be read until after they are successfully allocated. We must be slow in realizing this so force the write to occur now
             // to ensure we cannot have some other transaction successfully commit before the initial state is written to disk.
             val fsave = allocationResolved(ars, true)
-            allocationManager.stopTracking(storeId, ars.allocationTransactionUUID, true)
             fsave.map(_ => Right(ws))
             
           case None =>

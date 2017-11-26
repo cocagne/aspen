@@ -6,9 +6,10 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.data_store.DataStoreID
 import java.util.UUID
 import scala.concurrent.Future
+import com.ibm.aspen.core.allocation.StoreAllocationManager
 
-class NullAllocationManager extends AllocationManager {
-  import AllocationManager._
+class NullAllocationManager extends StoreAllocationManager {
+  import StoreAllocationManager._
   
   def trackAllocation(ars: AllocationRecoveryState): TrackingStatus = TrackingStatus(Future.successful(()), Future.successful(true))
   
