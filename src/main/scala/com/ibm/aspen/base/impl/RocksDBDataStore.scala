@@ -32,6 +32,7 @@ import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.StoreAllocationManager
+import com.ibm.aspen.core.allocation.Allocate
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -176,8 +177,8 @@ class RocksDBDataStore(
       workingStates -= objectUUID
   }
   
-  /** TODO Failure handling. Currently we never check to see if the allocation succeeded/failed
-   */
+  /* TODO Failure handling. Currently we never check to see if the allocation succeeded/failed
+   
   def allocateNewObject(objectUUID: UUID, 
                         size: Option[Int], 
                         initialContent: DataBuffer,
@@ -207,6 +208,41 @@ class RocksDBDataStore(
     ts.resolved.foreach( result => allocationResolved(ars, result) )
       
     ts.saved.map(_ => Right(sp))
+  }
+  * 
+  */
+  
+  /** Allocates a new Object on the store */
+  def allocate(newObjects: List[Allocate.NewObject],
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
+                 
+    val lst = newObjects map { no =>      
+      AllocationRecoveryState.NewObject(
+          StorePointer(storeId.poolIndex, new Array[Byte](0)), 
+          no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount)
+    }
+    
+    val ars = AllocationRecoveryState(storeId, lst, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    
+    synchronized {
+      
+      ars.newObjects.foreach { newObj =>
+        
+        val ws = new WorkingState(newObj.newObjectUUID, ObjectRevision(0, newObj.objectData.size), newObj.initialRefcount, 
+                                  ars.allocationTransactionUUID, newObj.objectData, None, Set(ars.allocationTransactionUUID))
+        
+        allocations += (newObj.newObjectUUID -> ars)
+        workingStates += (newObj.newObjectUUID -> ws)
+      }
+    }
+    
+    val ts = allocationManager.trackAllocation(ars)
+      
+    ts.resolved.foreach( result => allocationResolved(ars, result) )
+      
+    ts.saved.map(_ => Right(ars))
   }
   
   private def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {

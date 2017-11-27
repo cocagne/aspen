@@ -35,6 +35,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.allocation.StoreAllocationManager
+import com.ibm.aspen.core.allocation.AllocateResponse
 
 // addStore(fact: DataStore.Factory): Future[Unit]
 class StorageNode(
@@ -67,11 +68,14 @@ class StorageNode(
   def allTransactionsComplete: Boolean = transactionManager.allTransactionsComplete
   
   def receive(m: Allocate): Unit = getStore(m.toStore).foreach(store => {
-    val f = store.allocateNewObject(m.newObjectUUID, m.objectSize, m.objectData, m.initialRefcount, 
-                                    m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
+    val f = store.allocate(m.newObjects, m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
     // Failure is communicated by the result not a failed future
     f foreach {  result => 
-      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result))
+      val r = result match {
+        case Left(err) => Left(err)
+        case Right(ars) => Right(ars.newObjects.map(n => AllocateResponse.Allocated(n.newObjectUUID, n.storePointer)))
+      }
+      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, r))
     }
   })
   

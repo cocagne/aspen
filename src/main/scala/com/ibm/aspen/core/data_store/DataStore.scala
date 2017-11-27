@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.StoreAllocationManager
+import com.ibm.aspen.core.allocation.Allocate
 
 object DataStore {
   trait Factory {
@@ -49,20 +50,17 @@ trait DataStore {
     transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
   }
   
-  /** Allocates a new Object on the store.
+  /** Allocates new objects on the store.
    *
    * The "Allocating Object" is the object that will be updated as part of a successful allocation transaction.
    * Success/failure of this allocation is determined by the successful update of this object by a transaction
-   * with the specified UUID. If success/failure cannot be determined, this node may attempt to force the allocation
-   * to fail by bumping the revision of the target object.
+   * with the specified UUID. If success/failure cannot be determined, the recovery process may attempt to 
+   * force the allocation to fail by bumping the revision of the target object.
    */
-  def allocateNewObject(objectUUID: UUID, 
-                        size: Option[Int], 
-                        initialContent: DataBuffer,
-                        initialRefcount: ObjectRefcount,
-                        allocationTransactionUUID: UUID,
-                        allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]]
+  def allocate(newObjects: List[Allocate.NewObject],
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]
   
   
   /** Reads an object on the store 

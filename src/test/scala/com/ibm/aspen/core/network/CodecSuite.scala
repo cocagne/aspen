@@ -18,6 +18,7 @@ import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
 import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 object CodecSuite {
   
@@ -211,8 +212,11 @@ object ReadResponse {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)
     val txUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
+    
     val sp = StorePointer(0, Array[Byte](0, 1, 2, 3))
-    val ar = AllocateResponse(storeId, txUUID, Right(sp))
+    val la = List(AllocateResponse.Allocated(objUUID, sp))
+    val ar = AllocateResponse(storeId, txUUID, Right(la))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -243,7 +247,8 @@ object ReadResponse {
     val objUUID = new java.util.UUID(5,6)
     val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val a1 = Allocate(storeId, c1, objUUID, s1, d1, ref, txUUID,  op, rev)
+    val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
+    val a1 = Allocate(storeId, c1, lno, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -274,7 +279,8 @@ object ReadResponse {
     val objUUID = new java.util.UUID(5,6)
     val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val a1 = Allocate(storeId, c1, objUUID, s1, d1, ref, txUUID,  op, rev)
+    val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
+    val a1 = Allocate(storeId, c1, lno, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     

@@ -18,6 +18,7 @@ import scala.util.Failure
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.Allocate
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -60,9 +61,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     implicit val executionContext = ExecutionContext.Implicits.global
     
-    val f = ds.allocateNewObject(uuid0, None, icontent0, oneRef, allocUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(sp0) => ds.allocateNewObject(uuid1, None, icontent1, oneRef, allocUUID, allocObj, allocRev).flatMap(er => er match {
-        case Right(sp1) => Future.successful((ds, sp0, sp1))
+    val lno0 = List(Allocate.NewObject(uuid0, None, oneRef, icontent0))
+    val lno1 = List(Allocate.NewObject(uuid1, None, oneRef, icontent1))
+    
+    val f = ds.allocate(lno0, allocUUID, allocObj, allocRev) flatMap { either => either match {
+      case Right(ars0) => ds.allocate(lno1, allocUUID, allocObj, allocRev).flatMap(er => er match {
+        case Right(ars1) => Future.successful((ds, ars0.newObjects.head.storePointer, ars1.newObjects.head.storePointer))
         case Left(err) => fail("Returned failure instead of object content")
       })
       case Left(err) => fail("Returned failure instead of store pointer")
@@ -294,10 +298,11 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
+    val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
+    val futureResponse = ds.allocate(lno, txUUID, allocObj, allocRev)
             
     futureResponse map { either => either match {
-      case Right(sp) => sp.poolIndex should be (ds.storeId.poolIndex)
+      case Right(ars) => ars.newObjects.head.storePointer.poolIndex should be (ds.storeId.poolIndex)
       case Left(err) => fail("Returned failure instead of store pointer")
     }}
 	}
@@ -306,12 +311,13 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val futureResponse = ds.allocateNewObject(uuid0, None, icontent, oneRef, txUUID, allocObj, allocRev)
+    val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
+    val futureResponse = ds.allocate(lno, txUUID, allocObj, allocRev)
             
     val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, txUUID, None), icontent)
     
     futureResponse flatMap { either => either match {
-      case Right(sp) => ds.getObject(mkObjPtr(uuid0, sp)).flatMap(er => er match {
+      case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.newObjects.head.storePointer)).flatMap(er => er match {
         case Right(data) => data should be (expected)
         case Left(err) => fail(s"Returned failure instead of object content: $err")
       })

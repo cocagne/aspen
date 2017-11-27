@@ -1,19 +1,15 @@
 
-* DataStore initialization - pass a factory to StorageNode instead of a class instance (done)
-
-* Move allocation manager to same pattern as txManager
-    - standard allocationResolved method the allocMgr calls on resolution
-    - Move alloc track begin to successful alloc response
-    - allocResolved returns future to when CRL entry may be deleted, same as commitTransactionUpdates
-    - remove reference to alloManager in DataStore factory / rocksdb constructor
-    - add addStore(store, allocRecoverState) to allocManager
-    - remove old init code
-    
-- Stop using Reads to trigger AllocationComplete from AllocManager perspective
-    - Resolved & Finalized shouldn't often be missed
-    - Proper error handling will catch up eventually
-    
-- Above should complete initialization restrucutre for storage node
+   
+* Remove allocManager from RockDB constructor
+   
+* add to DataStore: allocationResovled(ars: AllocRecovState, committed: Boolean): Future[Unit]
+   - Future completes when CRL state can be deleted
+   - Store can self-call this method if a Read is encountered for an object pending allocation
+   
+* Same as txManager allocManager gets the ars list for a store after the store is initialized
+   
+   
+-------------------------------------------------------------
 
 * Initialization for unit testing:
     - StorageNode init is dependent only upon network Messenger

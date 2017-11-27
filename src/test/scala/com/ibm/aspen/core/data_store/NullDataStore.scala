@@ -14,6 +14,7 @@ import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.Allocate
 
 /* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
@@ -26,13 +27,10 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def close(): Future[Unit] = Future.successful(())
   
-  def allocateNewObject(objectUUID: UUID, 
-                        size: Option[Int], 
-                        initialContent: DataBuffer,
-                        initialRefcount: ObjectRefcount,
-                        allocationTransactionUUID: UUID,
-                        allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
+  def allocate(newObjects: List[Allocate.NewObject],
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = {
     Future.successful(Left(AllocationErrors.InsufficientSpace))
   }
   

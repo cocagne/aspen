@@ -17,6 +17,8 @@ import com.ibm.aspen.core.DataBuffer
  *  This class provides no error handling or message retransmissions so it is suitable for direct use
  *  only in unit/integration tests where message loss is not an issue. Subclasses should be used to
  *  provide error-handling strategies.
+ *  
+ *  TODO: Add support for multiple objects
  * 
  */
 class BaseAllocationDriver (
@@ -36,7 +38,7 @@ class BaseAllocationDriver (
   
   def futureResult = promise.future
   
-  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value, StorePointer]]()
+  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value,  List[AllocateResponse.Allocated]]]()
   
   /** Initiates the allocation process */
   def start() = sendAllocationMessages()
@@ -46,8 +48,8 @@ class BaseAllocationDriver (
     
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
-      
-      val msg = Allocate(storeId, messenger.clientId, newObjectUUID, objectSize, objectData, initialRefcount, 
+      val newObjects = List( Allocate.NewObject(newObjectUUID, objectSize, initialRefcount, objectData) )
+      val msg = Allocate(storeId, messenger.clientId, newObjects, 
                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
       messenger.send(storeId, msg)
@@ -56,7 +58,7 @@ class BaseAllocationDriver (
   
   def receiveAllocationResult(fromStoreId: DataStoreID, 
                               allocationTransactionUUID: UUID, 
-                              result: Either[AllocationErrors.Value, StorePointer]): Unit = synchronized {
+                              result: Either[AllocationErrors.Value,  List[AllocateResponse.Allocated]]): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done, nothing left to do
       
@@ -68,7 +70,7 @@ class BaseAllocationDriver (
       var pointers = List[StorePointer]()
       
       responses.foreach(t => t._2 match {
-        case Right(sp) => pointers = sp :: pointers
+        case Right(lst) => pointers = lst.head.storePointer :: pointers
         case Left(err) => errors += (t._1 -> err)
       })
       

@@ -48,6 +48,7 @@ import scala.concurrent.duration._
 import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.allocation.AllocateResponse
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -215,7 +216,7 @@ object MockSystem {
     
     def receiveAllocationResult(fromStoreId: DataStoreID, 
                                 allocationTransactionUUID: UUID, 
-                                result: Either[AllocationErrors.Value, StorePointer]): Unit  = ()
+                                result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]): Unit  = ()
   }
   
   class AllocDriverFactory(val store: StorageSystem) extends AllocationDriver.Factory {

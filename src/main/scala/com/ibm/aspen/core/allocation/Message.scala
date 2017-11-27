@@ -12,13 +12,25 @@ import com.ibm.aspen.core.DataBuffer
 
 sealed abstract class Message
 
+object Allocate {
+  case class NewObject(
+      newObjectUUID: UUID,
+      objectSize: Option[Int],
+      initialRefcount: ObjectRefcount,
+      objectData: DataBuffer) {
+    override def equals(other: Any): Boolean = other match {
+      case rhs: Allocate.NewObject => 
+        objectSize == rhs.objectSize && objectData.compareTo(rhs.objectData) == 0 &&
+        initialRefcount == rhs.initialRefcount 
+      case _ => false
+    }
+  }
+      
+}
 final case class Allocate(
     toStore: DataStoreID,
     fromClient: ClientID,
-    newObjectUUID: UUID,
-    objectSize: Option[Int],
-    objectData: DataBuffer,
-    initialRefcount: ObjectRefcount,
+    newObjects: List[Allocate.NewObject],
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,
     allocatingObjectRevision: ObjectRevision
@@ -26,15 +38,18 @@ final case class Allocate(
   
   override def equals(other: Any): Boolean = other match {
     case rhs: Allocate => toStore == rhs.toStore && fromClient == rhs.fromClient && 
-      objectSize == rhs.objectSize && objectData.compareTo(rhs.objectData) == 0 &&
-      initialRefcount == rhs.initialRefcount && allocationTransactionUUID == rhs.allocationTransactionUUID &&
+      newObjects == rhs.newObjects && allocationTransactionUUID == rhs.allocationTransactionUUID &&
       allocatingObject == rhs.allocatingObject && allocatingObjectRevision == rhs.allocatingObjectRevision
     case _ => false
   }
+}
+
+object AllocateResponse {
+  case class Allocated(newObjectUUID: UUID, storePointer: StorePointer)
 }
     
 final case class AllocateResponse(
     fromStoreId: DataStoreID,
     allocationTransactionUUID: UUID,
-    result: Either[AllocationErrors.Value, StorePointer]) extends Message
+    result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) extends Message
     

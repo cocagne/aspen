@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.Allocate
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -40,18 +41,21 @@ class MemoryOnlyDataStore(
   private def getObject(ba: Array[Byte]): Option[Object] = objects.get(ByteBuffer.wrap(ba).getInt)
   
   /** Allocates a new Object on the store */
-  def allocateNewObject(objectUUID: UUID, 
-                        size: Option[Int], 
-                        initialContent: DataBuffer,
-                        initialRefcount: ObjectRefcount,
-                        allocationTransactionUUID: UUID,
-                        allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = synchronized {
-    val (objId, lpArray) = nextLocalPointer()
+  def allocate(newObjects: List[Allocate.NewObject],
+               allocationTransactionUUID: UUID,
+               allocatingObject: ObjectPointer,
+               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
+                 
+    val lst = newObjects map { no =>
+      val (objId, lpArray) = nextLocalPointer()
     
-    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.size), initialRefcount, initialContent, allocationTransactionUUID, None))
+      objects += (objId -> new Object(no.newObjectUUID, ObjectRevision(0, no.objectData.size), no.initialRefcount, no.objectData, allocationTransactionUUID, None))
     
-    Future.successful(Right(StorePointer(storeId.poolIndex, lpArray)))
+      AllocationRecoveryState.NewObject(StorePointer(storeId.poolIndex, lpArray), no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount)
+    }
+    val ars = AllocationRecoveryState(storeId, lst, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    
+    Future.successful(Right(ars))
   }
   
   /** Reads an object on the store */
