@@ -9,9 +9,9 @@ import com.ibm.aspen.base.kvtree.KVTreeFactory
 import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
 
 object FinalizationActionRegistry {
-  def initialize(
+  def apply(
     retryStrategy: RetryStrategy,
-    system: AspenSystem,
+    system: BasicAspenSystem,
     kvTreeFactory: KVTreeFactory): FinalizationActionRegistry = {
     
     val handlers = List(
@@ -23,11 +23,11 @@ object FinalizationActionRegistry {
   }
 }
 
-class FinalizationActionRegistry(handlers: List[FinalizationActionHandler]) extends FinalizationActionHandler {
+class FinalizationActionRegistry private (handlers: List[FinalizationActionHandler]) extends FinalizationActionHandler {
   
   val supportedUUIDs: Set[UUID] = handlers.foldLeft(Set[UUID]())( (s, h) => s ++ h.supportedUUIDs )  
   
-  val actionMap: Map[UUID, FinalizationActionHandler] = handlers.foldLeft(Map[UUID, FinalizationActionHandler]()) {
+  private val actionMap: Map[UUID, FinalizationActionHandler] = handlers.foldLeft(Map[UUID, FinalizationActionHandler]()) {
     (m, h) => h.supportedUUIDs.foldLeft(m)( (m2, uuid) => m2 + (uuid -> h))
   }
   

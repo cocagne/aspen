@@ -60,6 +60,8 @@ object TransactionDriverSuite {
     
     def complete: Future[Unit] = if (autoComplete) Future.successful(()) else Promise[Unit]().future
     
+    override def updateAcceptedPeers(acceptedPeers: Set[DataStoreID]): Unit = ()
+    
     override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: StoreSideTransactionMessenger): TransactionFinalizer = {
       created = true
       peers = acceptedPeers

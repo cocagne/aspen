@@ -1,8 +1,4 @@
 
-* Need a class to bridge
-    - FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
-    - to TransactionFinalizer & TransactionFinalizer.Factory
-
 * Testing
    - Consider mixin classes to "catch" calls to base classes. Can delay or log the calls & args
   
@@ -138,6 +134,12 @@ Error Handling:
            - Same commit + version bump
            
    * Refuse to vote on transaction if any FinalizationAction is unknown
+   
+** TransactionRecovery must check to ensure all FinalizationActions are understood and refuse to start if not
+   - Must also vote Abort if any finalizer is unknown OR fails to parse
+       ** This will require a "validateFinalizationActions" method on the FinalizationHandler interface
+       ** Ideally we'd send a descriptive error to the client for debug purposes
+   - Can't guarantee they're all executed if we don't understand them
    
 ** Potential Read enhancement
    - When reading an object that's locked for update, send both current and locked data

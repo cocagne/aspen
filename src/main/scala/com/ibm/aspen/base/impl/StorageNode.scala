@@ -38,7 +38,7 @@ import com.ibm.aspen.core.allocation.StoreAllocationManager
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.allocation.AllocationErrors
 
-// addStore(fact: DataStore.Factory): Future[Unit]
+
 class StorageNode(
   val crl: CrashRecoveryLog, 
   val messenger: StorageNodeMessenger,

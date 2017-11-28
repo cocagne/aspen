@@ -30,6 +30,7 @@ abstract class TransactionDriver(
   protected var finalized = false
   protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
   protected var acceptedPeers = Set[DataStoreID]()
+  protected var successfullyProcessedPeers = Set[DataStoreID]() // Stores the ids of all peers known to have successfully processed the committed transaction
   protected var finalizer: Option[TransactionFinalizer] = None
  
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
@@ -116,21 +117,34 @@ abstract class TransactionDriver(
         
         learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value)) match {
           case None => 
-          case Some(committed) => if (!alreadyResolved) {
-            // TODO: Wait a bit for additional responses before finalizing. This approach always shows only write-threshold
-            //       peers successfully processed the transaction
-            if (committed) {
-              val f = finalizerFactory.create(txd, acceptedPeers, messenger)
-              f.complete foreach {
-                _ => onFinalized(committed) 
-              }
-              finalizer = Some(f)
-            } else 
-              onFinalized(false)
+          case Some(committed) =>
             
-            onResolution(committed)
+            if (!alreadyResolved) {
+              if (committed) {
+                successfullyProcessedPeers = acceptedPeers
+                
+                val f = finalizerFactory.create(txd, successfullyProcessedPeers, messenger)
+                
+                f.complete foreach {
+                  _ => onFinalized(committed) 
+                }
+                finalizer = Some(f)
+              } else 
+                onFinalized(false)
+              
+              onResolution(committed)
           }
-        }   
+        }
+        
+        finalizer.foreach { f =>
+          // All Accepted messages successfully received after the finalizer is created indicate that the store has
+          // successfully processed the transaction (Paxos guarantee). Update the successfullyProcessedPeers set and
+          // inform the finalizer if necessary
+          if (! successfullyProcessedPeers.contains(msg.from)) {
+            successfullyProcessedPeers += msg.from
+            f.updateAcceptedPeers(successfullyProcessedPeers)
+          }
+        }
     }
   }
   

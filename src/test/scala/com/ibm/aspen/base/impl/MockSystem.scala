@@ -303,7 +303,7 @@ class MockSystem(val treeNodeSize:Int=1000) {
       noRetry)
   
   val kvTreeFactory = new KVTreeSimpleFactory(basicAspenSystem, poolUUID, poolUUID, Replication(3,2), treeNodeSize, new KVTreeNodeCache {}, KVTree.KeyComparison.Raw)
-  val finalizationHandler = FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
+  val finalizationHandler = FinalizationActionRegistry(noRetry, basicAspenSystem, kvTreeFactory)
   
   var finalizationActions: List[Future[Unit]] = Nil
   
