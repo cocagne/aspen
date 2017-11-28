@@ -36,6 +36,7 @@ import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.allocation.StoreAllocationManager
 import com.ibm.aspen.core.allocation.AllocateResponse
+import com.ibm.aspen.core.allocation.AllocationErrors
 
 // addStore(fact: DataStore.Factory): Future[Unit]
 class StorageNode(
@@ -53,12 +54,13 @@ class StorageNode(
   private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
   def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = networkInitialized.flatMap { case _ =>
-    val trs = crl.getTransactionRecoveryStateForStore(storeId)
-    val ars = crl.getAllocationRecoveryStateForStore(storeId)
-    factory(storeId, allocationManager, trs, ars).initialized map { case store => 
+    val ltrs = crl.getTransactionRecoveryStateForStore(storeId)
+    val lars = crl.getAllocationRecoveryStateForStore(storeId)
+    factory(storeId, allocationManager, ltrs, lars).initialized map { case store => 
       synchronized {
         stores += (storeId -> store)
-        transactionManager.addStore(store, trs)
+        transactionManager.addStore(store, ltrs)
+        lars.foreach(ars => allocationManager.trackAllocation(store, ars))
       }
       store
     }
@@ -67,17 +69,28 @@ class StorageNode(
   /** (unit test only) returns true if all transactions are complete */
   def allTransactionsComplete: Boolean = transactionManager.allTransactionsComplete
   
-  def receive(m: Allocate): Unit = getStore(m.toStore).foreach(store => {
-    val f = store.allocate(m.newObjects, m.allocationTransactionUUID, m.allocatingObject, m.allocatingObjectRevision)
-    // Failure is communicated by the result not a failed future
-    f foreach {  result => 
-      val r = result match {
-        case Left(err) => Left(err)
-        case Right(ars) => Right(ars.newObjects.map(n => AllocateResponse.Allocated(n.newObjectUUID, n.storePointer)))
-      }
-      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, r))
+  def receive(m: Allocate): Unit = getStore(m.toStore).foreach{ store => {
+    
+    def reply(result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) = {
+      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result))
     }
-  })
+    
+    store.allocate(
+        m.newObjects, 
+        m.allocationTransactionUUID, 
+        m.allocatingObject, 
+        m.allocatingObjectRevision).foreach { r => r match {
+          
+        case Left(err) => reply(Left(err))
+        
+        case Right(ars) => 
+          allocationManager.trackAllocation(store, ars) foreach { _ =>
+            val allocs = ars.newObjects.map(n => AllocateResponse.Allocated(n.newObjectUUID, n.storePointer)) 
+            reply(Right(allocs))
+          }
+      }
+    }
+  }}
   
   def receive(message: transaction.Message, updateContent: Option[List[LocalUpdate]]): Unit  = {
     transactionManager.receive(message, updateContent)

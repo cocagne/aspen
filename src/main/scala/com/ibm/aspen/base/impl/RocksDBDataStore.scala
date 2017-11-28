@@ -104,7 +104,6 @@ object RocksDBDataStore {
 class RocksDBDataStore(
     val storeId: DataStoreID,
     dbPath:String,
-    val allocationManager: StoreAllocationManager,
     transactionRecoveryStates: List[TransactionRecoveryState], 
     allocationRecoveryStates: List[AllocationRecoveryState])(implicit ec: ExecutionContext) extends DataStore with BootstrapDataStore {
   
@@ -141,18 +140,8 @@ class RocksDBDataStore(
       }) :: flocks
     })
     }
-    
-    val allocs = allocationRecoveryStates.map { ars =>
-      ars.newObjects.foreach(no => allocations += (no.newObjectUUID -> ars))
-      
-      val ts = allocationManager.trackAllocation(ars)
-      
-      ts.resolved.foreach( result => allocationResolved(ars, result) )
-      
-      ts.saved
-    }
-    
-    Future.sequence(flocks ++ allocs).map(_=> this)
+
+    Future.sequence(flocks).map(_=> this)
   }
   
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer): Future[StorePointer] = synchronized {
@@ -176,41 +165,6 @@ class RocksDBDataStore(
     if (ws.pendingOperations.isEmpty)
       workingStates -= objectUUID
   }
-  
-  /* TODO Failure handling. Currently we never check to see if the allocation succeeded/failed
-   
-  def allocateNewObject(objectUUID: UUID, 
-                        size: Option[Int], 
-                        initialContent: DataBuffer,
-                        initialRefcount: ObjectRefcount,
-                        allocationTransactionUUID: UUID,
-                        allocatingObject: ObjectPointer,
-                        allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, StorePointer]] = {
-    
-    val sp = StorePointer(storeId.poolIndex, new Array[Byte](0))
-    val no = AllocationRecoveryState.NewObject(sp, objectUUID, size, initialContent, initialRefcount)
-    val ars = AllocationRecoveryState(storeId, List(no), allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
-    
-    synchronized {
-      
-      ars.newObjects.foreach { newObj =>
-        
-        val ws = new WorkingState(newObj.newObjectUUID, ObjectRevision(0, newObj.objectData.size), newObj.initialRefcount, 
-                                  ars.allocationTransactionUUID, newObj.objectData, None, Set(ars.allocationTransactionUUID))
-        
-        allocations += (newObj.newObjectUUID -> ars)
-        workingStates += (newObj.newObjectUUID -> ws)
-      }
-    }
-    
-    val ts = allocationManager.trackAllocation(ars)
-      
-    ts.resolved.foreach( result => allocationResolved(ars, result) )
-      
-    ts.saved.map(_ => Right(sp))
-  }
-  * 
-  */
   
   /** Allocates a new Object on the store */
   def allocate(newObjects: List[Allocate.NewObject],
@@ -238,14 +192,10 @@ class RocksDBDataStore(
       }
     }
     
-    val ts = allocationManager.trackAllocation(ars)
-      
-    ts.resolved.foreach( result => allocationResolved(ars, result) )
-      
-    ts.saved.map(_ => Right(ars))
+    Future.successful(Right(ars))
   }
   
-  private def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
+  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
     var flist = List[Future[Unit]]()
     
     if (committed) {
@@ -273,7 +223,7 @@ class RocksDBDataStore(
       List(Future.successful(()))
     }
     
-    Future.sequence(flist) map (_=> allocationManager.stopTracking(storeId, ars.allocationTransactionUUID, committed))
+    Future.sequence(flist) map (_=>())
   }
   
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
@@ -286,6 +236,8 @@ class RocksDBDataStore(
   private def getWorkingState(objectPointer: ObjectPointer, transactionUUID: Option[UUID]): Future[Either[ObjectReadError, WorkingState]] = synchronized {
     workingStates.get(objectPointer.uuid) match {
       case Some(ws) => 
+        transactionUUID.foreach( txuuid => ws.pendingOperations += txuuid )
+        
         allocations.get(objectPointer.uuid) match { 
           case Some(ars) =>
             // Objects cannot be read until after they are successfully allocated. We must be slow in realizing this so force the write to occur now
@@ -310,15 +262,9 @@ class RocksDBDataStore(
     }
   }
   
+  // To be called only by getWorkingState
   private[this] def loadWorkingState(objectPointer: ObjectPointer, operationUUID: UUID): Future[Either[ObjectReadError, WorkingState]] = synchronized {
-    // Shortcut to success if we already have it loaded
-    workingStates.get(objectPointer.uuid) match {
-      case Some(ws) =>
-        ws.pendingOperations += operationUUID
-        return Future.successful(Right(ws))
-      case None =>
-    }
-    
+
     val loadingState = new LoadingState(operationUUID)
     
     loadingStates += (objectPointer.uuid -> loadingState)
@@ -358,7 +304,7 @@ class RocksDBDataStore(
     
     val checker = new TransactionErrorChecker(txd, updateData)
     
-    val floadWs = Future.sequence(getHostedObjects(txd).map(op => loadWorkingState(op, txd.transactionUUID).map(e => (op,e))))
+    val floadWs = Future.sequence(getHostedObjects(txd).map(op => getWorkingState(op, Some(txd.transactionUUID)).map(e => (op,e))))
     
     floadWs map { rset =>
  
@@ -401,59 +347,70 @@ class RocksDBDataStore(
    */
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
     
-    var localObjects = Map[UUID, WorkingState]()
     var dataUpdates = Set[WorkingState]()
     
-    getHostedObjects(txd).foreach(op => workingStates.get(op.uuid).foreach(ws => localObjects += (op.uuid -> ws)))
-    
-    val objectUpdates = localUpdates match {
-      case None => Map[UUID, DataBuffer]()
-      case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
+    val floads = getHostedObjects(txd).map{ op => 
+      getWorkingState(op, Some(txd.transactionUUID)).map(e => (op.uuid -> e))
     }
     
-    txd.requirements.foreach { r =>
-      localObjects.get(r.objectPointer.uuid).foreach { ws => r match {
-        case ru: RefcountUpdate => ws.refcount = ru.newRefcount
-          
-        case du: DataUpdate =>
-          objectUpdates.get(r.objectPointer.uuid).foreach { data =>
-            dataUpdates += ws
+    Future.sequence(floads).flatMap { allObjects => synchronized {
+      
+      // Filter down to just the successfully loaded objects. 
+      val loadedObjects = allObjects.foldLeft(Map[UUID, WorkingState]()) { (m, t) => t._2 match {
+        case Left(err) => m // Nothing we can do :(
+        case Right(ws) => m + (t._1 -> ws)
+      }}
+      
+      val objectUpdates = localUpdates match {
+        case None => Map[UUID, DataBuffer]()
+        case Some(lst) => lst.map(lu => (lu.objectUUID -> lu.data)).toMap
+      }
+      
+      txd.requirements.foreach { r =>
+        loadedObjects.get(r.objectPointer.uuid).foreach { ws => r match {
+          case ru: RefcountUpdate => ws.refcount = ru.newRefcount
             
-            du.operation match {
-              case DataUpdateOperation.Overwrite => 
-              ws.data = data
-              ws.revision = ws.revision.overwrite(data.size)
+          case du: DataUpdate =>
+            objectUpdates.get(r.objectPointer.uuid).foreach { data =>
+              dataUpdates += ws
               
-            case DataUpdateOperation.Append => 
-              if (ws.revision == du.requiredRevision) {
-                val buf = ByteBuffer.allocate( ws.data.size + data.size )
-                buf.put(ws.data.asReadOnlyBuffer())
-                buf.put(data.asReadOnlyBuffer())
-                buf.position(0)
-                ws.data = DataBuffer(buf)
-                ws.revision = ws.revision.append(data.size)
+              du.operation match {
+                case DataUpdateOperation.Overwrite => 
+                ws.data = data
+                ws.revision = ws.revision.overwrite(data.size)
+                
+              case DataUpdateOperation.Append => 
+                if (ws.revision == du.requiredRevision) {
+                  val buf = ByteBuffer.allocate( ws.data.size + data.size )
+                  buf.put(ws.data.asReadOnlyBuffer())
+                  buf.put(data.asReadOnlyBuffer())
+                  buf.position(0)
+                  ws.data = DataBuffer(buf)
+                  ws.revision = ws.revision.append(data.size)
+                }
               }
             }
           }
         }
       }
-    }
-    
-    var commits = List[Future[Unit]]()
-    
-    localObjects.foreach(t => {
-      commits = db.put(stateKey(t._1), stateToBytes(t._2.revision, t._2.refcount, txd.transactionUUID)) :: commits
       
-      if (dataUpdates.contains(t._2))   
-        db.put(dataKey(t._1), t._2.data.getByteArray())
+      var commits = List[Future[Unit]]()
       
-      t._2.lockedTransaction = None
+      loadedObjects.foreach(t => {
+          commits = db.put(stateKey(t._1), stateToBytes(t._2.revision, t._2.refcount, txd.transactionUUID)) :: commits
+          
+          if (dataUpdates.contains(t._2))   
+            db.put(dataKey(t._1), t._2.data.getByteArray())
+          
+          t._2.lockedTransaction = None
+          
+          completeWorkingStateOperation(t._2.objectUUID, t._2, txd.transactionUUID)
+          
+        })
       
-      completeWorkingStateOperation(t._2.objectUUID, t._2, txd.transactionUUID)
-      
-    })
-   
-    Future.sequence(commits).map(_ => ())
+     
+      Future.sequence(commits).map(_ => ())
+    }}
   }
   
   

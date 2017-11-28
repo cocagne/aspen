@@ -58,6 +58,8 @@ class MemoryOnlyDataStore(
     Future.successful(Right(ars))
   }
   
+  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = Future.successful(())
+  
   /** Reads an object on the store */
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)

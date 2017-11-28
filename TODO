@@ -1,34 +1,15 @@
 
-   
-* Remove allocManager from RockDB constructor
-   
-* add to DataStore: allocationResovled(ars: AllocRecovState, committed: Boolean): Future[Unit]
-   - Future completes when CRL state can be deleted
-   - Store can self-call this method if a Read is encountered for an object pending allocation
-   
-* Same as txManager allocManager gets the ars list for a store after the store is initialized
-   
-   
--------------------------------------------------------------
+* Need a class to bridge
+    - FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
+    - to TransactionFinalizer & TransactionFinalizer.Factory
 
-* Initialization for unit testing:
-    - StorageNode init is dependent only upon network Messenger
-    - DataStore initialization is complete via returned Future
-    - For testing of AllocManager, use a Mixin that logs all calls that would initiate immediate action
-        - call to super after a future to "ready to do stuff" is triggered
-        - allows unit test to detect completion of all nodes and stores before triggering action
-
+* Testing
+   - Consider mixin classes to "catch" calls to base classes. Can delay or log the calls & args
+  
 * Detecting all transactions complete
     - create method that calls storageNode.allTransactionsComplete in a loop
     - 5ms sleeps between checks
     - probably need to do this within a Future {} to avoid threading issues
-    
-    
-* Need a class to bridge
-    - FinalizationActionRegistry.initialize(noRetry, basicAspenSystem, kvTreeFactory)
-    - to TransactionFinalizer & TransactionFinalizer.Factory
-    - This goes to TransactionDriver... for which we already pass in a factory
-
 
 * Get BasicAspenSystemSuite tests working on full system
     - Bootstrap and shut down stores

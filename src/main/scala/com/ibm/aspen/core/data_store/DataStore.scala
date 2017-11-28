@@ -62,6 +62,11 @@ trait DataStore {
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]
   
+  /** Called by the AllocationManager when the commit transaction is resolved. The AllocationRecoveryState will
+   *  be deleted after the returned future completes
+   */
+  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit]
+  
   
   /** Reads an object on the store 
    *

@@ -41,8 +41,7 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
     val dbpath = new File(tdir, s"dbdir_${storeId.poolIndex}").getAbsolutePath
     val crlpath = new File(tdir, s"crldir_${storeId.poolIndex}").getAbsolutePath
     val crl = new RocksDBCrashRecoveryLog(crlpath)(ExecutionContext.Implicits.global) with Closeable
-    val amgr = new BaseAllocationManager(crl)
-    val db = new RocksDBDataStore(storeId, dbpath, amgr, Nil, Nil)(ExecutionContext.Implicits.global) with Closeable
+    val db = new RocksDBDataStore(storeId, dbpath, Nil, Nil)(ExecutionContext.Implicits.global) with Closeable
     closeables = db :: crl :: closeables
     (db, crl)
   }
