@@ -20,6 +20,14 @@ import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.allocation.BaseAllocationDriver
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.core.network.StorageNodeID
+import com.ibm.aspen.core.transaction.TransactionDriver
+import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
+import com.ibm.aspen.base.kvtree.KVTree
+import com.ibm.aspen.core.data_store.DataStore
+import com.ibm.aspen.core.allocation.StoreAllocationManager
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.read.TriggeredReread
 
 object BasicIntegrationSuite {
   trait Closeable {
@@ -31,7 +39,7 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
   import BasicIntegrationSuite._
   import Bootstrap._
   
-  override implicit val executionContext = ExecutionContext.Implicits.global
+  //override implicit val executionContext = ExecutionContext.Implicits.global
   
   var tdir:File = _
   var tdirMgr: TempDirManager = _
@@ -59,56 +67,102 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
     tdirMgr.delete()
   }
   
+  val noRetry = new NoRetry
+  val bootstrapPoolIDA = new Replication(3,2)
+  val systemTreeNodeSize = 2048
+  def systemTreeNodeCacheFactory(sys: AspenSystem): KVTreeNodeCache = new KVTreeNodeCache {}
+  
+  def mkStorageNode(
+      store: RocksDBDataStore, 
+      crl:RocksDBCrashRecoveryLog,
+      net: TestNetwork,
+      reader: TriggeredReread,
+      radiclePointer: ObjectPointer): (BasicAspenSystem, StorageNode) = {
+      
+    implicit val executionContext = ExecutionContext.Implicits.global
+    
+    val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
+    
+    val (cliMessenger, storageNodeMessenger) = net.addStorageNode(clientId, List(store.storeId))
+    
+    val sys = new BasicAspenSystem(
+        chooseDesignatedLeader = (o:ObjectPointer) => 0,
+        isStorageNodeOnline = (_:StorageNodeID) => true,
+        messenger = cliMessenger,
+        defaultReadDriverFactory = reader.triggeredReadDriver(ExecutionContext.Implicits.global) _,
+        defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
+        defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
+        transactionFactory = BaseTransaction.Factory,
+        storagePoolFactory = BaseStoragePool.Factory,
+        bootstrapPoolIDA = bootstrapPoolIDA,
+        systemTreeNodeCacheFactory = systemTreeNodeCacheFactory,
+        radiclePointer = radiclePointer,
+        initializationRetryStrategy = noRetry
+        )
+    
+    val kvTreeFactory = new KVTreeSimpleFactory(
+        system = sys, 
+        treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+        storagePoolUUID = BootstrapStoragePoolUUID, 
+        nodeIDA = bootstrapPoolIDA,
+        nodeSize = systemTreeNodeSize, 
+        nodeCache = systemTreeNodeCacheFactory(sys), 
+        keyComparisonStrategy = KVTree.KeyComparison.Raw)
+    
+    val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+    
+    val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
+    
+    val txMgr = new  StorageNodeTransactionManager(
+        crl = crl,
+        messenger = storageNodeMessenger,
+        driverFactory = TransactionDriver.noErrorRecoveryFactory,
+        finalizerFactory = finalizerFactory.factory)
+    
+    val storageNode = new StorageNode(
+        crl = crl,
+        messenger = storageNodeMessenger,
+        allocationManager = new BaseAllocationManager(crl),
+        transactionManager = txMgr)
+    
+    object dsFactory extends DataStore.Factory {
+
+      def apply(
+          storeId: DataStoreID,
+          transactionRecoveryStates: List[TransactionRecoveryState],
+          allocationRecoveryStates: List[AllocationRecoveryState]): DataStore = store
+    
+    }
+    
+    Await.result(storageNode.addStore(store.storeId, dsFactory.apply ), 5000 milliseconds)
+    
+    (sys, storageNode)
+  }
+  
   test("Test Bootstrapping Logic") {
+    
+    implicit val executionContext = ExecutionContext.Implicits.global
+    
     val net = new TestNetwork
-    val noRetry = new NoRetry
-    val bootstrapPoolIDA = new Replication(3,2)
-    def systemTreeNodeCacheFactory(sys: AspenSystem): KVTreeNodeCache = new KVTreeNodeCache {}
     
     val (store0, crl0) = newStore(DataStoreID(BootstrapStoragePoolUUID, 0))
     val (store1, crl1) = newStore(DataStoreID(BootstrapStoragePoolUUID, 1))
-    val (store2, clr2) = newStore(DataStoreID(BootstrapStoragePoolUUID, 2))
+    val (store2, crl2) = newStore(DataStoreID(BootstrapStoragePoolUUID, 2))
     
-    // Bootstrap system
     val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA), 500 milliseconds)
-    /*
-    def mksys(store: RocksDBDataStore, crl:RocksDBCrashRecoveryLog): Future[AspenSystem] = {
-      
-      val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
-      
-      val (cliMessenger, storageNodeMessenger) = net.addStorageNode(clientId, List(store.storeId))
-      
-      val sys = new BasicAspenSystem(
-          chooseDesignatedLeader = (o:ObjectPointer) => 0,
-          isStorageNodeOnline = (_:StorageNodeID) => true,
-          messenger = cliMessenger,
-          defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(ExecutionContext.Implicits.global) _,
-          defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
-          defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
-          transactionFactory = BaseTransaction.Factory,
-          storagePoolFactory = BaseStoragePool.Factory,
-          bootstrapPoolIDA = bootstrapPoolIDA,
-          systemTreeNodeCacheFactory = systemTreeNodeCacheFactory,
-          radiclePointer = radiclePointer,
-          initializationRetryStrategy = noRetry
-          )
-      /*class StorageNode(
-  val crl: CrashRecoveryLog, 
-  val messenger: StorageNodeMessenger,
-  val driverFactory: TransactionDriver.Factory,
-  val finalizerFactory: TransactionFinalizer.Factory,
-  val initialStores: List[DataStore],
-  val onStoreInitializationFailure: (DataStore, Throwable) => Unit
-)(implicit ec: ExecutionContext) */
-      // create StorageNode
-      val storageNode = new StorageNode(
-          crl = crl,
-          messenger = storageNodeMessenger,
-          driverFactory = 
-      
-      // await initialization of StorageNode
-    }
-    */
+    
+    val reader = new TriggeredReread
+    
+    val (sys0, sn0) = mkStorageNode(store0, crl0, net, reader, radiclePointer)
+    val (sys1, sn1) = mkStorageNode(store1, crl1, net, reader, radiclePointer)
+    val (sys2, sn2) = mkStorageNode(store2, crl2, net, reader, radiclePointer)
+    
+    reader.retry()
+    
+    //Await.result(sys0.radicle, 1000 milliseconds)
+    //Await.result(sys1.radicle, 1000 milliseconds)
+    Await.result(sys2.radicle, 1000 milliseconds)
+    
     
     /*
     val osd = ms.storage.read(r.systemTreeDefinitionPointer).get

@@ -13,7 +13,7 @@ class BaseTransactionFinalizer(
     system: BasicAspenSystem,
     registry: FinalizationActionRegistry)(implicit ec: ExecutionContext) {
   
-  object factory {
+  object factory extends TransactionFinalizer.Factory{
     def create(
         txd: TransactionDescription, 
         acceptedPeers: Set[DataStoreID], 

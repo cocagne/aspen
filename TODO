@@ -1,3 +1,11 @@
+* Need to split StorageNode out into ReadableStorageNode and WriteableStorageNode
+   - Readable allows for the full system to come up in a frozen state w/ all contents readable
+   - Writeable composes on top of readable and introduces support for Tx and Allocation
+   - Allows us to bring up a full read-only system for unit test
+      - Test that first after bootstrap
+      - Then test the ability to create a mutable system on top
+      - Use a bootstrapSystem function that returns a case class with all necessary content in unit test 
+
 
 * Testing
    - Consider mixin classes to "catch" calls to base classes. Can delay or log the calls & args

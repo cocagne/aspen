@@ -22,7 +22,6 @@ object DataStore {
   trait Factory {
     def apply(
         storeId: DataStoreID,
-        allocationManager: StoreAllocationManager,
         transactionRecoveryStates: List[TransactionRecoveryState],
         allocationRecoveryStates: List[AllocationRecoveryState]): DataStore
   }

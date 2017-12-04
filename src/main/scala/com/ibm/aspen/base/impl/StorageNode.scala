@@ -56,7 +56,7 @@ class StorageNode(
   def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = networkInitialized.flatMap { case _ =>
     val ltrs = crl.getTransactionRecoveryStateForStore(storeId)
     val lars = crl.getAllocationRecoveryStateForStore(storeId)
-    factory(storeId, allocationManager, ltrs, lars).initialized map { case store => 
+    factory(storeId, ltrs, lars).initialized map { case store => 
       synchronized {
         stores += (storeId -> store)
         transactionManager.addStore(store, ltrs)

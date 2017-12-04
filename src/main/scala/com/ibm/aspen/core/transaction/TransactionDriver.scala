@@ -215,6 +215,24 @@ object TransactionDriver {
         messenger:StoreSideTransactionMessenger, 
         initialPrepare: TxPrepare, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: (UUID) => Unit): TransactionDriver
+        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver
+  }
+  
+  object noErrorRecoveryFactory extends Factory {
+    class NoRecoveryTransactionDriver(
+        storeId: DataStoreID,
+        messenger: StoreSideTransactionMessenger, 
+        initialPrepare: TxPrepare, 
+        finalizerFactory: TransactionFinalizer.Factory,
+        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete) 
+    
+    def create(
+        storeId: DataStoreID,
+        messenger:StoreSideTransactionMessenger, 
+        initialPrepare: TxPrepare, 
+        finalizerFactory: TransactionFinalizer.Factory,
+        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
+      new NoRecoveryTransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete)
+    }
   }
 }
