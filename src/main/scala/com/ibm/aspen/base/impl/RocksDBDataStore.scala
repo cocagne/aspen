@@ -31,7 +31,6 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.allocation.StoreAllocationManager
 import com.ibm.aspen.core.allocation.Allocate
 
 object RocksDBDataStore {
@@ -98,6 +97,16 @@ object RocksDBDataStore {
     var pendingOperations = Set[UUID](initialOperation)
     
     def addOperation(opUUID: UUID) = pendingOperations += opUUID
+  }
+  
+  class Factory(dbPath:String)(implicit ec: ExecutionContext) extends DataStore.Factory {
+    def apply(
+        storeId: DataStoreID,
+        transactionRecoveryStates: List[TransactionRecoveryState],
+        allocationRecoveryStates: List[AllocationRecoveryState]): Future[DataStore] = {
+      val ds = new RocksDBDataStore(storeId, dbPath, transactionRecoveryStates, allocationRecoveryStates)(ec)
+      ds.initialized
+    }
   }
 }
 

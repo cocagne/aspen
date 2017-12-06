@@ -30,98 +30,93 @@ import com.ibm.aspen.core.data_store.InvalidLocalPointer
 import com.ibm.aspen.core.data_store.ObjectMismatch
 import com.ibm.aspen.core.data_store.CorruptedObject
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.{Message => TransactionMessage}
 import java.util.UUID
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.allocation.StoreAllocationManager
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.allocation.AllocationErrors
+import com.ibm.aspen.core.network.StoreSideNetwork
 
-
+/** Represents a storage node that hosts multiple DataStore instances.
+ *  
+ *  Immediately upon creation the node registers itself with the network layer to support read
+ *  operations. At a later time the recoverPendingOperations() method may be used to begin the
+ *  transaction/allocation recovery process and place the node into a fully-operational mode. 
+ * 
+ */
 class StorageNode(
-  val crl: CrashRecoveryLog, 
-  val messenger: StorageNodeMessenger,
-  private[this] val allocationManager: StoreAllocationManager,
-  private[this] val transactionManager: StorageNodeTransactionManager
-  )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideReadMessageReceiver with StoreSideAllocationMessageReceiver {
+    val crl: CrashRecoveryLog,
+    val net: StoreSideNetwork,
+    )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
   
-  private[this] var stores = Map[DataStoreID, DataStore]()
-  private[this] val networkInitialized = messenger.initialize(this)
+  val readManager = new StorageNodeReadManager(net.readHandler)
   
-  def clientId: ClientID = messenger.client
+  net.readHandler.setReceiver(readManager)
   
-  private def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
+  readManager.hostedStores.foreach(store => net.registerHostedStore(store.storeId))
   
-  def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = networkInitialized.flatMap { case _ =>
+  private[this] var recoveredOption: Option[Recovered] = None
+  
+  private[this] def recovered = synchronized { recoveredOption }
+  
+  private case class Recovered(
+    transactionManager: StorageNodeTransactionManager,
+    allocationManager: StorageNodeAllocationManager) 
+  
+  def recoverPendingOperations(
+      txDriverFactory: TransactionDriver.Factory,
+      txFinalizerFactory: TransactionFinalizer.Factory): Unit = synchronized {
+        
+    if (recoveredOption.isEmpty) {
+      
+      val r = Recovered(
+          new StorageNodeTransactionManager(crl, net.transactionHandler, txDriverFactory, txFinalizerFactory),
+          new StorageNodeAllocationManager(crl, net.allocationHandler))
+      
+      recoveredOption = Some(r)
+      
+      // Need to intercept transaction messages in order to forward some on to the allocation manager so
+      // we'll set ourself as the receiver
+      net.transactionHandler.setReceiver(this)
+      
+      net.allocationHandler.setReceiver(r.allocationManager)
+    
+      readManager.hostedStores.foreach { store =>
+        r.transactionManager.addStore(store)
+        r.allocationManager.addStore(store)
+      }
+    }
+  } 
+  
+  /** (unit test only) returns true if all transactions are complete */
+  def allTransactionsComplete: Boolean = recovered match {
+    case None => true
+    case Some(r) => r.transactionManager.allTransactionsComplete
+  }
+    
+  def receive(message: TransactionMessage, updateContent: Option[List[LocalUpdate]]): Unit = recovered.foreach { r =>
+    message match {
+      case m: TxResolved => r.allocationManager.receive(m)
+      case m: TxFinalized => r.allocationManager.receive(m)
+      case _ =>
+    }
+    r.transactionManager.receive(message, updateContent)
+  }
+    
+  def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = { 
     val ltrs = crl.getTransactionRecoveryStateForStore(storeId)
     val lars = crl.getAllocationRecoveryStateForStore(storeId)
-    factory(storeId, ltrs, lars).initialized map { case store => 
-      synchronized {
-        stores += (storeId -> store)
-        transactionManager.addStore(store, ltrs)
-        lars.foreach(ars => allocationManager.trackAllocation(store, ars))
+    
+    factory(storeId, ltrs, lars) map { case store => 
+      readManager.addStore(store)
+      net.registerHostedStore(store.storeId)
+      recovered foreach { r =>
+        r.transactionManager.addStore(store)
+        r.allocationManager.addStore(store)
       }
       store
     }
   }
-    
-  /** (unit test only) returns true if all transactions are complete */
-  def allTransactionsComplete: Boolean = transactionManager.allTransactionsComplete
-  
-  def receive(m: Allocate): Unit = getStore(m.toStore).foreach{ store => {
-    
-    def reply(result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) = {
-      messenger.send(m.fromClient, allocation.AllocateResponse(m.toStore, m.allocationTransactionUUID, result))
-    }
-    
-    store.allocate(
-        m.newObjects, 
-        m.allocationTransactionUUID, 
-        m.allocatingObject, 
-        m.allocatingObjectRevision).foreach { r => r match {
-          
-        case Left(err) => reply(Left(err))
-        
-        case Right(ars) => 
-          allocationManager.trackAllocation(store, ars) foreach { _ =>
-            val allocs = ars.newObjects.map(n => AllocateResponse.Allocated(n.newObjectUUID, n.storePointer)) 
-            reply(Right(allocs))
-          }
-      }
-    }
-  }}
-  
-  def receive(message: transaction.Message, updateContent: Option[List[LocalUpdate]]): Unit  = {
-    transactionManager.receive(message, updateContent)
-    
-    message match {
-      case m: TxResolved => allocationManager.receive(m)
-      case m: TxFinalized => allocationManager.receive(m)
-      case _ =>
-    }
-  }
-  
-  def receive(message: Read): Unit = getStore(message.toStore).foreach(store => {
-    val f = store.getObject(message.objectPointer)
-                                 
-    f foreach {
-      result => 
-        val response = result match {
-          case Left(err) => err match {
-            case e: InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
-            case e: ObjectMismatch => Left(ReadError.ObjectMismatch)
-            case e: CorruptedObject => Left(ReadError.CorruptedObject)
-          }
-          
-          case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, if (message.returnObjectData) Some(data) else None,
-                                                                     if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
-        }
-        
-        response match {
-          case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(err)), None)
-          case Right((state, data)) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(state)), Some(data))
-        }
-    }
-  })
 }

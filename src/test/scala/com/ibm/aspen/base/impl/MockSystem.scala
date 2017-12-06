@@ -49,6 +49,10 @@ import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocateResponse
+import com.ibm.aspen.core.network.ClientSideNetwork
+import com.ibm.aspen.core.network.ClientSideTransactionHandler
+import com.ibm.aspen.core.network.ClientSideReadHandler
+import com.ibm.aspen.core.network.ClientSideAllocationHandler
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -234,8 +238,8 @@ object MockSystem {
   
   }
   
-  object cliMessenger extends ClientMessenger with ClientSideAllocationMessenger with ClientSideReadMessenger with ClientSideTransactionMessenger{
-    val clientId: ClientID = clientID
+  object cliMessenger extends ClientSideNetwork with ClientSideAllocationHandler with ClientSideReadHandler with ClientSideTransactionHandler {
+    override val clientId: ClientID = clientID
     
     // ClientSideAllocationMessenger
     override def send(toStore: DataStoreID, message: allocation.Allocate): Unit = ()
@@ -245,11 +249,19 @@ object MockSystem {
     
     // ClientSideTransactionMessenger
     override def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = ()
+
+    def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = ()
+    def setReceiver(receiver: ClientSideReadMessageReceiver): Unit = ()
+    def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = ()
+
+    val allocationHandler: ClientSideAllocationHandler = this
+
+    val readHandler: ClientSideReadHandler = this
+
+    val transactionHandler: ClientSideTransactionHandler = this
     
-    override def setMessageReceivers(
-      transactionMessageReceiver: ClientSideTransactionMessageReceiver,
-      readMessageReceiver: ClientSideReadMessageReceiver,
-      allocationMessageReceiver: ClientSideAllocationMessageReceiver): Unit = ()
+    
+    
   }
 }
 class MockSystem(val treeNodeSize:Int=1000) {

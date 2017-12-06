@@ -10,6 +10,7 @@ import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.TxResolved
 
 trait StoreSideTransactionMessenger {
+  
   def send(message: Message): Unit
   def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit
   def send(client: ClientID, resolved: TxResolved): Unit

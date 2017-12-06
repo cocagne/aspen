@@ -41,8 +41,11 @@ class StorageNodeTransactionManager(
   private[this] val resultCache = Scaffeine().maximumSize(1000)
                                              .build[UUID, Boolean]()
   
-  def addStore(store: DataStore, txRecoveryState: List[TransactionRecoveryState]): Unit = synchronized {
+  def addStore(store: DataStore): Unit = synchronized {
+    val ltrs = crl.getTransactionRecoveryStateForStore(store.storeId)
+    
     // TODO: Implement Transaction Recovery
+    
     stores += (store.storeId -> new StoreState(store))
   }
   

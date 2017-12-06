@@ -32,6 +32,7 @@ import com.ibm.aspen.base.RetryStrategy
 import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.network.ClientSideNetwork
 
 
 
@@ -51,7 +52,7 @@ object BasicAspenSystem {
 class BasicAspenSystem(
     val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
     val isStorageNodeOnline: (StorageNodeID) => Boolean,
-    val messenger: ClientMessenger,
+    val net: ClientSideNetwork,
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
     val defaultAllocationDriverFactory: AllocationDriver.Factory,
@@ -66,13 +67,15 @@ class BasicAspenSystem(
   import BasicAspenSystem._
   import Bootstrap._
   
-  protected val readManager = new ClientReadManager(messenger)
-  protected val txManager = new ClientTransactionManager(messenger, defaultTransactionDriverFactory)
-  protected val allocManager = new ClientAllocationManager(messenger, defaultAllocationDriverFactory)
+  protected val readManager = new ClientReadManager(net.readHandler)
+  protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
+  protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   
-  messenger.setMessageReceivers(txManager, readManager, allocManager)
+  net.readHandler.setReceiver(readManager)
+  net.transactionHandler.setReceiver(txManager)
+  net.allocationHandler.setReceiver(allocManager)
   
-  def clientId = messenger.clientId
+  def clientId = net.clientId
   
   val systemTreeNodeCache = systemTreeNodeCacheFactory(this)
   val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
@@ -129,7 +132,7 @@ class BasicAspenSystem(
       hosts = pool.selectStoresForAllocation(objectIDA)
       objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
 
-      result <- allocManager.allocate(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
+      result <- allocManager.allocate(net.allocationHandler, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
                                       t.uuid, allocatingObject, allocatingObjectRevision)
     } yield {
       result match {
