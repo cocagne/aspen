@@ -81,15 +81,15 @@ class BasicAspenSystem(
   val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
                                                   SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
   
-  val radicle: Future[Radicle] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val radicle: Future[Radicle] = initializationRetryStrategy.retryUntilSuccessful {
     readObject(radiclePointer) map { osd => BaseCodec.decodeRadicle(osd.data) }
   }
   
-  val systemTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val systemTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
     radicle.flatMap(r => systemTreeFactory.createTree(r.systemTreeDefinitionPointer))
   }
   
-  val storagePoolTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val storagePoolTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
     for {
       sysTree <- systemTree
       oenc <- sysTree.get(StoragePoolTreeUUID)

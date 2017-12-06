@@ -36,8 +36,6 @@ class TriggeredReread {
       retrieveObjectData: Boolean,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID): ReadDriver = {
-    val rd = new TriggerDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
-    rd.start()
-    rd
+    new TriggerDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
   }
 }

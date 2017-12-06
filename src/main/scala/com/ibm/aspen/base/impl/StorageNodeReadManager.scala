@@ -25,7 +25,8 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
   
   def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
       
-  def receive(message: Read): Unit = getStore(message.toStore).foreach(store => {
+  def receive(message: Read): Unit = getStore(message.toStore).foreach { store => 
+      
     val f = store.getObject(message.objectPointer)
                                  
     f foreach {
@@ -46,5 +47,6 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           case Right((state, data)) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(state)), Some(data))
         }
     }
-  })
+  }
+  
 }

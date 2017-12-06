@@ -76,12 +76,12 @@ class BaseTransaction(
         if (txd.requirements.isEmpty)
           promise.success(())
         else {
-            txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {
-              case Failure(cause) =>
-                // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
-                promise.failure(cause)
-              case Success(committed) => if (committed) promise.success(()) else promise.failure(TransactionAborted(txd))
-            }
+          txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {
+            case Failure(cause) =>
+              // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
+              promise.failure(cause)
+            case Success(committed) => if (committed) promise.success(()) else promise.failure(TransactionAborted(txd))
+          }
         }
       }
     }

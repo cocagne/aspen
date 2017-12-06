@@ -28,7 +28,7 @@ class BaseReadDriver(
   
   def readResult = promise.future
   
-  def start() = sendReadRequests()
+  def begin() = sendReadRequests()
   
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
@@ -158,8 +158,6 @@ object BaseReadDriver {
       retrieveObjectData: Boolean,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID): ReadDriver = {
-    val rd = new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
-    rd.start()
-    rd
+    new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
   }
 }

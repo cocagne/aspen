@@ -62,7 +62,7 @@ class ClientTransactionDriver(
     val fromStore = DataStoreID(poolUUID, txd.designatedLeaderUID)
     
     txd.allDataStores.foreach { toStore =>
-      val initialPrepare = TxPrepare(toStore, fromStore, txd, ProposalID(0, txd.designatedLeaderUID))
+      val initialPrepare = TxPrepare(toStore, fromStore, txd, ProposalID.initialProposal(txd.designatedLeaderUID))
       
       val updateContent = updateData.get(toStore) match {
         case None => Nil

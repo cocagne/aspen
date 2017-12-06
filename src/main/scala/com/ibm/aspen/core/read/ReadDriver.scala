@@ -10,6 +10,9 @@ import com.ibm.aspen.core.objects.ObjectPointer
 trait ReadDriver {
   def readResult: Future[Either[ReadError, ObjectState]]
   
+  /** Called to begin the read process. Read messages must not be sent until this method is called */
+  def begin(): Unit
+  
   def receiveReadResponse(response:ReadResponse): Unit
 }
 

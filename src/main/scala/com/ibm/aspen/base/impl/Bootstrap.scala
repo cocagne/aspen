@@ -111,8 +111,9 @@ object Bootstrap {
       val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex)).map(sp => storePointers(storeIndex) = sp)
+        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex)).map(sp => storePointers(storeIndex) = sp) 
       }}
+      
       Future.sequence(falloc) map { _ => 
           ObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
       }

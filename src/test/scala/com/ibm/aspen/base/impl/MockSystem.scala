@@ -134,6 +134,8 @@ object MockSystem {
         }
       Future.successful(e)
     } 
+    
+    override def begin(): Unit = ()
   
     override def receiveReadResponse(response:ReadResponse): Unit = ()
   }

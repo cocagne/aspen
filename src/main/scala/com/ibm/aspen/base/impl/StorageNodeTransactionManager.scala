@@ -90,6 +90,7 @@ class StorageNodeTransactionManager(
     def onTransactionDriverComplete(txuuid: UUID) = synchronized { transactionDrivers -= txuuid }
     
     def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+      //println(s"Store RCV: to ${message.to} from ${message.from} class ${message.getClass}")
       message match {
         case m: TxPrepare =>  
           val (tx, driver) = synchronized {

@@ -53,13 +53,18 @@ class TestNetwork {
     def unregisterHostedStore(storeId: DataStoreID): Unit = ()
     //-------------------------------------------------------
     
-    var r: Option[StoreSideReadMessageReceiver] = None
-    var a: Option[StoreSideAllocationMessageReceiver] = None
-    var t: Option[StoreSideTransactionMessageReceiver] = None
     
-    def setReceiver(receiver: StoreSideReadMessageReceiver): Unit = synchronized { r = Some(receiver) }
-    def setReceiver(receiver: StoreSideAllocationMessageReceiver): Unit = synchronized { a = Some(receiver) }
-    def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { t = Some(receiver) }
+    var or: Option[StoreSideReadMessageReceiver] = None
+    var oa: Option[StoreSideAllocationMessageReceiver] = None
+    var ot: Option[StoreSideTransactionMessageReceiver] = None
+    
+    def r = synchronized { or }
+    def a = synchronized { oa }
+    def t = synchronized { ot }
+    
+    def setReceiver(receiver: StoreSideReadMessageReceiver): Unit = synchronized { or = Some(receiver) }
+    def setReceiver(receiver: StoreSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
+    def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
     
     def send(message: transaction.Message): Unit = get(message.to).foreach(sn => sn.t.foreach(t => t.receive(message, None)))
     def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = get(client).foreach(c => c.t.foreach(t => t.receive(acceptResponse)))
@@ -73,7 +78,7 @@ class TestNetwork {
       case m: allocation.AllocateResponse => get(client).foreach(c => c.a.foreach(a => a.receive(m)))
     }
     
-    def send(client: ClientID, message: read.ReadResponse, data:Option[DataBuffer]): Unit = clients.get(client).foreach(c => c.r.foreach(r => r.receive(message)))
+    def send(client: ClientID, message: read.ReadResponse, data:Option[DataBuffer]): Unit = get(client).foreach(c => c.r.foreach(r => r.receive(message)))
   }
   
   class CNet(override val clientId: ClientID) extends ClientSideNetwork 
@@ -85,13 +90,17 @@ class TestNetwork {
     val allocationHandler: ClientSideAllocationHandler = this
     val transactionHandler: ClientSideTransactionHandler = this
     
-    var r: Option[ClientSideReadMessageReceiver] = None
-    var a: Option[ClientSideAllocationMessageReceiver] = None
-    var t: Option[ClientSideTransactionMessageReceiver] = None
+    var or: Option[ClientSideReadMessageReceiver] = None
+    var oa: Option[ClientSideAllocationMessageReceiver] = None
+    var ot: Option[ClientSideTransactionMessageReceiver] = None
     
-    def setReceiver(receiver: ClientSideReadMessageReceiver): Unit = synchronized { r = Some(receiver) }
-    def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = synchronized { a = Some(receiver) }
-    def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { t = Some(receiver) }
+    def r = synchronized { or }
+    def a = synchronized { oa }
+    def t = synchronized { ot }
+    
+    def setReceiver(receiver: ClientSideReadMessageReceiver): Unit = synchronized { or = Some(receiver) }
+    def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
+    def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
     
     def send(toStore: DataStoreID, message: allocation.Allocate): Unit = get(toStore).foreach(sn => sn.a.foreach(a => a.receive(message)))
     def send(toStore: DataStoreID, message: read.Read): Unit = get(toStore).foreach(sn => sn.r.foreach(r=> r.receive(message)))

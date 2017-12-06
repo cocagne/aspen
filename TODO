@@ -1,18 +1,3 @@
-* Get BasicIntegration test working
-
-* Testing
-   - Consider mixin classes to "catch" calls to base classes. Can delay or log the calls & args
-  
-* Detecting all transactions complete
-    - create method that calls storageNode.allTransactionsComplete in a loop
-    - 5ms sleeps between checks
-    - probably need to do this within a Future {} to avoid threading issues
-
-* Get BasicAspenSystemSuite tests working on full system
-    - Bootstrap and shut down stores
-    - Bring up the full client then bring up a StorageNode that loads all the stores
-    - May want to convert to a factory function for data stores instead of passing in instances
-        - Allows the allocManager passed in to the StorageNode to be cleanly handed to the stores
 
 * Useful
    

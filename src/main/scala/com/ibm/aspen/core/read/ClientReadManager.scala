@@ -38,6 +38,8 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     
+    driver.begin()
+    
     driver.readResult onComplete {
       case _ => synchronized { outstandingReads -= readUUID }
     }

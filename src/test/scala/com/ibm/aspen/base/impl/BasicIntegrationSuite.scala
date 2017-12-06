@@ -27,6 +27,8 @@ import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.read.TriggeredReread
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 object BasicIntegrationSuite {
   trait Closeable {
@@ -34,42 +36,46 @@ object BasicIntegrationSuite {
   }
 }
 
-class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndAfter {
+class BasicIntegrationSuite  extends TempDirSuiteBase {
   import BasicIntegrationSuite._
   import Bootstrap._
   
-  //override implicit val executionContext = ExecutionContext.Implicits.global
+  override implicit val executionContext = ExecutionContext.Implicits.global
   
-  var tdir:File = _
-  var tdirMgr: TempDirManager = _
   var closeables: List[Closeable] = Nil
+  
+  override def preTempDirDeletion(): Unit =  {
+    val r = Await.result(Future.sequence(closeables.map(_.close())), 1000 milliseconds)
+    
+    closeables = Nil
+  }
   
   def newStore(storeId: DataStoreID): (RocksDBDataStore, RocksDBCrashRecoveryLog) = {
     val dbpath = new File(tdir, s"dbdir_${storeId.poolIndex}").getAbsolutePath
     val crlpath = new File(tdir, s"crldir_${storeId.poolIndex}").getAbsolutePath
     val crl = new RocksDBCrashRecoveryLog(crlpath)(ExecutionContext.Implicits.global) with Closeable
     val db = new RocksDBDataStore(storeId, dbpath, Nil, Nil)(ExecutionContext.Implicits.global) with Closeable
+    Await.result(db.initialized, Duration(10000, MILLISECONDS))
     closeables = db :: crl :: closeables
     (db, crl)
   }
-  
-  before {
-    tdirMgr = new TempDirManager
-    tdir = tdirMgr.tdir
-  }
 
-  after {
-    val r = Await.result(Future.sequence(closeables.map(_.close())), 1000 milliseconds)
-    
-    closeables = Nil
-    
-    tdirMgr.delete()
-  }
-  
   val noRetry = new NoRetry
   val bootstrapPoolIDA = new Replication(3,2)
   val systemTreeNodeSize = 2048
   def systemTreeNodeCacheFactory(sys: AspenSystem): KVTreeNodeCache = new KVTreeNodeCache {}
+  
+  def waitForTransactionsComplete(sn: StorageNode): Future[Unit] = Future {
+    
+    var count = 0
+    while (!sn.allTransactionsComplete && count < 100) {
+      count += 1
+      Thread.sleep(5) 
+    }
+        
+    if (count > 100)
+      throw new Exception("Finalization Actions Timed Out")
+  }
   
   def mkStorageNode(
       store: RocksDBDataStore, 
@@ -77,8 +83,6 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
       net: TestNetwork,
       reader: TriggeredReread,
       radiclePointer: ObjectPointer): (BasicAspenSystem, StorageNode) = {
-      
-    implicit val executionContext = ExecutionContext.Implicits.global
     
     val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
     
@@ -86,7 +90,7 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
         isStorageNodeOnline = (_:StorageNodeID) => true,
         net = new net.CNet(clientId),
-        defaultReadDriverFactory = reader.triggeredReadDriver(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(executionContext) _, //reader.triggeredReadDriver(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,
@@ -96,19 +100,6 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
         radiclePointer = radiclePointer,
         initializationRetryStrategy = noRetry
         )
-    
-    val kvTreeFactory = new KVTreeSimpleFactory(
-        system = sys, 
-        treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
-        storagePoolUUID = BootstrapStoragePoolUUID, 
-        nodeIDA = bootstrapPoolIDA,
-        nodeSize = systemTreeNodeSize, 
-        nodeCache = systemTreeNodeCacheFactory(sys), 
-        keyComparisonStrategy = KVTree.KeyComparison.Raw)
-    
-    val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
-    
-    val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
     
     val storageNode = new StorageNode(crl, new net.SNet)
     
@@ -121,16 +112,12 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
     
     }
     
-    Await.result(storageNode.addStore(store.storeId, dsFactory.apply ), 5000 milliseconds)
+    Await.result(storageNode.addStore(store.storeId, dsFactory.apply), 5000 milliseconds)
     
     (sys, storageNode)
   }
   
   test("Test Bootstrapping Logic") {
-    /*
-    implicit val executionContext = ExecutionContext.Implicits.global
-    
-    val net = new TestNetwork
     
     val (store0, crl0) = newStore(DataStoreID(BootstrapStoragePoolUUID, 0))
     val (store1, crl1) = newStore(DataStoreID(BootstrapStoragePoolUUID, 1))
@@ -138,28 +125,52 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
     
     val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA), 500 milliseconds)
     
+    val net = new TestNetwork
+    
     val reader = new TriggeredReread
     
     val (sys0, sn0) = mkStorageNode(store0, crl0, net, reader, radiclePointer)
     val (sys1, sn1) = mkStorageNode(store1, crl1, net, reader, radiclePointer)
     val (sys2, sn2) = mkStorageNode(store2, crl2, net, reader, radiclePointer)
     
-    reader.retry()
-    
-    //Await.result(sys0.radicle, 1000 milliseconds)
-    //Await.result(sys1.radicle, 1000 milliseconds)
+    Await.result(sys0.radicle, 1000 milliseconds)
+    Await.result(sys1.radicle, 1000 milliseconds)
     Await.result(sys2.radicle, 1000 milliseconds)
-    */
-    // For recoverPendingOperations
-    //driverFactory = TransactionDriver.noErrorRecoveryFactory,
-    //finalizerFactory = finalizerFactory.factory
     
-    /*
-    val osd = ms.storage.read(r.systemTreeDefinitionPointer).get
+    def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
+      val kvTreeFactory = new KVTreeSimpleFactory(
+          system = sys, 
+          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+          storagePoolUUID = BootstrapStoragePoolUUID, 
+          nodeIDA = bootstrapPoolIDA,
+          nodeSize = systemTreeNodeSize, 
+          nodeCache = systemTreeNodeCacheFactory(sys), 
+          keyComparisonStrategy = KVTree.KeyComparison.Raw)
+      
+      val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+      
+      val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
+       
+      sn.recoverPendingOperations(TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+    }
     
-    val sp = Await.result(ms.basicAspenSystem.getStoragePool(Bootstrap.BootstrapStoragePoolUUID), 100 milliseconds)
+    recover(sys0, sn0)
+    recover(sys1, sn1)
+    recover(sys2, sn2)
+    
+    val sp = Await.result(sys0.getStoragePool(Bootstrap.BootstrapStoragePoolUUID), 100 milliseconds)
     val spAllocTreeDef = Await.result(sp.getAllocationTreeDefinitionPointer(noRetry), 100 milliseconds)
-    val atree = Await.result(ms.kvTreeFactory.createTree(spAllocTreeDef), 100 milliseconds)
+    
+    val kvTreeFactory = new KVTreeSimpleFactory(
+          system = sys0, 
+          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+          storagePoolUUID = BootstrapStoragePoolUUID, 
+          nodeIDA = bootstrapPoolIDA,
+          nodeSize = systemTreeNodeSize, 
+          nodeCache = systemTreeNodeCacheFactory(sys0), 
+          keyComparisonStrategy = KVTree.KeyComparison.Raw)
+    
+    val atree = Await.result(kvTreeFactory.createTree(spAllocTreeDef), 100 milliseconds)
     
     var allocTreeEntryCount = 0
     
@@ -170,8 +181,96 @@ class BasicIntegrationSuite  extends AsyncFunSuite with Matchers with BeforeAndA
     Await.result(atree.visitRange(new Array[Byte](0), None, visitEntry), 100 milliseconds)
     
     allocTreeEntryCount should be (BootstrapAllocatedObjectCount)
-    * 
-    */
-    0 should be(0)
+    
+  }
+  
+  test("Test Allocation & Finalization") {
+    
+    val (store0, crl0) = newStore(DataStoreID(BootstrapStoragePoolUUID, 0))
+    val (store1, crl1) = newStore(DataStoreID(BootstrapStoragePoolUUID, 1))
+    val (store2, crl2) = newStore(DataStoreID(BootstrapStoragePoolUUID, 2))
+    
+    val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA), 500 milliseconds)
+    
+    val net = new TestNetwork
+    
+    val reader = new TriggeredReread
+    
+    val (sys0, sn0) = mkStorageNode(store0, crl0, net, reader, radiclePointer)
+    val (sys1, sn1) = mkStorageNode(store1, crl1, net, reader, radiclePointer)
+    val (sys2, sn2) = mkStorageNode(store2, crl2, net, reader, radiclePointer)
+    
+    Await.result(sys0.radicle, 1000 milliseconds)
+    Await.result(sys1.radicle, 1000 milliseconds)
+    Await.result(sys2.radicle, 1000 milliseconds)
+    
+    def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
+      val kvTreeFactory = new KVTreeSimpleFactory(
+          system = sys, 
+          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+          storagePoolUUID = BootstrapStoragePoolUUID, 
+          nodeIDA = bootstrapPoolIDA,
+          nodeSize = systemTreeNodeSize, 
+          nodeCache = systemTreeNodeCacheFactory(sys), 
+          keyComparisonStrategy = KVTree.KeyComparison.Raw)
+      
+      val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+      
+      val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
+       
+      sn.recoverPendingOperations(TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+    }
+    
+    recover(sys0, sn0)
+    recover(sys1, sn1)
+    recover(sys2, sn2)
+    
+    var allocCount = 0
+    
+    def allocObj(r: Radicle): Future[ObjectPointer] = {
+      implicit val tx = sys0.newTransaction()
+      val d = DataBuffer(ByteBuffer.allocate(5))
+      val ffp = sys0.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
+                                    None, bootstrapPoolIDA, d)
+      allocCount += 1
+      
+      for {
+        fp <- ffp
+        // Need to give the transaction something to do. Modify refcount instead of data so we don't accidentally corrupt anything
+        y = tx.setRefcount(r.systemTreeDefinitionPointer, ObjectRefcount(0,allocCount), ObjectRefcount(0,allocCount + 1))
+        committed <- tx.commit()
+      } yield {
+        fp 
+      }
+    }
+    
+    val kvTreeFactory = new KVTreeSimpleFactory(
+          system = sys0, 
+          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+          storagePoolUUID = BootstrapStoragePoolUUID, 
+          nodeIDA = bootstrapPoolIDA,
+          nodeSize = systemTreeNodeSize, 
+          nodeCache = systemTreeNodeCacheFactory(sys0), 
+          keyComparisonStrategy = KVTree.KeyComparison.Raw)
+    
+    var allocTreeEntryCount = 0
+    
+    def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
+      allocTreeEntryCount += 1
+    }
+    
+    for {
+      r <- sys0.radicle
+      fp1 <- allocObj(r)
+      faComplete1 <- waitForTransactionsComplete(sn0)
+      fp2 <- allocObj(r)
+      faComplete2 <- waitForTransactionsComplete(sn0)
+      sp <- sys0.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
+      spAllocTreeDef <- sp.getAllocationTreeDefinitionPointer(noRetry)
+      atree <- kvTreeFactory.createTree(spAllocTreeDef)
+      visitComplete <- atree.visitRange(new Array[Byte](0), None, visitEntry)
+    } yield {
+      allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
+    }
   }
 }
