@@ -1,4 +1,75 @@
 
+Error Handling:
+   Premises
+       * Transaction durations are very short < 1s
+       * The system is always available
+           - Application-level freezes when it isn't are perfectly acceptable
+       * Application-level timeouts can still make sense
+           - Ex try to read/write an object exclusively at a remote site
+           
+   * For simplicity, just use BackgroundTask every time and cancel when the read/tx is done.
+       - they're not intended to be efficient. Just effective
+           
+   * [DONE] Read Driver
+       - Add optional Timeout
+       - Use derived class (its factory based anyway. Allows passing in the durations)
+       - Continually retry until timeout is reached
+       - use exponentialRetryBackoff
+          - just call send() and always return false
+          - hook cancellation into a callback on the future 
+          SUPER EASY !!!!
+   
+   * Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
+                  allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
+                  
+       * Need to add TxStatusRequest/Reply. Contains:
+           - committed/aborted OR
+           - Unknown/Pending + List[(objUUID, Obj Revision, Refcount, lastTxUUID)], Status[Unknown, Pending, Committed, Aborted]
+           
+       - Recovery
+           - In progress
+           - After commit/abort w/ cached response
+           - After commit w/ lastTxUUID = in-progress TxUUID
+           - After commit w/different last committed txUUID
+           - Same commit + version bump
+   
+   * Transaction Recovery
+       - Goal is to optimize the common case where there's no failure
+       - No matter what we have to contend with all peers trying to drive the tx to closure
+       
+       - Client Tx Driver
+           - Similar exponential backoff till replies are seen
+       
+       - Driver Creation
+	       - Use simple background thread that runs every X sec to look for hung transactions
+	           - Sends heartbeat messages for all active transactions which are older than X sec
+	           - On 3x delay of no heartbeats for a transaction not being driven, start a driver
+       
+       - [DONE] Driver Contention
+           - Ignore Finalizer contention (separate problem)
+           - Goal is to get to resolution
+           - We know exponential backoff works in that case
+           - Can shoot straight to fairly large backoff windows (0 - max size) to reduce chance of
+             further contention
+           - Driver Creation should take a isRecovering param. If true, send immediate Prepare else don't (prepare is sent
+             by client for us so common case is that we'll receive all replies without having to send a Prepare at all).
+           - backoff() method doubles the retry delay up to cap and schedules a rety
+           - call backoff each time we advance the proposal instance
+       
+   * Transaction Recovery
+       
+       
+       - For network outage, it means we'll have max contention right away on recovery
+           - When the Paxos instance must be advanced, do the backoff
+           
+       SimpleTxRecovery Trait w/ Object
+          Object kicks off a micro task that repeadedly re-schedules a call to itself while instances of it are outstanding
+             - provides easy way to keep track of when it needs to run
+             - simple synchornized add/del methods that schedule/cancel future calls
+       
+       
+       
+
 * Useful
    
    - Very Basic Error Handling

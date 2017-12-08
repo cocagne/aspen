@@ -39,7 +39,6 @@ abstract class TransactionDriver(
       proposer.updateHighestProposalId(msg.proposalId)
   }
   
-  
   // TODO: This implementation takes action immediately upon receiving replies from a write-threshold number
   //       of peers. A better approach would probably be to wait a short while for additional replies before
   //       making a decision on whether to commit/abort.
