@@ -11,13 +11,12 @@ import scala.concurrent.ExecutionContext
 abstract class TransactionDriver(
     val storeId: DataStoreID,
     val messenger: StoreSideTransactionMessenger, 
-    initialPrepare: TxPrepare, 
+    val txd: TransactionDescription, 
     private val finalizerFactory: TransactionFinalizer.Factory,
     private val onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) {
   
   import TransactionDriver._
   
-  val txd = initialPrepare.txd
   def ida = txd.primaryObject.ida
   
   protected val proposer = new Proposer(storeId.poolIndex, ida.width, ida.writeThreshold)
@@ -35,6 +34,8 @@ abstract class TransactionDriver(
  
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
   
+  def heartbeat(): Unit = messenger.send(allDataStores.map(toStoreId => TxHeartbeat(toStoreId, storeId, txd.transactionUUID)))
+      
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {
       proposer.updateHighestProposalId(msg.proposalId)
   }
@@ -212,7 +213,7 @@ object TransactionDriver {
     def create(
         storeId: DataStoreID,
         messenger:StoreSideTransactionMessenger, 
-        initialPrepare: TxPrepare, 
+        txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
         onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver
   }
@@ -221,17 +222,17 @@ object TransactionDriver {
     class NoRecoveryTransactionDriver(
         storeId: DataStoreID,
         messenger: StoreSideTransactionMessenger, 
-        initialPrepare: TxPrepare, 
+        txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete) 
+        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) 
     
     def create(
         storeId: DataStoreID,
         messenger:StoreSideTransactionMessenger, 
-        initialPrepare: TxPrepare, 
+        txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
         onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
-      new NoRecoveryTransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete)
+      new NoRecoveryTransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete)
     }
   }
 }

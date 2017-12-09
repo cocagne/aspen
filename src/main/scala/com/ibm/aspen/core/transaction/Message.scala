@@ -76,4 +76,4 @@ final case class TxStatusReply(
 final case class TxHeartbeat(
     to: DataStoreID,
     from: DataStoreID,
-    transactionUUID: UUID)    
+    transactionUUID: UUID) extends Message 

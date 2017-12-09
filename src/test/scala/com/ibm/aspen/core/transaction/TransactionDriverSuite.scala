@@ -49,7 +49,7 @@ object TransactionDriverSuite {
     messenger: StoreSideTransactionMessenger, 
     initialPrepare: TxPrepare, 
     finalizerFactory: TransactionFinalizer.Factory,
-    onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete)
+    onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare.txd, finalizerFactory, onComplete)
   
   class TFinalizer(autoComplete: Boolean = true) extends TransactionFinalizer with TransactionFinalizer.Factory {
     var cancelled = false

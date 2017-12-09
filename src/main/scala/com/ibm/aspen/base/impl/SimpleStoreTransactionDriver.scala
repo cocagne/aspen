@@ -8,6 +8,7 @@ import java.util.UUID
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.TransactionDriver
 import scala.concurrent.duration.Duration
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 /** Provides a store-side transaction driver with a very simple retransmit strategy and exponential backoff mechanism
  *  for dealing with Paxos contention.
@@ -17,9 +18,9 @@ class SimpleStoreTransactionDriver(
     val maxDelay: Duration,
     storeId: DataStoreID,
     messenger: StoreSideTransactionMessenger, 
-    initialPrepare: TxPrepare, 
+    txd: TransactionDescription, 
     finalizerFactory: TransactionFinalizer.Factory,
-    onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, initialPrepare, finalizerFactory, onComplete) {
+    onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) {
  
   private[this] var backoffDelay = initialDelay
   private[this] var nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }

@@ -36,6 +36,8 @@ class Transaction(
     val store: DataStore,
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   
+  import Transaction._
+  
   val txd: TransactionDescription = trs.txd
   
   private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates  
@@ -52,9 +54,17 @@ class Transaction(
   }
   private[this] var resolved = false
   
-  import Transaction._
+  private[this] var heartbeatTimestamp: Long = 0
+ 
+  private def updateTimestamp() = synchronized { heartbeatTimestamp = System.currentTimeMillis() }
+  
+  def lastHeartbeat = synchronized { heartbeatTimestamp }
+  
+  def heartbeatReceived(): Unit = updateTimestamp()
   
   def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
+    
+    updateTimestamp()
     
     val (response, acceptorState, originalDisposition, dataUpdates) = synchronized {
       if (localUpdates.isEmpty && optDataUpdates.isDefined)
@@ -122,6 +132,9 @@ class Transaction(
 
   
   def receiveAccept(msg: TxAccept): Unit = {
+    
+    updateTimestamp()
+    
     val (paxosReply, acceptorState) = synchronized { 
       (acceptor.receiveAccept(Accept(msg.proposalId, msg.value)), acceptor.persistentState) 
     } 

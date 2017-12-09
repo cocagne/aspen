@@ -46,8 +46,8 @@ object BackgroundTask {
   }
   
   /** initialDelay uses the same units as the period */
-  def schedulePeriodic(period: Duration, initialDelay: Int)(fn: => Unit): ScheduledTask = {
-    BGTask(scheduler.scheduleAtFixedRate(new Runnable { override def run(): Unit = fn }, initialDelay, period.length, period.unit))
+  def schedulePeriodic(period: Duration, initialDelay: Option[Long] = None)(fn: => Unit): ScheduledTask = {
+    BGTask(scheduler.scheduleAtFixedRate(new Runnable { override def run(): Unit = fn }, initialDelay.getOrElse(period.length), period.length, period.unit))
   }
   
   /** Continually retries the function until it returns true */

@@ -1,8 +1,3 @@
-
-*** START HERE NEXT - Use StorageNodeTxManager subclass with periodic BG task
-  * Send heartbeats
-  * Create driver if tx is alive for too long
-  * Comment that this is a local timestamp, (shouldn't use the system time that can slew) not hlc
   
 * Add HLC impl (should be easy)
   * Case-classes with simple mixing in TransactionBuilder
@@ -31,16 +26,16 @@ Error Handling:
            - After commit w/different last committed txUUID
            - Same commit + version bump
    
-   * Transaction Recovery
+   * [DONE] Transaction Recovery
        - Goal is to optimize the common case where there's no failure
        - No matter what we have to contend with all peers trying to drive the tx to closure
        
-       - Client Tx Driver
+       - [DONE] Client Tx Driver
            - Similar exponential backoff till replies are seen
        
-       - Add support for send/receive TxHeartbeat messages
+       - [DONE] Add support for send/receive TxHeartbeat messages
        
-       - Driver Creation
+       - [DONE] Driver Creation
 	       - Use simple background thread that runs every X sec to look for hung transactions
 	           - Sends heartbeat messages for all active transactions which are older than X sec
 	           - On 3x delay of no heartbeats for a transaction not being driven, start a driver
