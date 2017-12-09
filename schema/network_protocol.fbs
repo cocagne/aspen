@@ -45,6 +45,14 @@ table ObjectPointer {
   ida: IDA;
 }
 
+table ObjectStatus {
+  objectUUID: UUID;
+  revision: ObjectRevision;
+  refcount: ObjectRefcount;
+  lastCommittedTransaction: UUID;
+  lockedTransaction: TransactionDescription;
+}
+
 //---------------------------------------------------------------------------
 //- Transaction Description
 //---------------------------------------------------------------------------
@@ -190,6 +198,27 @@ table TxFinalized {
   from: DataStoreID;
   transaction_uuid: UUID;
   committed: bool;
+}
+
+table TxStatusRequest {
+   to: DataStoreID;
+   from: DataStoreID;
+   txd: TransactionDescription;
+}
+
+table TxStatusReply {
+   to: DataStoreID;
+   from: DataStoreID;
+   transaction_uuid: UUID;
+   known: byte; // 1 if transaction is known. 0 if not
+   status: TransactionStatus;
+   objects: [ObjectStatus];
+}
+
+table TxHeartbeat {
+   to: DataStoreID;
+   from: DataStoreID;
+   transaction_uuid: UUID;
 }
 
 //---------------------------------------------------------------------------

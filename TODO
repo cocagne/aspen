@@ -1,4 +1,14 @@
 
+*** START HERE NEXT - Use StorageNodeTxManager subclass with periodic BG task
+  * Send heartbeats
+  * Create driver if tx is alive for too long
+  * Comment that this is a local timestamp, (shouldn't use the system time that can slew) not hlc
+  
+* Add HLC impl (should be easy)
+  * Case-classes with simple mixing in TransactionBuilder
+  * May require adding timestamp to object store
+
+
 Error Handling:
    Premises
        * Transaction durations are very short < 1s
@@ -7,24 +17,12 @@ Error Handling:
        * Application-level timeouts can still make sense
            - Ex try to read/write an object exclusively at a remote site
            
-   * For simplicity, just use BackgroundTask every time and cancel when the read/tx is done.
-       - they're not intended to be efficient. Just effective
-           
    * [DONE] Read Driver
-       - Add optional Timeout
-       - Use derived class (its factory based anyway. Allows passing in the durations)
-       - Continually retry until timeout is reached
-       - use exponentialRetryBackoff
-          - just call send() and always return false
-          - hook cancellation into a callback on the future 
-          SUPER EASY !!!!
    
    * Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
                   allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
                   
-       * Need to add TxStatusRequest/Reply. Contains:
-           - committed/aborted OR
-           - Unknown/Pending + List[(objUUID, Obj Revision, Refcount, lastTxUUID)], Status[Unknown, Pending, Committed, Aborted]
+       * Added Status Request / Reply support
            
        - Recovery
            - In progress
@@ -40,12 +38,14 @@ Error Handling:
        - Client Tx Driver
            - Similar exponential backoff till replies are seen
        
+       - Add support for send/receive TxHeartbeat messages
+       
        - Driver Creation
 	       - Use simple background thread that runs every X sec to look for hung transactions
 	           - Sends heartbeat messages for all active transactions which are older than X sec
 	           - On 3x delay of no heartbeats for a transaction not being driven, start a driver
        
-       - [DONE] Driver Contention
+       - [DONE] Store Transaction Driver Contention
            - Ignore Finalizer contention (separate problem)
            - Goal is to get to resolution
            - We know exponential backoff works in that case
@@ -57,7 +57,6 @@ Error Handling:
            - call backoff each time we advance the proposal instance
        
    * Transaction Recovery
-       
        
        - For network outage, it means we'll have max contention right away on recovery
            - When the Paxos instance must be advanced, do the backoff

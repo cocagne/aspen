@@ -59,3 +59,21 @@ final case class TxFinalized(
     from: DataStoreID,
     transactionUUID: UUID,
     committed: Boolean) extends Message
+    
+final case class TxStatusRequest(
+    to: DataStoreID,
+    from: DataStoreID,
+    txd: TransactionDescription) extends Message
+    
+final case class TxStatusReply(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID,
+    status: Option[TransactionStatus.Value], // If None, the transaction is unknown
+    objects: List[ObjectStatus]
+    ) extends Message
+    
+final case class TxHeartbeat(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID)    

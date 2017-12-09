@@ -65,15 +65,11 @@ class StorageNode(
     transactionManager: StorageNodeTransactionManager,
     allocationManager: StorageNodeAllocationManager) 
   
-  def recoverPendingOperations(
-      txDriverFactory: TransactionDriver.Factory,
-      txFinalizerFactory: TransactionFinalizer.Factory): Unit = synchronized {
+  def recoverPendingOperations(txMgr: StorageNodeTransactionManager, allocMgr:StorageNodeAllocationManager): Unit = synchronized {
         
     if (recoveredOption.isEmpty) {
       
-      val r = Recovered(
-          new StorageNodeTransactionManager(crl, net.transactionHandler, txDriverFactory, txFinalizerFactory),
-          new StorageNodeAllocationManager(crl, net.allocationHandler))
+      val r = Recovered(txMgr, allocMgr)
       
       recoveredOption = Some(r)
       

@@ -151,7 +151,10 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
       
       val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
        
-      sn.recoverPendingOperations(TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+      val txMgr = new StorageNodeTransactionManager(sn.crl, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+      val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)
+      
+      sn.recoverPendingOperations(txMgr, allocMgr)
     }
     
     recover(sys0, sn0)
@@ -218,7 +221,10 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
       
       val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
        
-      sn.recoverPendingOperations(TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+      val txMgr = new StorageNodeTransactionManager(sn.crl, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+      val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)
+      
+      sn.recoverPendingOperations(txMgr, allocMgr)
     }
     
     recover(sys0, sn0)

@@ -39,6 +39,10 @@ import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.transaction.ObjectStatus
+import com.ibm.aspen.core.transaction.TxStatusRequest
+import com.ibm.aspen.core.transaction.TxStatusReply
+import com.ibm.aspen.core.transaction.TxHeartbeat
 
 
 
@@ -143,7 +147,34 @@ object NetworkCodec {
     
     arr
   }
-  def byteArrayToObjectPointer(arr: Array[Byte]): ObjectPointer = byteBufferToObjectPointer(ByteBuffer.wrap(arr)) 
+  def byteArrayToObjectPointer(arr: Array[Byte]): ObjectPointer = byteBufferToObjectPointer(ByteBuffer.wrap(arr))
+  
+  
+  def encode(builder:FlatBufferBuilder, o:ObjectStatus): Int = {
+    val lockedTransactionOffset = o.lockedTransaction match {
+      case None => -1
+      case Some(txd) => encode(builder, txd)
+    }
+    
+    P.ObjectStatus.startObjectStatus(builder)
+    P.ObjectStatus.addObjectUUID(builder, encode(builder, o.uuid))
+    P.ObjectStatus.addRevision(builder, encode(builder, o.revision))
+    P.ObjectStatus.addRefcount(builder, encode(builder, o.refcount))
+    P.ObjectStatus.addLastCommittedTransaction(builder, encode(builder, o.lastCommittedTransaction))
+    o.lockedTransaction.foreach { _ =>
+      P.ObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
+    }
+    P.ObjectStatus.endObjectStatus(builder)
+  }
+  def decode(n: P.ObjectStatus): ObjectStatus = {
+    val objUUID = decode(n.objectUUID())
+    val rev = decode(n.revision())
+    val ref = decode(n.refcount())
+    val lastTx = decode(n.lastCommittedTransaction())
+    val lock = if ( n.lockedTransaction() == null ) None else Some(decode(n.lockedTransaction()))
+    
+    ObjectStatus(objUUID, rev, ref, lastTx, lock)
+  }
   
   //-----------------------------------------------------------------------------------------------
   // IDA
@@ -599,6 +630,73 @@ object NetworkCodec {
     TxFinalized(to, from, transactionUUID, n.committed())
   }
   
+  def encode(builder:FlatBufferBuilder, o:TxStatusRequest): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    val txd = encode(builder, o.txd)
+    
+    P.TxStatusRequest.startTxStatusRequest(builder)
+    P.TxStatusRequest.addTo(builder, to)
+    P.TxStatusRequest.addFrom(builder, from)
+    P.TxStatusRequest.addTxd(builder, txd)
+    P.TxStatusRequest.endTxStatusRequest(builder)
+  }
+  def decode(n: P.TxStatusRequest): TxStatusRequest = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val txd = decode(n.txd())
+    
+    TxStatusRequest(to, from, txd)
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:TxStatusReply): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    
+    val objects = P.TxStatusReply.createObjectsVector(builder, o.objects.map(obj => encode(builder, obj)).toArray)
+    
+    P.TxStatusReply.startTxStatusReply(builder)
+    P.TxStatusReply.addTo(builder, to)
+    P.TxStatusReply.addFrom(builder, from)
+    P.TxStatusReply.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    o.status.foreach { status =>
+      P.TxStatusReply.addKnown(builder, 1)
+      P.TxStatusReply.addStatus(builder, encodeTransactionStatus(status))  
+    }
+    P.TxStatusReply.addObjects(builder, objects)
+    P.TxStatusReply.endTxStatusReply(builder)
+  }
+  def decode(n: P.TxStatusReply): TxStatusReply = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val txUUID = decode(n.transactionUuid())
+    val status = if (n.known() == 0) None else Some(decodeTransactionStatus(n.status()))
+    
+    def objects(idx: Int, l:List[ObjectStatus]): List[ObjectStatus] = if (idx == -1) 
+        l
+      else 
+        objects(idx-1, decode(n.objects(idx)) :: l)
+        
+    TxStatusReply(to, from, txUUID, status, objects(n.objectsLength()-1, Nil))
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:TxHeartbeat): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    
+    P.TxHeartbeat.startTxHeartbeat(builder)
+    P.TxHeartbeat.addTo(builder, to)
+    P.TxHeartbeat.addFrom(builder, from)
+    P.TxHeartbeat.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxHeartbeat.endTxHeartbeat(builder)
+  }
+  def decode(n: P.TxHeartbeat): TxHeartbeat = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    
+    TxHeartbeat(to, from, transactionUUID)
+  }
   //-----------------------------------------------------------------------------------------------
   // Allocation Messages
   //-----------------------------------------------------------------------------------------------
