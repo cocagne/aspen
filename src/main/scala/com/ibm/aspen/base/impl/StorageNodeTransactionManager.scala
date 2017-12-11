@@ -48,9 +48,7 @@ class StorageNodeTransactionManager(
   def addStore(store: DataStore): Unit = synchronized {
     val ltrs = crl.getTransactionRecoveryStateForStore(store.storeId)
     
-    // TODO: Implement Transaction Recovery
-    
-    stores += (store.storeId -> new StoreState(store))
+    stores += (store.storeId -> new StoreState(store, ltrs))
   }
   
   def removeStore(storeId: DataStoreID): Unit = synchronized {
@@ -81,9 +79,12 @@ class StorageNodeTransactionManager(
     getStore(message.to).foreach(ss => ss.receive(message, updateContent))
   }
   
-  protected class StoreState(val store: DataStore) {
-    private[this] var transactions = Map[UUID, Transaction]()
+  protected class StoreState(val store: DataStore, txRecoveryState: List[TransactionRecoveryState]) {
+    
     private[this] var transactionDrivers = Map[UUID, TransactionDriver]()
+    private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs => 
+      (trs.txd.transactionUUID -> Transaction(crl, messenger, onTransactionDiscarded _, store, trs.txd, trs.localUpdates))
+    }.toMap
     
     def allTransactionsComplete: Boolean = synchronized { transactions.isEmpty }
     

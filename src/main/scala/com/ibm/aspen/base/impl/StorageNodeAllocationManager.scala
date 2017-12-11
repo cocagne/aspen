@@ -15,11 +15,16 @@ import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
+import com.ibm.aspen.core.transaction.TxHeartbeat
 
 object StorageNodeAllocationManager {
   case class Key(storeId: DataStoreID, transactionUUID: UUID)
   
-  case class Value(saved: Future[AllocationRecoveryState], store:DataStore, ars: AllocationRecoveryState) 
+  case class Value(saved: Future[AllocationRecoveryState], store:DataStore, ars: AllocationRecoveryState) {
+    private [this] var ts = System.currentTimeMillis()
+    def lastHeartbeatTimestamp = synchronized { ts }
+    def heartbeatReceived() = synchronized { ts = System.currentTimeMillis() }
+  }
 }
 
 class StorageNodeAllocationManager(
@@ -65,6 +70,10 @@ class StorageNodeAllocationManager(
         crl.discardAllocationState(storeId, transactionUUID)
       }
     }
+  }
+  
+  def receive(heartbeat: TxHeartbeat): Unit = synchronized {
+    allocations.get(Key(heartbeat.to, heartbeat.transactionUUID)) foreach { v => v.heartbeatReceived() }
   }
   
   def receive(resolved: TxResolved): Unit = stopTracking(resolved.to, resolved.transactionUUID, resolved.committed) 

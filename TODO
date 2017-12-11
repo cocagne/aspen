@@ -1,3 +1,9 @@
+
+* Add AllocRecoveryProcess impl
+  * Takes system, transaction messenger, and AllocRecoveryState as args
+  
+  * Forward TxStatusReply messages to alloc manager, to recovery process
+  
   
 * Add HLC impl (should be easy)
   * Case-classes with simple mixing in TransactionBuilder
