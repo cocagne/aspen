@@ -57,4 +57,14 @@ final case class TransactionDescription(
   
   def allDataStores = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex)))
   
+  def allHostedObjects(storeId: DataStoreID): List[ObjectPointer] = allReferencedObjectsSet.foldLeft(List[ObjectPointer]())((l, op) => {
+      if (op.poolUUID == storeId.poolUUID) {
+        op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
+          case Some(sp) => op :: l
+          case None => l
+        }
+      } else
+        l
+    })
+  
 }

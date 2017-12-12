@@ -32,6 +32,7 @@ import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.transaction.VersionBump
 
 object RocksDBDataStore {
   val StateIndex:Byte = 0
@@ -204,20 +205,25 @@ class RocksDBDataStore(
     Future.successful(Right(ars))
   }
   
-  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
+  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = {
+    val commit = ars.newObjects.map( no => (no.newObjectUUID, committed) ).toMap
+    allocationRecoveryComplete(ars, commit)
+  }
+    
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = synchronized {
     var flist = List[Future[Unit]]()
     
-    if (committed) {
-      ars.newObjects.foreach { newObj =>
-        // Reads of mid-allocation objects force a commit to ensure that transactions against those objects
-        // wont be accidentally overwritten by the initial state if the initial write to disk is slow for some
-        // reason. That causes this method to be called twice.
-        if (allocations.contains(newObj.newObjectUUID)) {
-          
-          allocations -= newObj.newObjectUUID
-          
-          workingStates.get(newObj.newObjectUUID).foreach { ws =>
-    
+    ars.newObjects.foreach { newObj =>
+      // Reads of mid-allocation objects force a commit to ensure that transactions against those objects
+      // wont be accidentally overwritten by the initial state if the initial write to disk is slow for some
+      // reason. That causes this method to be called twice.
+      if (allocations.contains(newObj.newObjectUUID)) {
+        
+        allocations -= newObj.newObjectUUID
+        
+        workingStates.get(newObj.newObjectUUID).foreach { ws =>
+  
+          if (commit(newObj.newObjectUUID)) {
             db.put(stateKey(newObj.newObjectUUID), stateToBytes(ws.revision, ws.refcount, ars.allocationTransactionUUID))
             
             flist = db.put(dataKey(newObj.newObjectUUID), newObj.objectData.getByteArray()) :: flist 
@@ -225,13 +231,13 @@ class RocksDBDataStore(
             flist.head onComplete {
               case _ => completeWorkingStateOperation(newObj.newObjectUUID, ws, ars.allocationTransactionUUID)
             }
-          }
+            
+          } else
+            completeWorkingStateOperation(newObj.newObjectUUID, ws, ars.allocationTransactionUUID)
         }
       }
-    } else {
-      List(Future.successful(()))
     }
-    
+
     Future.sequence(flist) map (_=>())
   }
   
@@ -399,8 +405,11 @@ class RocksDBDataStore(
                 }
               }
             }
-          }
-        }
+            
+          case vb: VersionBump => 
+            ws.revision = ws.revision.versionBump()
+          
+        }}
       }
       
       var commits = List[Future[Unit]]()

@@ -65,6 +65,13 @@ trait DataStore {
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit]
   
   
+  /** Called by the allocation recovery process when the state of each pending object allocation is determined.
+   *  The supplied commit map indicates the commit/abort state for each of the objects.
+   *  
+   *  The AllocationRecoveryState will be deleted after the returned future completes
+   */
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit]
+  
   /** Reads an object on the store 
    *
    *  This is the method that should be overridden by subclasses. The getObject method that accepts only the objectPointer checks to ensure that

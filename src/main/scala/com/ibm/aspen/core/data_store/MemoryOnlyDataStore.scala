@@ -17,6 +17,7 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.transaction.VersionBump
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -59,6 +60,8 @@ class MemoryOnlyDataStore(
   }
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = Future.successful(())
+  
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = Future.successful(())
   
   /** Reads an object on the store */
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = synchronized {
@@ -149,6 +152,9 @@ class MemoryOnlyDataStore(
             
           case ru: RefcountUpdate =>
             obj.refcount = ru.newRefcount
+            
+          case vb: VersionBump => 
+            obj.revision = obj.revision.versionBump()
         }
       }
     }

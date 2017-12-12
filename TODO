@@ -1,10 +1,7 @@
 
-* Add AllocRecoveryProcess impl
-  * Takes system, transaction messenger, and AllocRecoveryState as args
+* Test Error handling logic
   
-  * Forward TxStatusReply messages to alloc manager, to recovery process
-  
-  
+
 * Add HLC impl (should be easy)
   * Case-classes with simple mixing in TransactionBuilder
   * May require adding timestamp to object store
@@ -20,7 +17,7 @@ Error Handling:
            
    * [DONE] Read Driver
    
-   * Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
+   * [DONE] Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
                   allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
                   
        * Added Status Request / Reply support

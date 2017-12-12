@@ -45,14 +45,6 @@ table ObjectPointer {
   ida: IDA;
 }
 
-table ObjectStatus {
-  objectUUID: UUID;
-  revision: ObjectRevision;
-  refcount: ObjectRefcount;
-  lastCommittedTransaction: UUID;
-  lockedTransaction: TransactionDescription;
-}
-
 //---------------------------------------------------------------------------
 //- Transaction Description
 //---------------------------------------------------------------------------
@@ -101,9 +93,15 @@ table RefcountUpdate {
   new_refcount: ObjectRefcount;
 }
 
+table VersionBump {
+  object_pointer: ObjectPointer;
+  required_revision: ObjectRevision;
+}
+
 table TransactionRequirement {
   data_update: DataUpdate;
   refcount_update: RefcountUpdate;
+  version_bump: VersionBump;
 }
 
 table SerializedFinalizationAction {
@@ -200,25 +198,40 @@ table TxFinalized {
   committed: bool;
 }
 
-table TxStatusRequest {
-   to: DataStoreID;
-   from: DataStoreID;
-   txd: TransactionDescription;
-}
-
-table TxStatusReply {
-   to: DataStoreID;
-   from: DataStoreID;
-   transaction_uuid: UUID;
-   known: byte; // 1 if transaction is known. 0 if not
-   status: TransactionStatus;
-   objects: [ObjectStatus];
-}
-
 table TxHeartbeat {
    to: DataStoreID;
    from: DataStoreID;
    transaction_uuid: UUID;
+}
+
+//---------------------------------------------------------------------------
+//- Read Messages
+//---------------------------------------------------------------------------
+enum ReadError:byte
+{ 
+    ObjectMismatch,    
+    InvalidLocalPointer,
+    CorruptedObject,
+    UnexpectedInternalError
+}
+
+table Read {
+   toStore: DataStoreID;
+   fromClient: [byte];
+   readUUID: UUID;
+   objectPointer: ObjectPointer;
+   returnObjectData: bool;
+   returnLockedTransaction: bool;
+}
+
+table ReadResponse {
+  fromStore: DataStoreID;
+  readUUID: UUID;
+  revision: ObjectRevision;
+  refcount: ObjectRefcount;
+  objectData: [byte];
+  lockedTransaction: TransactionDescription;
+  readError: ReadError;
 }
 
 //---------------------------------------------------------------------------
@@ -256,35 +269,31 @@ table AllocateResponse {
   resultError: AllocationError;
 }
 
-//---------------------------------------------------------------------------
-//- Read Messages
-//---------------------------------------------------------------------------
-enum ReadError:byte
-{ 
-    ObjectMismatch,    
-    InvalidLocalPointer,
-    CorruptedObject,
-    UnexpectedInternalError
+table AllocationStatusRequest {
+   to: DataStoreID;
+   from: DataStoreID;
+   primaryObject: ObjectPointer;
+   allocationTransactionUUID: UUID;
 }
 
-table Read {
-   toStore: DataStoreID;
-   fromClient: [byte];
-   readUUID: UUID;
-   objectPointer: ObjectPointer;
-   returnObjectData: bool;
-   returnLockedTransaction: bool;
+table AllocationStatusReply {
+   to: DataStoreID;
+   from: DataStoreID;
+   allocation_transaction_uuid: UUID;
+   known: byte; // 1 if transaction is known. 0 if not
+   transactionStatus: TransactionStatus;
+   objectStatus: AllocationObjectStatus;
 }
 
-table ReadResponse {
-  fromStore: DataStoreID;
-  readUUID: UUID;
+table AllocationObjectStatus {
+  objectUUID: UUID;
+  readError: ReadError;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
-  objectData: [byte];
+  lastCommittedTransaction: UUID;
   lockedTransaction: TransactionDescription;
-  readError: ReadError;
 }
+
 
 //---------------------------------------------------------------------------
 //- Root Message

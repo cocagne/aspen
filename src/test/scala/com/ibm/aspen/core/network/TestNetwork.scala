@@ -24,6 +24,8 @@ import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.allocation.AllocationStatusRequest
+import com.ibm.aspen.core.allocation.AllocationStatusReply
 
 
 class TestNetwork {
@@ -73,10 +75,13 @@ class TestNetwork {
     
     def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = get(message.to).foreach(sn => sn.t.foreach(t => t.receive(message, updateContent)))
     
-    def send(client: ClientID, message: allocation.Message): Unit = message match {
+    def send(client: ClientID, message: allocation.ClientMessage): Unit = message match {
       case m: allocation.Allocate => get(m.toStore).foreach(sn => sn.a.foreach(a => a.receive(m)))
       case m: allocation.AllocateResponse => get(client).foreach(c => c.a.foreach(a => a.receive(m)))
     }
+    
+    def send(message: AllocationStatusRequest): Unit = get(message.to).foreach(sn => sn.a.foreach(a => a.receive(message)))
+    def send(message: AllocationStatusReply): Unit = get(message.to).foreach(sn => sn.a.foreach(a => a.receive(message)))
     
     def send(client: ClientID, message: read.ReadResponse, data:Option[DataBuffer]): Unit = get(client).foreach(c => c.r.foreach(r => r.receive(message)))
   }

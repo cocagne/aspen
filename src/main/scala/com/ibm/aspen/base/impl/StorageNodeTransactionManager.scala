@@ -25,9 +25,10 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.core.transaction.TxStatusRequest
-import com.ibm.aspen.core.transaction.TxStatusReply
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.allocation.AllocationObjectStatus
+import com.ibm.aspen.core.read.ReadError
+import com.ibm.aspen.core.transaction.TransactionStatus
 
 
 class StorageNodeTransactionManager(
@@ -77,6 +78,14 @@ class StorageNodeTransactionManager(
   
   def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
     getStore(message.to).foreach(ss => ss.receive(message, updateContent))
+  }
+  
+  def getTransactionStatus(storeId: DataStoreID, txUUID: UUID): Option[TransactionStatus.Value] = {
+    getStore(storeId) flatMap { store =>
+      store.getTransaction(txUUID).map { t =>
+        t.getTransactionStatus()
+      }
+    }
   }
   
   protected class StoreState(val store: DataStore, txRecoveryState: List[TransactionRecoveryState]) {
@@ -176,10 +185,6 @@ class StorageNodeTransactionManager(
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxFinalized(m) )
           
         case m: TxHeartbeat => getTransaction(m.transactionUUID).foreach( _.heartbeatReceived() )
-        
-        case m: TxStatusRequest => // TODO
-          
-        case m: TxStatusReply => // TODO
       }
     }
   }

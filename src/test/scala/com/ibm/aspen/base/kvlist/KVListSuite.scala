@@ -63,6 +63,8 @@ object KVListSuite {
       requiredRevision.overwrite(data.size)
     }
     
+    def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
+    
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = throw new Exception("Should not be used")
     
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason

@@ -23,6 +23,8 @@ class KVListNode(
   
   def minimum = nodePointer.minimum
   
+  def refresh()(implicit ec: ExecutionContext) : Future[KVListNode] = list.refreshNode(this) 
+  
   def fetchRightNode()(implicit ec: ExecutionContext): Future[Option[KVListNode]] = rightNode match {
     case None => Future.successful(None)
     case Some(rptr) => list.fetchNode(rptr) map (Some(_))

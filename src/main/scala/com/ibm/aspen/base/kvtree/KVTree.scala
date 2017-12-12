@@ -114,6 +114,32 @@ class KVTree(
     tpl => tpl._2.content.get(key)
   }
   
+  def uncachedGet(key: Array[Byte])(implicit ec: ExecutionContext): Future[Option[Array[Byte]]] = {
+    val promise = Promise[Option[Array[Byte]]]()
+    
+    def findNode(): Unit = {
+      fetchContainingNode(key) onComplete {
+        case Failure(cause) => promise.failure(cause)
+        case Success((tier, staleNode)) =>
+                
+          // The process of refreshing a node ensures that it's previously cached value is expired. If we're terribly
+          // out of date, several recursive expirations may be required
+          staleNode.refresh() onComplete {
+            case Failure(cause) => promise.failure(cause)
+            case Success(freshNode) =>
+              if (!freshNode.keyWithinRange(key))
+                findNode()
+              else
+                promise.success(freshNode.content.get(key))
+          }
+      }
+    }
+    
+    findNode()
+
+    promise.future
+  }
+  
   /* Future completes when the transaction is ready to commit */
   def put(key: Array[Byte], value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = {
     val pcommitReady = Promise[Unit]()

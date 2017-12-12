@@ -176,6 +176,8 @@ object MockSystem {
       requiredRevision.overwrite(data.size)
     }
     
+    def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
+    
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
       ops = SetRef(objectPointer, requiredRefcount, refcount) :: ops
       refcount

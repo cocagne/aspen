@@ -62,6 +62,8 @@ class Transaction(
   
   def heartbeatReceived(): Unit = updateTimestamp()
   
+  def getTransactionStatus(): TransactionStatus.Value = synchronized { transactionStatus }
+  
   def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
     
     updateTimestamp()

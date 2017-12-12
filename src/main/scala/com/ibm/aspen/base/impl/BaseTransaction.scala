@@ -46,6 +46,12 @@ class BaseTransaction(
     case Some(bldr) => bldr.setRefcount(objectPointer, requiredRefcount, refcount)
     case None => throw PostCommitTransactionModification()
   }
+  
+  def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized { builder } match {
+    case Some(bldr) => bldr.bumpVersion(objectPointer, requiredRevision)
+    case None => throw PostCommitTransactionModification()
+  }
+  
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized { builder } match {
     case Some(bldr) => bldr.addFinalizationAction(finalizationActionUUID, serializedContent)
     case None => throw PostCommitTransactionModification()

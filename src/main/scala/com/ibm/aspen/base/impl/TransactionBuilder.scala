@@ -17,6 +17,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.transaction.VersionBump
 
 class TransactionBuilder(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
@@ -90,6 +91,15 @@ class TransactionBuilder(
     requirements  = RefcountUpdate(objectPointer, requiredRefcount, refcount) :: requirements
     
     refcount
+  }
+  
+  def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized {
+    if (objectUpdates.contains(objectPointer))
+      throw MultipleDataUpdatesToObject(objectPointer)
+    
+    requirements = VersionBump(objectPointer, requiredRevision) :: requirements
+    
+    requiredRevision.versionBump()
   }
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {

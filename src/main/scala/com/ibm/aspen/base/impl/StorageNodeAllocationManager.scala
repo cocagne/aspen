@@ -16,6 +16,11 @@ import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 import com.ibm.aspen.core.transaction.TxHeartbeat
+import com.ibm.aspen.core.transaction.TransactionStatus
+import com.ibm.aspen.core.allocation.AllocationStatusRequest
+import com.ibm.aspen.core.allocation.AllocationStatusReply
+import com.ibm.aspen.core.allocation.AllocationObjectStatus
+import com.ibm.aspen.core.read.ReadError
 
 object StorageNodeAllocationManager {
   case class Key(storeId: DataStoreID, transactionUUID: UUID)
@@ -30,7 +35,7 @@ object StorageNodeAllocationManager {
 class StorageNodeAllocationManager(
     val crl: CrashRecoveryLog, 
     val allocationMessenger: StoreSideAllocationMessenger)
-  (implicit ec: ExecutionContext) extends StoreSideAllocationMessageReceiver {
+  (implicit ec: ExecutionContext) {
   
   import StorageNodeAllocationManager._
   
@@ -77,6 +82,7 @@ class StorageNodeAllocationManager(
   }
   
   def receive(resolved: TxResolved): Unit = stopTracking(resolved.to, resolved.transactionUUID, resolved.committed) 
+  
   def receive(finalized: TxFinalized): Unit = stopTracking(finalized.to, finalized.transactionUUID, finalized.committed)
   
   def receive(m: Allocate): Unit = getStore(m.toStore).foreach{ store => {
@@ -100,5 +106,20 @@ class StorageNodeAllocationManager(
             }
         }
       }
-    }}
+    }
+  }
+  
+  def receive(message: AllocationStatusRequest, txStatus: Option[TransactionStatus.Value]): Unit = getStore(message.to) foreach { store =>
+    store.getObject(message.primaryObject) foreach { os => 
+      val state = os match {
+        case Left(err) => Left(ReadError(err))
+        case Right((s, data)) => Right(AllocationObjectStatus.State(s.revision, s.refcount, s.lastCommittedTxUUID, s.lockedTransaction))
+      }
+      allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, txStatus, 
+                                           AllocationObjectStatus(message.primaryObject.uuid, state))) 
+    }
+  }
+  
+  // Leave this to a subclass
+  def receive(message: AllocationStatusReply): Unit = {}
 }

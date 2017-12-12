@@ -38,6 +38,9 @@ import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.network.StoreSideNetwork
+import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
+import com.ibm.aspen.core.allocation.AllocationStatusRequest
+import com.ibm.aspen.core.allocation.AllocationStatusReply
 
 /** Represents a storage node that hosts multiple DataStore instances.
  *  
@@ -49,7 +52,7 @@ import com.ibm.aspen.core.network.StoreSideNetwork
 class StorageNode(
     val crl: CrashRecoveryLog,
     val net: StoreSideNetwork,
-    )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
+    )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideAllocationMessageReceiver {
   
   val readManager = new StorageNodeReadManager(net.readHandler)
   
@@ -73,11 +76,10 @@ class StorageNode(
       
       recoveredOption = Some(r)
       
-      // Need to intercept transaction messages in order to forward some on to the allocation manager so
-      // we'll set ourself as the receiver
+      // Need to intercept transaction & allocation messages in order to handle some cross-manager functionality.
+      // We'll forward the messages as appropriate
       net.transactionHandler.setReceiver(this)
-      
-      net.allocationHandler.setReceiver(r.allocationManager)
+      net.allocationHandler.setReceiver(this)
     
       readManager.hostedStores.foreach { store =>
         r.transactionManager.addStore(store)
@@ -91,8 +93,16 @@ class StorageNode(
     case None => true
     case Some(r) => r.transactionManager.allTransactionsComplete
   }
+  
+  override def receive(message: Allocate): Unit = recovered.foreach(r => r.allocationManager.receive(message))
+  
+  override def receive(message: AllocationStatusRequest): Unit = recovered.foreach { r =>
+    val status = r.transactionManager.getTransactionStatus(message.to, message.allocationTransactionUUID)
+    r.allocationManager.receive(message, status)
+  }
+  override def receive(message: AllocationStatusReply): Unit = recovered.foreach(r => r.allocationManager.receive(message))
     
-  def receive(message: TransactionMessage, updateContent: Option[List[LocalUpdate]]): Unit = recovered.foreach { r =>
+  override def receive(message: TransactionMessage, updateContent: Option[List[LocalUpdate]]): Unit = recovered.foreach { r =>
     message match {
       case m: TxResolved => r.allocationManager.receive(m)
       case m: TxFinalized => r.allocationManager.receive(m)

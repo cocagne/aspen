@@ -16,13 +16,29 @@ trait KVList {
   
   def dropCachedNode(node: KVListNode): Unit = ()
   
+  def refreshNode(n: KVListNode)(implicit ec: ExecutionContext): Future[KVListNode] = {
+
+    val f = fetchNodeObject(n.nodePointer.objectPointer) map {
+      osd => KVListNode(this, n.nodePointer, osd)
+    }
+    
+    f foreach { node => updateCachedNode(node) }
+    
+    f
+  }
+  
   def fetchNode(p: KVListNodePointer)(implicit ec: ExecutionContext): Future[KVListNode] = {
       fetchCachedNode(p.objectPointer) match {
         case Some(n) => Future.successful(n)
         
-        case None => fetchNodeObject(p.objectPointer) map {
-          osd => KVListNode(this, p, osd)
-        }
+        case None => 
+          val f = fetchNodeObject(p.objectPointer) map {
+            osd => KVListNode(this, p, osd)
+          }
+          
+          f foreach { node => updateCachedNode(node) }
+          
+          f
       }
   }
   

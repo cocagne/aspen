@@ -39,10 +39,11 @@ import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.transaction.ObjectStatus
-import com.ibm.aspen.core.transaction.TxStatusRequest
-import com.ibm.aspen.core.transaction.TxStatusReply
+import com.ibm.aspen.core.allocation.AllocationObjectStatus
 import com.ibm.aspen.core.transaction.TxHeartbeat
+import com.ibm.aspen.core.allocation.AllocationStatusRequest
+import com.ibm.aspen.core.allocation.AllocationStatusReply
+import com.ibm.aspen.core.transaction.VersionBump
 
 
 
@@ -150,30 +151,44 @@ object NetworkCodec {
   def byteArrayToObjectPointer(arr: Array[Byte]): ObjectPointer = byteBufferToObjectPointer(ByteBuffer.wrap(arr))
   
   
-  def encode(builder:FlatBufferBuilder, o:ObjectStatus): Int = {
-    val lockedTransactionOffset = o.lockedTransaction match {
-      case None => -1
-      case Some(txd) => encode(builder, txd)
+  def encode(builder:FlatBufferBuilder, o:AllocationObjectStatus): Int = {
+    val lockedTransactionOffset = o.state match {
+      case Left(_) => -1
+      case Right(state) => state.lockedTransaction match {
+        case None => -1
+        case Some(txd) => encode(builder, txd)
+      }
     }
     
-    P.ObjectStatus.startObjectStatus(builder)
-    P.ObjectStatus.addObjectUUID(builder, encode(builder, o.uuid))
-    P.ObjectStatus.addRevision(builder, encode(builder, o.revision))
-    P.ObjectStatus.addRefcount(builder, encode(builder, o.refcount))
-    P.ObjectStatus.addLastCommittedTransaction(builder, encode(builder, o.lastCommittedTransaction))
-    o.lockedTransaction.foreach { _ =>
-      P.ObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
+    P.AllocationObjectStatus.startAllocationObjectStatus(builder)
+    P.AllocationObjectStatus.addObjectUUID(builder, encode(builder, o.uuid))
+    o.state match {
+      case Right(state) =>
+        P.AllocationObjectStatus.addRevision(builder, encode(builder, state.revision))
+        P.AllocationObjectStatus.addRefcount(builder, encode(builder, state.refcount))
+        P.AllocationObjectStatus.addLastCommittedTransaction(builder, encode(builder, state.lastCommittedTransaction))
+        state.lockedTransaction.foreach { _ =>
+          P.AllocationObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
+        }
+      case Left(err) =>
+        P.AllocationObjectStatus.addReadError(builder, encodeReadError(err))
+        
     }
-    P.ObjectStatus.endObjectStatus(builder)
+    P.AllocationObjectStatus.endAllocationObjectStatus(builder)
   }
-  def decode(n: P.ObjectStatus): ObjectStatus = {
+  def decode(n: P.AllocationObjectStatus): AllocationObjectStatus = {
     val objUUID = decode(n.objectUUID())
-    val rev = decode(n.revision())
-    val ref = decode(n.refcount())
-    val lastTx = decode(n.lastCommittedTransaction())
-    val lock = if ( n.lockedTransaction() == null ) None else Some(decode(n.lockedTransaction()))
     
-    ObjectStatus(objUUID, rev, ref, lastTx, lock)
+    if (n.revision() != null) {
+      val rev = decode(n.revision())
+      val ref = decode(n.refcount())
+      val lastTx = decode(n.lastCommittedTransaction())
+      val lock = if ( n.lockedTransaction() == null ) None else Some(decode(n.lockedTransaction()))
+    
+      AllocationObjectStatus(objUUID, Right(AllocationObjectStatus.State(rev, ref, lastTx, lock)))
+    } else {
+      AllocationObjectStatus(objUUID, Left(decodeReadError(n.readError()))) 
+    }
   }
   
   //-----------------------------------------------------------------------------------------------
@@ -295,16 +310,34 @@ object NetworkCodec {
   }
   
   
+  def encode(builder:FlatBufferBuilder, o:VersionBump): Int = {
+    val optr = encode(builder, o.objectPointer)
+    
+    P.VersionBump.startVersionBump(builder)
+    P.VersionBump.addObjectPointer(builder,optr)
+    P.VersionBump.addRequiredRevision(builder, encode(builder, o.requiredRevision))
+    P.VersionBump.endVersionBump(builder)
+  }
+  def decode(n: P.VersionBump): VersionBump = {
+    val optr =  decode(n.objectPointer())
+    val rrev = decode(n.requiredRevision())
+    
+    VersionBump(optr, rrev)
+  }
+  
+  
   def encode(builder:FlatBufferBuilder, o:TransactionRequirement): Int = {
     val offset = o match {
       case du: DataUpdate => encode(builder, du)
       case ru: RefcountUpdate => encode(builder, ru)
+      case vb: VersionBump => encode(builder, vb)
     }
     
     P.TransactionRequirement.startTransactionRequirement(builder)
     o match {
       case _: DataUpdate => P.TransactionRequirement.addDataUpdate(builder, offset)
       case _: RefcountUpdate => P.TransactionRequirement.addRefcountUpdate(builder, offset)
+      case _: VersionBump => P.TransactionRequirement.addVersionBump(builder, offset)
     }
     P.TransactionRequirement.endTransactionRequirement(builder)
   }
@@ -630,56 +663,6 @@ object NetworkCodec {
     TxFinalized(to, from, transactionUUID, n.committed())
   }
   
-  def encode(builder:FlatBufferBuilder, o:TxStatusRequest): Int = {
-    val to = encode(builder, o.to)
-    val from = encode(builder, o.from)
-    val txd = encode(builder, o.txd)
-    
-    P.TxStatusRequest.startTxStatusRequest(builder)
-    P.TxStatusRequest.addTo(builder, to)
-    P.TxStatusRequest.addFrom(builder, from)
-    P.TxStatusRequest.addTxd(builder, txd)
-    P.TxStatusRequest.endTxStatusRequest(builder)
-  }
-  def decode(n: P.TxStatusRequest): TxStatusRequest = {
-    val to = decode(n.to())
-    val from = decode(n.from())
-    val txd = decode(n.txd())
-    
-    TxStatusRequest(to, from, txd)
-  }
-  
-  def encode(builder:FlatBufferBuilder, o:TxStatusReply): Int = {
-    val to = encode(builder, o.to)
-    val from = encode(builder, o.from)
-    
-    val objects = P.TxStatusReply.createObjectsVector(builder, o.objects.map(obj => encode(builder, obj)).toArray)
-    
-    P.TxStatusReply.startTxStatusReply(builder)
-    P.TxStatusReply.addTo(builder, to)
-    P.TxStatusReply.addFrom(builder, from)
-    P.TxStatusReply.addTransactionUuid(builder, encode(builder, o.transactionUUID))
-    o.status.foreach { status =>
-      P.TxStatusReply.addKnown(builder, 1)
-      P.TxStatusReply.addStatus(builder, encodeTransactionStatus(status))  
-    }
-    P.TxStatusReply.addObjects(builder, objects)
-    P.TxStatusReply.endTxStatusReply(builder)
-  }
-  def decode(n: P.TxStatusReply): TxStatusReply = {
-    val to = decode(n.to())
-    val from = decode(n.from())
-    val txUUID = decode(n.transactionUuid())
-    val status = if (n.known() == 0) None else Some(decodeTransactionStatus(n.status()))
-    
-    def objects(idx: Int, l:List[ObjectStatus]): List[ObjectStatus] = if (idx == -1) 
-        l
-      else 
-        objects(idx-1, decode(n.objects(idx)) :: l)
-        
-    TxStatusReply(to, from, txUUID, status, objects(n.objectsLength()-1, Nil))
-  }
-  
   def encode(builder:FlatBufferBuilder, o:TxHeartbeat): Int = {
     val to = encode(builder, o.to)
     val from = encode(builder, o.from)
@@ -807,6 +790,53 @@ object NetworkCodec {
     AllocateResponse(fromStoreId, allocationTransactionUUID, result)
   }
   
+  def encode(builder:FlatBufferBuilder, o:AllocationStatusRequest): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    val priPtr = encode(builder, o.primaryObject)
+    
+    P.AllocationStatusRequest.startAllocationStatusRequest(builder)
+    P.AllocationStatusRequest.addTo(builder, to)
+    P.AllocationStatusRequest.addFrom(builder, from)
+    P.AllocationStatusRequest.addPrimaryObject(builder, priPtr)
+    P.AllocationStatusRequest.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
+    P.AllocationStatusRequest.endAllocationStatusRequest(builder)
+  }
+  def decode(n: P.AllocationStatusRequest): AllocationStatusRequest = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val priPtr = decode(n.primaryObject())
+    val txUUID = decode(n.allocationTransactionUUID())
+    
+    AllocationStatusRequest(to, from, priPtr, txUUID)
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:AllocationStatusReply): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    val objectStatus = encode(builder, o.objectStatus)
+    
+    P.AllocationStatusReply.startAllocationStatusReply(builder)
+    P.AllocationStatusReply.addTo(builder, to)
+    P.AllocationStatusReply.addFrom(builder, from)
+    P.AllocationStatusReply.addAllocationTransactionUuid(builder, encode(builder, o.allocationTransactionUUID))
+    o.transactionStatus.foreach { status =>
+      P.AllocationStatusReply.addKnown(builder, 1)
+      P.AllocationStatusReply.addTransactionStatus(builder, encodeTransactionStatus(status))  
+    }
+    P.AllocationStatusReply.addObjectStatus(builder, objectStatus)
+    P.AllocationStatusReply.endAllocationStatusReply(builder)
+  }
+  def decode(n: P.AllocationStatusReply): AllocationStatusReply = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val txUUID = decode(n.allocationTransactionUuid())
+    val transactionStatus = if (n.known() == 0) None else Some(decodeTransactionStatus(n.transactionStatus()))
+    val objectStatus = decode(n.objectStatus())
+        
+    AllocationStatusReply(to, from, txUUID, transactionStatus, objectStatus)
+  }
+  
   //-----------------------------------------------------------------------------------------------
   // Read Messages
   //-----------------------------------------------------------------------------------------------
@@ -836,6 +866,19 @@ object NetworkCodec {
     Read(toStore, ClientID(fromClient), readUUID, objectPointer, returnObjectData, returnLockedTransaction)
   }
   
+  def encodeReadError(err: ReadError.Value): Byte = err match {
+    case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
+    case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
+    case ReadError.CorruptedObject => P.ReadError.CorruptedObject
+    case ReadError.UnexpectedInternalError => P.ReadError.UnexpectedInternalError
+  }
+  def decodeReadError(err: Byte): ReadError.Value = err match {
+    case P.ReadError.ObjectMismatch => ReadError.ObjectMismatch
+    case P.ReadError.InvalidLocalPointer => ReadError.InvalidLocalPointer
+    case P.ReadError.CorruptedObject => ReadError.CorruptedObject
+    case P.ReadError.UnexpectedInternalError => ReadError.UnexpectedInternalError
+  }
+  
   def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {
     val fromStore = encode(builder, o.fromStore)
     
@@ -860,13 +903,8 @@ object NetworkCodec {
     P.ReadResponse.addReadUUID(builder, encode(builder, o.readUUID))
     o.result match {
       case Left(err) => 
-        val readError = err match {
-          case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
-          case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
-          case ReadError.CorruptedObject => P.ReadError.CorruptedObject
-          case ReadError.UnexpectedInternalError => P.ReadError.UnexpectedInternalError
-        }
-        P.ReadResponse.addReadError(builder, readError)
+        P.ReadResponse.addReadError(builder, encodeReadError(err))
+        
       case Right(cs) =>
         P.ReadResponse.addRevision(builder, encode(builder, cs.revision))
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
@@ -879,12 +917,7 @@ object NetworkCodec {
     val fromStore = decode(n.fromStore())
     val readUUID = decode(n.readUUID())
     val result = if (n.revision() == null) {
-      n.readError() match {
-        case P.ReadError.ObjectMismatch => Left(ReadError.ObjectMismatch)
-        case P.ReadError.InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
-        case P.ReadError.CorruptedObject => Left(ReadError.CorruptedObject)
-        case P.ReadError.UnexpectedInternalError => Left(ReadError.UnexpectedInternalError)
-      }
+      Left(decodeReadError(n.readError()))
     } else {
       val revision = decode(n.revision())
       val refcount = decode(n.refcount())

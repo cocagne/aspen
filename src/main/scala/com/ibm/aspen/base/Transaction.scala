@@ -22,6 +22,9 @@ trait Transaction {
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = append(objectPointer, requiredRevision, DataBuffer(data))
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = overwrite(objectPointer, requiredRevision, DataBuffer(data))
   
+  /** Increments the overwrite count on the object revision by 1 but leaves the object data untouched */
+  def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision
+  
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
   
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit

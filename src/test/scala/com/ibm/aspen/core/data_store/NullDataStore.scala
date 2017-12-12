@@ -36,6 +36,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = Future.successful(())
   
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = Future.successful(())
+  
   def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
     Future.successful(Left(new InvalidLocalPointer))
   }

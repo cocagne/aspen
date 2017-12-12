@@ -9,8 +9,12 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.transaction.TransactionStatus
 
 sealed abstract class Message
+
+abstract class ClientMessage extends Message
+abstract class StoreMessage extends Message
 
 object Allocate {
   case class NewObject(
@@ -34,7 +38,7 @@ final case class Allocate(
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,
     allocatingObjectRevision: ObjectRevision
-    ) extends Message {
+    ) extends ClientMessage {
   
   override def equals(other: Any): Boolean = other match {
     case rhs: Allocate => toStore == rhs.toStore && fromClient == rhs.fromClient && 
@@ -51,5 +55,19 @@ object AllocateResponse {
 final case class AllocateResponse(
     fromStoreId: DataStoreID,
     allocationTransactionUUID: UUID,
-    result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) extends Message
+    result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) extends ClientMessage
+    
+final case class AllocationStatusRequest(
+    to: DataStoreID,
+    from: DataStoreID,
+    primaryObject: ObjectPointer,
+    allocationTransactionUUID: UUID) extends StoreMessage
+    
+final case class AllocationStatusReply(
+    to: DataStoreID,
+    from: DataStoreID,
+    allocationTransactionUUID: UUID,
+    transactionStatus: Option[TransactionStatus.Value], // If None, the transaction is unknown
+    objectStatus: AllocationObjectStatus
+    ) extends StoreMessage
     

@@ -152,6 +152,14 @@ class BasicAspenSystem(
     pool <- getStoragePool(poolPtr)
   } yield pool
   
+  def getStoragePoolAllocationTree(poolUUID: UUID, retryStrategy: RetryStrategy): Future[KVTree] = for {
+    pool <- getStoragePool(poolUUID)
+    allocTreePtr <- pool.getAllocationTreeDefinitionPointer(retryStrategy)
+    allocTree <- systemTreeFactory.createTree(allocTreePtr)
+  } yield {
+    allocTree
+  }
+  
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
   }

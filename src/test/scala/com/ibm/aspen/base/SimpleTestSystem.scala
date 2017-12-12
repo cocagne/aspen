@@ -117,6 +117,16 @@ class SimpleTestSystem extends AspenSystem {
       refcount
     }
     
+    def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = {
+      def fn() = {
+        val o = content(objectPointer.uuid) 
+        o.rev = requiredRevision.versionBump()
+        ()
+      }
+      ops = fn _ :: ops
+      requiredRevision.versionBump()
+    }
+    
     def invalidateTransaction(reason: Throwable): Unit = invalidatedReason = Some(reason)
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = fas += (finalizationActionUUID -> serializedContent)

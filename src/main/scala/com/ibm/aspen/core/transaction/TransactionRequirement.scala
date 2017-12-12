@@ -17,3 +17,7 @@ case class RefcountUpdate(
     objectPointer: ObjectPointer, 
     requiredRefcount: ObjectRefcount, 
     newRefcount: ObjectRefcount) extends TransactionRequirement
+    
+case class VersionBump(
+    objectPointer: ObjectPointer, 
+    requiredRevision: ObjectRevision) extends TransactionRequirement
