@@ -53,6 +53,7 @@ import com.ibm.aspen.core.network.ClientSideNetwork
 import com.ibm.aspen.core.network.ClientSideTransactionHandler
 import com.ibm.aspen.core.network.ClientSideReadHandler
 import com.ibm.aspen.core.network.ClientSideAllocationHandler
+import com.ibm.aspen.core.HLCTimestamp
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -71,31 +72,31 @@ object MockSystem {
     
     def read(ptr: ObjectPointer): Option[ObjectStateAndData] = synchronized { objects.get(ptr.uuid) }
     
-    def allocate(newObjectUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer): ObjectStateAndData = synchronized {
+    def allocate(newObjectUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer, timestamp: HLCTimestamp): ObjectStateAndData = synchronized {
       val cpy = ByteBuffer.allocate(initialContent.size)
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
       val rev = ObjectRevision(0, initialContent.size)
       val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
-      val osd = ObjectStateAndData(ptr, rev, initialRefcount, DataBuffer(cpy))
+      val osd = ObjectStateAndData(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
       osd
     }
     
-    def txUpdate( ops: List[ObjectOp] ): Unit = synchronized {
+    def txUpdate( ops: List[ObjectOp], timestamp: HLCTimestamp ): Unit = synchronized {
       ops.foreach( op => op match {
         case a:Append => if (a.requiredRevision != objects(a.ptr.uuid).revision) throw new RevisionMismatch
         case o:Overwrite => if (o.requiredRevision != objects(o.ptr.uuid).revision) throw new RevisionMismatch
         case r:SetRef => if (r.requiredRefcount != objects(r.ptr.uuid).refcount) throw new RefcountMismatch
       })
       ops.foreach( op => op match {
-        case a:Append => append(a.ptr, a.buf)
-        case o:Overwrite => overwrite(o.ptr, o.buf)
+        case a:Append => append(a.ptr, a.buf, timestamp)
+        case o:Overwrite => overwrite(o.ptr, o.buf, timestamp)
         case r:SetRef => setref(r.ptr, r.newRefcount)
       })
     }
     
-    private def append(ptr: ObjectPointer, buf: DataBuffer): Unit = {
+    private def append(ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit = {
       val orig = objects(ptr.uuid)
       
       val newSize = orig.data.size + buf.size
@@ -105,10 +106,10 @@ object MockSystem {
       newData.position(0)
       val newRev = orig.revision.append(buf.size)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, DataBuffer(newData)))
+      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
     
-    def overwrite(ptr: ObjectPointer, buf: DataBuffer): Unit =  {
+    def overwrite(ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit =  {
       val orig = objects(ptr.uuid)
         
       val newData = ByteBuffer.allocate(buf.size)
@@ -116,12 +117,12 @@ object MockSystem {
       newData.position(0)
       val newRev = orig.revision.overwrite(buf.size)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, DataBuffer(newData)))
+      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
     
     private def setref(ptr:ObjectPointer, newRef: ObjectRefcount): Unit = {
       val orig = objects(ptr.uuid)
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, orig.revision, newRef, orig.data))
+      objects += (ptr.uuid -> ObjectStateAndData(ptr, orig.revision, newRef, orig.timestamp, orig.data))
     }
   }
   
@@ -130,7 +131,7 @@ object MockSystem {
     def readResult: Future[Either[ReadError, ObjectState]] = {
       val e: Either[ReadError, ObjectState] = storage.read(pointer) match {
           case None => Left(new InvalidObject)
-          case Some(osd) => Right(ObjectState(pointer, osd.revision, osd.refcount, Some(osd.data), None))
+          case Some(osd) => Right(ObjectState(pointer, osd.revision, osd.refcount, osd.timestamp, Some(osd.data), None))
         }
       Future.successful(e)
     } 
@@ -183,6 +184,10 @@ object MockSystem {
       refcount
     }
     
+    def ensureHappensAfter(timestamp: HLCTimestamp): Unit = ()
+    
+    def timestamp(): HLCTimestamp = HLCTimestamp.now
+    
     def invalidateTransaction(reason: Throwable): Unit = synchronized { invalidatedReason = Some(reason) }
     
     def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {
@@ -196,7 +201,7 @@ object MockSystem {
         invalidatedReason match {
           case None =>
             try {
-              storage.txUpdate(ops)
+              storage.txUpdate(ops, HLCTimestamp.now)
               runFinalizationActions(finalizationActions)
               p.success(())
             } catch {
@@ -213,9 +218,10 @@ object MockSystem {
       val store: StorageSystem,
       val newObjectUUID: UUID,
       val objectData: Map[Byte,DataBuffer],
+      val timestamp: HLCTimestamp,
       val initialRefcount: ObjectRefcount) extends AllocationDriver {
     
-    val objectPointer = store.allocate(newObjectUUID, initialRefcount, objectData.head._2).pointer
+    val objectPointer = store.allocate(newObjectUUID, initialRefcount, objectData.head._2, timestamp).pointer
     
     def futureResult: Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]] = Future.successful(Right(objectPointer))
     
@@ -235,10 +241,11 @@ object MockSystem {
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): AllocationDriver = new AllocDriver(store, newObjectUUID, objectData, initialRefcount)
+               allocatingObjectRevision: ObjectRevision): AllocationDriver = new AllocDriver(store, newObjectUUID, objectData, timestamp, initialRefcount)
   
   }
   
@@ -284,12 +291,12 @@ class MockSystem(val treeNodeSize:Int=1000) {
   
   // Bootstrap the system by creating the StoragePoolDefinition for Bootstrapping Pool & StoragePoolTreeDefinition
   
-  def allocate(content: DataBuffer): Future[ObjectPointer] = {
-    Future.successful(storage.allocate(UUID.randomUUID(), ObjectRefcount(0,1), content).pointer)
+  def allocate(content: DataBuffer, timestamp:HLCTimestamp): Future[ObjectPointer] = {
+    Future.successful(storage.allocate(UUID.randomUUID(), ObjectRefcount(0,1), content, timestamp).pointer)
   }
   
-  def overwrite(ptr: ObjectPointer, arr: Array[Byte]): Future[Unit] = {
-    Future.successful(storage.overwrite(ptr, DataBuffer(arr)))
+  def overwrite(ptr: ObjectPointer, arr: Array[Byte], timestamp: HLCTimestamp): Future[Unit] = {
+    Future.successful(storage.overwrite(ptr, DataBuffer(arr), timestamp))
   }
   
   var txNumber = 0

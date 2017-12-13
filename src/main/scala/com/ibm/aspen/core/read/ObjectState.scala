@@ -7,10 +7,12 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.DataStoreID
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 case class ObjectState(
     objectPointer: ObjectPointer,
     revision: ObjectRevision,
     refcount: ObjectRefcount,
+    timestamp: HLCTimestamp,
     data: Option[DataBuffer],
     locks: Option[List[(DataStoreID,TransactionDescription)]])

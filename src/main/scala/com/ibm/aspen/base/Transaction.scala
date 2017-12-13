@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.HLCTimestamp
 
 trait Transaction {
   
@@ -24,6 +25,11 @@ trait Transaction {
   
   /** Increments the overwrite count on the object revision by 1 but leaves the object data untouched */
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision
+  
+  def ensureHappensAfter(timestamp: HLCTimestamp): Unit
+  
+  /** Note, the result of this call changes depending on when it is called and what ensureHappensAfter() calls have been made */
+  def timestamp(): HLCTimestamp
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
   

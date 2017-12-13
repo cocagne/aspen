@@ -13,6 +13,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -62,22 +63,25 @@ class BaseReadDriver(
       
     val zv = ObjectRevision(0,0)
     val zr = ObjectRefcount(0,0)
+    val zt = HLCTimestamp(0)
     val zl = List[(DataStoreID, TransactionDescription)]()
     
-    val (highestRevision, highestRefcount, lockedTransactions) = responses.foldLeft((zv,zr,zl))( (h, t) => t._2 match {
+    
+    val (highestRevision, highestRefcount, highestTimstamp, lockedTransactions) = responses.foldLeft((zv,zr,zt,zl))( (h, t) => t._2 match {
       case Left(_) => h
       case Right(ss) =>
         val hrev = if (ss.revision > h._1) ss.revision else h._1
         val href = if (ss.refcount.updateSerial > h._2.updateSerial) ss.refcount else h._2 
+        val hts  = if (ss.timestamp.compareTo(h._3) > 0) ss.timestamp else h._3
         val locks = ss.lockedTransaction match {
-          case None => h._3
-          case Some(txd) => (ss.storeId, txd) :: h._3
+          case None => h._4
+          case Some(txd) => (ss.storeId, txd) :: h._4
         }
         
-        (hrev, href, locks)
+        (hrev, href, hts, locks)
     })
     
-    val objState = ObjectState(objectPointer, highestRevision, highestRefcount, odata, 
+    val objState = ObjectState(objectPointer, highestRevision, highestRefcount, highestTimstamp, odata, 
                                if (retrieveLockedTransaction) Some(lockedTransactions) else None )
                                       
     promise.success(Right(objState))
@@ -90,7 +94,7 @@ class BaseReadDriver(
       
     val r = response.result match {
       case Left(err) => Left(err)
-      case Right(cs) => Right(StoreState(response.fromStore, cs.revision, cs.refcount, cs.objectData, cs.lockedTransaction))
+      case Right(cs) => Right(StoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction))
     }
     
     responses += (response.fromStore -> r)
@@ -149,6 +153,7 @@ object BaseReadDriver {
       storeId: DataStoreID,
       revision: ObjectRevision,
       refcount: ObjectRefcount,
+      timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],
       lockedTransaction: Option[TransactionDescription])
       

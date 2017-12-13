@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.HLCTimestamp
 
 object DataStore {
   trait Factory {
@@ -55,6 +56,7 @@ trait DataStore {
    * force the allocation to fail by bumping the revision of the target object.
    */
   def allocate(newObjects: List[Allocate.NewObject],
+               timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]

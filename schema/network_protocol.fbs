@@ -229,6 +229,7 @@ table ReadResponse {
   readUUID: UUID;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
+  timestamp: long;
   objectData: [byte];
   lockedTransaction: TransactionDescription;
   readError: ReadError;
@@ -248,6 +249,7 @@ table Allocate {
   toStore: DataStoreID;
   fromClient: [byte];
   newObjects: [AllocateNewObject];
+  timestamp: long;
   allocationTransactionUUID: UUID;
   allocatingObject: ObjectPointer;
   allocatingObjectRevision: ObjectRevision;
@@ -290,7 +292,6 @@ table AllocationObjectStatus {
   readError: ReadError;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
-  lastCommittedTransaction: UUID;
   lockedTransaction: TransactionDescription;
 }
 

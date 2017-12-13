@@ -38,7 +38,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             case e: CorruptedObject => Left(ReadError.CorruptedObject)
           }
           
-          case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, if (message.returnObjectData) Some(data) else None,
+          case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, cs.timestamp, if (message.returnObjectData) Some(data) else None,
                                                                      if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
         }
         

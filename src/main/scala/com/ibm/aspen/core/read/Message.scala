@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 sealed abstract class Message
 
@@ -29,6 +30,7 @@ object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
       refcount: ObjectRefcount,
+      timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],
       lockedTransaction: Option[TransactionDescription]) {
     

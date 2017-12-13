@@ -16,6 +16,7 @@ import scala.concurrent.Await
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -71,7 +72,9 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val nrev = ObjectRevision(1,4)
     val nrev2 = ObjectRevision(2,4)
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    val ts = HLCTimestamp.now
+    
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
@@ -91,18 +94,19 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val r = mkReader(m)
     val nrev = ObjectRevision(1,4)
     val nrev2 = ObjectRevision(2,4)
+    val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, nrev2, ref, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Ignore old revisions") {
@@ -110,43 +114,46 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val r = mkReader(m)
     val nrev = ObjectRevision(1,4)
     val nrev2 = ObjectRevision(2,4)
+    val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, nrev2, ref, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Successful read with data and locks") {
     val m = new TMessenger
     val r = mkReader(m)
+    val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, rev, ref, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectState(ptr, rev, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Successful read without data or locks") {
     val m = new TMessenger
     val r = mkReader(m, retrieveObjectData=false, retrieveLockedTransaction=false)
+    val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, rev, ref, None, None)))
+    o should be (Right(ObjectState(ptr, rev, ref, ts, None, None)))
   }
 }

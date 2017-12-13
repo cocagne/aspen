@@ -19,13 +19,16 @@ import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.HLCTimestamp
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
   
+  val now = HLCTimestamp.now
+  
   def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
  
-  class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: DataBuffer)
+  class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: DataBuffer, var timestamp: HLCTimestamp)
   
   var content = Map[UUID, Obj]()
   var allocCount = 0
@@ -37,7 +40,7 @@ class SimpleTestSystem extends AspenSystem {
   
   def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {
-      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.data))
+      case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.timestamp, o.data))
       case None => Future.failed(new DataRetrievalFailed)
     }
   }
@@ -50,13 +53,14 @@ class SimpleTestSystem extends AspenSystem {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      initialContent: DataBuffer,
+      timestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
     
     val id = allocCount
     allocCount += 1
     val ptr = mkptr(id)
     
-    content += (ptr.uuid -> new Obj(ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), initialContent))
+    content += (ptr.uuid -> new Obj(ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), initialContent, now))
     
     Future.successful(ptr)
   }
@@ -75,6 +79,8 @@ class SimpleTestSystem extends AspenSystem {
     var invalidatedReason: Option[Throwable] = None
     
     var notifyOnResolution = Set[DataStoreID]()
+    
+    var happensAfter: Option[HLCTimestamp] = None
     
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {
       
@@ -125,6 +131,20 @@ class SimpleTestSystem extends AspenSystem {
       }
       ops = fn _ :: ops
       requiredRevision.versionBump()
+    }
+    
+    def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {
+      happensAfter match {
+        case Some(ts) => if (timestamp.compareTo(ts) > 0) happensAfter = Some(timestamp)
+        case None => happensAfter = Some(timestamp)
+      }
+    }
+    
+    def timestamp(): HLCTimestamp = synchronized {
+      happensAfter match {
+        case Some(ts) => HLCTimestamp.happensAfter(ts)
+        case None => HLCTimestamp.now
+      }
     }
     
     def invalidateTransaction(reason: Throwable): Unit = invalidatedReason = Some(reason)

@@ -1,83 +1,16 @@
 
-* Test Error handling logic
+* Test Error handling logic?
+  - Not easy to do.
+  - May just need to audit & hope for the best
   
+* Need a plan for testing higher-level code.
+   * Easy bootstrap & maintenance of full system
 
-* Add HLC impl (should be easy)
-  * Case-classes with simple mixing in TransactionBuilder
-  * May require adding timestamp to object store
-
-
-Error Handling:
-   Premises
-       * Transaction durations are very short < 1s
-       * The system is always available
-           - Application-level freezes when it isn't are perfectly acceptable
-       * Application-level timeouts can still make sense
-           - Ex try to read/write an object exclusively at a remote site
-           
-   * [DONE] Read Driver
+* ZMQ Networking
    
-   * [DONE] Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
-                  allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
-                  
-       * Added Status Request / Reply support
-           
-       - Recovery
-           - In progress
-           - After commit/abort w/ cached response
-           - After commit w/ lastTxUUID = in-progress TxUUID
-           - After commit w/different last committed txUUID
-           - Same commit + version bump
+** Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
    
-   * [DONE] Transaction Recovery
-       - Goal is to optimize the common case where there's no failure
-       - No matter what we have to contend with all peers trying to drive the tx to closure
-       
-       - [DONE] Client Tx Driver
-           - Similar exponential backoff till replies are seen
-       
-       - [DONE] Add support for send/receive TxHeartbeat messages
-       
-       - [DONE] Driver Creation
-	       - Use simple background thread that runs every X sec to look for hung transactions
-	           - Sends heartbeat messages for all active transactions which are older than X sec
-	           - On 3x delay of no heartbeats for a transaction not being driven, start a driver
-       
-       - [DONE] Store Transaction Driver Contention
-           - Ignore Finalizer contention (separate problem)
-           - Goal is to get to resolution
-           - We know exponential backoff works in that case
-           - Can shoot straight to fairly large backoff windows (0 - max size) to reduce chance of
-             further contention
-           - Driver Creation should take a isRecovering param. If true, send immediate Prepare else don't (prepare is sent
-             by client for us so common case is that we'll receive all replies without having to send a Prepare at all).
-           - backoff() method doubles the retry delay up to cap and schedules a rety
-           - call backoff each time we advance the proposal instance
-       
-   * Transaction Recovery
-       
-       - For network outage, it means we'll have max contention right away on recovery
-           - When the Paxos instance must be advanced, do the backoff
-           
-       SimpleTxRecovery Trait w/ Object
-          Object kicks off a micro task that repeadedly re-schedules a call to itself while instances of it are outstanding
-             - provides easy way to keep track of when it needs to run
-             - simple synchornized add/del methods that schedule/cancel future calls
-       
-       
-       
-
-* Useful
-   
-   - Very Basic Error Handling
-      - read driver
-      - transaction recovery
-          - failed leader
-          - cold boot (might be the same thing)
-      - allocation recovery
-      - Transaction unit tests are *really* light. May want to beef this up as part of working on error-recovery logic
-      
-   - Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
+** Transaction unit tests are *really* light. 
    
 ** Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
    - Send PrepareResponse messages to originatingClient (allows 1RTT notice of successful commit in common case)
@@ -170,7 +103,36 @@ Security Model
    - Create via factory object passed to TxManager
    - Totally encapsulates the retransmit/retry logic
    		
-      
+Simple Error Handling:
+   Premises
+       * Transaction durations are very short < 1s
+       * The system is always available
+           - Application-level freezes when it isn't are perfectly acceptable
+       * Application-level timeouts can still make sense
+           - Ex try to read/write an object exclusively at a remote site
+           
+   * [DONE] Read Driver - *very* simple exponential backoff retry mechanism for reads in that completes when either the object
+                          is successfully read or a fatal error is encountered.
+   
+   * [DONE] Allocation - If transaction heartbeats exceed a timeout, begin recovery
+                       - Query alloc Object status till version changes & alloc Transaction is definitely finalized
+                            - Bump alloc object version if necessary to force this
+                       - Lookup each new object UUID in the pool allocation tree. Commit/discard based on the results
+                            - Exponential backoff retry for this last bit
+   
+   * [DONE] Transaction Recovery
+       - Goal is to optimize the common case where there's no failure
+       - No matter what we have to contend with all peers trying to drive the tx to closure
+       
+       - [DONE] Client Tx Driver - Fixed-rate prepare retransmit till replies are seen
+       
+       - [DONE] Store Tx Driver Creation
+           - Background task periodically tells all TxDrivers to send a heartbeat message
+           - If txManager sees non-driven transactions with last-received heartbeats that exceed a threshold, begin driving
+       
+       - [DONE] Store Transaction Driver Contention
+           - Fixed-rate retransmit within a Paxos round
+           - On increment round, exponential backoff
       
 BackLog
 

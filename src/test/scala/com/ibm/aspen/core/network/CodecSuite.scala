@@ -19,6 +19,7 @@ import java.nio.ByteBuffer
 import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.HLCTimestamp
 
 object CodecSuite {
   
@@ -93,7 +94,8 @@ object ReadResponse {
     val readUUID = new java.util.UUID(3,4)
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
-    val cs = ReadResponse.CurrentState(rev, ref, Some(DataBuffer(List[Byte](1,2,3).toArray)), Some(txd))
+    val ts = HLCTimestamp.now
+    val cs = ReadResponse.CurrentState(rev, ref, ts, Some(DataBuffer(List[Byte](1,2,3).toArray)), Some(txd))
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -120,7 +122,8 @@ object ReadResponse {
     val readUUID = new java.util.UUID(3,4)
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(2,2)
-    val cs = ReadResponse.CurrentState(rev, ref, None, None)
+    val ts = HLCTimestamp.now
+    val cs = ReadResponse.CurrentState(rev, ref, ts, None, None)
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -248,7 +251,8 @@ object ReadResponse {
     val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
-    val a1 = Allocate(storeId, c1, lno, txUUID,  op, rev)
+    val ts = HLCTimestamp.now
+    val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -280,7 +284,8 @@ object ReadResponse {
     val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
-    val a1 = Allocate(storeId, c1, lno, txUUID,  op, rev)
+    val ts = HLCTimestamp.now
+    val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     

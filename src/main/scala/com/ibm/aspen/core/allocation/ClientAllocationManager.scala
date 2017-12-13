@@ -11,6 +11,7 @@ import scala.concurrent.Future
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
@@ -30,12 +31,13 @@ class ClientAllocationManager(
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]] = {
     
-    val driver = driverFactory.create(clientMessenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, initialRefcount,
+    val driver = driverFactory.create(clientMessenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, initialRefcount,
                                       allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                                       
     synchronized { outstandingAllocations += (allocationTransactionUUID -> driver) }

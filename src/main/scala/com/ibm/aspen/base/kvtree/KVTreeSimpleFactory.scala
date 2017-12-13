@@ -12,6 +12,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 class KVTreeSimpleFactory(
     system: AspenSystem,
@@ -37,8 +38,9 @@ class KVTreeSimpleFactory(
     def allocate(
         targetObject:ObjectPointer, 
         targetRevision: ObjectRevision, 
-        initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-      system.allocateObject(targetObject, ObjectRevision(0,0), storagePoolUUID, None, nodeIDA, initialContent)
+        initialContent: DataBuffer,
+        timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+      system.allocateObject(targetObject, ObjectRevision(0,0), storagePoolUUID, None, nodeIDA, initialContent, Some(timestamp))
     }
   }
   

@@ -8,9 +8,8 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 
 object AllocationObjectStatus {
   case class State(revision: ObjectRevision,
-    refcount: ObjectRefcount,
-    lastCommittedTransaction: UUID,
-    lockedTransaction: Option[TransactionDescription])
+                   refcount: ObjectRefcount,
+                   lockedTransaction: Option[TransactionDescription])
 }
 
 case class AllocationObjectStatus(

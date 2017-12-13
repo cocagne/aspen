@@ -93,6 +93,7 @@ class StorageNodeAllocationManager(
       
       store.allocate(
           m.newObjects, 
+          m.timestamp,
           m.allocationTransactionUUID, 
           m.allocatingObject, 
           m.allocatingObjectRevision).foreach { r => r match {
@@ -113,7 +114,7 @@ class StorageNodeAllocationManager(
     store.getObject(message.primaryObject) foreach { os => 
       val state = os match {
         case Left(err) => Left(ReadError(err))
-        case Right((s, data)) => Right(AllocationObjectStatus.State(s.revision, s.refcount, s.lastCommittedTxUUID, s.lockedTransaction))
+        case Right((s, data)) => Right(AllocationObjectStatus.State(s.revision, s.refcount, s.lockedTransaction))
       }
       allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, txStatus, 
                                            AllocationObjectStatus(message.primaryObject.uuid, state))) 

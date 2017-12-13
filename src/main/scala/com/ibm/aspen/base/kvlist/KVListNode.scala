@@ -150,7 +150,7 @@ class KVListNode(
           if (rightData.size > nodeSizeLimit)
             throw new InsertOverflow
          
-          list.objectAllocater.allocate(nodePointer.objectPointer, nodeRevision, rightData) map { newNodePointer => 
+          list.objectAllocater.allocate(nodePointer.objectPointer, nodeRevision, rightData, transaction.timestamp()) map { newNodePointer => 
             val (leftEncoded, leftSize, _) = KVListCodec.encodeOperations(KVListCodec.SetRightPointer(newNodePointer, rightInsertOps.head.key) :: leftInsertOps)
 
             val leftData = KVListCodec.opsToDataBuffer(leftEncoded, leftSize)

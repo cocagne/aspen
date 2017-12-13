@@ -12,6 +12,7 @@ import com.ibm.aspen.core.ida.IDA
 import java.nio.ByteBuffer
 import scala.concurrent.Future
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -40,6 +41,7 @@ object AllocationDriver {
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,

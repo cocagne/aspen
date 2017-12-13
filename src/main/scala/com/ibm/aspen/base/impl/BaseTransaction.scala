@@ -17,6 +17,7 @@ import scala.util.Success
 import com.ibm.aspen.base.TransactionAborted
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.HLCTimestamp
 
 object BaseTransaction {
   def Factory(
@@ -49,6 +50,16 @@ class BaseTransaction(
   
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.bumpVersion(objectPointer, requiredRevision)
+    case None => throw PostCommitTransactionModification()
+  }
+  
+  def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized { builder } match {
+    case Some(bldr) => bldr.ensureHappensAfter(timestamp)
+    case None => throw PostCommitTransactionModification()
+  }
+  
+  def timestamp(): HLCTimestamp = synchronized { builder } match {
+    case Some(bldr) => bldr.timestamp()
     case None => throw PostCommitTransactionModification()
   }
   

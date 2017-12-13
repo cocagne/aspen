@@ -14,6 +14,7 @@ import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.core.data_store.BootstrapDataStore
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -47,8 +48,8 @@ object Bootstrap {
    * 
    */
   def initializeNewSystem(
-      allocate: (DataBuffer) => Future[ObjectPointer],
-      overwriteObject: (ObjectPointer, Array[Byte]) => Future[Unit],
+      allocate: (DataBuffer, HLCTimestamp) => Future[ObjectPointer],
+      overwriteObject: (ObjectPointer, Array[Byte], HLCTimestamp) => Future[Unit],
       bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[ObjectPointer] = {
     
     val hostingStorageNodes = List.fill(bootstrapPoolIDA.width)(StorageNodeID(ZeroedUUID)).toArray
@@ -66,25 +67,27 @@ object Bootstrap {
     // Gets a little tiresome to constantly type out ByteBuffer -> DataBuffer conversions
     import scala.language.implicitConversions                                                        
     implicit def bb2db(bb: ByteBuffer): DataBuffer = DataBuffer(bb)
+    
+    val now = HLCTimestamp.now
                                                                
     for {
-      allocTreeTier0Ptr <- allocate(ByteBuffer.allocate(0))
-      allocTreeDefnPtr <- allocate(treeDef(allocTreeTier0Ptr))
+      allocTreeTier0Ptr <- allocate(ByteBuffer.allocate(0), now)
+      allocTreeDefnPtr <- allocate(treeDef(allocTreeTier0Ptr), now)
       
-      bootstrapPoolDefnPtr <- allocate(BaseCodec.encodeStoragePoolDefinition(BootstrapStoragePoolUUID, hostingStorageNodes, Some(allocTreeDefnPtr)))
+      bootstrapPoolDefnPtr <- allocate(BaseCodec.encodeStoragePoolDefinition(BootstrapStoragePoolUUID, hostingStorageNodes, Some(allocTreeDefnPtr)), now)
                                                      
-      storagePoolTreeTier0Ptr <- allocate(treeNode(BootstrapStoragePoolUUID, bootstrapPoolDefnPtr))
-      storagePoolTreeDefnPtr <- allocate(treeDef(storagePoolTreeTier0Ptr))
+      storagePoolTreeTier0Ptr <- allocate(treeNode(BootstrapStoragePoolUUID, bootstrapPoolDefnPtr), now)
+      storagePoolTreeDefnPtr <- allocate(treeDef(storagePoolTreeTier0Ptr), now)
                                                          
-      systemTreeTier0Ptr <- allocate(treeNode(StoragePoolTreeUUID, storagePoolTreeDefnPtr))
-      systemTreeDefnPtr <- allocate(treeDef(systemTreeTier0Ptr))
+      systemTreeTier0Ptr <- allocate(treeNode(StoragePoolTreeUUID, storagePoolTreeDefnPtr), now)
+      systemTreeDefnPtr <- allocate(treeDef(systemTreeTier0Ptr), now)
       
-      radiclePtr <- allocate(ByteBuffer.wrap(BaseCodec.encode(Radicle(systemTreeDefnPtr))))
+      radiclePtr <- allocate(ByteBuffer.wrap(BaseCodec.encode(Radicle(systemTreeDefnPtr))), now)
       
       allocContent = List(allocTreeTier0Ptr, allocTreeDefnPtr, bootstrapPoolDefnPtr, storagePoolTreeTier0Ptr, storagePoolTreeDefnPtr,
                           systemTreeTier0Ptr, systemTreeDefnPtr, radiclePtr) map (ins)
       
-      overwriteComplete <- overwriteObject(allocTreeTier0Ptr, KVListCodec.encodeNewListContent(allocContent))
+      overwriteComplete <- overwriteObject(allocTreeTier0Ptr, KVListCodec.encodeNewListContent(allocContent), now)
     } 
     yield radiclePtr
   }
@@ -94,7 +97,7 @@ object Bootstrap {
       bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[ObjectPointer] = {
     
     require( bootstrapPoolIDA.width >= bootstrapStores.length)
-    
+
     val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
     val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
     
@@ -105,13 +108,13 @@ object Bootstrap {
       case (Some(cur), Some(nxt)) => if (cur <= nxt) Some(cur) else Some(nxt)
     })
     
-    def allocate(initialContent: DataBuffer): Future[ObjectPointer] = {
+    def allocate(initialContent: DataBuffer, timestamp: HLCTimestamp): Future[ObjectPointer] = {
       val objectUUID = UUID.randomUUID()
       val enc = bootstrapPoolIDA.encode(initialContent)
       val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex)).map(sp => storePointers(storeIndex) = sp) 
+        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
       }}
       
       Future.sequence(falloc) map { _ => 
@@ -119,9 +122,9 @@ object Bootstrap {
       }
     }
     
-    def overwrite(objectPointer: ObjectPointer, newContent: Array[Byte]): Future[Unit] = {
+    def overwrite(objectPointer: ObjectPointer, newContent: Array[Byte], timestamp: HLCTimestamp): Future[Unit] = {
       val encodedContent = bootstrapPoolIDA.encode(DataBuffer(newContent))
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(objectPointer, encodedContent(t._2)))).map(_=>())
+      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(objectPointer, encodedContent(t._2), timestamp))).map(_=>())
     }
     
     initializeNewSystem(allocate, overwrite, bootstrapPoolIDA)

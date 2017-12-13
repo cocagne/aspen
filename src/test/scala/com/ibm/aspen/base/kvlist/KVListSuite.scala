@@ -18,10 +18,13 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.HLCTimestamp
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
   val poolUUID = new UUID(0,0)
+  
+  val ts = HLCTimestamp(1)
   
   def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
   
@@ -65,6 +68,10 @@ object KVListSuite {
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
     
+    def ensureHappensAfter(timestamp: HLCTimestamp): Unit = throw new Exception("Should not be used")
+    
+    def timestamp(): HLCTimestamp = ts
+    
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = throw new Exception("Should not be used")
     
     def invalidateTransaction(reason: Throwable): Unit = invalidated = reason
@@ -95,11 +102,12 @@ object KVListSuite {
       
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-          initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          initialContent: DataBuffer,
+          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
-        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), initialContent))
+        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
         
         Future.successful(p)
       }
@@ -111,7 +119,7 @@ object KVListSuite {
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     
-    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), DataBuffer(ByteBuffer.allocate(0))))
+    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
     
     def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }

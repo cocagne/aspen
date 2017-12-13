@@ -33,6 +33,7 @@ import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.network.ClientSideNetwork
+import com.ibm.aspen.core.HLCTimestamp
 
 
 
@@ -106,7 +107,7 @@ class BasicAspenSystem(
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
             case Right(os) => os.data match {
-              case Some(data) => ObjectStateAndData(objectPointer, os.revision, os.refcount, data)
+              case Some(data) => ObjectStateAndData(objectPointer, os.revision, os.refcount, os.timestamp, data)
               case None => throw DataRetrievalFailed()
             }
           })
@@ -123,16 +124,21 @@ class BasicAspenSystem(
       poolUUID: UUID, 
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      initialContent: DataBuffer,
+      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
     val encoded = objectIDA.encode(initialContent)
     val newObjectUUID = UUID.randomUUID()
+    val timestamp = afterTimestamp match {
+      case None => HLCTimestamp.now
+      case Some(ts) => HLCTimestamp.happensAfter(ts)
+    }
     
     for {
       pool <- getStoragePool(poolUUID)
       hosts = pool.selectStoresForAllocation(objectIDA)
       objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
 
-      result <- allocManager.allocate(net.allocationHandler, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, ObjectRefcount(0,1), 
+      result <- allocManager.allocate(net.allocationHandler, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, ObjectRefcount(0,1), 
                                       t.uuid, allocatingObject, allocatingObjectRevision)
     } yield {
       result match {

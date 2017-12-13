@@ -25,6 +25,7 @@ import com.ibm.aspen.base.kvlist.KVListNode
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.FinalizationAction
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 object KVTreeSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -92,8 +93,9 @@ object KVTreeSuite {
       
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-          initialContent: DataBuffer)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, initialContent)(t, ec)
+          initialContent: DataBuffer,
+          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, initialContent, Some(timestamp))(t, ec)
       }
     }
     

@@ -18,6 +18,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.transaction.VersionBump
+import com.ibm.aspen.core.HLCTimestamp
 
 class TransactionBuilder(
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
@@ -30,14 +31,18 @@ class TransactionBuilder(
   
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   private [this] var notifyOnResolution = Set[DataStoreID]()
+  private [this] var happensAfter: Option[HLCTimestamp] = None
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
-    val startTimestamp = System.currentTimeMillis()
+    val startTimestamp = happensAfter match {
+      case Some(ts) => HLCTimestamp.happensAfter(ts)
+      case None => HLCTimestamp.now
+    }
     val primaryObject = requirements.map(_.objectPointer).maxBy(ptr => ptr.ida)
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)
     val originatingClient = Some(clientId)
     
-    val txd = TransactionDescription(transactionUUID, startTimestamp, primaryObject, designatedLeaderUID, 
+    val txd = TransactionDescription(transactionUUID, startTimestamp.asLong, primaryObject, designatedLeaderUID, 
                                      requirements, finalizationActions, originatingClient, notifyOnResolution.toList)
            
     var updates = Map[DataStoreID, List[LocalUpdate]]()
@@ -100,6 +105,20 @@ class TransactionBuilder(
     requirements = VersionBump(objectPointer, requiredRevision) :: requirements
     
     requiredRevision.versionBump()
+  }
+  
+  def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {
+    happensAfter match {
+      case Some(ts) => if (timestamp.compareTo(ts) > 0) happensAfter = Some(timestamp)
+      case None => happensAfter = Some(timestamp)
+    }
+  }
+  
+  def timestamp(): HLCTimestamp = synchronized {
+    happensAfter match {
+      case Some(ts) => HLCTimestamp.happensAfter(ts)
+      case None => HLCTimestamp.now
+    }
   }
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {

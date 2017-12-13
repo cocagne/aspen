@@ -18,6 +18,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.transaction.VersionBump
+import com.ibm.aspen.core.HLCTimestamp
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -42,7 +43,8 @@ class MemoryOnlyDataStore(
   private def getObject(ba: Array[Byte]): Option[Object] = objects.get(ByteBuffer.wrap(ba).getInt)
   
   /** Allocates a new Object on the store */
-  def allocate(newObjects: List[Allocate.NewObject],
+  override def allocate(newObjects: List[Allocate.NewObject],
+               timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
@@ -50,11 +52,11 @@ class MemoryOnlyDataStore(
     val lst = newObjects map { no =>
       val (objId, lpArray) = nextLocalPointer()
     
-      objects += (objId -> new Object(no.newObjectUUID, ObjectRevision(0, no.objectData.size), no.initialRefcount, no.objectData, allocationTransactionUUID, None))
+      objects += (objId -> new Object(no.newObjectUUID, ObjectRevision(0, no.objectData.size), no.initialRefcount, no.objectData, timestamp, None))
     
       AllocationRecoveryState.NewObject(StorePointer(storeId.poolIndex, lpArray), no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount)
     }
-    val ars = AllocationRecoveryState(storeId, lst, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    val ars = AllocationRecoveryState(storeId, lst, timestamp, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
     
     Future.successful(Right(ars))
   }
@@ -74,7 +76,7 @@ class MemoryOnlyDataStore(
         val r = if (obj.uuid != objectPointer.uuid)
           Left(ObjectMismatch())
         else
-          Right((CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.lastCommittedTxUUID, obj.lock), obj.data))
+          Right((CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.timestamp, obj.lock), obj.data))
         
         Future.successful(r)
     }
@@ -124,7 +126,7 @@ class MemoryOnlyDataStore(
     // Iterate over all DataUpdates & RefcountUpdates and apply operations if and only if the required revision/refcount still matches
     txd.requirements.foreach { r =>
       localObjects.get(r.objectPointer.uuid).foreach { obj =>
-        obj.lastCommittedTxUUID = txd.transactionUUID
+        obj.timestamp = HLCTimestamp(txd.startTimestamp)
         r match {
           case du: DataUpdate =>
             objectUpdates.get(r.objectPointer.uuid).foreach { data =>
@@ -193,6 +195,6 @@ object MemoryOnlyDataStore {
       var revision:ObjectRevision, 
       var refcount: ObjectRefcount, 
       var data: DataBuffer, 
-      var lastCommittedTxUUID: UUID,
+      var timestamp: HLCTimestamp,
       var lock: Option[TransactionDescription])
 }

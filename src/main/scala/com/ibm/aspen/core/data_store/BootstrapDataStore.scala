@@ -6,6 +6,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 trait BootstrapDataStore {
   
@@ -15,9 +16,9 @@ trait BootstrapDataStore {
   def maximumAllowedObjectSize: Option[Int] = None
   
   /** Allocates a new Object on the store */
-  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer): Future[StorePointer]
+  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer]
   
   /** Overwrites the object content. Future is to data at rest on disk */
-  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer): Future[Unit]
+  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit]
   
 }

@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.IDA
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -28,6 +29,7 @@ class BaseAllocationDriver (
     val objectSize: Option[Int],
     val objectIDA: IDA,
     val objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+    val timestamp: HLCTimestamp,
     val initialRefcount: ObjectRefcount,
     val allocationTransactionUUID: UUID,
     val allocatingObject: ObjectPointer,
@@ -49,7 +51,7 @@ class BaseAllocationDriver (
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
       val newObjects = List( Allocate.NewObject(newObjectUUID, objectSize, initialRefcount, objectData) )
-      val msg = Allocate(storeId, messenger.clientId, newObjects, 
+      val msg = Allocate(storeId, messenger.clientId, newObjects, timestamp,
                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
       messenger.send(storeId, msg)
@@ -90,11 +92,12 @@ object BaseAllocationDriver {
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): BaseAllocationDriver = {
-      new BaseAllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, initialRefcount, 
+      new BaseAllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, initialRefcount, 
                            allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
     }
   }

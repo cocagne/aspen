@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.HLCTimestamp
 
 trait AspenSystem {
   
@@ -32,7 +33,8 @@ trait AspenSystem {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
+      initialContent: DataBuffer,
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
   
   def allocateObject(
       allocatingObject: ObjectPointer,
@@ -41,7 +43,18 @@ trait AspenSystem {
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent))
+    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent), None)
+  }
+  
+  def allocateObject(
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: Array[Byte],
+      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent), afterTimestamp)
   }
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool]

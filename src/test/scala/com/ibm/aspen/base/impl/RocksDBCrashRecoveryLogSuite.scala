@@ -19,6 +19,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.HLCTimestamp
 
 object RocksDBCrashRecoveryLogSuite {
   import TransactionSuite._
@@ -81,7 +82,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     Await.result(crl.saveTransactionRecoveryState(trs2), awaitDuration)
     
-     Await.result(crl.close(), awaitDuration)
+    Await.result(crl.close(), awaitDuration)
     
     newCRL()
     
@@ -108,11 +109,13 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
+        
+    val txdts = HLCTimestamp(txd.startTimestamp)
     
     val ars = AllocationRecoveryState(
             storeId, 
             List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
-            uuid2, obj, ObjectRevision(2,2))
+            txdts, uuid2, obj, ObjectRevision(2,2))
     
     newCRL()
     
@@ -179,10 +182,12 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val trs = TransactionRecoveryState(
         storeId, txd, DataContent, TransactionDisposition.Undetermined, TransactionStatus.Unresolved, PersistentState(Some(promisedId), None))
         
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
     val ars = AllocationRecoveryState(
             storeId, 
             List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
-            uuid2, obj, ObjectRevision(2,2))
+            txdts, uuid2, obj, ObjectRevision(2,2))
     
     newCRL()
     

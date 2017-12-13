@@ -44,6 +44,7 @@ import com.ibm.aspen.core.transaction.TxHeartbeat
 import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.transaction.VersionBump
+import com.ibm.aspen.core.HLCTimestamp
 
 
 
@@ -166,7 +167,6 @@ object NetworkCodec {
       case Right(state) =>
         P.AllocationObjectStatus.addRevision(builder, encode(builder, state.revision))
         P.AllocationObjectStatus.addRefcount(builder, encode(builder, state.refcount))
-        P.AllocationObjectStatus.addLastCommittedTransaction(builder, encode(builder, state.lastCommittedTransaction))
         state.lockedTransaction.foreach { _ =>
           P.AllocationObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
         }
@@ -182,10 +182,9 @@ object NetworkCodec {
     if (n.revision() != null) {
       val rev = decode(n.revision())
       val ref = decode(n.refcount())
-      val lastTx = decode(n.lastCommittedTransaction())
       val lock = if ( n.lockedTransaction() == null ) None else Some(decode(n.lockedTransaction()))
     
-      AllocationObjectStatus(objUUID, Right(AllocationObjectStatus.State(rev, ref, lastTx, lock)))
+      AllocationObjectStatus(objUUID, Right(AllocationObjectStatus.State(rev, ref, lock)))
     } else {
       AllocationObjectStatus(objUUID, Left(decodeReadError(n.readError()))) 
     }
@@ -716,6 +715,7 @@ object NetworkCodec {
     P.Allocate.addToStore(builder, toStore)
     P.Allocate.addFromClient(builder, clientData)
     P.Allocate.addNewObjects(builder, newObjects)
+    P.Allocate.addTimestamp(builder, o.timestamp.asLong)
     P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
     P.Allocate.addAllocatingObject(builder, allocObj)
     P.Allocate.addAllocatingObjectRevision(builder, encode(builder, o.allocatingObjectRevision))
@@ -729,13 +729,14 @@ object NetworkCodec {
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val allocatingObject = decode(n.allocatingObject())
     val allocatingObjectRevision = decode(n.allocatingObjectRevision())
+    val timestamp = HLCTimestamp(n.timestamp())
     
     def newObjects(idx: Int, l:List[Allocate.NewObject]): List[Allocate.NewObject] = if (idx == -1) 
         l
       else 
         newObjects(idx-1, decode(n.newObjects(idx)) :: l)
         
-    Allocate(toStore, ClientID(fromClient), newObjects(n.newObjectsLength()-1, Nil), 
+    Allocate(toStore, ClientID(fromClient), newObjects(n.newObjectsLength()-1, Nil), timestamp,
         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
   
@@ -908,6 +909,7 @@ object NetworkCodec {
       case Right(cs) =>
         P.ReadResponse.addRevision(builder, encode(builder, cs.revision))
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
+        P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
         if (lockedTransaction != -1) P.ReadResponse.addLockedTransaction(builder, lockedTransaction)
     }
@@ -921,6 +923,7 @@ object NetworkCodec {
     } else {
       val revision = decode(n.revision())
       val refcount = decode(n.refcount())
+      val timestamp = HLCTimestamp(n.timestamp())
       val objectData = if (n.objectDataLength() <= 0) None else {
         val buff = ByteBuffer.allocateDirect(n.objectDataLength())
         buff.put(n.objectDataAsByteBuffer())
@@ -928,7 +931,7 @@ object NetworkCodec {
         Some(buff)
       }
       val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }
-      Right(ReadResponse.CurrentState(revision, refcount, objectData.map(DataBuffer(_)), lockedTransaction))
+      Right(ReadResponse.CurrentState(revision, refcount, timestamp, objectData.map(DataBuffer(_)), lockedTransaction))
     }
     ReadResponse(fromStore, readUUID, result)
   }

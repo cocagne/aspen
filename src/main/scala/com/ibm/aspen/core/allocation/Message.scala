@@ -10,6 +10,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.transaction.TransactionStatus
+import com.ibm.aspen.core.HLCTimestamp
 
 sealed abstract class Message
 
@@ -25,7 +26,7 @@ object Allocate {
     override def equals(other: Any): Boolean = other match {
       case rhs: Allocate.NewObject => 
         objectSize == rhs.objectSize && objectData.compareTo(rhs.objectData) == 0 &&
-        initialRefcount == rhs.initialRefcount 
+        initialRefcount == rhs.initialRefcount
       case _ => false
     }
   }
@@ -35,6 +36,7 @@ final case class Allocate(
     toStore: DataStoreID,
     fromClient: ClientID,
     newObjects: List[Allocate.NewObject],
+    timestamp: HLCTimestamp,
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,
     allocatingObjectRevision: ObjectRevision
@@ -42,8 +44,9 @@ final case class Allocate(
   
   override def equals(other: Any): Boolean = other match {
     case rhs: Allocate => toStore == rhs.toStore && fromClient == rhs.fromClient && 
-      newObjects == rhs.newObjects && allocationTransactionUUID == rhs.allocationTransactionUUID &&
-      allocatingObject == rhs.allocatingObject && allocatingObjectRevision == rhs.allocatingObjectRevision
+      newObjects == rhs.newObjects && timestamp.compareTo(rhs.timestamp) == 0 &&  
+      allocationTransactionUUID == rhs.allocationTransactionUUID &&
+      allocatingObject == rhs.allocatingObject && allocatingObjectRevision == rhs.allocatingObjectRevision 
     case _ => false
   }
 }

@@ -12,6 +12,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.HLCTimestamp
 
 object CRLCodec {
   import com.ibm.aspen.core.network.NetworkCodec
@@ -238,6 +239,7 @@ object CRLCodec {
     C.CRLAllocationRecoveryState.startCRLAllocationRecoveryState(builder)
     C.CRLAllocationRecoveryState.addDataStoreID(builder, storeId)
     C.CRLAllocationRecoveryState.addNewObjects(builder, newObjects)
+    C.CRLAllocationRecoveryState.addTimestamp(builder, o.timestamp.asLong)
     C.CRLAllocationRecoveryState.addAllocationTransactionUUID(builder, NetworkCodec.encode(builder, o.allocationTransactionUUID))
     C.CRLAllocationRecoveryState.addAllocatingObject(builder, allocatingObject)
     C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encode(builder, o.allocatingObjectRevision))
@@ -248,12 +250,13 @@ object CRLCodec {
     val allocationTransactionUUID = NetworkCodec.decode(e.allocationTransactionUUID())
     val allocatingObject = NetworkCodec.decode(e.allocatingObject())
     val allocatingObjectRevision = NetworkCodec.decode(e.allocatingObjectRevision())
+    val timestamp = HLCTimestamp(e.timestamp())
     
     def newObjects(idx: Int, l:List[AllocationRecoveryState.NewObject]): List[AllocationRecoveryState.NewObject] = if (idx == -1)
         l
       else
         newObjects(idx-1, decode(e.newObjects(idx)) :: l)
     
-    AllocationRecoveryState(dataStoreId, newObjects(e.newObjectsLength()-1, Nil), allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    AllocationRecoveryState(dataStoreId, newObjects(e.newObjectsLength()-1, Nil), timestamp, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
 }
