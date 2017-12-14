@@ -23,7 +23,7 @@ import com.ibm.aspen.core.HLCTimestamp
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
 class MemoryOnlyDataStore(
-    override val storeId: DataStoreID) extends DataStore {
+    override val storeId: DataStoreID) extends DataStore with BootstrapDataStore {
   
   import MemoryOnlyDataStore._
   
@@ -41,6 +41,27 @@ class MemoryOnlyDataStore(
   def close(): Future[Unit] = Future.successful(())
   
   private def getObject(ba: Array[Byte]): Option[Object] = objects.get(ByteBuffer.wrap(ba).getInt)
+  
+  /** Allocates a new Object on the store */
+  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = synchronized {
+    
+    val (objId, lpArray) = nextLocalPointer()
+    
+    val sp = StorePointer(storeId.poolIndex, lpArray)
+    
+    objects += (objId -> new Object(objectUUID, ObjectRevision(0, initialContent.size), ObjectRefcount(0,1), initialContent, timestamp, None))
+    
+    Future.successful(sp)
+  }
+  
+  /** Overwrites the object content. Future is to data at rest on disk */
+  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit] = synchronized {
+    val sp = objectPointer.getStorePointer(storeId).get // Implicit assertion here. This should never fail
+    val objId = ByteBuffer.wrap(sp.data).getInt
+    val obj = objects(objId)
+    objects += (objId ->  new Object(obj.uuid, obj.revision.overwrite(newContent.size), obj.refcount, newContent, timestamp, None))
+    Future.successful(())
+  }
   
   /** Allocates a new Object on the store */
   override def allocate(newObjects: List[Allocate.NewObject],

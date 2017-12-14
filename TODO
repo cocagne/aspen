@@ -3,9 +3,6 @@
   - Not easy to do.
   - May just need to audit & hope for the best
   
-* Need a plan for testing higher-level code.
-   * Easy bootstrap & maintenance of full system
-
 * ZMQ Networking
    
 ** Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)

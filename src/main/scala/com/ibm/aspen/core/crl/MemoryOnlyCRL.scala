@@ -9,11 +9,9 @@ import java.util.UUID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
-object MemoryOnlyCRL extends CrashRecoveryLog {
+class MemoryOnlyCRL extends CrashRecoveryLog {
   private [this] var pendingTransactions = Map[DataStoreID, Map[UUID, TransactionRecoveryState]]()
   private [this] var pendingAllocations = Map[DataStoreID, Map[UUID, AllocationRecoveryState]]()
-  
-  private val queue = new java.util.concurrent.LinkedBlockingQueue[Promise[Unit]]()
   
   override def close(): Future[Unit] = Future.successful(())
   
@@ -73,9 +71,7 @@ object MemoryOnlyCRL extends CrashRecoveryLog {
     
     pendingTransactions = pendingTransactions + (state.storeId -> (smap + ins))
     
-    val p = Promise[Unit]()
-    queue.put(p)
-    p.future
+    Future.successful(())
   }
   
   override def discardTransactionState(storeId: DataStoreID, txd: TransactionDescription): Unit = synchronized {
@@ -89,20 +85,11 @@ object MemoryOnlyCRL extends CrashRecoveryLog {
     
     pendingAllocations = pendingAllocations + (state.storeId -> (smap + ins))
     
-    val p = Promise[Unit]()
-    queue.put(p)
-    p.future
+    Future.successful(())
   }
   
   override def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = synchronized {
     val smap = gA(storeId)
     pendingAllocations = pendingAllocations + (storeId -> (smap - allocationTransactionUUID))
   }
-  
-  private val backgroundThread = new Thread("MemoryOnlyCRL") {
-    override def run(): Unit = while(true) queue.take().success(())
-  }
-  
-  backgroundThread.setDaemon(true)
-  backgroundThread.start()
 }

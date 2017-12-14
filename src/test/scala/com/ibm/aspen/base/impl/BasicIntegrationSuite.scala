@@ -29,6 +29,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.read.TriggeredReread
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.base.TestSystem
 
 object BasicIntegrationSuite {
   trait Closeable {
@@ -272,6 +273,62 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
       fp2 <- allocObj(r)
       faComplete2 <- waitForTransactionsComplete(sn0)
       sp <- sys0.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
+      spAllocTreeDef <- sp.getAllocationTreeDefinitionPointer(noRetry)
+      atree <- kvTreeFactory.createTree(spAllocTreeDef)
+      visitComplete <- atree.visitRange(new Array[Byte](0), None, visitEntry)
+    } yield {
+      allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
+    }
+  }
+  
+  
+  test("Test TestSystem Class") {
+    
+    val ts = new TestSystem
+    
+    val sys = ts.aspenSystem
+    
+    var allocCount = 0
+    
+    def allocObj(r: Radicle): Future[ObjectPointer] = {
+      implicit val tx = sys.newTransaction()
+      val d = DataBuffer(ByteBuffer.allocate(5))
+      val ffp = sys.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
+                                    None, bootstrapPoolIDA, d)
+      allocCount += 1
+      
+      for {
+        fp <- ffp
+        // Need to give the transaction something to do. Modify refcount instead of data so we don't accidentally corrupt anything
+        y = tx.setRefcount(r.systemTreeDefinitionPointer, ObjectRefcount(0,allocCount), ObjectRefcount(0,allocCount + 1))
+        committed <- tx.commit()
+      } yield {
+        fp 
+      }
+    }
+    
+    val kvTreeFactory = new KVTreeSimpleFactory(
+          system = sys, 
+          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
+          storagePoolUUID = BootstrapStoragePoolUUID, 
+          nodeIDA = bootstrapPoolIDA,
+          nodeSize = systemTreeNodeSize, 
+          nodeCache = systemTreeNodeCacheFactory(sys), 
+          keyComparisonStrategy = KVTree.KeyComparison.Raw)
+    
+    var allocTreeEntryCount = 0
+    
+    def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
+      allocTreeEntryCount += 1
+    }
+    
+    for {
+      r <- sys.radicle
+      fp1 <- allocObj(r)
+      faComplete1 <- ts.waitForTransactionsComplete(ts.sn0)
+      fp2 <- allocObj(r)
+      faComplete2 <- ts.waitForTransactionsComplete(ts.sn0)
+      sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
       spAllocTreeDef <- sp.getAllocationTreeDefinitionPointer(noRetry)
       atree <- kvTreeFactory.createTree(spAllocTreeDef)
       visitComplete <- atree.visitRange(new Array[Byte](0), None, visitEntry)

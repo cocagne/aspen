@@ -2,6 +2,7 @@ package com.ibm.aspen.core.objects
 
 import java.util.UUID
 import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.data_store.DataStoreID
 
 final case class ObjectPointer(
     uuid: UUID,
@@ -19,4 +20,9 @@ final case class ObjectPointer(
   override def hashCode: Int = uuid.hashCode()
   
   def uuidAsByteArray: Array[Byte] = com.ibm.aspen.core.Util.uuid2byte(uuid)
+  
+  def getStorePointer(storeId: DataStoreID): Option[StorePointer] = if (storeId.poolUUID == poolUUID) {
+    storePointers.find(sp => sp.poolIndex == storeId.poolIndex)
+  } else
+    None
 }
