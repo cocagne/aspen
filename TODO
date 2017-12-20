@@ -4,6 +4,18 @@
   - May just need to audit & hope for the best
   
 * ZMQ Networking
+
+** 1RTT allocation
+   - Use RequiredRevision (0,0) as the DataUpdate requirement. If seen, the store knows it's an allocation
+   
+** Look at other KV databases
+   - LevelDB
+   - BoltDB
+   - LMDB
+   - BadgetDB
+   
+   They have different trade offs that could be leveraged. We could also split them up. Metadata in one, bulk data in another
+   or go for simple file compaction based off of offset indicies
    
 ** Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
    
