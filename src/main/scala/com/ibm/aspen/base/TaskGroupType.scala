@@ -1,0 +1,23 @@
+package com.ibm.aspen.base
+
+import java.util.UUID
+import com.ibm.aspen.core.objects.ObjectPointer
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+
+trait TaskGroupType {
+  val groupTypeUUID: UUID
+  
+  def createTaskGroup(
+      system: AspenSystem,
+      taskGroupInstanceUUID: UUID,
+      taskGroupDefinitionPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroup]
+  
+  def createTaskGroupExecutor(
+      system: AspenSystem,
+      taskGroupInstanceUUID: UUID,
+      taskGroupDefinitionPointer: ObjectPointer,
+      taskRegistry: TaskTypeRegistry,
+      retryStrategy: RetryStrategy,
+      taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext): Future[TaskGroupExecutor]
+}

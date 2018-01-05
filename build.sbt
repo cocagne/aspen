@@ -88,7 +88,21 @@ sourceGenerators in Compile += Def.task {
     println(s"Result: $stdout")  
   }
   
-  net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq
+  // base_impl_task
+  val tsk_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "impl" / "task" / "codec"
+
+  val tsk_schema = file("schema") / "base_impl_task.fbs"
+
+  val tsk_generate = !tsk_out_dir.exists() || tsk_out_dir.listFiles().exists( f => tsk_schema.lastModified() > f.lastModified() )
+
+  if (tsk_generate) {
+    println(s"Generating Base Task Impl Serialization Source Files")
+    val stdout:Int = s"flatc --java -o $base schema/base_impl_task.fbs".!
+    println(s"Result: $stdout")  
+  }
+  
+  net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq ++
+  tsk_out_dir.listFiles().toSeq
 }.taskValue
 
 

@@ -7,6 +7,7 @@ import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.kvtree.KVTreeFactory
 import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
+import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
 
 object FinalizationActionRegistry {
   def apply(
@@ -16,7 +17,8 @@ object FinalizationActionRegistry {
     
     val handlers = List(
         new KVTreeFinalizationActionHandler(kvTreeFactory, retryStrategy, system),
-        new AllocationFinalizationAction(retryStrategy, system)
+        new AllocationFinalizationAction(retryStrategy, system),
+        new TaskCreationFinalizationAction(retryStrategy, system)
     )
     
     new FinalizationActionRegistry(handlers)

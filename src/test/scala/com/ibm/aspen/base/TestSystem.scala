@@ -59,7 +59,8 @@ class TestSystem(
     val noRetry: RetryStrategy = TestSystem.NoRetry,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
-    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache = TestSystem.noTreeNodeCacheFactory) {
+    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache = TestSystem.noTreeNodeCacheFactory,
+    val userTaskTypeRegistry: Option[TaskTypeRegistry] = None) {
   
   import scala.language.postfixOps
   import Bootstrap._
@@ -96,7 +97,8 @@ class TestSystem(
         bootstrapPoolIDA = bootstrapPoolIDA,
         systemTreeNodeCacheFactory = systemTreeNodeCacheFactory,
         radiclePointer = radiclePointer,
-        initializationRetryStrategy = noRetry
+        initializationRetryStrategy = noRetry,
+        userTaskTypeRegistry = userTaskTypeRegistry
         )
     
     val storageNode = new StorageNode(crl, new net.SNet)

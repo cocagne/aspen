@@ -34,6 +34,17 @@ import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.network.ClientSideNetwork
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.base.ObjectAllocater
+import scala.util.Failure
+import scala.util.Success
+import com.ibm.aspen.base.TaskTypeRegistry
+import com.ibm.aspen.base.TaskGroupTypeRegistry
+import com.ibm.aspen.base.AggregateTaskGroupTypeRegistry
+import com.ibm.aspen.base.impl.task.BaseTaskGroupTypeRegistry
+import com.ibm.aspen.base.AggregateTaskTypeRegistry
+import com.ibm.aspen.base.TaskGroup
+import com.ibm.aspen.base.impl.task.TaskCodec
+import com.ibm.aspen.base.TaskGroupExecutor
 
 
 
@@ -62,7 +73,9 @@ class BasicAspenSystem(
     val bootstrapPoolIDA: IDA,
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
     val radiclePointer: ObjectPointer,
-    val initializationRetryStrategy: RetryStrategy
+    val initializationRetryStrategy: RetryStrategy,
+    userTaskTypeRegistry: Option[TaskTypeRegistry] = None,
+    userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -71,6 +84,17 @@ class BasicAspenSystem(
   protected val readManager = new ClientReadManager(net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
+  
+  protected val taskTypeRegistry = userTaskTypeRegistry match {
+    case None => new AggregateTaskTypeRegistry( Nil )
+    case Some(registry) => new AggregateTaskTypeRegistry( registry :: Nil )
+  }
+  protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
+    case None => BaseTaskGroupTypeRegistry
+    case Some(registry) => new AggregateTaskGroupTypeRegistry( registry :: BaseTaskGroupTypeRegistry :: Nil )
+  }
+  
+  val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA)
   
   net.readHandler.setReceiver(readManager)
   net.transactionHandler.setReceiver(txManager)
@@ -98,6 +122,43 @@ class BasicAspenSystem(
       poolTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(oenc.get))
     } yield {
       poolTree
+    }
+  }
+  
+  lazy val taskGroupTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+    systemTree.flatMap { stree =>
+      stree.get(TaskGroupTreeUUID).flatMap { oval =>
+        oval match {
+          case Some(enc) => systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(enc))
+          
+          case None =>
+            val tdef = KVTree.defineNewTree(SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy)
+            implicit val tx = newTransaction()
+            
+            var treePointer: Option[ObjectPointer] = None
+            
+            def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
+              bootstrapPoolAllocater.allocateObject(allocatingObject, allocatingObjectRevision, tdef) map {
+                ptr =>
+                  treePointer = Some(ptr)
+                  NetworkCodec.objectPointerToByteArray(ptr)
+              }
+            }
+            
+            
+            stree.putGeneratedValueIntoTreeNode(TaskGroupTreeUUID, createValue) onComplete {
+              case Failure(reason) => tx.invalidateTransaction(reason)
+              case Success(_) => tx.commit()
+            }
+            
+            tx.result.flatMap { _ => 
+              treePointer match {
+                case Some(ptr) => systemTreeFactory.createTree(ptr)
+                case None => Future.failed(new Exception("Tree Not Created"))
+              }
+            }
+        }
+      }
     }
   }
   
@@ -169,4 +230,69 @@ class BasicAspenSystem(
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
   }
+  
+  def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup] = {
+    implicit val tx = newTransaction()
+    
+    // TODO: Fail on group already exists
+    
+    // The supplied object pointer and revision are to the KVTree node the allocated object will be written into
+    def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
+      allocateObject(allocatingObject, allocatingObjectRevision, BootstrapStoragePoolUUID, None, bootstrapPoolIDA, groupDefinitionContent) map {
+        ptr => TaskCodec.encodeTaskGroupTreeEntry(taskGroupType, ptr)
+      }
+    }
+    
+    for {
+      tgTree <- taskGroupTree
+      readyToCommit <- tgTree.putGeneratedValueIntoTreeNode(groupUUID, createValue)
+      complete <- tx.commit()
+      tg <- getTaskGroup(groupUUID)
+    } yield {
+      tg
+    }
+  }
+  
+  def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = {
+    
+    def createGroup(entry: Array[Byte]): Future[TaskGroup] = {
+      val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
+      
+      taskGroupTypeRegistry.getTaskGroupType(groupTypeUUID) match {
+        case None => Future.failed(new Exception("Missing Task Group Type!"))
+        
+        case Some(tgt) => tgt.createTaskGroup(this, groupUUID, groupDefinitionPointer)
+      }
+    }
+    
+    for {
+      tgTree <- taskGroupTree
+      ovalue <- tgTree.get(groupUUID)
+      tg <- createGroup(ovalue.get)
+    } yield {
+      tg
+    }
+  }
+  
+  def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = {
+    def createGroup(entry: Array[Byte]): Future[TaskGroupExecutor] = {
+      val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
+      
+      taskGroupTypeRegistry.getTaskGroupType(groupTypeUUID) match {
+        case None => Future.failed(new Exception("Missing Task Group Type!"))
+        
+        case Some(tgt) =>  
+          tgt.createTaskGroupExecutor(this, groupUUID, groupDefinitionPointer, taskTypeRegistry, initializationRetryStrategy, bootstrapPoolAllocater)
+      }
+    }
+    
+    for {
+      tgTree <- taskGroupTree
+      ovalue <- tgTree.get(groupUUID)
+      tg <- createGroup(ovalue.get)
+    } yield {
+      tg
+    }
+  }
+
 }

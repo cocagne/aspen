@@ -22,6 +22,7 @@ object Bootstrap {
   val BootstrapStoragePoolUUID        = ZeroedUUID
   val BootstrapTransactionUUID        = ZeroedUUID
   val StoragePoolTreeUUID             = ZeroedUUID
+  val TaskGroupTreeUUID               = new UUID(0, 1)
   val SystemTreeNodeSizeLimit         = 64 * 1024
   val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
   

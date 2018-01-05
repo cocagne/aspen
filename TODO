@@ -1,3 +1,38 @@
+* Move FinalizationAction registry to use the same Registry mechanism for Tasks & Groups.
+
+* Switch to ObjectAllocater
+   - Opaque class that allocates objects from "somewhere"
+   - They're identified by UUID and AspenSystem as getAllocater(uuid): Future[ObjectAllocater]
+   - Use this instead of direct allocation on pools
+      - allows pools of pools, transparent cut over when pools fill up, etc
+   - will still need low-level system allocation method (bootstrapping)
+      - can implement allocater in terms of this
+   - Replace all instances of "AllocationPolicyUUID" with ObjectAllocater instances (if feasible. Should be)
+ |     
+ |-> KVTree should use a KVTreeObjectAllocater (allows tier configuration)
+      
+
+* Should AspenSystem be broken into
+    TaskGroupManager, StoragePoolManager, ObjectAllocaterManager, etc
+    
+* Add assertion into method adding finalization actions to transactions that verifies that the FA UUID is
+  registered with the System
+    | -> avoids problem of creating un-completeable FAs
+    
+            
+* RAM only pool would be good for Tasks (we'll always want them in memory)
+
+
+* Basic FS Implementation
+
+** Consider sfuse integration here.
+   * Could run program in Debug mode and mount from VM
+   * Would require ScalaIDE within VM
+      -- Probably worth it. Just run VM full-screen on another window and swipe between
+
+* JeroMQ networking (as simple as possible)
+
+* Integrate with sfuse 
 
 * Test Error handling logic?
   - Not easy to do.
@@ -16,6 +51,10 @@
    
    They have different trade offs that could be leveraged. We could also split them up. Metadata in one, bulk data in another
    or go for simple file compaction based off of offset indicies
+   
+** For single KV store per media device, prefix the key with a unique store prefix
+   - 2 bytes is probably sufficient (16k stores per device)
+   
    
 ** Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
    
@@ -159,6 +198,8 @@ Error Handling:
            - Same commit + version bump
            
    * Refuse to vote on transaction if any FinalizationAction is unknown
+   
+   * Create "Orphaned Task" Group for newly created tasks where the TaskGroup cannot be found
    
 ** TransactionRecovery must check to ensure all FinalizationActions are understood and refuse to start if not
    - Must also vote Abort if any finalizer is unknown OR fails to parse

@@ -72,7 +72,7 @@ class StorageNodeTransactionManager(
   }
   
   /** (unit test only) returns true if all transactions are complete */
-  def allTransactionsComplete: Boolean = synchronized { 
+  def allTransactionsComplete: Boolean = synchronized {
     stores.forall(t => t._2.allTransactionsComplete)
   }
   

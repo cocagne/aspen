@@ -17,6 +17,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.transaction.VersionBump
 
 object DataStore {
   trait Factory {
@@ -127,17 +128,22 @@ trait DataStore {
         l
     })
     
-    val requiredRevisions = txd.requirements.foldLeft(Map[UUID, ObjectRevision]())((m, r) => r match {
-      case du: DataUpdate => m + (r.objectPointer.uuid -> du.requiredRevision)
-      case _ => m
-    })
+    var requiredRevisions = Map[UUID, ObjectRevision]()
+    var requiredRefcounts = Map[UUID, ObjectRefcount]()
+    var requiredData = Set[UUID]()
     
-    val requiredRefcounts = txd.requirements.foldLeft(Map[UUID, ObjectRefcount]())((m, r) => r match {
-      case ru: RefcountUpdate => m + (r.objectPointer.uuid -> ru.requiredRefcount)
-      case _ => m
-    })
+    txd.requirements.foreach { r => r match {
+      case du: DataUpdate =>  
+        requiredRevisions += (r.objectPointer.uuid -> du.requiredRevision)
+        requiredData += r.objectPointer.uuid
+        
+      case vb: VersionBump =>  
+        requiredRevisions += (r.objectPointer.uuid -> vb.requiredRevision)
+        
+      case ru: RefcountUpdate => 
+        requiredRefcounts += (r.objectPointer.uuid -> ru.requiredRefcount)
+    }}
     
-    val requiredData = requiredRevisions.keySet
     val updates = updateData match {
       case None => Set[UUID]()
       case Some(lst) => lst.foldLeft(Set[UUID]())((s, lu) => s + lu.objectUUID)

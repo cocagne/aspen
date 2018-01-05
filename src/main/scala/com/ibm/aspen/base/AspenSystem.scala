@@ -58,6 +58,13 @@ trait AspenSystem {
   }
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
-  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] 
+  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool]
+  
+  def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup]
+  def getTaskGroup(groupUUID: UUID): Future[TaskGroup]
+  def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor]
+  
+  // TODO: ObjectAllocater tree + save/restore
+  //def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
 }

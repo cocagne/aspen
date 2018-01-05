@@ -25,4 +25,24 @@ final case class ObjectPointer(
     storePointers.find(sp => sp.poolIndex == storeId.poolIndex)
   } else
     None
+    
+  override def toString(): String = {
+    val sb = new StringBuilder
+    sb.append("ObjectPointer(")
+    sb.append(uuid.toString)
+    sb.append(',')
+    sb.append(poolUUID.toString)
+    sb.append(',')
+    sb.append(size.toString)
+    sb.append(',')
+    sb.append(ida.toString)
+    sb.append(',')
+    sb.append('[')
+    storePointers.foreach { sp =>
+      sb.append(sp.toString)
+      sb.append(',')
+    }
+    sb.append(']')
+    sb.toString()
+  }
 }
