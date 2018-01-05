@@ -45,6 +45,8 @@ import com.ibm.aspen.base.AggregateTaskTypeRegistry
 import com.ibm.aspen.base.TaskGroup
 import com.ibm.aspen.base.impl.task.TaskCodec
 import com.ibm.aspen.base.TaskGroupExecutor
+import com.ibm.aspen.base.FinalizationActionHandlerRegistry
+import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
 
 
 
@@ -75,7 +77,8 @@ class BasicAspenSystem(
     val radiclePointer: ObjectPointer,
     val initializationRetryStrategy: RetryStrategy,
     userTaskTypeRegistry: Option[TaskTypeRegistry] = None,
-    userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None
+    userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None,
+    userFinalizationActionHandlerRegistry: Option[FinalizationActionHandlerRegistry] = None,
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -84,15 +87,6 @@ class BasicAspenSystem(
   protected val readManager = new ClientReadManager(net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
-  
-  protected val taskTypeRegistry = userTaskTypeRegistry match {
-    case None => new AggregateTaskTypeRegistry( Nil )
-    case Some(registry) => new AggregateTaskTypeRegistry( registry :: Nil )
-  }
-  protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
-    case None => BaseTaskGroupTypeRegistry
-    case Some(registry) => new AggregateTaskGroupTypeRegistry( registry :: BaseTaskGroupTypeRegistry :: Nil )
-  }
   
   val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA)
   
@@ -105,6 +99,23 @@ class BasicAspenSystem(
   val systemTreeNodeCache = systemTreeNodeCacheFactory(this)
   val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
                                                   SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
+  
+  protected val taskTypeRegistry = userTaskTypeRegistry match {
+    case None => new AggregateTaskTypeRegistry( Nil )
+    case Some(registry) => new AggregateTaskTypeRegistry( registry :: Nil )
+  }
+  protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
+    case None => BaseTaskGroupTypeRegistry
+    case Some(registry) => new AggregateTaskGroupTypeRegistry( registry :: BaseTaskGroupTypeRegistry :: Nil )
+  }
+  protected val finalizationActionHandlerRegistry = {
+    val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this, systemTreeFactory)
+    
+    userFinalizationActionHandlerRegistry match {
+      case None => baseRegistry
+      case Some(registry) => new AggregateFinalizationActionHandlerRegistry( registry :: baseRegistry :: Nil)
+    }
+  }
   
   lazy val radicle: Future[Radicle] = initializationRetryStrategy.retryUntilSuccessful {
     readObject(radiclePointer) map { osd => BaseCodec.decodeRadicle(osd.data) }

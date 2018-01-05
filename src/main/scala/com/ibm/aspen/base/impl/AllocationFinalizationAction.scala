@@ -16,13 +16,27 @@ import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.data_store.DataStoreID
 
+object AllocationFinalizationAction {
+  val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
+  
+  case class FAContent(storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer)
+  
+  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer): Unit = {
+    val serializedContent = BaseCodec.encode(FAContent(storagePoolDefinitionPointer, newNodePointer))
+    transaction.addFinalizationAction(AddToAllocationTreeUUID, serializedContent)
+    
+    val notifyStores = newNodePointer.storePointers.map(sp => DataStoreID(newNodePointer.poolUUID, sp.poolIndex)).toSet
+    transaction.addNotifyOnResolution(notifyStores)
+  }
+}
+
 class AllocationFinalizationAction(
     val retryStrategy: RetryStrategy,
     val system: AspenSystem) extends FinalizationActionHandler {
   
   import AllocationFinalizationAction._
   
-  val supportedUUIDs: Set[UUID] = AllocationFinalizationAction.supportedUUIDs
+  val finalizationActionUUID: UUID = AddToAllocationTreeUUID
   
   class AddToAllocationTree(
       val storagePoolDefinitionPointer:ObjectPointer, 
@@ -52,31 +66,11 @@ class AllocationFinalizationAction(
     def completionDetected(): Unit = ()
   }
   
-  def createAction(
-      finalizationActionUUID: UUID, 
-      serializedActionData: Array[Byte]): Option[FinalizationAction] = finalizationActionUUID match {
+  override def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
+
+    val fa = BaseCodec.decodeFinalizationActionContent(serializedActionData)
     
-    case AddToAllocationTreeUUID => 
-      val fa = BaseCodec.decodeFinalizationActionContent(serializedActionData)
-      
-      Some(new AddToAllocationTree(fa.storagePoolDefinitionPointer, fa.newNodePointer))
-      
-    case _ => None
+    new AddToAllocationTree(fa.storagePoolDefinitionPointer, fa.newNodePointer)      
   }
 }
 
-object AllocationFinalizationAction {
-  val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
-  
-  val supportedUUIDs: Set[UUID] = Set(AddToAllocationTreeUUID)
-  
-  case class FAContent(storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer)
-  
-  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer): Unit = {
-    val serializedContent = BaseCodec.encode(FAContent(storagePoolDefinitionPointer, newNodePointer))
-    transaction.addFinalizationAction(AddToAllocationTreeUUID, serializedContent)
-    
-    val notifyStores = newNodePointer.storePointers.map(sp => DataStoreID(newNodePointer.poolUUID, sp.poolIndex)).toSet
-    transaction.addNotifyOnResolution(notifyStores)
-  }
-}

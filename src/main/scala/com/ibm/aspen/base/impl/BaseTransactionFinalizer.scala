@@ -8,10 +8,11 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.base.FinalizationAction
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.base.UpdateableFinalizationAction
+import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 
 class BaseTransactionFinalizer(
     system: BasicAspenSystem,
-    registry: FinalizationActionRegistry)(implicit ec: ExecutionContext) {
+    registry: FinalizationActionHandlerRegistry)(implicit ec: ExecutionContext) {
   
   object factory extends TransactionFinalizer.Factory{
     def create(
@@ -26,12 +27,12 @@ class BaseTransactionFinalizer(
       val messenger: StoreSideTransactionMessenger) extends TransactionFinalizer {
     
     val falist = txd.finalizationActions.foldLeft(List[FinalizationAction]()) { (l, sfa) => 
-      registry.createAction(sfa.typeUUID, sfa.data) match {
+      registry.getFinalizationActionHandler(sfa.typeUUID) match {
         case None => 
           // Preceeding code should not allow this to occur
           assert(false, "Unknown Finalizers or deserialization problems must be caught before this point") 
           l
-        case Some(fah) => fah :: l
+        case Some(fah) => fah.createAction(sfa.data) :: l
       }
     }
     

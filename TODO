@@ -1,4 +1,3 @@
-* Move FinalizationAction registry to use the same Registry mechanism for Tasks & Groups.
 
 * Switch to ObjectAllocater
    - Opaque class that allocates objects from "somewhere"

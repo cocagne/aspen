@@ -326,14 +326,17 @@ class MockSystem(val treeNodeSize:Int=1000) {
       noRetry)
   
   val kvTreeFactory = new KVTreeSimpleFactory(basicAspenSystem, poolUUID, poolUUID, Replication(3,2), treeNodeSize, new KVTreeNodeCache {}, KVTree.KeyComparison.Raw)
-  val finalizationHandler = FinalizationActionRegistry(noRetry, basicAspenSystem, kvTreeFactory)
+  val finalizationHandler = BaseFinalizationActionHandlerRegistry(noRetry, basicAspenSystem, kvTreeFactory)
   
   var finalizationActions: List[Future[Unit]] = Nil
   
   def runTransactionFinalizations(m: Map[UUID, Array[Byte]]): Unit = synchronized {
     m.foreach { t =>
-      finalizationHandler.createAction(t._1, t._2) match {
-        case Some(fa) => finalizationActions = fa.execute() :: finalizationActions
+      finalizationHandler.getFinalizationActionHandler(t._1) match {
+        case Some(fah) =>
+          val fa = fah.createAction(t._2)
+          finalizationActions = fa.execute() :: finalizationActions
+          
         case None => throw new Exception("Unsupported Finalization Action Encountered!")
       }
     }

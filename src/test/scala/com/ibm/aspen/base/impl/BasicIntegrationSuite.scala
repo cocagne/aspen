@@ -148,7 +148,7 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
           nodeCache = systemTreeNodeCacheFactory(sys), 
           keyComparisonStrategy = KVTree.KeyComparison.Raw)
       
-      val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+      val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys, kvTreeFactory)
       
       val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
        
@@ -218,7 +218,7 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
           nodeCache = systemTreeNodeCacheFactory(sys), 
           keyComparisonStrategy = KVTree.KeyComparison.Raw)
       
-      val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+      val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys, kvTreeFactory)
       
       val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
        

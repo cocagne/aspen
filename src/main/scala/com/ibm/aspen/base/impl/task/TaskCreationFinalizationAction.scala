@@ -11,11 +11,28 @@ import com.ibm.aspen.base.FinalizationAction
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 
+object TaskCreationFinalizationAction {
+  
+  val TaskCreationFinalizationActionUUID = UUID.fromString("5f1c51b5-77ca-4bd5-9823-bd774cf9f432")
+  
+  case class FAContent(taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision)
+  
+  def addToTaskGroup(transaction: Transaction, taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision): Unit = {
+    val fac = FAContent(taskGroupUUID, taskTypeUUID, taskUUID, taskObject, taskRevision)
+    
+    val serializedContent = TaskCodec.encodeTaskCreationFinalizationAction(fac)
+    
+    transaction.addFinalizationAction(TaskCreationFinalizationActionUUID, serializedContent)
+  }
+}
+
 class TaskCreationFinalizationAction(
     val retryStrategy: RetryStrategy,
     val system: AspenSystem) extends FinalizationActionHandler {
   
-  val supportedUUIDs: Set[UUID] = TaskCreationFinalizationAction.supportedUUIDs
+  import TaskCreationFinalizationAction._
+  
+  val finalizationActionUUID: UUID = TaskCreationFinalizationActionUUID 
   
   class AddToGroup(val fa: TaskCreationFinalizationAction.FAContent) extends FinalizationAction {
     
@@ -33,33 +50,10 @@ class TaskCreationFinalizationAction(
     def completionDetected(): Unit = ()
   }
   
-  def createAction(
-      finalizationActionUUID: UUID, 
-      serializedActionData: Array[Byte]): Option[FinalizationAction] = finalizationActionUUID match {
-    
-    case TaskCreationFinalizationAction.TaskCreationFinalizationActionUUID =>
-      val fa = TaskCodec.decodeTaskCreationFinalizationAction(serializedActionData)
+  def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
+    val fa = TaskCodec.decodeTaskCreationFinalizationAction(serializedActionData)
       
-      Some(new AddToGroup(fa))
-      
-    case _ => None
+    new AddToGroup(fa)
   }
-  
 }
 
-object TaskCreationFinalizationAction {
-  
-  val TaskCreationFinalizationActionUUID = UUID.fromString("5f1c51b5-77ca-4bd5-9823-bd774cf9f432")
-  
-  val supportedUUIDs: Set[UUID] = Set(TaskCreationFinalizationActionUUID)
-  
-  case class FAContent(taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision)
-  
-  def addToTaskGroup(transaction: Transaction, taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision): Unit = {
-    val fac = FAContent(taskGroupUUID, taskTypeUUID, taskUUID, taskObject, taskRevision)
-    
-    val serializedContent = TaskCodec.encodeTaskCreationFinalizationAction(fac)
-    
-    transaction.addFinalizationAction(TaskCreationFinalizationActionUUID, serializedContent)
-  }
-}

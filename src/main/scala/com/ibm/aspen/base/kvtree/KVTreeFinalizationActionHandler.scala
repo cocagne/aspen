@@ -12,6 +12,15 @@ import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.network.NetworkCodec
 
+object KVTreeFinalizationActionHandler {
+  val InsertIntoUpperTierUUID = UUID.fromString("3a424707-cb50-4fcd-a575-595c3bbb8c77")
+  
+  def insertIntoUpperTier(transaction: Transaction, tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Unit = {
+    val serializedContent = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tree, targetTier, nodePointer)
+    transaction.addFinalizationAction(InsertIntoUpperTierUUID, serializedContent)
+  }
+}
+
 class KVTreeFinalizationActionHandler(
     val treeFactory: KVTreeFactory,
     val retryStrategy: RetryStrategy,
@@ -19,7 +28,8 @@ class KVTreeFinalizationActionHandler(
   
   import KVTreeFinalizationActionHandler._
   
-  val supportedUUIDs: Set[UUID] = KVTreeFinalizationActionHandler.supportedUUIDs
+  val finalizationActionUUID: UUID = InsertIntoUpperTierUUID
+  
   
   class InsertIntoUpperTierFA(
       val treeDefinitionPointer: ObjectPointer, 
@@ -61,25 +71,10 @@ class KVTreeFinalizationActionHandler(
     def completionDetected(): Unit = ()
   }
   
-  def createAction(
-      finalizationActionUUID: UUID, 
-      serializedActionData: Array[Byte]): Option[FinalizationAction] = finalizationActionUUID match {
-    case InsertIntoUpperTierUUID => 
-      val c = KVTreeCodec.decodeInsertIntoUpperTierFinalizationAction(serializedActionData)
+  def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
+    val c = KVTreeCodec.decodeInsertIntoUpperTierFinalizationAction(serializedActionData)
       
-      Some(new InsertIntoUpperTierFA(c.treeDefinitionPointer, c.targetTier, c.nodePointer))
-      
-    case _ => None
+    new InsertIntoUpperTierFA(c.treeDefinitionPointer, c.targetTier, c.nodePointer)
   }
 }
 
-object KVTreeFinalizationActionHandler {
-  val InsertIntoUpperTierUUID = UUID.fromString("3a424707-cb50-4fcd-a575-595c3bbb8c77")
-  
-  val supportedUUIDs: Set[UUID] = Set(InsertIntoUpperTierUUID)
-  
-  def insertIntoUpperTier(transaction: Transaction, tree: KVTree, targetTier: Int, nodePointer: KVListNodePointer): Unit = {
-    val serializedContent = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tree, targetTier, nodePointer)
-    transaction.addFinalizationAction(InsertIntoUpperTierUUID, serializedContent)
-  }
-}

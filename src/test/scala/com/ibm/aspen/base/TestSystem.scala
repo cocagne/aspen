@@ -29,7 +29,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
-import com.ibm.aspen.base.impl.FinalizationActionRegistry
+import com.ibm.aspen.base.impl.BaseFinalizationActionHandlerRegistry
 import com.ibm.aspen.base.impl.BaseTransactionFinalizer
 import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
@@ -143,7 +143,7 @@ class TestSystem(
         nodeCache = systemTreeNodeCacheFactory(sys), 
         keyComparisonStrategy = KVTree.KeyComparison.Raw)
     
-    val faRegistry = FinalizationActionRegistry(noRetry, sys, kvTreeFactory)
+    val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys, kvTreeFactory)
     
     val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
      

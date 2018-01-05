@@ -383,8 +383,8 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       
       l2 <- ts.mkleaf((iarr(10),iarr(11))::Nil, None)      
       enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, 1, np(10,l2))
-      fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
-      fa = fao.get
+      fa = fah.createAction(enc)
+      
       result <- fa.execute()
       
       tr2 <- treeFactory.createTree(td)
@@ -440,16 +440,16 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       
       l2 <- ts.mkleaf((iarr(10),iarr(11))::Nil, None)      
       enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, 1, np(10,l2))
-      fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
-      fa = fao.get
+      fa = fah.createAction(enc)
+      
       result <- fa.execute()
       
       tr2 <- treeFactory.createTree(td)
       
       l3 <- ts.mkleaf((iarr(20),iarr(20))::Nil, None)      
       enc2 = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr2, 1, np(20,l3))
-      fao2 = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc2)
-      fa2 = fao2.get
+      fa2 = fah.createAction(enc2)
+      
       result <- fa2.execute()
       
       tr3 <- treeFactory.createTree(td)
@@ -526,8 +526,8 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       // to l3 will cause t1 to split and create a finalization action to create tier2
       tr <- treeFactory.createTree(td)
       enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, 1, np(10,l3))
-      fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
-      fa = fao.get
+      fa = fah.createAction(enc)
+      
       result <- fa.execute()
       
       if split.list.length == 1  // this will cause test to fail if length isn't 1
@@ -536,8 +536,8 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
       
       tr <- treeFactory.createTree(td)
       enc = KVTreeCodec.encodeInsertIntoUpperTierFinalizationAction(tr, tier, nodePointer)
-      fao = fah.createAction(KVTreeFinalizationActionHandler.InsertIntoUpperTierUUID, enc)
-      fa = fao.get
+      fa = fah.createAction(enc)
+      
       result <- fa.execute()
 
       tr4 <- treeFactory.createTree(td)
