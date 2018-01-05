@@ -190,7 +190,7 @@ class BasicAspenSystem(
     transactionFactory(txManager, chooseDesignatedLeader, Some(transactionDriverStrategy))
   }
   
-  def allocateObject(
+  def lowLevelAllocateObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       poolUUID: UUID, 
@@ -249,7 +249,7 @@ class BasicAspenSystem(
     
     // The supplied object pointer and revision are to the KVTree node the allocated object will be written into
     def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
-      allocateObject(allocatingObject, allocatingObjectRevision, BootstrapStoragePoolUUID, None, bootstrapPoolIDA, groupDefinitionContent) map {
+      bootstrapPoolAllocater.allocateObject(allocatingObject, allocatingObjectRevision, groupDefinitionContent) map {
         ptr => TaskCodec.encodeTaskGroupTreeEntry(taskGroupType, ptr)
       }
     }

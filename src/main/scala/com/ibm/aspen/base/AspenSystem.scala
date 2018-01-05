@@ -27,7 +27,7 @@ trait AspenSystem {
   
   def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
   
-  def allocateObject(
+  def lowLevelAllocateObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       poolUUID: UUID,
@@ -35,28 +35,7 @@ trait AspenSystem {
       objectIDA: IDA,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
-  
-  def allocateObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      poolUUID: UUID,
-      objectSize: Option[Int],
-      objectIDA: IDA,
-      initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent), None)
-  }
-  
-  def allocateObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      poolUUID: UUID,
-      objectSize: Option[Int],
-      objectIDA: IDA,
-      initialContent: Array[Byte],
-      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, DataBuffer(initialContent), afterTimestamp)
-  }
-  
+
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool]
   

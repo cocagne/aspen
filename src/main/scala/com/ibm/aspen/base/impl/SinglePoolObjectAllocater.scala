@@ -22,6 +22,6 @@ class SinglePoolObjectAllocater(
       allocatingObjectRevision: ObjectRevision,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
-    system.allocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, initialContent, afterTimestamp)
+    system.lowLevelAllocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, initialContent, afterTimestamp)
   }
 }

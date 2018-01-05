@@ -55,7 +55,7 @@ class BaseStoragePool(
             val treeDefinitionContent = KVTree.defineNewTree(new UUID(0,0), KVTree.KeyComparison.Raw)
             
             for {
-              allocTreePtr <- system.allocateObject(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, uuid, None, poolDefinitionPointer.ida, DataBuffer(treeDefinitionContent))
+              allocTreePtr <- system.lowLevelAllocateObject(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, uuid, None, poolDefinitionPointer.ida, DataBuffer(treeDefinitionContent))
               newContent = BaseCodec.encodeStoragePoolDefinition(uuid, hostingStorageNodes, Some(allocTreePtr))
               _ = tx.overwrite(currentPool.poolDefinitionPointer, currentPool.poolDefinitionRevision, newContent)
               committed <- tx.commit()

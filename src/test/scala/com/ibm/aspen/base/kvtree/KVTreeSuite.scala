@@ -65,7 +65,7 @@ object KVTreeSuite {
     
     def mknode(content: List[KVListNodePointer], rptr: Option[KVListNodePointer]): Future[ObjectPointer] = {
       implicit val tx = new system.Tx
-      val f = system.allocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, KVTreeCodec.encode(content, rptr))
+      val f = system.lowLevelAllocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, KVTreeCodec.encode(content, rptr))
       tx.commit()
       f
     }
@@ -73,7 +73,7 @@ object KVTreeSuite {
     def mkleaf(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): Future[ObjectPointer] = {
       implicit val tx = new system.Tx
       val data = KVListCodec.testEncodeContent(content, rptr)
-      val f = system.allocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, data)
+      val f = system.lowLevelAllocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, data)
       tx.commit()
       f
     }
@@ -82,7 +82,7 @@ object KVTreeSuite {
       implicit val tx = new system.Tx
       val td = KVTreeDefinition(treePolicyUUID, KVTree.KeyComparison.BigInt, tiers)
       val data = KVTreeCodec.encodeTreeDefinition(td)
-      val f = system.allocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, data)
+      val f = system.lowLevelAllocateObject(mkptr(0), ObjectRevision(0,0), new UUID(0,0), None, ida, DataBuffer(data))
       tx.commit()
       f
     }
@@ -95,7 +95,7 @@ object KVTreeSuite {
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
           initialContent: DataBuffer,
           timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, initialContent, Some(timestamp))(t, ec)
+        system.lowLevelAllocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, initialContent, Some(timestamp))(t, ec)
       }
     }
     
@@ -106,12 +106,12 @@ object KVTreeSuite {
       def allocateRootTierNode(
           targetObject: ObjectPointer, targetRevision: ObjectRevision, 
           newTier: Int, initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, KVTreeCodec.encode(initialContent, None))(t, ec)
+        system.lowLevelAllocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, KVTreeCodec.encode(initialContent, None))(t, ec)
       }
       
       def allocateRootLeafNode(
           targetObject: ObjectPointer, targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
-        system.allocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, DataBuffer(ByteBuffer.allocate(0)))(t, ec)
+        system.lowLevelAllocateObject(targetObject, ObjectRevision(0,0), new UUID(0,0), None, ida, DataBuffer(ByteBuffer.allocate(0)))(t, ec)
       }
       
       def getListNodeAllocaterForTier(tier: Int): KVListNodeAllocater = new ListAlloc(nodeSizeLimit)

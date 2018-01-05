@@ -51,7 +51,7 @@ class SimpleTestSystem extends AspenSystem {
   
   def newTransaction(): Transaction = new Tx
   
-  def allocateObject(
+  def lowLevelAllocateObject(
       allocInto: ObjectPointer,
       allocIntoRevision: ObjectRevision,
       poolUUID: UUID,

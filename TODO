@@ -1,18 +1,10 @@
 
-* Switch to ObjectAllocater
-   - Opaque class that allocates objects from "somewhere"
-   - They're identified by UUID and AspenSystem as getAllocater(uuid): Future[ObjectAllocater]
-   - Use this instead of direct allocation on pools
-      - allows pools of pools, transparent cut over when pools fill up, etc
-   - will still need low-level system allocation method (bootstrapping)
-      - can implement allocater in terms of this
-   - Replace all instances of "AllocationPolicyUUID" with ObjectAllocater instances (if feasible. Should be)
- |     
- |-> KVTree should use a KVTreeObjectAllocater (allows tier configuration)
-      
-
+* KVTree needs per-tier configuration
+   - Ideally this would be loaded from the treeDefinitionObject
+   - Which begs the question on how to define Allocation policies in the object graph
+     
 * Should AspenSystem be broken into
-    TaskGroupManager, StoragePoolManager, ObjectAllocaterManager, etc
+    TaskGroupManager, StoragePoolManager, ObjectAllocaterManager, etc ?
     
 * Add assertion into method adding finalization actions to transactions that verifies that the FA UUID is
   registered with the System

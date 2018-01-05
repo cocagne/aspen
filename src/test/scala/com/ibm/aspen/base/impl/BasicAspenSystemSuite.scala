@@ -44,7 +44,7 @@ class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
     
     def allocObj(r: Radicle): Future[ObjectPointer] = {
       implicit val tx = ms.basicAspenSystem.newTransaction()
-      val ffp = ms.basicAspenSystem.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
+      val ffp = ms.basicAspenSystem.lowLevelAllocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
                                                    None, ms.bootstrapPoolIDA, DataBuffer(ByteBuffer.allocate(5)))
       for {
         fp <- ffp

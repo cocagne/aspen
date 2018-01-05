@@ -237,7 +237,7 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
     def allocObj(r: Radicle): Future[ObjectPointer] = {
       implicit val tx = sys0.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys0.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
+      val ffp = sys0.lowLevelAllocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
                                     None, bootstrapPoolIDA, d)
       allocCount += 1
       
@@ -293,7 +293,7 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
     def allocObj(r: Radicle): Future[ObjectPointer] = {
       implicit val tx = sys.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys.allocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
+      val ffp = sys.lowLevelAllocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0,0), BootstrapStoragePoolUUID,
                                     None, bootstrapPoolIDA, d)
       allocCount += 1
       
