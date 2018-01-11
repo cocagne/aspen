@@ -1,6 +1,3 @@
-* Remove Length from ObjectRevision
-   - Move to simple 8-byte integer for update count
-   - Nothing really uses it or even *could* use it
    
 Non-conflicting Append Objects
 

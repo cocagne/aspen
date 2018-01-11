@@ -62,10 +62,10 @@ object NetworkCodec {
   
   
   def encode(builder:FlatBufferBuilder, rev:ObjectRevision): Int = {
-    P.ObjectRevision.createObjectRevision(builder, rev.overwriteCount, rev.currentSize)
+    P.ObjectRevision.createObjectRevision(builder, rev.updateCount)
   }
   def decode(orev: P.ObjectRevision): ObjectRevision = {
-    ObjectRevision(orev.overwriteCount(), orev.currentSize())
+    ObjectRevision(orev.updateCount())
   }
   
   

@@ -76,7 +76,7 @@ object MockSystem {
       val cpy = ByteBuffer.allocate(initialContent.size)
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
-      val rev = ObjectRevision(0, initialContent.size)
+      val rev = ObjectRevision(0)
       val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
       val osd = ObjectStateAndData(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
@@ -104,7 +104,7 @@ object MockSystem {
       newData.put(orig.data.asReadOnlyBuffer())
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.append(buf.size)
+      val newRev = orig.revision.nextRevision
       
       objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
@@ -115,7 +115,7 @@ object MockSystem {
       val newData = ByteBuffer.allocate(buf.size)
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.overwrite(buf.size)
+      val newRev = orig.revision.nextRevision
       
       objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
@@ -169,12 +169,12 @@ object MockSystem {
     
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
       ops = Append(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.append(data.size)
+      requiredRevision.nextRevision
     }
     
     override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  synchronized {
       ops = Overwrite(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.overwrite(data.size)
+      requiredRevision.nextRevision
     }
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")

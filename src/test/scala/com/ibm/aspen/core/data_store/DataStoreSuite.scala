@@ -31,7 +31,7 @@ object DataStoreSuite {
   val allocUUID = new UUID(0,4)
   
   val allocObj = ObjectPointer(new UUID(0,4), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
-  val allocRev = ObjectRevision(0,1)
+  val allocRev = ObjectRevision(0)
   val oneRef = ObjectRefcount(0,1)
   
   val timestamp = HLCTimestamp.now
@@ -48,7 +48,7 @@ object DataStoreSuite {
   
   val icontent0 = DataBuffer(List[Byte](1,2,3).toArray)
   val icontent1 = DataBuffer(List[Byte](4,5,6).toArray)
-  val irev = ObjectRevision(0,3)
+  val irev = ObjectRevision(0)
 }
 
 abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
@@ -164,12 +164,12 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     
-    val newRev = ObjectRevision(1,4)
+    val newRev = ObjectRevision(1)
     
     val txdts = HLCTimestamp(txd.startTimestamp)
     
     checkState(ds, op0, CurrentObjectState(uuid0, newRev, oneRef, txdts, None), Some(newContent))
-    checkState(ds, op1, CurrentObjectState(uuid1, ObjectRevision(0,3), newRef, txdts, None), Some(icontent1))
+    checkState(ds, op1, CurrentObjectState(uuid1, ObjectRevision(0), newRef, txdts, None), Some(icontent1))
     
     // Ensure new Tx can lock against updated attributes
     val tx2UUID = new UUID(99,99)
@@ -213,7 +213,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
     
-    val badRev = ObjectRevision(3,4)
+    val badRev = ObjectRevision(3)
     val badRef = ObjectRefcount(5,6)
     
     val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
@@ -330,7 +330,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
     val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
             
-    val expected = (CurrentObjectState(uuid0, ObjectRevision(0,3), oneRef, timestamp, None), icontent)
+    val expected = (CurrentObjectState(uuid0, ObjectRevision(0), oneRef, timestamp, None), icontent)
     
     futureResponse flatMap { either => either match {
       case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.newObjects.head.storePointer)).flatMap(er => er match {

@@ -35,7 +35,7 @@ class SimpleTaskGroup(
                            taskObject: ObjectPointer, taskRevision: ObjectRevision, promise:Promise[Unit])
   
   private[this] var tasks: List[TaskDefinition] = Nil
-  private[this] var groupDefinitionRevision = ObjectRevision(-1,-1)
+  private[this] var groupDefinitionRevision = ObjectRevision(-1)
   private[this] var pending: List[PendingCreate] = Nil
   private[this] var isUpdating = false
   private[this] var isLoading = false

@@ -52,6 +52,6 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
 }
 
 object NullDataStore {
-  val revision = ObjectRevision(1,10)
+  val revision = ObjectRevision(1)
   val refcount = ObjectRefcount(1,1)
 }

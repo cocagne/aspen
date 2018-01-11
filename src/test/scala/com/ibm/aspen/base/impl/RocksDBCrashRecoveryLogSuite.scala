@@ -115,7 +115,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val ars = AllocationRecoveryState(
             storeId, 
             List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
-            txdts, uuid2, obj, ObjectRevision(2,2))
+            txdts, uuid2, obj, ObjectRevision(2))
     
     newCRL()
     
@@ -187,7 +187,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val ars = AllocationRecoveryState(
             storeId, 
             List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
-            txdts, uuid2, obj, ObjectRevision(2,2))
+            txdts, uuid2, obj, ObjectRevision(2))
     
     newCRL()
     

@@ -61,7 +61,7 @@ class BaseReadDriver(
     // If something goes wrong with the IDA, it'll throw an IDAError exception
     val odata = if (retrieveObjectData) Some(objectPointer.ida.restore(segments)) else None
       
-    val zv = ObjectRevision(0,0)
+    val zv = ObjectRevision(0)
     val zr = ObjectRefcount(0,0)
     val zt = HLCTimestamp(0)
     val zl = List[(DataStoreID, TransactionDescription)]()

@@ -17,6 +17,7 @@ class KVListNode(
     val nodePointer: KVListNodePointer,
     val nodeRevision: ObjectRevision,
     val rightNode: Option[KVListNodePointer],  // Guaranteed to be accurate for the corresponding nodeRevision
+    val contentLength: Int, // Current number of bytes stored in the node
     val content: SortedMap[Array[Byte],Array[Byte]]) {
   
   import KVListNode._
@@ -92,10 +93,10 @@ class KVListNode(
       //
       val (appendOps, appendSize, appendOpCount) = KVListCodec.encodeOperations(opsList)
         
-      if (appendSize <= nodeSizeLimit - nodeRevision.currentSize) {
+      if (appendSize <= nodeSizeLimit - contentLength) {
           transaction.append(nodePointer.objectPointer, nodeRevision, KVListCodec.opsToDataBuffer(appendOps, appendSize))
-          val newRevision = nodeRevision.append(appendSize)
-          val updatedNode = new KVListNode(list, nodePointer, newRevision, rightNode, compactedContent)
+          val newRevision = nodeRevision.nextRevision
+          val updatedNode = new KVListNode(list, nodePointer, newRevision, rightNode, contentLength+appendSize, compactedContent)
           
           promise.success(transaction.result.map(_ => (updatedNode, None)))
       } else {
@@ -122,8 +123,8 @@ class KVListNode(
           transaction.overwrite(nodePointer.objectPointer, nodeRevision, buf)
           
           val newContent = insertOps.foldLeft(SortedMap[Array[Byte], Array[Byte]]())((m, ins) => m + (ins.key -> ins.value))
-          val newRevision = nodeRevision.overwrite(overwriteSize)
-          val updatedNode = new KVListNode(list, nodePointer, newRevision, rightNode, newContent)
+          val newRevision = nodeRevision.nextRevision
+          val updatedNode = new KVListNode(list, nodePointer, newRevision, rightNode, overwriteSize, newContent)
           
           promise.success(transaction.result.map(_ => (updatedNode, None)))
         } else {
@@ -164,13 +165,13 @@ class KVListNode(
             }
             
             val newContent = leftInsertOps.foldLeft(SortedMap[Array[Byte], Array[Byte]]())((m, ins) => m + (ins.key -> ins.value))
-            val newRevision = nodeRevision.overwrite(leftSize)
+            val newRevision = nodeRevision.nextRevision
             val newRightNodePointer = KVListNodePointer(newNodePointer, rightInsertOps.head.key)
-            val updatedNode = new KVListNode(list, nodePointer, newRevision, Some(newRightNodePointer), newContent)
+            val updatedNode = new KVListNode(list, nodePointer, newRevision, Some(newRightNodePointer), leftSize, newContent)
             
             val newRightContent = rightInsertOps.foldLeft(SortedMap[Array[Byte], Array[Byte]]())((m, ins) => m + (ins.key -> ins.value))
-            val newRightRevision = ObjectRevision(0, rightSize)
-            val newRightNode = new KVListNode(list, newRightNodePointer, newRightRevision, rightNode, newRightContent)
+            val newRightRevision = ObjectRevision(0)
+            val newRightNode = new KVListNode(list, newRightNodePointer, newRightRevision, rightNode, rightSize, newRightContent)
             
             try {
               onSplit(transaction, ec, this, updatedNode, newRightNode)
@@ -200,7 +201,7 @@ object KVListNode {
   def apply(list: KVList, nodePointer: KVListNodePointer, osd: ObjectStateAndData): KVListNode = {
     val (content, rightPointer) = KVListCodec.decodeNodeContent(list.compareKeys, osd.data)
     
-    new KVListNode(list, nodePointer, osd.revision, rightPointer, content)
+    new KVListNode(list, nodePointer, osd.revision, rightPointer, osd.data.size, content)
   }
   
   def scanToWithinRange(sourceNode: KVListNode, key: Array[Byte], blacklisted: Option[Set[KVListNodePointer]])(implicit ec: ExecutionContext): Future[KVListNode] = {

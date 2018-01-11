@@ -277,7 +277,7 @@ class KVTree(
               tx.commit() onComplete {
                 case Success(_) => synchronized {
                   tiers = newTiers
-                  treeDefinitionRevision = requiredRevision.overwrite(data.length)
+                  treeDefinitionRevision = requiredRevision.nextRevision
                   p.success(ptr)
                 }
                 case Failure(reason) => p.failure(reason)

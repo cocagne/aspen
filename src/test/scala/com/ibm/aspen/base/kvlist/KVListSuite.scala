@@ -57,13 +57,13 @@ object KVListSuite {
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {  
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       appendOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
-      requiredRevision.append(data.size)
+      requiredRevision.nextRevision
     }
     
     override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       overwriteOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
-      requiredRevision.overwrite(data.size)
+      requiredRevision.nextRevision
     }
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
@@ -107,7 +107,7 @@ object KVListSuite {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
-        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0,initialContent.size), ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
+        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision(0), ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
         
         Future.successful(p)
       }
@@ -119,7 +119,7 @@ object KVListSuite {
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     
-    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0,0), ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
+    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision(0), ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
     
     def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }

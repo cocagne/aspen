@@ -23,7 +23,7 @@ object TransactionDriverSuite {
   val ds2 = DataStoreID(poolUUID, 2)
   val ds3 = DataStoreID(poolUUID, 3)
   
-  val rev = ObjectRevision(0,1)
+  val rev = ObjectRevision(0)
   val arr = new Array[Byte](0)
   val simpleObj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), 
                                 Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))

@@ -60,7 +60,7 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
           taskNum: Int)(implicit t: Transaction): Future[ObjectPointer] = {
         // Don't need a real object for the "allocating object" this is just for allocation Tx error recovery
         val allocatingObject = ObjectPointer(new UUID(0,0), new UUID(0,0), None, Replication(3,2), new Array[StorePointer](0))
-        val allocatingObjectRevision = ObjectRevision(0,0)
+        val allocatingObjectRevision = ObjectRevision(0)
         val bb = ByteBuffer.allocate(4)
         bb.putInt(taskNum)
         bb.position(0)

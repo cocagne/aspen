@@ -75,7 +75,7 @@ class TransactionBuilder(
     objectUpdates += (objectPointer -> data)
     requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: requirements
     
-    requiredRevision.append(data.size)
+    requiredRevision.nextRevision
   }
   
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
@@ -85,7 +85,7 @@ class TransactionBuilder(
     objectUpdates += (objectPointer -> data)
     requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: requirements
     
-    requiredRevision.overwrite(data.size)
+    requiredRevision.nextRevision
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
@@ -104,7 +104,7 @@ class TransactionBuilder(
     
     requirements = VersionBump(objectPointer, requiredRevision) :: requirements
     
-    requiredRevision.versionBump()
+    requiredRevision.nextRevision
   }
   
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {
