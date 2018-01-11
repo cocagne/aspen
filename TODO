@@ -1,8 +1,50 @@
+* def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]
+  def getStorageNode(nodeUUID: UUID): Future[StorageNode]
+  
+  StorageNode
+     uuid: UUID
+     def getTaskGroup(): Future[TaskGroup]
+       - cache result of first successful future
+       
+  def createNewStoragePool( cfg: StoragePoolConfig ): Future[StoragePool]
+    - Ideally creation is a single transaction (so we don't get half-created pools)
+    StoragePoolConfig
+       uuid: UUID
+       stores: List[ (storeConfig: StorageNodeConfiguration, StorageNode) ]
+    - Create storage node config object and task for initializing on the storage node
+    - task is assigned to the storage-node's task group which executes locally on the storage node
+    - StoragePool definition should contain the StorageNode UUID for each store
+    - Probably DONT need a per-store object. Pool definition should be sufficient.
+       |-> initialization task simply retries on update failure (which it'd have to do anyway)
+    
+* Could slim TestSystem down to a single node with 3 data stores rather than dealing with 3 separate systems
+
+* Defining New Pools
+  - Would be awfully handy if new stores could be defined directly within graph
+  
+  - Pool could hold reference to StoreConfig
+     - Defines Store Type & tunable parameters
+     - Could also hold things like minimumSize, current usage, desiredBackingMedia (ssd/hdd/ram)
+     - Could distinguish between 'DesiredConfig' and 'ActualConfig'
+     - Actual could include full paths on file system
+     - Points to the owning storage node config or None if the Store is not currently hosted (new)
+     
+* StorageNode config
+  - Pairwise refs to all hosted DataStore instances
+  - Assignment to StorageNode atomically updates DataStore object and StorageNode object
+  - Authoritative source for NetworkEndpoint
+
+
+* Add ObjectAllocaters tree
+  - Maps name to ObjectAllocater definition
+     - Which is just a list of pool names
+     - Randomly choose one for each alloc if >1 pool
+     - Deal with full / weighted allocations later
 
 * KVTree needs per-tier configuration
    - Ideally this would be loaded from the treeDefinitionObject
-   - Which begs the question on how to define Allocation policies in the object graph
-     
+       - Tree Def contains a list of object allocater names
+        
 * Should AspenSystem be broken into
     TaskGroupManager, StoragePoolManager, ObjectAllocaterManager, etc ?
     
@@ -13,8 +55,26 @@
             
 * RAM only pool would be good for Tasks (we'll always want them in memory)
 
-
+----------------------------------------------------------
 * Basic FS Implementation
+  
+  * Inode tree is authoritative source of file existence
+  * File object refcount is incr/decr by one with each directory hard-link
+  * Start with refcount of 2 so file can go to one on no more directory links
+  * Downref to 1 Tx places the file in a Pending Delete task that gets added to this client's task group
+ 
+  SimpleDownRefImpl:
+    - Every 30 sec, each client looks for newly-opened files that are more than 30 sec old.
+    - When found, create object / incref the PersistentOpen counter object for that inode (PersistentOpenHandle tree)
+    - PendingDelete task checks every 30 sec for no entry in PersistentOpenHandle tree
+    - When no open handles left, begin delete process. Refcount for data slices is always (0,1)
+    
+  Config:
+    - Use FSConfig class to load all ObjectAllocaters
+       - Provides single-point of config
+       - Could also have a JSON object w/ configurable params like timeouts and the like
+
+----------------------------------------------------------
 
 ** Consider sfuse integration here.
    * Could run program in Debug mode and mount from VM
