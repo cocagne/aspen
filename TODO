@@ -1,5 +1,33 @@
    
+Add ObjectType enum value to ObjectPointer
+
+* Rename read.ObjectState to ObjectReadState
+* Rename ObjectStateAndData to ObjectState
+* ObjectState is not abstract, it holds refcount,revision,option(tx)
+   |-> Allows reads w/o data
+
+Convert ObjectStateAndData to a sealed class
+  * revision, refcount, Option[locked tx] in base
+  * ObjectType-dependent subclass contains a Data attribute
+  
+Overloaded read methods can return direct subclasses of appropriate type
+  * While type-checking the ObjectPointer type to ensure compatibility
+     |-> immediately fail on mismatch
+     
+- Will need to think through what the KVContainer stuff looks like on the
+  client side. Probably best to add new Transaction API methods and not change
+  the ObjectPointer. Therefore instead of DataUpdate we have ContainedKeyUpdate
+  and ContainerObjectUpdate (for key/next ptr modifications)
+   
 Non-conflicting Append Objects
+
+* ReadResults depend on the type of object being read
+ - We still return ObjectStateAndData but the Data attribute is a sealed abstract class
+     - DataBuffer - Normal object
+     - List[(HLCTimestamp, DataBuffer)] - For non-conflicting append objects
+     - KVContainerState
+        - min & max keys
+        - map of key -> (revision, refcount, timestamp, value)
 
 * Series of UpdateUUID, HLC Timestamp
    * If ensure after TS, check against highest update TS
