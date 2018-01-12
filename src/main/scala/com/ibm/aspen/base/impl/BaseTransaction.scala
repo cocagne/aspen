@@ -33,7 +33,7 @@ class BaseTransaction(
   
   val uuid: UUID = UUID.randomUUID()
   private [this] val promise = Promise[Unit]
-  private [this] var builder: Option[TransactionBuilder] = Some(new TransactionBuilder(chooseDesignatedLeader, txManager.clientId))
+  private [this] var builder: Option[TransactionBuilder] = Some(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.append(objectPointer, requiredRevision, data)

@@ -44,7 +44,7 @@ class SimpleTaskGroupExecutor(
     val taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext) extends TaskGroupExecutor {
   
   private[this] var tasks: List[TaskDefinition] = Nil
-  private[this] var groupDefinitionRevision = ObjectRevision(-1)
+  private[this] var groupDefinitionRevision = ObjectRevision(new UUID(0,0))
   private[this] var activeTasks = Map[UUID, Future[Task]]()
   private[this] var pendingDeletes = Set[UUID]()
   private[this] var isPruning = false

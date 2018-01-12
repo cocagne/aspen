@@ -64,13 +64,13 @@ class SimpleTestSystem extends AspenSystem {
     allocCount += 1
     val ptr = mkptr(id)
     
-    content += (ptr.uuid -> new Obj(ObjectRevision(0), ObjectRefcount(0,1), initialContent, now))
+    content += (ptr.uuid -> new Obj(t.txRevision, ObjectRefcount(0,1), initialContent, now))
     
     Future.successful(ptr)
   }
   
   class Tx extends Transaction {
-    val uuid = new UUID(0,0)
+    val uuid = UUID.randomUUID()
     
     val p = Promise[Unit]()
     
@@ -90,7 +90,7 @@ class SimpleTestSystem extends AspenSystem {
       
       def fn() = {
         val o = content(objectPointer.uuid) 
-        o.rev = requiredRevision.nextRevision
+        o.rev = txRevision
         val cpy = ByteBuffer.allocate(o.data.size + data.size)
         cpy.put(o.data.asReadOnlyBuffer())
         cpy.put(data.asReadOnlyBuffer())
@@ -99,14 +99,14 @@ class SimpleTestSystem extends AspenSystem {
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.nextRevision
+      txRevision
     }
     
     override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       
       def fn() = {
         val o = content(objectPointer.uuid) 
-        o.rev = requiredRevision.nextRevision
+        o.rev = txRevision
         val cpy = ByteBuffer.allocate(data.size)
         cpy.put(data.asReadOnlyBuffer())
         cpy.position(0)
@@ -114,7 +114,7 @@ class SimpleTestSystem extends AspenSystem {
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.nextRevision
+      txRevision
     }
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = {
@@ -130,11 +130,11 @@ class SimpleTestSystem extends AspenSystem {
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = {
       def fn() = {
         val o = content(objectPointer.uuid) 
-        o.rev = requiredRevision.nextRevision
+        o.rev = txRevision
         ()
       }
       ops = fn _ :: ops
-      requiredRevision.nextRevision
+      txRevision
     }
     
     def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {

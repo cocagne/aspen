@@ -38,7 +38,7 @@ object CodecSuite {
     val txuuid = java.util.UUID.randomUUID()
     val startTs = 100
     val leader: Byte = 4
-    val dataUpdates = DataUpdate(op, ObjectRevision(1), DataUpdateOperation.Overwrite) :: Nil
+    val dataUpdates = DataUpdate(op, ObjectRevision(new UUID(0,1)), DataUpdateOperation.Overwrite) :: Nil
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
     val client = ClientID(cliUUID)
@@ -93,7 +93,7 @@ object ReadResponse {
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
     val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(2)
+    val rev = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     val cs = ReadResponse.CurrentState(rev, ref, ts, Some(DataBuffer(List[Byte](1,2,3).toArray)), Some(txd))
     
@@ -121,7 +121,7 @@ object ReadResponse {
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
     val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(2)
+    val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
     val cs = ReadResponse.CurrentState(rev, ref, ts, None, None)
     
@@ -244,7 +244,7 @@ object ReadResponse {
     val s1:Option[Int] = None
     val c1 = ClientID(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(2)
+    val rev = ObjectRevision(new UUID(0,2))
     val poolUUID = new java.util.UUID(1,2)
     val txUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
@@ -277,7 +277,7 @@ object ReadResponse {
     val s1:Option[Int] = Some(5)
     val c1 = ClientID(new UUID(1,1))
     val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(2)
+    val rev = ObjectRevision(new UUID(0, 2))
     val poolUUID = new java.util.UUID(1,2)
     val txUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
@@ -340,7 +340,7 @@ object ReadResponse {
     val uuid1 = new UUID(1,1)
     val uuid2 = new UUID(2,2)
     
-    val e1 = UpdateErrorResponse(uuid1, UpdateError.Collision, Some(ObjectRevision(1)), Some(ObjectRefcount(1,1)), Some(txd2))
+    val e1 = UpdateErrorResponse(uuid1, UpdateError.Collision, Some(ObjectRevision(new UUID(0,1))), Some(ObjectRefcount(1,1)), Some(txd2))
     val e2 = UpdateErrorResponse(uuid2, UpdateError.Collision, None, None, None)
     
     val prep = TxPrepareResponse(

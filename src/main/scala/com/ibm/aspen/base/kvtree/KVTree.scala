@@ -233,7 +233,7 @@ class KVTree(
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = system.readObject(treeDefinitionPointer, None) map { osd =>
     val td = KVTreeCodec.decodeTreeDefinition(osd.data)
     synchronized {
-      if (osd.revision > treeDefinitionRevision) {
+      if (osd.revision != treeDefinitionRevision) {
         tiers = td.tiers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
         treeDefinitionRevision = osd.revision 
       }
@@ -277,7 +277,7 @@ class KVTree(
               tx.commit() onComplete {
                 case Success(_) => synchronized {
                   tiers = newTiers
-                  treeDefinitionRevision = requiredRevision.nextRevision
+                  treeDefinitionRevision = tx.txRevision
                   p.success(ptr)
                 }
                 case Failure(reason) => p.failure(reason)

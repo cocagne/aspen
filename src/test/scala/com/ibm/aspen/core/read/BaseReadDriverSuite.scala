@@ -37,7 +37,7 @@ object BaseReadDriverSuite {
   val sp2 = StorePointer(2, List[Byte](2).toArray)
   
   val ptr = ObjectPointer(objUUID, poolUUID, None, ida, (sp0 :: sp1 :: sp2 :: Nil).toArray)
-  val rev = ObjectRevision(0)
+  val rev = ObjectRevision.Null
   val ref = ObjectRefcount(1,1)
   
   val odata = DataBuffer(List[Byte](1,2,3,4).toArray)
@@ -69,8 +69,8 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   test("Fail with too many errors") {
     val m = new TMessenger
     val r = mkReader(m)
-    val nrev = ObjectRevision(1)
-    val nrev2 = ObjectRevision(2)
+    val nrev = ObjectRevision(new UUID(0,1))
+    val nrev2 = ObjectRevision(new UUID(0,2))
     
     val ts = HLCTimestamp.now
     
@@ -92,8 +92,8 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   test("Succeed with errors") {
     val m = new TMessenger
     val r = mkReader(m)
-    val nrev = ObjectRevision(1)
-    val nrev2 = ObjectRevision(2)
+    val nrev = ObjectRevision(new UUID(0,1))
+    val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
     r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))
@@ -112,8 +112,8 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   test("Ignore old revisions") {
     val m = new TMessenger
     val r = mkReader(m)
-    val nrev = ObjectRevision(1)
-    val nrev2 = ObjectRevision(2)
+    val nrev = ObjectRevision(new UUID(0,1))
+    val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
     r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, ref, ts, Some(odata), None))))

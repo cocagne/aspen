@@ -61,11 +61,11 @@ object NetworkCodec {
   }
   
   
-  def encode(builder:FlatBufferBuilder, rev:ObjectRevision): Int = {
-    P.ObjectRevision.createObjectRevision(builder, rev.updateCount)
+  def encodeObjectRevision(builder:FlatBufferBuilder, rev:ObjectRevision): Int = {
+    P.ObjectRevision.createObjectRevision(builder, rev.lastUpdateTxUUID.getMostSignificantBits, rev.lastUpdateTxUUID.getLeastSignificantBits)
   }
-  def decode(orev: P.ObjectRevision): ObjectRevision = {
-    ObjectRevision(orev.updateCount())
+  def decode(o: P.ObjectRevision): ObjectRevision = {
+    ObjectRevision(new UUID(o.mostSigBits(), o.leastSigBits()))
   }
   
   
@@ -165,7 +165,7 @@ object NetworkCodec {
     P.AllocationObjectStatus.addObjectUUID(builder, encode(builder, o.uuid))
     o.state match {
       case Right(state) =>
-        P.AllocationObjectStatus.addRevision(builder, encode(builder, state.revision))
+        P.AllocationObjectStatus.addRevision(builder, encodeObjectRevision(builder, state.revision))
         P.AllocationObjectStatus.addRefcount(builder, encode(builder, state.refcount))
         state.lockedTransaction.foreach { _ =>
           P.AllocationObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
@@ -278,7 +278,7 @@ object NetworkCodec {
     
     P.DataUpdate.startDataUpdate(builder)
     P.DataUpdate.addObjectPointer(builder,optr)
-    P.DataUpdate.addRequiredRevision(builder, encode(builder, o.requiredRevision))
+    P.DataUpdate.addRequiredRevision(builder, encodeObjectRevision(builder, o.requiredRevision))
     P.DataUpdate.addOperation(builder, op)
     P.DataUpdate.endDataUpdate(builder)
   }
@@ -314,7 +314,7 @@ object NetworkCodec {
     
     P.VersionBump.startVersionBump(builder)
     P.VersionBump.addObjectPointer(builder,optr)
-    P.VersionBump.addRequiredRevision(builder, encode(builder, o.requiredRevision))
+    P.VersionBump.addRequiredRevision(builder, encodeObjectRevision(builder, o.requiredRevision))
     P.VersionBump.endVersionBump(builder)
   }
   def decode(n: P.VersionBump): VersionBump = {
@@ -466,7 +466,7 @@ object NetworkCodec {
     P.UpdateErrorResponse.addObjectUuid(builder, encode(builder, o.objectUUID))
     P.UpdateErrorResponse.addUpdateError(builder, updateError)
     if (o.currentRevision.isDefined)
-      P.UpdateErrorResponse.addCurrentRevision(builder, encode(builder, o.currentRevision.get))
+      P.UpdateErrorResponse.addCurrentRevision(builder, encodeObjectRevision(builder, o.currentRevision.get))
     if (o.currentRefcount.isDefined)
       P.UpdateErrorResponse.addCurrentRefcount(builder, encode(builder, o.currentRefcount.get))
     if (collidingTx != -1)
@@ -718,7 +718,7 @@ object NetworkCodec {
     P.Allocate.addTimestamp(builder, o.timestamp.asLong)
     P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
     P.Allocate.addAllocatingObject(builder, allocObj)
-    P.Allocate.addAllocatingObjectRevision(builder, encode(builder, o.allocatingObjectRevision))
+    P.Allocate.addAllocatingObjectRevision(builder, encodeObjectRevision(builder, o.allocatingObjectRevision))
     P.Allocate.endAllocate(builder)
   }
   def decode(n: P.Allocate): Allocate = {
@@ -907,7 +907,7 @@ object NetworkCodec {
         P.ReadResponse.addReadError(builder, encodeReadError(err))
         
       case Right(cs) =>
-        P.ReadResponse.addRevision(builder, encode(builder, cs.revision))
+        P.ReadResponse.addRevision(builder, encodeObjectRevision(builder, cs.revision))
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
         P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)

@@ -49,7 +49,7 @@ class MemoryOnlyDataStore(
     
     val sp = StorePointer(storeId.poolIndex, lpArray)
     
-    objects += (objId -> new Object(objectUUID, ObjectRevision(0), ObjectRefcount(0,1), initialContent, timestamp, None))
+    objects += (objId -> new Object(objectUUID, ObjectRevision(new UUID(0,0)), ObjectRefcount(0,1), initialContent, timestamp, None))
     
     Future.successful(sp)
   }
@@ -59,7 +59,7 @@ class MemoryOnlyDataStore(
     val sp = objectPointer.getStorePointer(storeId).get // Implicit assertion here. This should never fail
     val objId = ByteBuffer.wrap(sp.data).getInt
     val obj = objects(objId)
-    objects += (objId ->  new Object(obj.uuid, obj.revision.nextRevision, obj.refcount, newContent, timestamp, None))
+    objects += (objId ->  new Object(obj.uuid, ObjectRevision(new UUID(0,0)), obj.refcount, newContent, timestamp, None))
     Future.successful(())
   }
   
@@ -73,7 +73,7 @@ class MemoryOnlyDataStore(
     val lst = newObjects map { no =>
       val (objId, lpArray) = nextLocalPointer()
     
-      objects += (objId -> new Object(no.newObjectUUID, ObjectRevision(0), no.initialRefcount, no.objectData, timestamp, None))
+      objects += (objId -> new Object(no.newObjectUUID, ObjectRevision(allocationTransactionUUID), no.initialRefcount, no.objectData, timestamp, None))
     
       AllocationRecoveryState.NewObject(StorePointer(storeId.poolIndex, lpArray), no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount)
     }
@@ -164,12 +164,12 @@ class MemoryOnlyDataStore(
                     newData.position(0)
                     
                     obj.data = DataBuffer(newData)
-                    obj.revision = obj.revision.nextRevision
+                    obj.revision = ObjectRevision(txd.transactionUUID)
                   }
                   
                 case DataUpdateOperation.Overwrite =>
                   obj.data = data
-                  obj.revision = obj.revision.nextRevision
+                  obj.revision = ObjectRevision(txd.transactionUUID)
               }
             }
             
@@ -177,7 +177,7 @@ class MemoryOnlyDataStore(
             obj.refcount = ru.newRefcount
             
           case vb: VersionBump => 
-            obj.revision = obj.revision.nextRevision
+            obj.revision = ObjectRevision(txd.transactionUUID)
         }
       }
     }

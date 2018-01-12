@@ -55,17 +55,18 @@ object RocksDBDataStore {
   
   private def stateToBytes(rev: ObjectRevision, ref: ObjectRefcount, timestamp: HLCTimestamp): Array[Byte] = {
     val bb = ByteBuffer.allocate(32)
-    bb.putLong(0, rev.updateCount)
-    bb.putInt(8, ref.updateSerial)
-    bb.putInt(12, ref.count)
-    bb.putLong(16, timestamp.asLong)
+    bb.putLong(0, rev.lastUpdateTxUUID.getMostSignificantBits)
+    bb.putLong(8, rev.lastUpdateTxUUID.getLeastSignificantBits)
+    bb.putInt(16, ref.updateSerial)
+    bb.putInt(20, ref.count)
+    bb.putLong(24, timestamp.asLong)
     bb.array()
   }
   private def bytesToState(buf:Array[Byte]): (ObjectRevision, ObjectRefcount, HLCTimestamp) = {
     val bb = ByteBuffer.wrap(buf)
-    val rev = ObjectRevision(bb.getLong(0))
-    val ref = ObjectRefcount(bb.getInt(8), bb.getInt(12))
-    val ts = HLCTimestamp(bb.getLong(16))
+    val rev = ObjectRevision(new UUID(bb.getLong(0), bb.getLong(8)))
+    val ref = ObjectRefcount(bb.getInt(16), bb.getInt(20))
+    val ts = HLCTimestamp(bb.getLong(24))
     (rev, ref, ts)
   }
   
@@ -154,7 +155,7 @@ class RocksDBDataStore(
   }
   
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = synchronized {
-      val initialRevision = ObjectRevision(0)
+      val initialRevision = ObjectRevision(new UUID(0,0))
       val initialRefcount = ObjectRefcount(0, 1)
       val buf = initialContent.getByteArray()
       db.put(stateKey(objectUUID), stateToBytes(initialRevision, initialRefcount, timestamp))
@@ -162,7 +163,7 @@ class RocksDBDataStore(
   }
   
   def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit] = synchronized {
-    val initialRevision = ObjectRevision(0)
+    val initialRevision = ObjectRevision(new UUID(0,0))
     val initialRefcount = ObjectRefcount(0, 1)
     val buf = newContent.getByteArray()
     db.put(stateKey(objectPointer), stateToBytes(initialRevision, initialRefcount, timestamp))
@@ -194,7 +195,7 @@ class RocksDBDataStore(
       
       ars.newObjects.foreach { newObj =>
         
-        val ws = new WorkingState(newObj.newObjectUUID, ObjectRevision(0), newObj.initialRefcount, 
+        val ws = new WorkingState(newObj.newObjectUUID, ObjectRevision(allocationTransactionUUID), newObj.initialRefcount, 
                                   ars.timestamp, newObj.objectData, None, Set(ars.allocationTransactionUUID))
         
         allocations += (newObj.newObjectUUID -> ars)
@@ -392,7 +393,7 @@ class RocksDBDataStore(
               du.operation match {
                 case DataUpdateOperation.Overwrite => 
                 ws.data = data
-                ws.revision = ws.revision.nextRevision
+                ws.revision = ObjectRevision(txd.transactionUUID)
                 
               case DataUpdateOperation.Append => 
                 if (ws.revision == du.requiredRevision) {
@@ -401,13 +402,13 @@ class RocksDBDataStore(
                   buf.put(data.asReadOnlyBuffer())
                   buf.position(0)
                   ws.data = DataBuffer(buf)
-                  ws.revision = ws.revision.nextRevision
+                  ws.revision = ObjectRevision(txd.transactionUUID)
                 }
               }
             }
             
           case vb: VersionBump => 
-            ws.revision = ws.revision.nextRevision
+            ws.revision = ObjectRevision(txd.transactionUUID)
           
         }}
       }

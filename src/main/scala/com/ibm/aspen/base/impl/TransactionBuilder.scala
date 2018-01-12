@@ -21,8 +21,9 @@ import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.HLCTimestamp
 
 class TransactionBuilder(
-    chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
-    clientId: ClientID) {
+    val transactionUUID: UUID,
+    val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
+    val clientId: ClientID) {
   
   private [this] var requirements = List[TransactionRequirement]()
   
@@ -75,7 +76,7 @@ class TransactionBuilder(
     objectUpdates += (objectPointer -> data)
     requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: requirements
     
-    requiredRevision.nextRevision
+    ObjectRevision(transactionUUID)
   }
   
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
@@ -85,7 +86,7 @@ class TransactionBuilder(
     objectUpdates += (objectPointer -> data)
     requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: requirements
     
-    requiredRevision.nextRevision
+    ObjectRevision(transactionUUID)
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
@@ -104,7 +105,7 @@ class TransactionBuilder(
     
     requirements = VersionBump(objectPointer, requiredRevision) :: requirements
     
-    requiredRevision.nextRevision
+    ObjectRevision(transactionUUID)
   }
   
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {

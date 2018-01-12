@@ -233,7 +233,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       import NullDataStore._
       
       override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
-        Future.successful(List(new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9))))
+        Future.successful(List(new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(new UUID(0,9)))))
       }
     }
     
@@ -254,7 +254,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(9)), None, None)))
+            List(UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -305,7 +305,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       
       override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
         Future.successful(List(
-            new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(9)),
+            new RevisionMismatch(op, NullDataStore.revision, ObjectRevision(new UUID(0,9))),
             new RefcountMismatch(op, NullDataStore.refcount, ObjectRefcount(9,9))))
       }
     }
@@ -326,7 +326,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(9)), None, None),
+                UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None),
                 UpdateErrorResponse(op.uuid, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }

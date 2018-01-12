@@ -64,26 +64,34 @@ class SimpleAllocationRecoveryProcess(
   def receive(m: AllocationStatusReply): Unit = synchronized {
     replies += (m.from -> m)
     
-    val txDoneQuorum = replies.values.count(m => m.transactionStatus.isEmpty) >= ars.allocatingObject.ida.restoreThreshold
-    
-    if (!revisionChanged) {
+    val currentRevision = if (replies.values.count(m => m.transactionStatus.isEmpty) >= ars.allocatingObject.ida.restoreThreshold) {
+      val errUUID = new UUID(0,0) // Object could be deleted (quorum of errors)
       
-      revisionChanged = replies.values.exists { m => m.objectStatus.state match {
-        case Left(err) => false
-        case Right(state) => state.revision > ars.allocatingObjectRevision
-      }}
+      var revisionCounts = replies.values.foldLeft(Map[UUID, Int]()) { 
+        (m, as) => as.objectStatus.state match {
+          case Left(err) => m.get(errUUID) match {
+            case Some(count) => m + (errUUID -> (count+1))
+            case None => m + (errUUID -> 1)
+          }
+          case Right(status) => m.get(status.revision.lastUpdateTxUUID) match {
+            case Some(count) => m + (status.revision.lastUpdateTxUUID -> (count+1))
+            case None => m + (status.revision.lastUpdateTxUUID -> 1)
+          }
+        }
+      }
       
-      // Object could be deleted (quorum of errors)
-      if ( replies.values.count(m => m.objectStatus.state.isLeft) >= ars.allocatingObject.ida.restoreThreshold )
-        revisionChanged = true
+      revisionCounts.find( t => t._2 >= ars.allocatingObject.ida.restoreThreshold ).map( t => t._1 )
+    } 
+    else
+      None
       
-      if (!revisionChanged && txDoneQuorum)
+    currentRevision foreach { current =>
+      if ( current == ars.allocatingObjectRevision.lastUpdateTxUUID )
         bumpAllocatingObjectVersion()
-    }
-    
-    if (revisionChanged && txDoneQuorum && !resolving) {
-      resolving = true
-      resolveAllocation()
+      else if (!resolving) {
+        resolving = true
+        resolveAllocation()
+      }
     }
   }
   

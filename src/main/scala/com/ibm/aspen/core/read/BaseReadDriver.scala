@@ -61,16 +61,16 @@ class BaseReadDriver(
     // If something goes wrong with the IDA, it'll throw an IDAError exception
     val odata = if (retrieveObjectData) Some(objectPointer.ida.restore(segments)) else None
       
-    val zv = ObjectRevision(0)
+    val zv = ObjectRevision(new UUID(0,0))
     val zr = ObjectRefcount(0,0)
-    val zt = HLCTimestamp(0)
+    val zt = HLCTimestamp(0) 
     val zl = List[(DataStoreID, TransactionDescription)]()
     
     
     val (highestRevision, highestRefcount, highestTimstamp, lockedTransactions) = responses.foldLeft((zv,zr,zt,zl))( (h, t) => t._2 match {
       case Left(_) => h
       case Right(ss) =>
-        val hrev = if (ss.revision > h._1) ss.revision else h._1
+        val hrev = if (ss.timestamp.compareTo(h._3) > 0) ss.revision else h._1
         val href = if (ss.refcount.updateSerial > h._2.updateSerial) ss.refcount else h._2 
         val hts  = if (ss.timestamp.compareTo(h._3) > 0) ss.timestamp else h._3
         val locks = ss.lockedTransaction match {
@@ -102,48 +102,81 @@ class BaseReadDriver(
     if (responses.size < objectPointer.ida.consistentRestoreThreshold)
       return // Definitely can't take any action yet
     
-    // Find the highest revision then filter out all responses for old revisions
-    responses.values.reduceLeft((a,b) => (a,b) match {
-      case (Left(e1),  Left(e2))  => Left(e1)
-      case (Left(e),   Right(s))  => Right(s)
-      case (Right(s),  Left(e))   => Right(s)
-      case (Right(s1), Right(s2)) => Right(if (s1.revision > s2.revision) s1 else s2) 
-    }) match {
-      case Left(_) =>
-      case Right(highest) => responses = responses.filter( t => t._2 match {
+    val revisionCounts = responses.values.foldLeft(Map[UUID,Int]()){ 
+      (m, e) => e match {
+        case Left(err) => m
+        case Right(ss) => m + (ss.revision.lastUpdateTxUUID -> (m.getOrElse(ss.revision.lastUpdateTxUUID, 0)+1)) 
+      }
+    }
+    
+    val start: Option[(UUID, Int)] = None
+    
+    // Determine which revision has received the most responses and the number of those responses.
+    // If two or more revisions are tied in response counts, we can't figure out which to prune
+    val oMostRepliedRevision = revisionCounts.foldLeft((start,start)){ (o, t) => o match {
+      case (None, None) => (Some(t), None)
+      case (Some(highest), None) => if (t._2 > highest._2) (Some(t), Some(highest)) else (Some(highest), Some(t))
+      case (Some(highest), Some(nextHighest)) =>
+        if (t._2 > highest._2)
+          (Some(t), Some(highest))
+        else if (t._2 > nextHighest._2)
+          (Some(highest), Some(t))
+        else
+          (Some(highest), Some(nextHighest))
+      case (None, Some(nextHighest)) => o // Can't get here 
+    }} match {
+      case (None, None) => None
+      case (Some(highest), None) => Some(highest)
+      case (Some(highest), Some(nextHighest)) => if (highest._2 == nextHighest._2) None else  Some(highest)
+      case (None, Some(x)) => None // can't get here
+    }
+    
+    oMostRepliedRevision foreach { mostRepliedRevision =>
+      val revision = ObjectRevision(mostRepliedRevision._1)
+      val count = mostRepliedRevision._2
+      val thresholdReached = count >= objectPointer.ida.consistentRestoreThreshold
+      
+      // Filter out revisions that don't match the one with the most responses and request a re-read from all
+      // stores from which we didn't receive that revision
+      responses = responses.filter( t => t._2 match {
         case Left(_) => true
-        case Right(s) => if (s.revision == highest.revision) 
+        case Right(s) => if (s.revision == revision) 
           true 
         else {
           // We read old state. Discard it and read the current state
-          sendReadRequest(s.storeId)
+          if (!thresholdReached)
+            sendReadRequest(s.storeId)
           false
         }
       })
-    }
-    
-    val (numErrs, numOkay) = responses.foldLeft((0,0))((counts, t) => t._2 match {
-      case Left(_) => (counts._1+1, counts._2)
-      case Right(_) => (counts._1, counts._2+1)
-    })
-    
-    if (numOkay >= objectPointer.ida.consistentRestoreThreshold) {
-      try complete() catch {
-        case e: IDAError => 
-          promise.success(Left(e))
-      }
-    } else if ( numErrs >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
-      val errMap = objectPointer.storePointers.foldLeft(Map[DataStoreID,Option[ReadError.Value]]())( (m, sp) => {
-        val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex) 
-        responses.get(storeId) match {
-          case None => m + (storeId -> Some(ReadError.NoResponse))
-          case Some(either) => either match {
-            case Left(err) => m + (storeId -> Some(err))
-            case Right(ss) => m + (storeId -> None)
-          }
+      
+      if (thresholdReached) {
+        try {
+          complete() 
+        } catch {
+          case e: IDAError => 
+            promise.success(Left(e))
         }
-      })
-      promise.success(Left(new ThresholdError(errMap)))
+      }else {
+        val numErrs = responses.foldLeft(0)((errCount, t) => t._2 match {
+          case Left(_) => errCount + 1
+          case Right(_) => errCount
+        })
+        
+        if ( numErrs >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
+          val errMap = objectPointer.storePointers.foldLeft(Map[DataStoreID,Option[ReadError.Value]]())( (m, sp) => {
+            val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex) 
+            responses.get(storeId) match {
+              case None => m + (storeId -> Some(ReadError.NoResponse))
+              case Some(either) => either match {
+                case Left(err) => m + (storeId -> Some(err))
+                case Right(ss) => m + (storeId -> None)
+              }
+            }
+          })
+          promise.success(Left(new ThresholdError(errMap)))
+        }
+      }
     }
   }
 }

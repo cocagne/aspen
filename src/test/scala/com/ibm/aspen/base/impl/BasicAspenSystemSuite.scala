@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.DataBuffer
+import java.util.UUID
 
 class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
   import Bootstrap._
@@ -44,7 +45,7 @@ class BasicAspenSystemSuite extends AsyncFunSuite with Matchers {
     
     def allocObj(r: Radicle): Future[ObjectPointer] = {
       implicit val tx = ms.basicAspenSystem.newTransaction()
-      val ffp = ms.basicAspenSystem.lowLevelAllocateObject(r.systemTreeDefinitionPointer, ObjectRevision(0), BootstrapStoragePoolUUID,
+      val ffp = ms.basicAspenSystem.lowLevelAllocateObject(r.systemTreeDefinitionPointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
                                                    None, ms.bootstrapPoolIDA, DataBuffer(ByteBuffer.allocate(5)))
       for {
         fp <- ffp

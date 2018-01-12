@@ -40,7 +40,7 @@ object TaskCodec {
     P.TaskCreationFinalizationAction.addTaskTypeUUID(builder, NetworkCodec.encode(builder, fa.taskTypeUUID))
     P.TaskCreationFinalizationAction.addTaskUUID(builder, NetworkCodec.encode(builder, fa.taskUUID))
     P.TaskCreationFinalizationAction.addTaskObject(builder, objectOffset)
-    P.TaskCreationFinalizationAction.addTaskRevision(builder, NetworkCodec.encode(builder, fa.taskRevision))
+    P.TaskCreationFinalizationAction.addTaskRevision(builder, NetworkCodec.encodeObjectRevision(builder, fa.taskRevision))
     
     val finalOffset = P.TaskCreationFinalizationAction.endTaskCreationFinalizationAction(builder)
     

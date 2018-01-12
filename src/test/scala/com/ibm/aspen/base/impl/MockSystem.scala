@@ -72,31 +72,31 @@ object MockSystem {
     
     def read(ptr: ObjectPointer): Option[ObjectStateAndData] = synchronized { objects.get(ptr.uuid) }
     
-    def allocate(newObjectUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer, timestamp: HLCTimestamp): ObjectStateAndData = synchronized {
+    def allocate(newObjectUUID: UUID, allocTxUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer, timestamp: HLCTimestamp): ObjectStateAndData = synchronized {
       val cpy = ByteBuffer.allocate(initialContent.size)
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
-      val rev = ObjectRevision(0)
+      val rev = ObjectRevision(allocTxUUID)
       val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
       val osd = ObjectStateAndData(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
       osd
     }
     
-    def txUpdate( ops: List[ObjectOp], timestamp: HLCTimestamp ): Unit = synchronized {
+    def txUpdate( txUUID: UUID, ops: List[ObjectOp], timestamp: HLCTimestamp ): Unit = synchronized {
       ops.foreach( op => op match {
         case a:Append => if (a.requiredRevision != objects(a.ptr.uuid).revision) throw new RevisionMismatch
         case o:Overwrite => if (o.requiredRevision != objects(o.ptr.uuid).revision) throw new RevisionMismatch
         case r:SetRef => if (r.requiredRefcount != objects(r.ptr.uuid).refcount) throw new RefcountMismatch
       })
       ops.foreach( op => op match {
-        case a:Append => append(a.ptr, a.buf, timestamp)
-        case o:Overwrite => overwrite(o.ptr, o.buf, timestamp)
+        case a:Append => append(txUUID, a.ptr, a.buf, timestamp)
+        case o:Overwrite => overwrite(txUUID, o.ptr, o.buf, timestamp)
         case r:SetRef => setref(r.ptr, r.newRefcount)
       })
     }
     
-    private def append(ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit = {
+    private def append(txUUID: UUID, ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit = {
       val orig = objects(ptr.uuid)
       
       val newSize = orig.data.size + buf.size
@@ -104,18 +104,18 @@ object MockSystem {
       newData.put(orig.data.asReadOnlyBuffer())
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.nextRevision
+      val newRev = ObjectRevision(txUUID)
       
       objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
     
-    def overwrite(ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit =  {
+    def overwrite(txUUID: UUID, ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit =  {
       val orig = objects(ptr.uuid)
         
       val newData = ByteBuffer.allocate(buf.size)
       newData.put(buf.asReadOnlyBuffer())
       newData.position(0)
-      val newRev = orig.revision.nextRevision
+      val newRev = ObjectRevision(txUUID)
       
       objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
@@ -169,12 +169,12 @@ object MockSystem {
     
     override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
       ops = Append(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.nextRevision
+      txRevision
     }
     
     override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  synchronized {
       ops = Overwrite(objectPointer, requiredRevision, data) :: ops
-      requiredRevision.nextRevision
+      txRevision
     }
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
@@ -201,7 +201,7 @@ object MockSystem {
         invalidatedReason match {
           case None =>
             try {
-              storage.txUpdate(ops, HLCTimestamp.now)
+              storage.txUpdate(uuid, ops, HLCTimestamp.now)
               runFinalizationActions(finalizationActions)
               p.success(())
             } catch {
@@ -216,12 +216,13 @@ object MockSystem {
  
   class AllocDriver(
       val store: StorageSystem,
+      val txUUID: UUID,
       val newObjectUUID: UUID,
       val objectData: Map[Byte,DataBuffer],
       val timestamp: HLCTimestamp,
       val initialRefcount: ObjectRefcount) extends AllocationDriver {
     
-    val objectPointer = store.allocate(newObjectUUID, initialRefcount, objectData.head._2, timestamp).pointer
+    val objectPointer = store.allocate(newObjectUUID, txUUID, initialRefcount, objectData.head._2, timestamp).pointer
     
     def futureResult: Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]] = Future.successful(Right(objectPointer))
     
@@ -245,7 +246,8 @@ object MockSystem {
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): AllocationDriver = new AllocDriver(store, newObjectUUID, objectData, timestamp, initialRefcount)
+               allocatingObjectRevision: ObjectRevision): AllocationDriver = new AllocDriver(store, 
+                   allocationTransactionUUID, newObjectUUID, objectData, timestamp, initialRefcount)
   
   }
   
@@ -292,11 +294,11 @@ class MockSystem(val treeNodeSize:Int=1000) {
   // Bootstrap the system by creating the StoragePoolDefinition for Bootstrapping Pool & StoragePoolTreeDefinition
   
   def allocate(content: DataBuffer, timestamp:HLCTimestamp): Future[ObjectPointer] = {
-    Future.successful(storage.allocate(UUID.randomUUID(), ObjectRefcount(0,1), content, timestamp).pointer)
+    Future.successful(storage.allocate(UUID.randomUUID(), new UUID(0,0), ObjectRefcount(0,1), content, timestamp).pointer)
   }
   
   def overwrite(ptr: ObjectPointer, arr: Array[Byte], timestamp: HLCTimestamp): Future[Unit] = {
-    Future.successful(storage.overwrite(ptr, DataBuffer(arr), timestamp))
+    Future.successful(storage.overwrite(new UUID(0,0), ptr, DataBuffer(arr), timestamp))
   }
   
   var txNumber = 0

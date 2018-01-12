@@ -1,7 +1,14 @@
 package com.ibm.aspen.core.objects
 
-case class ObjectRevision(updateCount: Long) extends Ordered[ObjectRevision] {
-  def compare(that: ObjectRevision) = (updateCount - that.updateCount).asInstanceOf[Int]
+import java.util.UUID
+
+/** Object Revisions are set to the UUID of the transaction that last updated them
+ * 
+ */
+final class ObjectRevision(val lastUpdateTxUUID: UUID) extends AnyVal
+
+object ObjectRevision {
+  def apply(lastUpdateTxUUID: UUID): ObjectRevision = new ObjectRevision(lastUpdateTxUUID)
   
-  def nextRevision: ObjectRevision = ObjectRevision(updateCount+1)
+  val Null = ObjectRevision(new UUID(0,0))
 }

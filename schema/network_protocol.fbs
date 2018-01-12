@@ -23,7 +23,8 @@ table ReedSolomon {
 union IDA { Replication, ReedSolomon }
 
 struct ObjectRevision {
-  update_count: long;
+  mostSigBits: long;
+  leastSigBits: long;
 }
 
 struct ObjectRefcount {
