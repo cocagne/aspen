@@ -87,7 +87,7 @@ class MemoryOnlyDataStore(
   def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = Future.successful(())
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = synchronized {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]] = synchronized {
     if (storePointer.poolIndex != storeId.poolIndex || storePointer.data.length != 4)
       return Future.successful(Left(new InvalidLocalPointer))
     
@@ -97,7 +97,7 @@ class MemoryOnlyDataStore(
         val r = if (obj.uuid != objectPointer.uuid)
           Left(ObjectMismatch())
         else
-          Right((CurrentObjectState(obj.uuid, obj.revision, obj.refcount, obj.timestamp, obj.lock), obj.data))
+          Right((StoreObjectState(obj.uuid, obj.revision, obj.refcount, obj.timestamp, obj.lock), obj.data))
         
         Future.successful(r)
     }

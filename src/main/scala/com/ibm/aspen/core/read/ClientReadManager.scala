@@ -5,7 +5,7 @@ import scala.concurrent.ExecutionContext
 import java.util.UUID
 import scala.concurrent.Future
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.CurrentObjectState
+import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 

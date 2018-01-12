@@ -80,11 +80,11 @@ trait DataStore {
    *  This is the method that should be overridden by subclasses. The getObject method that accepts only the objectPointer checks to ensure that
    *  this store hosts the object before calling this method to do the actual fetch.  
    */
-  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]]
+  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]]
   
   
   /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]] = {
     objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
       case Some(sp) => getObject(objectPointer, sp)
       case None => Future.successful(Left(new InvalidLocalPointer))

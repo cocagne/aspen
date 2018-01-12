@@ -6,7 +6,7 @@ import java.util.UUID
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Promise
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.CurrentObjectState
+import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription

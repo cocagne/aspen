@@ -60,7 +60,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   def initObjects(): (DataStore, StorePointer, StorePointer) = {
     val ds = newStore
     
-    val expected = (CurrentObjectState(uuid0, irev, oneRef, timestamp, None), icontent0)
+    val expected = (StoreObjectState(uuid0, irev, oneRef, timestamp, None), icontent0)
     
     implicit val executionContext = ExecutionContext.Implicits.global
     
@@ -79,7 +79,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
   }
   
   // Helper method that reads an object and validates it's state
-  def checkState(ds: DataStore, op: ObjectPointer, cs: CurrentObjectState, obuf: Option[DataBuffer] = None, ignoreTimestamp: Boolean = false) = {
+  def checkState(ds: DataStore, op: ObjectPointer, cs: StoreObjectState, obuf: Option[DataBuffer] = None, ignoreTimestamp: Boolean = false) = {
     val r = Await.result(ds.getObject(op), awaitDuration)
     r match {      
       case Left(_) => fail
@@ -139,8 +139,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
-    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
+    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
+    checkState(ds, op1, StoreObjectState(uuid1, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
     
   }
   
@@ -168,8 +168,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val txdts = HLCTimestamp(txd.startTimestamp)
     
-    checkState(ds, op0, CurrentObjectState(uuid0, newRev, oneRef, txdts, None), Some(newContent))
-    checkState(ds, op1, CurrentObjectState(uuid1, ObjectRevision(0), newRef, txdts, None), Some(icontent1))
+    checkState(ds, op0, StoreObjectState(uuid0, newRev, oneRef, txdts, None), Some(newContent))
+    checkState(ds, op1, StoreObjectState(uuid1, ObjectRevision(0), newRef, txdts, None), Some(icontent1))
     
     // Ensure new Tx can lock against updated attributes
     val tx2UUID = new UUID(99,99)
@@ -270,8 +270,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
-    checkState(ds, op1, CurrentObjectState(uuid1, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op1, StoreObjectState(uuid1, irev, oneRef, txdts, None), ignoreTimestamp=true)
   }
   
   test("Get Invalid Object State") {
@@ -284,7 +284,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
     
     val r = Await.result(ds.getObject(op2), awaitDuration)
     r should matchPattern { case Left(e: InvalidLocalPointer) => }
@@ -301,7 +301,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, CurrentObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
     
     val r = Await.result(ds.getObject(op1), awaitDuration)
     r should matchPattern { 
@@ -330,7 +330,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
     val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
             
-    val expected = (CurrentObjectState(uuid0, ObjectRevision(0), oneRef, timestamp, None), icontent)
+    val expected = (StoreObjectState(uuid0, ObjectRevision(0), oneRef, timestamp, None), icontent)
     
     futureResponse flatMap { either => either match {
       case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.newObjects.head.storePointer)).flatMap(er => er match {

@@ -6,7 +6,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.HLCTimestamp
 
-case class CurrentObjectState(
+case class StoreObjectState(
     uuid: UUID,
     revision: ObjectRevision,
     refcount: ObjectRefcount,

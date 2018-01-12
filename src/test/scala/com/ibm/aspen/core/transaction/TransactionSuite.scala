@@ -15,7 +15,7 @@ import com.ibm.aspen.core.crl.NullCRL
 import com.ibm.aspen.core.transaction.paxos.PersistentState
 import java.util.UUID
 import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.data_store.CurrentObjectState
+import com.ibm.aspen.core.data_store.StoreObjectState
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.ObjectReadError
 import com.ibm.aspen.core.data_store.InvalidLocalPointer

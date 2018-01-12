@@ -7,7 +7,7 @@ import com.ibm.aspen.core.transaction.paxos.Learner
 import com.ibm.aspen.core.transaction.paxos.Prepare
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
-import com.ibm.aspen.core.data_store.CurrentObjectState
+import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.data_store.ObjectError
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.crl.CrashRecoveryLog

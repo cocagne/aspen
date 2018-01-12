@@ -12,7 +12,7 @@ import com.ibm.aspen.core.allocation.AllocationErrors
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.data_store.CurrentObjectState
+import com.ibm.aspen.core.data_store.StoreObjectState
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
@@ -241,10 +241,10 @@ class RocksDBDataStore(
     Future.sequence(flist) map (_=>())
   }
   
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (CurrentObjectState,DataBuffer)]] = {
+  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]] = {
     getWorkingState(objectPointer, None) map { e => e match {
       case Left(err) => Left(err)
-      case Right(ws) => Right((CurrentObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.timestamp, ws.lockedTransaction), ws.data))
+      case Right(ws) => Right((StoreObjectState(objectPointer.uuid, ws.revision, ws.refcount, ws.timestamp, ws.lockedTransaction), ws.data))
     }}
   }
   
