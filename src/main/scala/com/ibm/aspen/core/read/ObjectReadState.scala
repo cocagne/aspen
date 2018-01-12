@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 
-case class ObjectState(
+case class ObjectReadState(
     objectPointer: ObjectPointer,
     revision: ObjectRevision,
     refcount: ObjectRefcount,

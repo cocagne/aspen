@@ -106,7 +106,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectReadState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Ignore old revisions") {
@@ -126,7 +126,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectReadState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Successful read with data and locks") {
@@ -140,7 +140,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, rev, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(ObjectReadState(ptr, rev, ref, ts, Some(odata), Some(noLocks))))
   }
   
   test("Successful read without data or locks") {
@@ -154,6 +154,6 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectState(ptr, rev, ref, ts, None, None)))
+    o should be (Right(ObjectReadState(ptr, rev, ref, ts, None, None)))
   }
 }

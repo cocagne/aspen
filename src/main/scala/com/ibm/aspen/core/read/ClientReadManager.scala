@@ -30,7 +30,7 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
       objectPointer: ObjectPointer, 
       retrieveData:Boolean=true, 
       retrieveTransactionLocks:Boolean=false, 
-      driverFactory: ReadDriver.Factory): Future[Either[ReadError, ObjectState]] = {
+      driverFactory: ReadDriver.Factory): Future[Either[ReadError, ObjectReadState]] = {
     
     val readUUID = UUID.randomUUID()
     

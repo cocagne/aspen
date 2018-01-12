@@ -8,7 +8,7 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
 
 trait ReadDriver {
-  def readResult: Future[Either[ReadError, ObjectState]]
+  def readResult: Future[Either[ReadError, ObjectReadState]]
   
   /** Called to begin the read process. Read messages must not be sent until this method is called */
   def begin(): Unit

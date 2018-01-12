@@ -25,7 +25,7 @@ class BaseReadDriver(
   import BaseReadDriver._
   
   protected var responses = Map[DataStoreID, Either[ReadError.Value, StoreState]]()
-  protected val promise = Promise[Either[ReadError, ObjectState]]
+  protected val promise = Promise[Either[ReadError, ObjectReadState]]
   
   def readResult = promise.future
   
@@ -81,7 +81,7 @@ class BaseReadDriver(
         (hrev, href, hts, locks)
     })
     
-    val objState = ObjectState(objectPointer, highestRevision, highestRefcount, highestTimstamp, odata, 
+    val objState = ObjectReadState(objectPointer, highestRevision, highestRefcount, highestTimstamp, odata, 
                                if (retrieveLockedTransaction) Some(lockedTransactions) else None )
                                       
     promise.success(Right(objState))

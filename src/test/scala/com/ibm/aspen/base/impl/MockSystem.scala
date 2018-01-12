@@ -13,7 +13,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.read.InvalidObject
-import com.ibm.aspen.core.read.ObjectState
+import com.ibm.aspen.core.read.ObjectReadState
 import scala.concurrent.Promise
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.data_store.DataStoreID
@@ -128,10 +128,10 @@ object MockSystem {
   
   class Reader(storage: StorageSystem, pointer:ObjectPointer) extends ReadDriver {
     
-    def readResult: Future[Either[ReadError, ObjectState]] = {
-      val e: Either[ReadError, ObjectState] = storage.read(pointer) match {
+    def readResult: Future[Either[ReadError, ObjectReadState]] = {
+      val e: Either[ReadError, ObjectReadState] = storage.read(pointer) match {
           case None => Left(new InvalidObject)
-          case Some(osd) => Right(ObjectState(pointer, osd.revision, osd.refcount, osd.timestamp, Some(osd.data), None))
+          case Some(osd) => Right(ObjectReadState(pointer, osd.revision, osd.refcount, osd.timestamp, Some(osd.data), None))
         }
       Future.successful(e)
     } 

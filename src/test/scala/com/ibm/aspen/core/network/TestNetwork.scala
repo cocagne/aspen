@@ -17,7 +17,7 @@ import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.read.ReadError
-import com.ibm.aspen.core.read.ObjectState
+import com.ibm.aspen.core.read.ObjectReadState
 import com.ibm.aspen.core.read.ReadResponse
 import scala.concurrent.Promise
 import com.ibm.aspen.core.read.BaseReadDriver
