@@ -57,7 +57,7 @@ class AllocationFinalizationAction(
           for {
             treeDefPointer <- pool.getAllocationTreeDefinitionPointer(retryStrategy)
             tree <- treeFactory.createTree(treeDefPointer)
-            commitReady <- tree.put(newNodePointer.uuidAsByteArray, NetworkCodec.objectPointerToByteArray(newNodePointer))
+            commitReady <- tree.put(com.ibm.aspen.core.Util.uuid2byte(newNodePointer.uuid), NetworkCodec.objectPointerToByteArray(newNodePointer))
             result <- tx.commit()
           } yield ()
       } 
