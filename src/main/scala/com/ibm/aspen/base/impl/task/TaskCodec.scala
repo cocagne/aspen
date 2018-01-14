@@ -8,6 +8,9 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
 import scala.collection.immutable.Queue
+import com.ibm.aspen.core.objects.DataObjectPointer
+import java.io.DataOutput
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object TaskCodec {
   
@@ -25,9 +28,9 @@ object TaskCodec {
     
     NetworkCodec.byteBufferToArray(builder.dataBuffer())
   }
-  def decodeTaskGroupTreeEntry(arr: Array[Byte]): (UUID, ObjectPointer) = {
+  def decodeTaskGroupTreeEntry(arr: Array[Byte]): (UUID, DataObjectPointer) = {
     val n = P.TaskGroupTreeEntry.getRootAsTaskGroupTreeEntry(ByteBuffer.wrap(arr))
-    (NetworkCodec.decode(n.taskGroupTypeUUID()), NetworkCodec.decode(n.taskGroupDefinitionPointer()))
+    (NetworkCodec.decode(n.taskGroupTypeUUID()), NetworkCodec.decode(n.taskGroupDefinitionPointer()).asInstanceOf[DataObjectPointer])
   }
   
   def encodeTaskCreationFinalizationAction(fa: TaskCreationFinalizationAction.FAContent): Array[Byte] = {
@@ -56,7 +59,7 @@ object TaskCodec {
         NetworkCodec.decode(n.taskGroup()),
         NetworkCodec.decode(n.taskTypeUUID()),
         NetworkCodec.decode(n.taskUUID()),
-        NetworkCodec.decode(n.taskObject()),
+        NetworkCodec.decode(n.taskObject()).asInstanceOf[DataObjectPointer],
         NetworkCodec.decode(n.taskRevision()))
   }
   
@@ -69,7 +72,9 @@ object TaskCodec {
     P.TaskDefinition.endTaskDefinition(builder)
   }
   def decode(n: P.TaskDefinition): TaskDefinition = {
-    TaskDefinition(NetworkCodec.decode(n.taskTypeUUID()), NetworkCodec.decode(n.taskUUID()), NetworkCodec.decode(n.taskObject()))
+    NetworkCodec.decode(n.taskObject()) match {
+      case d: DataObjectPointer => TaskDefinition(NetworkCodec.decode(n.taskTypeUUID()), NetworkCodec.decode(n.taskUUID()), d)
+    }
   }
   
   def encodeTaskGroupDefinition(tasks: List[TaskDefinition]): DataBuffer = {

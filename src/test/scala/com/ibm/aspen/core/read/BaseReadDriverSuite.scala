@@ -17,6 +17,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -36,7 +37,7 @@ object BaseReadDriverSuite {
   val sp1 = StorePointer(1, List[Byte](1).toArray)
   val sp2 = StorePointer(2, List[Byte](2).toArray)
   
-  val ptr = ObjectPointer(objUUID, poolUUID, None, ida, (sp0 :: sp1 :: sp2 :: Nil).toArray)
+  val ptr = DataObjectPointer(objUUID, poolUUID, None, ida, (sp0 :: sp1 :: sp2 :: Nil).toArray)
   val rev = ObjectRevision.Null
   val ref = ObjectRefcount(1,1)
   

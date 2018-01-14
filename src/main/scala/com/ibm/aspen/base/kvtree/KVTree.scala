@@ -18,6 +18,7 @@ import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.network.NetworkCodec
 import scala.annotation.tailrec
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object KVTree {
   
@@ -73,32 +74,32 @@ object KVTree {
   def defineNewTreeWithInitialTier0Node(
       allocationPolicyUUID: UUID, 
       keyComparison: KVTree.KeyComparison.Value, 
-      tier0HeadNode: ObjectPointer): Array[Byte] = {
+      tier0HeadNode: DataObjectPointer): Array[Byte] = {
     val td = KVTreeDefinition(allocationPolicyUUID, keyComparison, tier0HeadNode :: Nil)
     KVTreeCodec.encodeTreeDefinition(td)
   }
 }
 
 class KVTree(
-    val treeDefinitionPointer: ObjectPointer, // Pointer to object holding the serialized content of this instance
+    val treeDefinitionPointer: DataObjectPointer, // Pointer to object holding the serialized content of this instance
     private[this] var treeDefinitionRevision: ObjectRevision,
     val nodeAllocater: KVTreeNodeAllocater,
     val nodeCache: KVTreeNodeCache,
     val keyComparisonStrategy: KVTree.KeyComparison.Value,
-    rootPointers: List[ObjectPointer],
+    rootPointers: List[DataObjectPointer],
     val system: AspenSystem) {
   
   import KVTree._
   
   val compareKeysFunction = getKeyComparisonFunction(keyComparisonStrategy)
   
-  class Tier(val tier: Int, val rootObjectPointer: ObjectPointer) extends KVList {
+  class Tier(val tier: Int, val rootObjectPointer: DataObjectPointer) extends KVList {
    
     val objectAllocater = nodeAllocater.getListNodeAllocaterForTier(tier)
     
-    def fetchNodeObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = readObject(objectPointer)
+    def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = readObject(objectPointer)
     
-    override def fetchCachedNode(objectPointer: ObjectPointer): Option[KVListNode] = nodeCache.getCachedNode(tier, objectPointer)
+    override def fetchCachedNode(objectPointer: DataObjectPointer): Option[KVListNode] = nodeCache.getCachedNode(tier, objectPointer)
     override def updateCachedNode(node: KVListNode): Unit = nodeCache.updateCachedNode(tier, node)
     override def dropCachedNode(node: KVListNode): Unit = nodeCache.dropCachedNode(node)
     
@@ -108,7 +109,7 @@ class KVTree(
   }
   
   private[this] var tiers:Array[Tier] = rootPointers.zipWithIndex.map(t => new Tier(t._2, t._1)).toArray
-  private[this] var creatingTier: Option[Future[ObjectPointer]] = None
+  private[this] var creatingTier: Option[Future[DataObjectPointer]] = None
   
   def get(key: Array[Byte])(implicit ec: ExecutionContext): Future[Option[Array[Byte]]] = fetchContainingNode(key) map {
     tpl => tpl._2.content.get(key)
@@ -222,7 +223,7 @@ class KVTree(
    *
    * This is broken out into a dedicated method primarily to allow mix-in traits to override the default behavior  
    */
-  def readObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
+  def readObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
   
   protected [kvtree] def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
     KVTreeFinalizationActionHandler.insertIntoUpperTier(transaction, this, tier+1, newNode.nodePointer)
@@ -246,12 +247,12 @@ class KVTree(
   
   protected def getTier(tier: Int) = synchronized { tiers(tier) }
   
-  protected [kvtree] def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[ObjectPointer] = synchronized {
+  protected [kvtree] def createNextTier(initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext): Future[DataObjectPointer] = synchronized {
     creatingTier match {
       case Some(f) => f
       
       case None =>
-        val p = Promise[ObjectPointer]()
+        val p = Promise[DataObjectPointer]()
     
         implicit val tx = system.newTransaction()
         val requiredRevision = treeDefinitionRevision // Snapshot this value. Could change underneath us
@@ -344,7 +345,10 @@ class KVTree(
                 (None, Nil)
               else {
                 val (minimum, encodedObjectPointer) = remainingPointers.head
-                val np =  KVListNodePointer(NetworkCodec.byteArrayToObjectPointer(encodedObjectPointer), minimum)
+                val np =  NetworkCodec.byteArrayToObjectPointer(encodedObjectPointer) match {
+                  case d: DataObjectPointer => KVListNodePointer(d, minimum)
+                  case _ => throw new Exception("Unsupported Pointer Type")
+                }
                 if (!blacklisted.contains(np))
                   (Some(np), remainingPointers.tail)
                 else

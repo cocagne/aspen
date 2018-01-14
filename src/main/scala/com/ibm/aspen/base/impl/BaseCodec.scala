@@ -9,6 +9,7 @@ import com.ibm.aspen.base.impl.AllocationFinalizationAction.FAContent
 import java.util.UUID
 import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object BaseCodec {
   
@@ -58,16 +59,16 @@ object BaseCodec {
     P.StoragePoolDefinition.endStoragePoolDefinition(builder)
   }
   
-  def decodeStoragePoolDefinition(buf: DataBuffer): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
+  def decodeStoragePoolDefinition(buf: DataBuffer): (UUID, Array[StorageNodeID], Option[DataObjectPointer]) = {
     decodeStoragePoolDefinition(P.StoragePoolDefinition.getRootAsStoragePoolDefinition(buf.asReadOnlyBuffer()))
   }
   
-  def decodeStoragePoolDefinition(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], Option[ObjectPointer]) = {
+  def decodeStoragePoolDefinition(n: P.StoragePoolDefinition): (UUID, Array[StorageNodeID], Option[DataObjectPointer]) = {
     val poolUUID = NetworkCodec.decode(n.poolUUID())
     
     val atd = n.allocationTreeDefinition()
   
-    val treeDefPtr =  if (atd == null) None else Some(NetworkCodec.decode(atd))
+    val treeDefPtr =  if (atd == null) None else Some(NetworkCodec.decode(atd).asInstanceOf[DataObjectPointer])
     
     val hostingNodes = new Array[StorageNodeID](n.storeHostsLength())
     for (i <- 0 until n.storeHostsLength()) {
@@ -100,7 +101,7 @@ object BaseCodec {
   def decodeFinalizationActionContent(arr: Array[Byte]): FAContent = decode(P.AllocationFinalizationActionContent.getRootAsAllocationFinalizationActionContent(ByteBuffer.wrap(arr))) 
   
   def decode(n: P.AllocationFinalizationActionContent): FAContent = {
-    val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer())
+    val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer()).asInstanceOf[DataObjectPointer]
     val np = NetworkCodec.decode(n.newObjectPointer())
     FAContent(sp, np)
   }
@@ -127,8 +128,10 @@ object BaseCodec {
   def decodeRadicle(buf: DataBuffer): Radicle = decode(P.RadicleContent.getRootAsRadicleContent(buf.asReadOnlyBuffer()))
   
   def decode(n: P.RadicleContent): Radicle = {
-    val sp = NetworkCodec.decode(n.systemTreeDefinitionPointer())
-    Radicle(sp)
+    NetworkCodec.decode(n.systemTreeDefinitionPointer()) match {
+      case sp: DataObjectPointer => Radicle(sp)
+      case _ => throw new Exception("Unsupported Object Type")
+    }
   }
   
   

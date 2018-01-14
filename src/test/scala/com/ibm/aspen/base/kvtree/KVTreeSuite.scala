@@ -26,6 +26,7 @@ import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.FinalizationAction
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object KVTreeSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -33,9 +34,9 @@ object KVTreeSuite {
   val treePolicyUUID = new UUID(1,2)
   val ida = new Replication(3,2)
   
-  def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
+  def mkptr(objectNum:Int) = DataObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
   
-  def np(minimum: Array[Byte], ptr: ObjectPointer): KVListNodePointer = KVListNodePointer(ptr, minimum)
+  def np(minimum: Array[Byte], ptr: DataObjectPointer): KVListNodePointer = KVListNodePointer(ptr, minimum)
   
   import scala.language.implicitConversions
   
@@ -63,14 +64,14 @@ object KVTreeSuite {
     
     val system = new SimpleTestSystem
     
-    def mknode(content: List[KVListNodePointer], rptr: Option[KVListNodePointer]): Future[ObjectPointer] = {
+    def mknode(content: List[KVListNodePointer], rptr: Option[KVListNodePointer]): Future[DataObjectPointer] = {
       implicit val tx = new system.Tx
       val f = system.lowLevelAllocateObject(mkptr(0), ObjectRevision.Null, new UUID(0,0), None, ida, KVTreeCodec.encode(content, rptr))
       tx.commit()
       f
     }
     
-    def mkleaf(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): Future[ObjectPointer] = {
+    def mkleaf(content: List[(Array[Byte],Array[Byte])], rptr: Option[KVListNodePointer]): Future[DataObjectPointer] = {
       implicit val tx = new system.Tx
       val data = KVListCodec.testEncodeContent(content, rptr)
       val f = system.lowLevelAllocateObject(mkptr(0), ObjectRevision.Null, new UUID(0,0), None, ida, data)
@@ -78,7 +79,7 @@ object KVTreeSuite {
       f
     }
     
-    def mktree(tiers: List[ObjectPointer]): Future[ObjectPointer] = {
+    def mktree(tiers: List[DataObjectPointer]): Future[DataObjectPointer] = {
       implicit val tx = new system.Tx
       val td = KVTreeDefinition(treePolicyUUID, KVTree.KeyComparison.BigInt, tiers)
       val data = KVTreeCodec.encodeTreeDefinition(td)
@@ -94,7 +95,7 @@ object KVTreeSuite {
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
           initialContent: DataBuffer,
-          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
         system.lowLevelAllocateObject(targetObject, ObjectRevision.Null, new UUID(0,0), None, ida, initialContent, Some(timestamp))(t, ec)
       }
     }
@@ -105,21 +106,21 @@ object KVTreeSuite {
       
       def allocateRootTierNode(
           targetObject: ObjectPointer, targetRevision: ObjectRevision, 
-          newTier: Int, initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          newTier: Int, initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
         system.lowLevelAllocateObject(targetObject, ObjectRevision.Null, new UUID(0,0), None, ida, KVTreeCodec.encode(initialContent, None))(t, ec)
       }
       
       def allocateRootLeafNode(
-          targetObject: ObjectPointer, targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          targetObject: ObjectPointer, targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
         system.lowLevelAllocateObject(targetObject, ObjectRevision.Null, new UUID(0,0), None, ida, DataBuffer(ByteBuffer.allocate(0)))(t, ec)
       }
       
       def getListNodeAllocaterForTier(tier: Int): KVListNodeAllocater = new ListAlloc(nodeSizeLimit)
     }
     
-    class TestList(val rootObjectPointer: ObjectPointer, val nodeSizeLimit: Int) extends KVList {
+    class TestList(val rootObjectPointer: DataObjectPointer, val nodeSizeLimit: Int) extends KVList {
    
-      def fetchNodeObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
+      def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
       
       def compareKeys(a: Array[Byte], b: Array[Byte]): Int = compareKeysFn(a, b)
       
@@ -363,7 +364,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      override def createTree(treeDefinitionObject: ObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
+      override def createTree(treeDefinitionObject: DataObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
@@ -421,7 +422,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      def createTree(treeDefinitionObject: ObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
+      def createTree(treeDefinitionObject: DataObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)
@@ -502,7 +503,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val treeFactory = new KVTreeFactory {
-      def createTree(treeDefinitionObject: ObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
+      def createTree(treeDefinitionObject: DataObjectPointer)(implicit executionContext: ExecutionContext): Future[KVTree] = for {
         osd <- ts.system.readObject(treeDefinitionObject)
       } yield {
         val tdef = KVTreeCodec.decodeTreeDefinition(osd.data)

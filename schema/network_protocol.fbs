@@ -37,12 +37,17 @@ table StorePointer {
   data: [byte];
 }
 
+enum ObjectType:byte { 
+    Data 
+}
+
 table ObjectPointer {
   uuid: UUID;
   pool_uuid: UUID;
   size: int;
   store_pointers: [StorePointer];
   ida: IDA;
+  object_type: ObjectType;
 }
 
 //---------------------------------------------------------------------------

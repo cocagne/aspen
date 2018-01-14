@@ -10,6 +10,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait Transaction {
   
@@ -18,12 +19,10 @@ trait Transaction {
   def txRevision: ObjectRevision = ObjectRevision(uuid)
   
   // All returns are what the new object revision/refcount will be if the transaction completes successfully
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
-  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
+  def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
+  def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = append(objectPointer, requiredRevision, DataBuffer(data))
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: Array[Byte]): ObjectRevision = overwrite(objectPointer, requiredRevision, DataBuffer(data))
+  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
   
   /** Increments the overwrite count on the object revision by 1 but leaves the object data untouched */
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision

@@ -21,18 +21,19 @@ import com.ibm.aspen.base.Task
 import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.base.TaskGroupType
 import com.ibm.aspen.base.TaskTypeRegistry
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 
 class SimpleTaskGroup(
     val system: AspenSystem,
     val taskGroupInstanceUUID: UUID,
-    val taskGroupDefinitionPointer: ObjectPointer)(implicit ec: ExecutionContext) extends TaskGroup {
+    val taskGroupDefinitionPointer: DataObjectPointer)(implicit ec: ExecutionContext) extends TaskGroup {
   
   val groupTypeUUID: UUID  = SimpleTaskGroupType.groupTypeUUID
   val taskGroupType: TaskGroupType = SimpleTaskGroupType
   
   case class PendingCreate(taskTypeUUID:UUID, taskUUID: UUID, 
-                           taskObject: ObjectPointer, taskRevision: ObjectRevision, promise:Promise[Unit])
+                           taskObject: DataObjectPointer, taskRevision: ObjectRevision, promise:Promise[Unit])
   
   private[this] var tasks: List[TaskDefinition] = Nil
   private[this] var groupDefinitionRevision = ObjectRevision(new UUID(0,0))
@@ -67,7 +68,7 @@ class SimpleTaskGroup(
   override def addTask(
       taskTypeUUID: UUID, 
       taskUUID: UUID, 
-      taskDefinitionPointer: ObjectPointer, 
+      taskDefinitionPointer: DataObjectPointer, 
       requiredRevision: ObjectRevision): Future[Unit] = {
     
     val pc = PendingCreate(taskTypeUUID, taskUUID, taskDefinitionPointer, requiredRevision, Promise[Unit]())

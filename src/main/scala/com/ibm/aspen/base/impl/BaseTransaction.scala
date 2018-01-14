@@ -18,6 +18,7 @@ import com.ibm.aspen.base.TransactionAborted
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object BaseTransaction {
   def Factory(
@@ -35,11 +36,11 @@ class BaseTransaction(
   private [this] val promise = Promise[Unit]
   private [this] var builder: Option[TransactionBuilder] = Some(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   
-  def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
+  def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.append(objectPointer, requiredRevision, data)
     case None => throw PostCommitTransactionModification()
   }
-  def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
+  def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
     case Some(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
     case None => throw PostCommitTransactionModification()
   }

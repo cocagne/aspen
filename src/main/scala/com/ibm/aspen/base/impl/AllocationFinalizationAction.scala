@@ -15,13 +15,14 @@ import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object AllocationFinalizationAction {
   val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
   
-  case class FAContent(storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer)
+  case class FAContent(storagePoolDefinitionPointer:DataObjectPointer, newNodePointer:ObjectPointer)
   
-  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:ObjectPointer, newNodePointer:ObjectPointer): Unit = {
+  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:DataObjectPointer, newNodePointer:ObjectPointer): Unit = {
     val serializedContent = BaseCodec.encode(FAContent(storagePoolDefinitionPointer, newNodePointer))
     transaction.addFinalizationAction(AddToAllocationTreeUUID, serializedContent)
     
@@ -39,7 +40,7 @@ class AllocationFinalizationAction(
   val finalizationActionUUID: UUID = AddToAllocationTreeUUID
   
   class AddToAllocationTree(
-      val storagePoolDefinitionPointer:ObjectPointer, 
+      val storagePoolDefinitionPointer:DataObjectPointer, 
       val newNodePointer:ObjectPointer) extends FinalizationAction {
     
     def execute()(implicit ec: ExecutionContext): Future[Unit] = retryStrategy.retryUntilSuccessful {

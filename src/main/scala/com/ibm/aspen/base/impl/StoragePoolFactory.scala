@@ -6,10 +6,11 @@ import com.ibm.aspen.core.network.StorageNodeID
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.StoragePool
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait StoragePoolFactory {
   def createStoragePool(
       system: AspenSystem, 
-      poolDefinitionPointer: ObjectPointer, 
+      poolDefinitionPointer: DataObjectPointer, 
       isStorageNodeOnline: (StorageNodeID) => Boolean)(implicit ec: ExecutionContext): Future[StoragePool]
 }

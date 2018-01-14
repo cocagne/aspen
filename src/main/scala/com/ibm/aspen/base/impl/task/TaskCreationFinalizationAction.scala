@@ -10,14 +10,15 @@ import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.FinalizationAction
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object TaskCreationFinalizationAction {
   
   val TaskCreationFinalizationActionUUID = UUID.fromString("5f1c51b5-77ca-4bd5-9823-bd774cf9f432")
   
-  case class FAContent(taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision)
+  case class FAContent(taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:DataObjectPointer, taskRevision: ObjectRevision)
   
-  def addToTaskGroup(transaction: Transaction, taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:ObjectPointer, taskRevision: ObjectRevision): Unit = {
+  def addToTaskGroup(transaction: Transaction, taskGroupUUID: UUID, taskTypeUUID: UUID, taskUUID: UUID, taskObject:DataObjectPointer, taskRevision: ObjectRevision): Unit = {
     val fac = FAContent(taskGroupUUID, taskTypeUUID, taskUUID, taskObject, taskRevision)
     
     val serializedContent = TaskCodec.encodeTaskCreationFinalizationAction(fac)

@@ -10,6 +10,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class SinglePoolObjectAllocater(
     val system: BasicAspenSystem,
@@ -21,7 +22,7 @@ class SinglePoolObjectAllocater(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     system.lowLevelAllocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, initialContent, afterTimestamp)
   }
 }

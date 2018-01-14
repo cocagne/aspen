@@ -20,6 +20,7 @@ import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -30,7 +31,7 @@ class SimpleTestSystem extends AspenSystem {
   def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   
-  def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
+  def mkptr(objectNum:Int) = DataObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
  
   class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: DataBuffer, var timestamp: HLCTimestamp)
   
@@ -38,11 +39,11 @@ class SimpleTestSystem extends AspenSystem {
   var allocCount = 0
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool] = Future.failed(new NotImplementedError)
-  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = Future.failed(new NotImplementedError)
+  def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool] = Future.failed(new NotImplementedError)
   
   def clientId: ClientID = ClientID(poolUUID)
   
-  def readObject(pointer:ObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
+  def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData] = {
     content.get(pointer.uuid) match {
       case Some(o) => Future.successful(ObjectStateAndData(pointer, o.rev, o.ref, o.timestamp, o.data))
       case None => Future.failed(new DataRetrievalFailed)
@@ -58,7 +59,7 @@ class SimpleTestSystem extends AspenSystem {
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: DataBuffer,
-      timestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      timestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     
     val id = allocCount
     allocCount += 1
@@ -86,7 +87,7 @@ class SimpleTestSystem extends AspenSystem {
     
     var happensAfter: Option[HLCTimestamp] = None
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {
+    override def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {
       
       def fn() = {
         val o = content(objectPointer.uuid) 
@@ -102,7 +103,7 @@ class SimpleTestSystem extends AspenSystem {
       txRevision
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
+    override def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       
       def fn() = {
         val o = content(objectPointer.uuid) 

@@ -1,6 +1,7 @@
 package com.ibm.aspen.core
 
 import java.nio.ByteBuffer
+import scala.language.implicitConversions
 
 /** This class serves as a Read-Only, compile-time wrapper around ByteBuffer. 
  *  
@@ -37,6 +38,6 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
 }
 
 object DataBuffer {
-  def apply(buf: ByteBuffer): DataBuffer = new DataBuffer(buf.asReadOnlyBuffer())
-  def apply(arr: Array[Byte]): DataBuffer = new DataBuffer(ByteBuffer.wrap(arr))
+  implicit def apply(buf: ByteBuffer): DataBuffer = new DataBuffer(buf.asReadOnlyBuffer())
+  implicit def apply(arr: Array[Byte]): DataBuffer = new DataBuffer(ByteBuffer.wrap(arr))
 }

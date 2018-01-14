@@ -18,6 +18,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.impl.BackgroundTask
 import com.ibm.aspen.base.TaskGroupType
 import scala.concurrent.Promise
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object SimpleTaskGroupExecutor {
   val PollingPeriod = Duration(30, SECONDS)
@@ -38,7 +39,7 @@ object SimpleTaskGroupExecutor {
 class SimpleTaskGroupExecutor(
     val system: AspenSystem, 
     val taskGroupInstanceUUID: UUID, 
-    val taskGroupDefinitionPointer: ObjectPointer, 
+    val taskGroupDefinitionPointer: DataObjectPointer, 
     val taskRegistry: TaskTypeRegistry, 
     val retryStrategy: RetryStrategy, 
     val taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext) extends TaskGroupExecutor {

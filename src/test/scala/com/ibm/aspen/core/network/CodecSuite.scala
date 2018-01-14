@@ -33,7 +33,7 @@ object CodecSuite {
     val pointers = (p1::p2::Nil).toArray
     val ida = Replication(3,2)
     
-    val op = ObjectPointer(objUuid, poolUUID, Some(size), ida, pointers)
+    val op = DataObjectPointer(objUuid, poolUUID, Some(size), ida, pointers)
     
     val txuuid = java.util.UUID.randomUUID()
     val startTs = 100
@@ -149,7 +149,7 @@ object ReadResponse {
     
     val poolUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
-    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     
     val bb = NetworkCodec.objectPointerToByteBuffer(op)
     
@@ -163,7 +163,7 @@ object ReadResponse {
     val readUUID = new java.util.UUID(1,2)
     val poolUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
-    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     
     val r = Read(storeId, c, readUUID, op, true, false)
@@ -248,7 +248,7 @@ object ReadResponse {
     val poolUUID = new java.util.UUID(1,2)
     val txUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
-    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
     val ts = HLCTimestamp.now
@@ -281,7 +281,7 @@ object ReadResponse {
     val poolUUID = new java.util.UUID(1,2)
     val txUUID = new java.util.UUID(3,4)
     val objUUID = new java.util.UUID(5,6)
-    val op = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
     val ts = HLCTimestamp.now

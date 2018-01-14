@@ -20,6 +20,7 @@ import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -30,13 +31,13 @@ object DataStoreSuite {
   val txUUID = new UUID(0,3)
   val allocUUID = new UUID(0,4)
   
-  val allocObj = ObjectPointer(new UUID(0,4), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+  val allocObj = DataObjectPointer(new UUID(0,4), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   val allocRev = ObjectRevision.Null
   val oneRef = ObjectRefcount(0,1)
   
   val timestamp = HLCTimestamp.now
   
-  def mkObjPtr(objUUID:UUID, sp:StorePointer) = ObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
+  def mkObjPtr(objUUID:UUID, sp:StorePointer) = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
   
   def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = {
     TransactionDescription(txdUUID, 100, allocObj, 0, du ++ ru, Nil)

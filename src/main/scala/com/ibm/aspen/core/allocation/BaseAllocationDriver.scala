@@ -12,6 +12,7 @@ import com.ibm.aspen.core.ida.IDA
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -77,7 +78,7 @@ class BaseAllocationDriver (
       })
       
       if (errors.isEmpty)
-        promise.success(Right(ObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)))
+        promise.success(Right(new DataObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)))
       else 
         promise.success(Left(errors))
     }

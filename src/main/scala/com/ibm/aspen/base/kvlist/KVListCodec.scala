@@ -8,6 +8,8 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 import scala.collection.immutable.SortedMap
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 private [base] object KVListCodec {
   
@@ -164,7 +166,7 @@ private [base] object KVListCodec {
 
   case class Delete(key: Array[Byte]) extends KVListOperation
 
-  case class SetRightPointer(op: ObjectPointer, minimum: Array[Byte]) extends KVListOperation
+  case class SetRightPointer(op: DataObjectPointer, minimum: Array[Byte]) extends KVListOperation
 
   def decodeOperations(bb: ByteBuffer): List[KVListOperation] = {
     var ops = List[KVListOperation]()
@@ -199,7 +201,11 @@ private [base] object KVListCodec {
       val minimumArray = new Array[Byte](sizeFn())
       bb.get(ptrArray)
       bb.get(minimumArray)
-      SetRightPointer(NetworkCodec.byteBufferToObjectPointer(ByteBuffer.wrap(ptrArray)), minimumArray)
+      NetworkCodec.byteBufferToObjectPointer(ByteBuffer.wrap(ptrArray)) match {
+        case d: DataObjectPointer => SetRightPointer(d, minimumArray)
+        case _ => throw new Exception("Unsupported Pointer Type")
+      }
+      
     }
 
     bb.get() match {

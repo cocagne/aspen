@@ -14,6 +14,7 @@ import java.nio.ByteBuffer
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.Promise
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 
 object TransactionDriverSuite {
@@ -25,7 +26,7 @@ object TransactionDriverSuite {
   
   val rev = ObjectRevision.Null
   val arr = new Array[Byte](0)
-  val simpleObj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), 
+  val simpleObj = DataObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), 
                                 Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
   
   //def mkobj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
@@ -168,7 +169,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   
   test("Multi-object PrepareResponse Handling") {
     val otherPool = java.util.UUID.randomUUID()
-    val otherObj = ObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
+    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
                                 Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
                                 
     val ods0 = DataStoreID(otherPool, 0)
@@ -232,7 +233,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   
   test("Multi-object PrepareResponse Handling - Abort") {
     val otherPool = java.util.UUID.randomUUID()
-    val otherObj = ObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
+    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
                                 Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
                                 
     val ods0 = DataStoreID(otherPool, 0)

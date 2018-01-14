@@ -4,6 +4,7 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait TaskGroupType {
   val groupTypeUUID: UUID
@@ -11,12 +12,12 @@ trait TaskGroupType {
   def createTaskGroup(
       system: AspenSystem,
       taskGroupInstanceUUID: UUID,
-      taskGroupDefinitionPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroup]
+      taskGroupDefinitionPointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroup]
   
   def createTaskGroupExecutor(
       system: AspenSystem,
       taskGroupInstanceUUID: UUID,
-      taskGroupDefinitionPointer: ObjectPointer,
+      taskGroupDefinitionPointer: DataObjectPointer,
       taskRegistry: TaskTypeRegistry,
       retryStrategy: RetryStrategy,
       taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext): Future[TaskGroupExecutor]

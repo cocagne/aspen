@@ -47,6 +47,8 @@ import com.ibm.aspen.base.impl.task.TaskCodec
 import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
+import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 
 
@@ -74,7 +76,7 @@ class BasicAspenSystem(
     val storagePoolFactory: StoragePoolFactory,
     val bootstrapPoolIDA: IDA,
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
-    val radiclePointer: ObjectPointer,
+    val radiclePointer: DataObjectPointer,
     val initializationRetryStrategy: RetryStrategy,
     userTaskTypeRegistry: Option[TaskTypeRegistry] = None,
     userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None,
@@ -130,7 +132,7 @@ class BasicAspenSystem(
       sysTree <- systemTree
       oenc <- sysTree.get(StoragePoolTreeUUID)
       if oenc.isDefined
-      poolTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(oenc.get))
+      poolTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(oenc.get).asInstanceOf[DataObjectPointer])
     } yield {
       poolTree
     }
@@ -140,13 +142,13 @@ class BasicAspenSystem(
     systemTree.flatMap { stree =>
       stree.get(TaskGroupTreeUUID).flatMap { oval =>
         oval match {
-          case Some(enc) => systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(enc))
+          case Some(enc) => systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(enc).asInstanceOf[DataObjectPointer])
           
           case None =>
             val tdef = KVTree.defineNewTree(SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy)
             implicit val tx = newTransaction()
             
-            var treePointer: Option[ObjectPointer] = None
+            var treePointer: Option[DataObjectPointer] = None
             
             def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
               bootstrapPoolAllocater.allocateObject(allocatingObject, allocatingObjectRevision, tdef) map {
@@ -174,7 +176,7 @@ class BasicAspenSystem(
   }
   
   def readObject(
-      objectPointer:ObjectPointer, 
+      objectPointer:DataObjectPointer, 
       readStrategy: Option[ReadDriver.Factory] ): Future[ObjectStateAndData] = readManager.read(objectPointer, true, false, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
@@ -197,7 +199,7 @@ class BasicAspenSystem(
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     val encoded = objectIDA.encode(initialContent)
     val newObjectUUID = UUID.randomUUID()
     val timestamp = afterTimestamp match {
@@ -217,7 +219,7 @@ class BasicAspenSystem(
         case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
         case Right(newObjPtr) =>
           AllocationFinalizationAction.addToAllocationTree(t, pool.poolDefinitionPointer, newObjPtr)
-          newObjPtr
+          newObjPtr.asInstanceOf[DataObjectPointer]
       }
     }
   }
@@ -226,7 +228,7 @@ class BasicAspenSystem(
     spTree <- storagePoolTree
     encPtr <- spTree.get(poolUUID)
     if (encPtr.isDefined)
-    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get)
+    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get).asInstanceOf[DataObjectPointer]
     pool <- getStoragePool(poolPtr)
   } yield pool
   
@@ -238,7 +240,7 @@ class BasicAspenSystem(
     allocTree
   }
   
-  def getStoragePool(storagePoolDefinitionPointer: ObjectPointer): Future[StoragePool] = { 
+  def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
   }
   

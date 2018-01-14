@@ -6,6 +6,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 /** Client-side representation of a remotely-executed TaskGroup
  *  
@@ -28,7 +29,7 @@ trait TaskGroup {
    *  
    *  This method should be used by Finalization Actions only  
    */
-  protected[base] def addTask(taskTypeUUID: UUID, taskUUID: UUID, taskDefinitionPointer: ObjectPointer, requiredRevision: ObjectRevision): Future[Unit]
+  protected[base] def addTask(taskTypeUUID: UUID, taskUUID: UUID, taskDefinitionPointer: DataObjectPointer, requiredRevision: ObjectRevision): Future[Unit]
   
   /** This method is called during Task creation to add a Transaction Finalization Action that ensures the
    *  newly-created transaction is eventually inserted into the specified group.  The addition to the group occurs atomically and includes a version bump of the taskDefinitionObject.
@@ -36,7 +37,7 @@ trait TaskGroup {
   protected[base] def insertAddToGroupFinalizationAction(
       taskType: TaskType, 
       taskUUID: UUID, 
-      taskDefinitionObject: ObjectPointer, 
+      taskDefinitionObject: DataObjectPointer, 
       taskDefinitionRevision: ObjectRevision)(implicit t: Transaction): Unit = {
     TaskCreationFinalizationAction.addToTaskGroup(t, taskGroupInstanceUUID, taskType.taskTypeUUID, 
         taskUUID, taskDefinitionObject, taskDefinitionRevision)

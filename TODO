@@ -1,36 +1,42 @@
-* Read responses return HLC timestamp of last revision change
-   * allows determining during read which revision is the "highest"
-   * Implicit Tx requirement that RevisionUpdate transactions MUST have differing timestamps
+** Begin impl on KeyValueObjectPointer
+   * Allocation
+      - Very thin client-side wrapper around a common core
+      - Server side should break out implementation into multiple methods that default to common  alloc method
+          - allows subclasses to differentiate if they choose (good rocksdb?) but leave alone if not
+   * Read Impl
+      - This could get interesting. Not all discovered keys are guaranteed to exist.
+      - is a read threshold number of non-error responses always enough?
+         - should be... right?
+         
+   * Transaction Impl
+      - Start with raw object
+         - may be able to use an overrideable method for fetch or decode of kv object data
+         
+   * Good time to separate out transaction lock scope ownership
+      - Break locks into a hierarchy of lock types for return in read messages
 
-TransactionBuilder has "static" lastTxTimestamp that it updates with each tx creation
-  - implicit "ensureAfter" on this
-  - guarantees that timestamps on the same machine differ
-  - would allow optimization in common case for read retransmissions
-  - still need fallback
+ObjectPointer -> sealed abstract class
+  DataObjectPointer
+  LogObjectPointer
+  KeyValueObjectPointer
+  
+Transaction API methods take the proper pointer type. This restricts operations to the
+supporting object types.
 
-* Sounds like we may want two types of revisions
-  * Update Count where we must first read the object state before we can get the
-    revision. And UUID udpate where instead of a monotonic increasing revision
-    number, we simply use matching UUIDs. There's no sense of order in this case
-    though. That does not matter from either a reconstruction or transaction
-    perspective though. 
-    This allows both Checked and Unchecked updates. 
+Read methods are overloaded on arguments. Return value matches the type of Object
+  |-> eliminates ObjectStateAndData confusion
+  
+*** Right thing to do but this is going to have an enormous code impact :(
 
 Non-Revision-checked updates to non-conflicting Key-Value pairs.
 * We'll still lock the object. We just wont check the revision
 * After the update the revision then remains untouched 
-
    
-Add ObjectType enum value to ObjectPointer
-
-* Rename read.ObjectState to ObjectReadState
 * Rename ObjectStateAndData to ObjectState
-* ObjectState is not abstract, it holds refcount,revision,option(tx)
-   |-> Allows reads w/o data
-
-Convert ObjectStateAndData to a sealed class
-  * revision, refcount, Option[locked tx] in base
-  * ObjectType-dependent subclass contains a Data attribute
+  - Convert to sealed class
+  - ObjectState is not abstract, it holds refcount,revision,option(tx)
+      |-> Allows reads w/o data
+  - Data is type-dependent. DataBuffer in normal object, KV map in KVContainer object
   
 Overloaded read methods can return direct subclasses of appropriate type
   * While type-checking the ObjectPointer type to ensure compatibility

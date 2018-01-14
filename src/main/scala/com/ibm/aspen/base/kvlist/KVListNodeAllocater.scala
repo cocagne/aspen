@@ -9,13 +9,14 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait KVListNodeAllocater {
   val allocationPolicyUUID: UUID
   
   def allocate(
       targetObject:ObjectPointer, targetRevision: ObjectRevision, 
-      initialContent: DataBuffer, timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer]
+      initialContent: DataBuffer, timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer]
   
   val nodeSizeLimit: Int
 }

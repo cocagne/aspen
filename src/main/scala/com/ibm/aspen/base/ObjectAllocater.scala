@@ -8,6 +8,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait ObjectAllocater {
   
@@ -20,12 +21,12 @@ trait ObjectAllocater {
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer]
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
   
   def allocateObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
-      initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     allocateObject(allocatingObject, allocatingObjectRevision, DataBuffer(initialContent), None)
   }
   
@@ -33,7 +34,7 @@ trait ObjectAllocater {
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: Array[Byte],
-      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
+      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     allocateObject(allocatingObject, allocatingObjectRevision, DataBuffer(initialContent), afterTimestamp)
   }
 }

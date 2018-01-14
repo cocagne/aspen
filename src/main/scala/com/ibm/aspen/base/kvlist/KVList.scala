@@ -5,12 +5,13 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
 import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait KVList {
    
-  def fetchNodeObject(objectPointer: ObjectPointer): Future[ObjectStateAndData]
+  def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData]
   
-  def fetchCachedNode(objectPointer: ObjectPointer): Option[KVListNode] = None
+  def fetchCachedNode(objectPointer: DataObjectPointer): Option[KVListNode] = None
   
   def updateCachedNode(node: KVListNode): Unit = ()
   
@@ -44,7 +45,7 @@ trait KVList {
   
   def compareKeys(a: Array[Byte], b: Array[Byte]): Int
   
-  val rootObjectPointer: ObjectPointer
+  val rootObjectPointer: DataObjectPointer
   
   val objectAllocater: KVListNodeAllocater
   

@@ -36,6 +36,7 @@ import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.data_store.BootstrapDataStore
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (BootstrapDataStore, CrashRecoveryLog) = {
@@ -81,7 +82,7 @@ class TestSystem(
       store: DataStore, 
       crl: CrashRecoveryLog,
       net: TestNetwork,
-      radiclePointer: ObjectPointer): (BasicAspenSystem, StorageNode) = {
+      radiclePointer: DataObjectPointer): (BasicAspenSystem, StorageNode) = {
     
     val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
     

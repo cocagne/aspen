@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.network.NetworkCodec
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object KVTreeFinalizationActionHandler {
   val InsertIntoUpperTierUUID = UUID.fromString("3a424707-cb50-4fcd-a575-595c3bbb8c77")
@@ -32,7 +33,7 @@ class KVTreeFinalizationActionHandler(
   
   
   class InsertIntoUpperTierFA(
-      val treeDefinitionPointer: ObjectPointer, 
+      val treeDefinitionPointer: DataObjectPointer, 
       val targetTier: Int, 
       val nodePointer:KVListNodePointer) extends FinalizationAction {
     

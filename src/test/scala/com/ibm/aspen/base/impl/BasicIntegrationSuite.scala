@@ -30,6 +30,7 @@ import com.ibm.aspen.core.read.TriggeredReread
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TestSystem
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object BasicIntegrationSuite {
   trait Closeable {
@@ -83,7 +84,7 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
       crl:RocksDBCrashRecoveryLog,
       net: TestNetwork,
       reader: TriggeredReread,
-      radiclePointer: ObjectPointer): (BasicAspenSystem, StorageNode) = {
+      radiclePointer: DataObjectPointer): (BasicAspenSystem, StorageNode) = {
     
     val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
     

@@ -12,6 +12,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,

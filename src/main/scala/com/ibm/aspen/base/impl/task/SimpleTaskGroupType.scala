@@ -13,6 +13,7 @@ import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.base.TaskGroup
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object SimpleTaskGroupType extends TaskGroupType {
   val groupTypeUUID: UUID = UUID.fromString("ffb56270-270c-44f0-9cb6-0bf8506469a3")
@@ -22,14 +23,14 @@ object SimpleTaskGroupType extends TaskGroupType {
   def createTaskGroup(
       system: AspenSystem,
       taskGroupInstanceUUID: UUID,
-      taskGroupDefinitionPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroup] = {
+      taskGroupDefinitionPointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroup] = {
     Future.successful(new SimpleTaskGroup(system, taskGroupInstanceUUID, taskGroupDefinitionPointer))
   }
   
   def createTaskGroupExecutor(
       system: AspenSystem,
       taskGroupInstanceUUID: UUID,
-      taskGroupDefinitionPointer: ObjectPointer,
+      taskGroupDefinitionPointer: DataObjectPointer,
       taskRegistry: TaskTypeRegistry,
       retryStrategy: RetryStrategy,
       taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext): Future[TaskGroupExecutor] = {
@@ -40,7 +41,7 @@ object SimpleTaskGroupType extends TaskGroupType {
   
   private[task] def loadGroupState(
     system: AspenSystem, 
-    groupDefinitionPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroupState] = {
+    groupDefinitionPointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroupState] = {
     
     system.readObject(groupDefinitionPointer).map(osd =>TaskGroupState(TaskCodec.decodeTaskGroupDefinition(osd.data), osd.revision)) 
   }

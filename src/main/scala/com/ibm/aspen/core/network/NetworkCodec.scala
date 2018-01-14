@@ -45,6 +45,7 @@ import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 
 
@@ -98,6 +99,9 @@ object NetworkCodec {
     P.ObjectPointer.addIdaType(builder, idaType(o.ida))
     P.ObjectPointer.addIda(builder, ida)
     P.ObjectPointer.addStorePointers(builder, storePointers)
+    o match {
+      case d: DataObjectPointer => P.ObjectPointer.addObjectType(builder, P.ObjectType.Data)
+    }
     P.ObjectPointer.endObjectPointer(builder)
   }
   def decode(n: P.ObjectPointer): ObjectPointer = {
@@ -119,7 +123,9 @@ object NetworkCodec {
     
     val storePointers = tolist(n.storePointersLength()-1, Nil).toArray
     
-    new ObjectPointer(uuid, poolUUID, size, ida, storePointers)
+    n.objectType() match {
+      case P.ObjectType.Data => new DataObjectPointer(uuid, poolUUID, size, ida, storePointers)
+    }
   }
   
   def objectPointerToByteBuffer(o: ObjectPointer): ByteBuffer = ByteBuffer.wrap(objectPointerToByteArray(o))

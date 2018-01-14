@@ -19,6 +19,7 @@ import com.ibm.aspen.base.ObjectStateAndData
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -26,7 +27,7 @@ object KVListSuite {
   
   val ts = HLCTimestamp(1)
   
-  def mkptr(objectNum:Int) = ObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
+  def mkptr(objectNum:Int) = DataObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
   
   def compareKeys(a: Array[Byte], b: Array[Byte]): Int = {
     val ia = ByteBuffer.wrap(a).getInt()
@@ -54,13 +55,13 @@ object KVListSuite {
     var overwriteOp: Op = null
     var invalidated: Throwable = null
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {  
+    override def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = {  
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       appendOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
       txRevision
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
+    override def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  {
       val (rightContent, rightRightPointer) = KVListCodec.decodeNodeContent(compareKeys, data)
       overwriteOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
       txRevision
@@ -91,7 +92,7 @@ object KVListSuite {
     var m = Map[UUID, ObjectStateAndData]()
     
     // case class ObjectStateAndData(pointer: ObjectPointer, revision:ObjectRevision, refcount:ObjectRefcount, data: ByteBuffer)
-    def fetchNodeObject(objectPointer: ObjectPointer): Future[ObjectStateAndData] = Future.successful(m(objectPointer.uuid))
+    def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = Future.successful(m(objectPointer.uuid))
     
     def compareKeys(a: Array[Byte], b: Array[Byte]): Int = KVListSuite.compareKeys(a,b)
     
@@ -103,7 +104,7 @@ object KVListSuite {
       def allocate(
           targetObject:ObjectPointer, targetRevision: ObjectRevision, 
           initialContent: DataBuffer,
-          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+          timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
@@ -115,7 +116,7 @@ object KVListSuite {
       val nodeSizeLimit: Int = nodeSizeLimitX
     }
     
-    val rootObjectPointer: ObjectPointer = mkptr(0)
+    val rootObjectPointer: DataObjectPointer = mkptr(0)
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     

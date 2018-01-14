@@ -23,6 +23,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TaskTypeRegistry
 import com.ibm.aspen.base.impl.BasicAspenSystem
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class SimpleTaskSuite extends AsyncFunSuite with Matchers {
   
@@ -59,7 +60,7 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
           taskUUID: UUID,
           taskNum: Int)(implicit t: Transaction): Future[ObjectPointer] = {
         // Don't need a real object for the "allocating object" this is just for allocation Tx error recovery
-        val allocatingObject = ObjectPointer(new UUID(0,0), new UUID(0,0), None, Replication(3,2), new Array[StorePointer](0))
+        val allocatingObject = DataObjectPointer(new UUID(0,0), new UUID(0,0), None, Replication(3,2), new Array[StorePointer](0))
         val allocatingObjectRevision = ObjectRevision.Null
         val bb = ByteBuffer.allocate(4)
         bb.putInt(taskNum)
@@ -74,7 +75,7 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
       def createTaskExecutor(
           system: AspenSystem,
           taskUUID: UUID, 
-          taskStatePointer: ObjectPointer,
+          taskStatePointer: DataObjectPointer,
           taskState: ObjectStateAndData)(implicit ec: ExecutionContext): Future[Task] = {
         Future.successful(new TestTask(system, taskUUID, taskStatePointer, taskState))
       }
@@ -148,8 +149,8 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
     val poolUUID = new UUID(0,2)
     val taskType = new UUID(0,3)
     
-    val obj0 = ObjectPointer(uuid0, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
-    val obj1 = ObjectPointer(uuid1, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val obj0 = DataObjectPointer(uuid0, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+    val obj1 = DataObjectPointer(uuid1, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     
     val tasks = List(TaskDefinition(taskType, uuid0, obj0), TaskDefinition(taskType, uuid1, obj1))
     

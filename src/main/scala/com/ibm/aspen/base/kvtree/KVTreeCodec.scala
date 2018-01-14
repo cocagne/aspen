@@ -10,6 +10,7 @@ import scala.collection.immutable.SortedMap
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 private[kvtree] object KVTreeCodec {
   
@@ -50,7 +51,7 @@ private[kvtree] object KVTreeCodec {
     K.InsertIntoUpperTier.endInsertIntoUpperTier(builder)
   }
   
-  case class InsertIntoUpperTierData(treeDefinitionPointer: ObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
+  case class InsertIntoUpperTierData(treeDefinitionPointer: DataObjectPointer, targetTier: Int, nodePointer: KVListNodePointer)
   
   def decodeInsertIntoUpperTierFinalizationAction(arr: Array[Byte]): InsertIntoUpperTierData = {
     decodeInsertIntoUpperTierFinalizationAction(DataBuffer(arr))
@@ -62,11 +63,15 @@ private[kvtree] object KVTreeCodec {
   }
   
   def decodeInsertIntoUpperTierFinalizationActionImpl(m: K.InsertIntoUpperTier): InsertIntoUpperTierData = {
-    val tdp = NetworkCodec.decode(m.treeDefinitionObject())
+    val tdp = NetworkCodec.decode(m.treeDefinitionObject()).asInstanceOf[DataObjectPointer]
     val nnp = NetworkCodec.decode(m.newNodePointer())
     val min = new Array[Byte](m.minimumLength())
     m.minimumAsByteBuffer().get(min)
-    InsertIntoUpperTierData(tdp, m.targetTier(), KVListNodePointer(nnp, min))
+    nnp match {
+      case d: DataObjectPointer => InsertIntoUpperTierData(tdp, m.targetTier(), KVListNodePointer(d, min))
+      case _ => throw new Exception("Unsupported Pointer Type")
+    }
+    
   }
   
   
@@ -85,10 +90,10 @@ private[kvtree] object KVTreeCodec {
   def decodeTreeDefinitionImpl(m: K.KVTreeDefinition): KVTreeDefinition = {
     val allocationPolicyUUID = NetworkCodec.decode(m.allocationPolicyUUID())
     
-    def tier(idx: Int, l:List[ObjectPointer]): List[ObjectPointer] = if (idx == -1) 
+    def tier(idx: Int, l:List[DataObjectPointer]): List[DataObjectPointer] = if (idx == -1) 
         l
       else 
-        tier(idx-1, NetworkCodec.decode(m.tierPointers(idx)) :: l)
+        tier(idx-1, NetworkCodec.decode(m.tierPointers(idx)).asInstanceOf[DataObjectPointer] :: l)
     
     val kc = KVTree.KeyComparison(m.keyComparisonStrategy())
         

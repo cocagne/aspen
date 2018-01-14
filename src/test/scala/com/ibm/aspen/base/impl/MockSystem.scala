@@ -54,6 +54,7 @@ import com.ibm.aspen.core.network.ClientSideTransactionHandler
 import com.ibm.aspen.core.network.ClientSideReadHandler
 import com.ibm.aspen.core.network.ClientSideAllocationHandler
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -77,7 +78,7 @@ object MockSystem {
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
       val rev = ObjectRevision(allocTxUUID)
-      val ptr = ObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+      val ptr = DataObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
       val osd = ObjectStateAndData(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
       osd
@@ -167,12 +168,12 @@ object MockSystem {
     
     private var notifyOnResolution = Set[DataStoreID]()
     
-    override def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
+    override def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
       ops = Append(objectPointer, requiredRevision, data) :: ops
       txRevision
     }
     
-    override def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  synchronized {
+    override def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision =  synchronized {
       ops = Overwrite(objectPointer, requiredRevision, data) :: ops
       txRevision
     }
@@ -293,8 +294,8 @@ class MockSystem(val treeNodeSize:Int=1000) {
   
   // Bootstrap the system by creating the StoragePoolDefinition for Bootstrapping Pool & StoragePoolTreeDefinition
   
-  def allocate(content: DataBuffer, timestamp:HLCTimestamp): Future[ObjectPointer] = {
-    Future.successful(storage.allocate(UUID.randomUUID(), new UUID(0,0), ObjectRefcount(0,1), content, timestamp).pointer)
+  def allocate(content: DataBuffer, timestamp:HLCTimestamp): Future[DataObjectPointer] = {
+    Future.successful(storage.allocate(UUID.randomUUID(), new UUID(0,0), ObjectRefcount(0,1), content, timestamp).pointer.asInstanceOf[DataObjectPointer])
   }
   
   def overwrite(ptr: ObjectPointer, arr: Array[Byte], timestamp: HLCTimestamp): Future[Unit] = {

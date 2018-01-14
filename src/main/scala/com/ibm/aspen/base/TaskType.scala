@@ -7,6 +7,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 trait TaskType {
   
@@ -15,7 +16,7 @@ trait TaskType {
   protected def createTaskObject(
       group: TaskGroup,
       allocater: ObjectAllocater,
-      allocatingObject: ObjectPointer,
+      allocatingObject: DataObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       taskUUID: UUID,
       initialState: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
@@ -30,13 +31,13 @@ trait TaskType {
   def createTaskExecutor(
       system: AspenSystem,
       taskUUID: UUID, 
-      taskStatePointer: ObjectPointer,
+      taskStatePointer: DataObjectPointer,
       taskState: ObjectStateAndData)(implicit ec: ExecutionContext): Future[Task]
   
   def createTaskExecutor(
       system: AspenSystem,
       taskUUID: UUID, 
-      taskStatePointer: ObjectPointer)(implicit ec: ExecutionContext): Future[Task] = system.readObject(taskStatePointer) flatMap {
+      taskStatePointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[Task] = system.readObject(taskStatePointer) flatMap {
     taskState => createTaskExecutor(system, taskUUID, taskStatePointer, taskState)
   }
 }

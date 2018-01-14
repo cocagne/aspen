@@ -13,6 +13,7 @@ import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class KVTreeSimpleFactory(
     system: AspenSystem,
@@ -23,7 +24,7 @@ class KVTreeSimpleFactory(
     nodeCache: KVTreeNodeCache,
     keyComparisonStrategy: KVTree.KeyComparison.Value) extends KVTreeFactory {
   
-  def createTree(treeDefinitionObjectPointer: ObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = system.readObject(treeDefinitionObjectPointer) map {
+  def createTree(treeDefinitionObjectPointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[KVTree] = system.readObject(treeDefinitionObjectPointer) map {
     osd => 
       val td = KVTreeCodec.decodeTreeDefinition(osd.data)
       new KVTree(treeDefinitionObjectPointer, osd.revision, new TreeAllocater, nodeCache, keyComparisonStrategy, td.tiers, system)  
@@ -39,7 +40,7 @@ class KVTreeSimpleFactory(
         targetObject:ObjectPointer, 
         targetRevision: ObjectRevision, 
         initialContent: DataBuffer,
-        timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+        timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
       system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, initialContent, Some(timestamp))
     }
   }
@@ -52,13 +53,13 @@ class KVTreeSimpleFactory(
         targetObject: ObjectPointer, 
         targetRevision: ObjectRevision, 
         newTier: Int, 
-        initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+        initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
       system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, KVTreeCodec.encode(initialContent, None))
     }
     
     def allocateRootLeafNode(
         targetObject: ObjectPointer, 
-        targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[ObjectPointer] = {
+        targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
       system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, DataBuffer(ByteBuffer.allocate(0)))
     }
     

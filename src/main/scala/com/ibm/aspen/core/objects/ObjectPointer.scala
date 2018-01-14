@@ -4,28 +4,34 @@ import java.util.UUID
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.data_store.DataStoreID
 
-final case class ObjectPointer(
-    uuid: UUID,
-    poolUUID: UUID,
-    size: Option[Int],
-    ida: IDA,
-    storePointers: Array[StorePointer]) {
+sealed abstract class ObjectPointer(
+    val uuid: UUID,
+    val poolUUID: UUID,
+    val size: Option[Int],
+    val ida: IDA,
+    val storePointers: Array[StorePointer]) {
   
-  override def equals(other: Any): Boolean = other match {
+  final override def equals(other: Any): Boolean = other match {
     case rhs: ObjectPointer => uuid == rhs.uuid && poolUUID == rhs.poolUUID && size == rhs.size &&
      ida == rhs.ida && java.util.Arrays.equals(storePointers.asInstanceOf[Array[Object]], rhs.storePointers.asInstanceOf[Array[Object]])
     case _ => false
   }
   
-  override def hashCode: Int = uuid.hashCode()
+  final override def hashCode: Int = uuid.hashCode()
   
   def getStorePointer(storeId: DataStoreID): Option[StorePointer] = if (storeId.poolUUID == poolUUID) {
     storePointers.find(sp => sp.poolIndex == storeId.poolIndex)
   } else
     None
     
+  protected def pointerType: String
+  protected def extraToStringContent: String = ""
+    
   override def toString(): String = {
     val sb = new StringBuilder
+    val extra = extraToStringContent
+    
+    sb.append(pointerType)
     sb.append("ObjectPointer(")
     sb.append(uuid.toString)
     sb.append(',')
@@ -35,6 +41,10 @@ final case class ObjectPointer(
     sb.append(',')
     sb.append(ida.toString)
     sb.append(',')
+    if (extra != "") {
+      sb.append(extra)
+      sb.append(',')
+    }
     sb.append('[')
     storePointers.foreach { sp =>
       sb.append(sp.toString)
@@ -43,4 +53,23 @@ final case class ObjectPointer(
     sb.append(']')
     sb.toString()
   }
+}
+
+class DataObjectPointer(
+    uuid: UUID,
+    poolUUID: UUID,
+    size: Option[Int],
+    ida: IDA,
+    storePointers: Array[StorePointer]) extends ObjectPointer(uuid, poolUUID, size, ida, storePointers) {
+  
+    override def pointerType: String = "Data"
+}
+
+object DataObjectPointer {
+  def apply(
+      uuid: UUID,
+      poolUUID: UUID,
+      size: Option[Int],
+      ida: IDA,
+      storePointers: Array[StorePointer]): DataObjectPointer = new DataObjectPointer(uuid, poolUUID, size, ida, storePointers)
 }

@@ -16,15 +16,16 @@ import com.ibm.aspen.base.RetryStrategy
 import java.nio.ByteBuffer
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 class BaseStoragePool(
     val system: AspenSystem,
-    val poolDefinitionPointer: ObjectPointer,
+    val poolDefinitionPointer: DataObjectPointer,
     val poolDefinitionRevision: ObjectRevision,
     val poolDefinitionRefcount: ObjectRefcount,
     val uuid: UUID,
     val hostingStorageNodes: Array[StorageNodeID],
-    val allocationTreeDefinitionPointer: Option[ObjectPointer],
+    val allocationTreeDefinitionPointer: Option[DataObjectPointer],
     val isStorageNodeOnline: (StorageNodeID) => Boolean) extends StoragePool {
   
   override def supportsIDA(ida: IDA): Boolean = ida.width >= numberOfStores
@@ -45,9 +46,9 @@ class BaseStoragePool(
   
   override def getAllocationTreeDefinitionPointer(
       retryStrategy: RetryStrategy)
-      (implicit ec: ExecutionContext): Future[ObjectPointer] = {
+      (implicit ec: ExecutionContext): Future[DataObjectPointer] = {
     
-    def createTree(currentPool: BaseStoragePool): Future[ObjectPointer] = currentPool.allocationTreeDefinitionPointer match {
+    def createTree(currentPool: BaseStoragePool): Future[DataObjectPointer] = currentPool.allocationTreeDefinitionPointer match {
           case Some(allocTreePtr) => Future.successful(allocTreePtr)
           case None =>
             implicit val tx = system.newTransaction()
@@ -78,7 +79,7 @@ object BaseStoragePool {
   object Factory extends StoragePoolFactory {
     def createStoragePool(
         system: AspenSystem, 
-        poolDefinitionPointer: ObjectPointer, 
+        poolDefinitionPointer: DataObjectPointer, 
         isStorageNodeOnline: (StorageNodeID) => Boolean)(implicit ec: ExecutionContext): Future[BaseStoragePool] = {
       system.readObject(poolDefinitionPointer) map { 
         osd => 

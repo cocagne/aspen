@@ -26,6 +26,7 @@ import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.MissingUpdateContent
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.DataObjectPointer
 
 object TransactionSuite {
   
@@ -36,7 +37,7 @@ object TransactionSuite {
   val ds2 = DataStoreID(poolUUID,2)
   val ds3 = DataStoreID(poolUUID,3)
   
-  def mkobj = ObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
+  def mkobj = DataObjectPointer(java.util.UUID.randomUUID(), poolUUID, None, Replication(3,2), new Array[StorePointer](0))
   
   def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate]) = TransactionDescription(
       java.util.UUID.randomUUID(), 100, mkobj, 0, du ++ ru, Nil)
