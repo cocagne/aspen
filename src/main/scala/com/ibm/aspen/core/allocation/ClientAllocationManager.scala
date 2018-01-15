@@ -13,6 +13,9 @@ import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.base.StoragePool
+import com.ibm.aspen.base.impl.AllocationFinalizationAction
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
@@ -27,28 +30,33 @@ class ClientAllocationManager(
   }
   
   def allocate(messenger: ClientSideAllocationMessenger,
-               poolUUID: UUID,
+               transaction: Transaction,
+               pool: StoragePool,
                newObjectUUID: UUID,
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
                timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
-               allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]] = {
     
-    val driver = driverFactory.create(clientMessenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, initialRefcount,
-                                      allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+    val driver = driverFactory.create(clientMessenger, pool.uuid, newObjectUUID, objectSize, objectIDA, objectData, timestamp, initialRefcount,
+                                      transaction.uuid, allocatingObject, allocatingObjectRevision)
                                       
-    synchronized { outstandingAllocations += (allocationTransactionUUID -> driver) }
+    synchronized { outstandingAllocations += (transaction.uuid -> driver) }
     
     driver.futureResult onComplete {
-      case _ => synchronized { outstandingAllocations -= allocationTransactionUUID }
+      case _ => synchronized { outstandingAllocations -= transaction.uuid }
     }
     
     driver.start()
     
-    driver.futureResult
+    driver.futureResult map { eresult => eresult match {
+      case Left(err) => Left(err)
+      case Right(newObjectPtr) => 
+        AllocationFinalizationAction.addToAllocationTree(transaction, pool.poolDefinitionPointer, newObjectPtr)
+        Right(newObjectPtr)
+    }}
   }
 }

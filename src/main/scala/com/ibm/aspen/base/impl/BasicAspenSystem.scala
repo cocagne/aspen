@@ -212,14 +212,12 @@ class BasicAspenSystem(
       hosts = pool.selectStoresForAllocation(objectIDA)
       objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
 
-      result <- allocManager.allocate(net.allocationHandler, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, ObjectRefcount(0,1), 
-                                      t.uuid, allocatingObject, allocatingObjectRevision)
+      result <- allocManager.allocate(net.allocationHandler, t, pool, newObjectUUID, objectSize, objectIDA, objectData, timestamp, ObjectRefcount(0,1), 
+                                      allocatingObject, allocatingObjectRevision)
     } yield {
       result match {
         case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
-        case Right(newObjPtr) =>
-          AllocationFinalizationAction.addToAllocationTree(t, pool.poolDefinitionPointer, newObjPtr)
-          newObjPtr.asInstanceOf[DataObjectPointer]
+        case Right(newObjPtr) => newObjPtr.asInstanceOf[DataObjectPointer]
       }
     }
   }
