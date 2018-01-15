@@ -17,24 +17,10 @@ trait ObjectAllocater {
   val objectSize: Option[Int]
   val objectIDA: IDA
   
-  def allocateObject(
+  def allocateDataObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
   
-  def allocateObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      initialContent: Array[Byte])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, DataBuffer(initialContent), None)
-  }
-  
-  def allocateObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      initialContent: Array[Byte],
-      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
-    allocateObject(allocatingObject, allocatingObjectRevision, DataBuffer(initialContent), afterTimestamp)
-  }
 }

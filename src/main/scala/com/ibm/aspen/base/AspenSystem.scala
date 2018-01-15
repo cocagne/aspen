@@ -28,7 +28,7 @@ trait AspenSystem {
   
   def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
   
-  def lowLevelAllocateObject(
+  def lowLevelAllocateDataObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       poolUUID: UUID,

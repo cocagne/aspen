@@ -18,11 +18,11 @@ class SinglePoolObjectAllocater(
     val objectSize: Option[Int],
     val objectIDA: IDA) extends ObjectAllocater {
  
-  override def allocateObject(
+  override def allocateDataObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
-    system.lowLevelAllocateObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, initialContent, afterTimestamp)
+    system.lowLevelAllocateDataObject(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, initialContent, afterTimestamp)
   }
 }

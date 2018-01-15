@@ -41,7 +41,7 @@ class KVTreeSimpleFactory(
         targetRevision: ObjectRevision, 
         initialContent: DataBuffer,
         timestamp: HLCTimestamp)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
-      system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, initialContent, Some(timestamp))
+      system.lowLevelAllocateDataObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, initialContent, Some(timestamp))
     }
   }
   
@@ -54,13 +54,13 @@ class KVTreeSimpleFactory(
         targetRevision: ObjectRevision, 
         newTier: Int, 
         initialContent: List[KVListNodePointer])(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
-      system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, KVTreeCodec.encode(initialContent, None))
+      system.lowLevelAllocateDataObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, KVTreeCodec.encode(initialContent, None))
     }
     
     def allocateRootLeafNode(
         targetObject: ObjectPointer, 
         targetRevision: ObjectRevision)(implicit ec: ExecutionContext, t: Transaction): Future[DataObjectPointer] = {
-      system.lowLevelAllocateObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, DataBuffer(ByteBuffer.allocate(0)))
+      system.lowLevelAllocateDataObject(targetObject, targetRevision, storagePoolUUID, None, nodeIDA, DataBuffer(ByteBuffer.allocate(0)))
     }
     
     def getListNodeAllocaterForTier(tier: Int): KVListNodeAllocater = new TreeListAllocater

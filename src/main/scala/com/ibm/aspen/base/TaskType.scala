@@ -21,7 +21,7 @@ trait TaskType {
       taskUUID: UUID,
       initialState: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[ObjectPointer] = {
     
-    allocater.allocateObject(allocatingObject, allocatingObjectRevision, initialState) map { ptr =>
+    allocater.allocateDataObject(allocatingObject, allocatingObjectRevision, initialState) map { ptr =>
       val rev = ObjectRevision(t.uuid)
       group.insertAddToGroupFinalizationAction(this, taskUUID, ptr, rev)
       ptr
