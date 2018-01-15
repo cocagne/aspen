@@ -4,12 +4,13 @@ import com.ibm.aspen.base.AspenSystem
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 trait KVList {
    
-  def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData]
+  def fetchNodeObject(objectPointer: DataObjectPointer): Future[DataObjectState]
   
   def fetchCachedNode(objectPointer: DataObjectPointer): Option[KVListNode] = None
   

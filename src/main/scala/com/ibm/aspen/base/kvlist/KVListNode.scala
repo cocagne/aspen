@@ -7,10 +7,11 @@ import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.util.Failure
 import scala.util.Success
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.kvlist.KVListCodec.KVListOperation
 import java.nio.ByteBuffer
+import com.ibm.aspen.base.DataObjectState
 
 class KVListNode(
     val list: KVList,
@@ -194,7 +195,7 @@ class KVListNode(
 
 object KVListNode {
   
-  def apply(list: KVList, nodePointer: KVListNodePointer, osd: ObjectStateAndData): KVListNode = {
+  def apply(list: KVList, nodePointer: KVListNodePointer, osd: DataObjectState): KVListNode = {
     val (content, rightPointer) = KVListCodec.decodeNodeContent(list.compareKeys, osd.data)
     
     new KVListNode(list, nodePointer, osd.revision, rightPointer, osd.data.size, content)

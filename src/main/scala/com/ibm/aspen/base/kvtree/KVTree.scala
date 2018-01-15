@@ -13,12 +13,13 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.kvlist.KVListNode
 import com.ibm.aspen.base.kvlist.KVList
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.network.NetworkCodec
 import scala.annotation.tailrec
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 object KVTree {
   
@@ -97,7 +98,7 @@ class KVTree(
    
     val objectAllocater = nodeAllocater.getListNodeAllocaterForTier(tier)
     
-    def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = readObject(objectPointer)
+    def fetchNodeObject(objectPointer: DataObjectPointer): Future[DataObjectState] = readObject(objectPointer)
     
     override def fetchCachedNode(objectPointer: DataObjectPointer): Option[KVListNode] = nodeCache.getCachedNode(tier, objectPointer)
     override def updateCachedNode(node: KVListNode): Unit = nodeCache.updateCachedNode(tier, node)
@@ -223,7 +224,7 @@ class KVTree(
    *
    * This is broken out into a dedicated method primarily to allow mix-in traits to override the default behavior  
    */
-  def readObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
+  def readObject(objectPointer: DataObjectPointer): Future[DataObjectState] = system.readObject(objectPointer, None)
   
   protected [kvtree] def onListNodeSplit(tier: Int)(transaction:Transaction, ec:ExecutionContext, originalNode:KVListNode, updatedNode:KVListNode, newNode:KVListNode): Unit = {
     KVTreeFinalizationActionHandler.insertIntoUpperTier(transaction, this, tier+1, newNode.nodePointer)

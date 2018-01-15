@@ -19,10 +19,10 @@ trait AspenSystem {
   def clientId: ClientID
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[ObjectStateAndData]
+  def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[DataObjectState]
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:DataObjectPointer): Future[ObjectStateAndData] = readObject(pointer, None)
+  def readObject(pointer:DataObjectPointer): Future[DataObjectState] = readObject(pointer, None)
   
   def newTransaction(): Transaction
   
@@ -36,6 +36,22 @@ trait AspenSystem {
       objectIDA: IDA,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
+  
+//  def lowLevelAllocateKeyValueObject(
+//      allocatingObject: ObjectPointer,
+//      allocatingObjectRevision: ObjectRevision,
+//      poolUUID: UUID,
+//      objectSize: Option[Int],
+//      objectIDA: IDA,
+//      initialContent: Map[Array[Byte], Array[Byte]],
+//      minimum: Option[Array[Byte]],
+//      maximum: Option[Array[Byte]],
+//      left: Option[Array[Byte]],
+//      right: Option[Array[Byte]],
+//      useKVRevisions: Boolean,
+//      useKVTimestamps: Boolean,
+//      useKVRefcounts: Boolean,
+//      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool]

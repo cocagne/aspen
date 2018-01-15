@@ -15,7 +15,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.base.kvlist.KVList
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.SimpleTestSystem
@@ -27,6 +27,7 @@ import com.ibm.aspen.base.FinalizationAction
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 object KVTreeSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -120,7 +121,7 @@ object KVTreeSuite {
     
     class TestList(val rootObjectPointer: DataObjectPointer, val nodeSizeLimit: Int) extends KVList {
    
-      def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = system.readObject(objectPointer, None)
+      def fetchNodeObject(objectPointer: DataObjectPointer): Future[DataObjectState] = system.readObject(objectPointer, None)
       
       def compareKeys(a: Array[Byte], b: Array[Byte]): Int = compareKeysFn(a, b)
       

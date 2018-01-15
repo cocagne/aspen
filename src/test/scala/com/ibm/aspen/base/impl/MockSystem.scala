@@ -36,7 +36,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.NoRetry
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.base.Transaction
 import scala.Left
 import scala.Right
@@ -55,6 +55,7 @@ import com.ibm.aspen.core.network.ClientSideReadHandler
 import com.ibm.aspen.core.network.ClientSideAllocationHandler
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -69,17 +70,17 @@ object MockSystem {
   case class SetRef(ptr: ObjectPointer, requiredRefcount: ObjectRefcount, newRefcount: ObjectRefcount) extends ObjectOp
   
   class StorageSystem {
-    private[this] var objects = Map[UUID, ObjectStateAndData]()
+    private[this] var objects = Map[UUID, DataObjectState]()
     
-    def read(ptr: ObjectPointer): Option[ObjectStateAndData] = synchronized { objects.get(ptr.uuid) }
+    def read(ptr: ObjectPointer): Option[DataObjectState] = synchronized { objects.get(ptr.uuid) }
     
-    def allocate(newObjectUUID: UUID, allocTxUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer, timestamp: HLCTimestamp): ObjectStateAndData = synchronized {
+    def allocate(newObjectUUID: UUID, allocTxUUID: UUID, initialRefcount: ObjectRefcount, initialContent: DataBuffer, timestamp: HLCTimestamp): ObjectState = synchronized {
       val cpy = ByteBuffer.allocate(initialContent.size)
       cpy.put(initialContent.asReadOnlyBuffer())
       cpy.position(0)
       val rev = ObjectRevision(allocTxUUID)
       val ptr = DataObjectPointer(newObjectUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
-      val osd = ObjectStateAndData(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
+      val osd = DataObjectState(ptr, rev, initialRefcount, timestamp, DataBuffer(cpy))
       objects += (osd.pointer.uuid -> osd)
       osd
     }
@@ -107,7 +108,7 @@ object MockSystem {
       newData.position(0)
       val newRev = ObjectRevision(txUUID)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
+      objects += (ptr.uuid -> DataObjectState(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
     
     def overwrite(txUUID: UUID, ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit =  {
@@ -118,12 +119,12 @@ object MockSystem {
       newData.position(0)
       val newRev = ObjectRevision(txUUID)
       
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
+      objects += (ptr.uuid -> DataObjectState(ptr, newRev, orig.refcount, timestamp, DataBuffer(newData)))
     }
     
     private def setref(ptr:ObjectPointer, newRef: ObjectRefcount): Unit = {
       val orig = objects(ptr.uuid)
-      objects += (ptr.uuid -> ObjectStateAndData(ptr, orig.revision, newRef, orig.timestamp, orig.data))
+      objects += (ptr.uuid -> DataObjectState(ptr, orig.revision, newRef, orig.timestamp, orig.data))
     }
   }
   

@@ -32,7 +32,7 @@ trait TaskType {
       system: AspenSystem,
       taskUUID: UUID, 
       taskStatePointer: DataObjectPointer,
-      taskState: ObjectStateAndData)(implicit ec: ExecutionContext): Future[Task]
+      taskState: DataObjectState)(implicit ec: ExecutionContext): Future[Task]
   
   def createTaskExecutor(
       system: AspenSystem,

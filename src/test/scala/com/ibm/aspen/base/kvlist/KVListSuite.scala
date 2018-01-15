@@ -15,11 +15,12 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -89,10 +90,10 @@ object KVListSuite {
   
   class TList(nodeSizeLimitX: Int) extends KVList {
     
-    var m = Map[UUID, ObjectStateAndData]()
+    var m = Map[UUID, DataObjectState]()
     
     // case class ObjectStateAndData(pointer: ObjectPointer, revision:ObjectRevision, refcount:ObjectRefcount, data: ByteBuffer)
-    def fetchNodeObject(objectPointer: DataObjectPointer): Future[ObjectStateAndData] = Future.successful(m(objectPointer.uuid))
+    def fetchNodeObject(objectPointer: DataObjectPointer): Future[DataObjectState] = Future.successful(m(objectPointer.uuid))
     
     def compareKeys(a: Array[Byte], b: Array[Byte]): Int = KVListSuite.compareKeys(a,b)
     
@@ -108,7 +109,7 @@ object KVListSuite {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
-        m += (p.uuid -> ObjectStateAndData(p, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
+        m += (p.uuid -> DataObjectState(p, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
         
         Future.successful(p)
       }
@@ -120,7 +121,7 @@ object KVListSuite {
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     
-    m += (rootObjectPointer.uuid -> ObjectStateAndData(rootObjectPointer, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
+    m += (rootObjectPointer.uuid -> DataObjectState(rootObjectPointer, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
     
     def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }

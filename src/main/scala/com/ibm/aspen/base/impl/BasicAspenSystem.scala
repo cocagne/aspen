@@ -10,7 +10,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
 import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.core.read.ReadDriver
-import com.ibm.aspen.base.ObjectStateAndData
+import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
@@ -49,6 +49,7 @@ import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.DataObjectState
 
 
 
@@ -177,11 +178,11 @@ class BasicAspenSystem(
   
   def readObject(
       objectPointer:DataObjectPointer, 
-      readStrategy: Option[ReadDriver.Factory] ): Future[ObjectStateAndData] = readManager.read(objectPointer, true, false, 
+      readStrategy: Option[ReadDriver.Factory] ): Future[DataObjectState] = readManager.read(objectPointer, true, false, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
             case Right(os) => os.data match {
-              case Some(data) => ObjectStateAndData(objectPointer, os.revision, os.refcount, os.timestamp, data)
+              case Some(data) => DataObjectState(objectPointer, os.revision, os.refcount, os.timestamp, data)
               case None => throw DataRetrievalFailed()
             }
           })
