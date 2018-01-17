@@ -1,11 +1,9 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.core.objects
 
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.keyvalue.KVState
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -38,7 +36,7 @@ class KeyValueObjectState(
     val maximum: Option[Array[Byte]],
     val left: Option[Array[Byte]],
     val right: Option[Array[Byte]],
-    val contents: Map[Array[Byte], KeyValueState]
+    val contents: Map[Array[Byte], KVState]
     ) extends ObjectState(pointer, revision, refcount, timestamp)
 
 object KeyValueObjectState {
@@ -51,7 +49,7 @@ object KeyValueObjectState {
       maximum: Option[Array[Byte]],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
-      contents: Map[Array[Byte], KeyValueState]): KeyValueObjectState = {
+      contents: Map[Array[Byte], KVState]): KeyValueObjectState = {
     new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
   }
 }

@@ -10,7 +10,6 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
 import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.core.read.ReadDriver
-import com.ibm.aspen.base.ObjectState
 import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
@@ -48,9 +47,9 @@ import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.base.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.util.uuid2byte
+import com.ibm.aspen.core.objects.DataObjectState
 
 
 object BasicAspenSystem {

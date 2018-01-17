@@ -7,11 +7,11 @@ import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.util.Failure
 import scala.util.Success
-import com.ibm.aspen.base.ObjectState
+import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.kvlist.KVListCodec.KVListOperation
 import java.nio.ByteBuffer
-import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.objects.DataObjectState
 
 class KVListNode(
     val list: KVList,

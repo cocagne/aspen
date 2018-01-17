@@ -10,7 +10,7 @@ import com.ibm.aspen.base.TestSystem
 import com.ibm.aspen.base.TaskType
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.TaskGroup
-import com.ibm.aspen.base.ObjectState
+import com.ibm.aspen.core.objects.ObjectState
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.Task
@@ -24,7 +24,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TaskTypeRegistry
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.objects.DataObjectState
 
 class SimpleTaskSuite extends AsyncFunSuite with Matchers {
   

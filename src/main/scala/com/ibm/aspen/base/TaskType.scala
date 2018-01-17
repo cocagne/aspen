@@ -8,6 +8,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.DataObjectState
 
 trait TaskType {
   

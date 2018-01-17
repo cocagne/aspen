@@ -22,6 +22,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.DataObjectState
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)

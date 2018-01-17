@@ -6,40 +6,21 @@ import com.ibm.aspen.util.Varint
 import java.util.UUID
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.ida.Replication
-
-class KeyValueObjectState(
-    val minimum: Option[Array[Byte]],
-    val maximum: Option[Array[Byte]],
-    val left: Option[Array[Byte]],
-    val right: Option[Array[Byte]],
-    val contents: Map[Array[Byte], KVState]) {
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.KeyValueObjectState
+    
+object KeyValueObjectCodec {
   
-  /** Encodes the state of a KeyValueObject for sending to DataStores.
-   *
-   * Data contained within the objects is a series of top-level "update blocks" which
-   * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
-   * generate a full-state dump of the object and should be used in an overwrite transaction
-   * that sets the state of the object to this single value.
-   */
-  def encode(ida: IDA): Array[DataBuffer] = {
-    var ops: List[KeyValueOperation] = Nil
+  def decode(
+      pointer: ObjectPointer, 
+      revision:ObjectRevision, 
+      refcount:ObjectRefcount, 
+      timestamp: HLCTimestamp,
+      storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
     
-    minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-    maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-    left.foreach( arr => ops = new SetLeft(arr) :: ops )
-    right.foreach( arr => ops = new SetRight(arr) :: ops )
-    
-    contents.valuesIterator.foreach { kv =>
-      ops = new Insert(kv.key, kv.value, kv.timestamp) :: ops
-    }
-    
-    KeyValueObjectState.encodeUpdate(ida, ops)
-  }
-}
-    
-object KeyValueObjectState {
-  //def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer
-  def apply(storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
     val ida = storeStates.head.ida
     val minimum = storeStates.head.minimum
     val maximum = storeStates.head.maximum
@@ -71,7 +52,29 @@ object KeyValueObjectState {
       contents += (key -> kv)
     }
     
-    new KeyValueObjectState(minimum, maximum, left, right, contents)
+    new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
+  }
+  
+  /** Encodes the state of a KeyValueObject for sending to DataStores.
+   *
+   * Data contained within the objects is a series of top-level "update blocks" which
+   * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
+   * generate a full-state dump of the object and should be used in an overwrite transaction
+   * that sets the state of the object to this single value.
+   */
+  def encode(ida: IDA, kvos: KeyValueObjectState): Array[DataBuffer] = {
+    var ops: List[KeyValueOperation] = Nil
+    
+    kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
+    kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
+    kvos.left.foreach( arr => ops = new SetLeft(arr) :: ops )
+    kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
+    
+    kvos.contents.valuesIterator.foreach { kv =>
+      ops = new Insert(kv.key, kv.value, kv.timestamp) :: ops
+    }
+    
+    KeyValueObjectCodec.encodeUpdate(ida, ops)
   }
   
   /** Encodes a list of updates to the state of a KeyValueObject for sending to DataStores.

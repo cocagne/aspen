@@ -13,13 +13,13 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.kvlist.KVListNode
 import com.ibm.aspen.base.kvlist.KVList
-import com.ibm.aspen.base.ObjectState
+import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.base.kvlist.KVListNodeAllocater
 import com.ibm.aspen.base.kvlist.KVListNodePointer
 import com.ibm.aspen.core.network.NetworkCodec
 import scala.annotation.tailrec
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.objects.DataObjectState
 
 object KVTree {
   

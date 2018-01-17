@@ -15,12 +15,12 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.ObjectState
+import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.objects.DataObjectState
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)

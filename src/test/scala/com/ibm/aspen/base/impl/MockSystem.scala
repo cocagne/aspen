@@ -36,7 +36,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.NoRetry
-import com.ibm.aspen.base.ObjectState
+import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.base.Transaction
 import scala.Left
 import scala.Right
@@ -55,7 +55,7 @@ import com.ibm.aspen.core.network.ClientSideReadHandler
 import com.ibm.aspen.core.network.ClientSideAllocationHandler
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.allocation.AllocationOptions
 
 object MockSystem {
