@@ -28,3 +28,30 @@ object DataObjectState {
       timestamp: HLCTimestamp, 
       data: DataBuffer): DataObjectState = new DataObjectState(pointer, revision, refcount, timestamp, data)
 }
+
+class KeyValueObjectState(
+    pointer: ObjectPointer, 
+    revision:ObjectRevision, 
+    refcount:ObjectRefcount, 
+    timestamp: HLCTimestamp,
+    val minimum: Option[Array[Byte]],
+    val maximum: Option[Array[Byte]],
+    val left: Option[Array[Byte]],
+    val right: Option[Array[Byte]],
+    val contents: Map[Array[Byte], KeyValueState]
+    ) extends ObjectState(pointer, revision, refcount, timestamp)
+
+object KeyValueObjectState {
+  def apply(
+      pointer: ObjectPointer, 
+      revision:ObjectRevision, 
+      refcount:ObjectRefcount, 
+      timestamp: HLCTimestamp, 
+      minimum: Option[Array[Byte]],
+      maximum: Option[Array[Byte]],
+      left: Option[Array[Byte]],
+      right: Option[Array[Byte]],
+      contents: Map[Array[Byte], KeyValueState]): KeyValueObjectState = {
+    new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
+  }
+}

@@ -21,6 +21,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -68,6 +69,23 @@ class SimpleTestSystem extends AspenSystem {
     content += (ptr.uuid -> new Obj(t.txRevision, ObjectRefcount(0,1), initialContent, now))
     
     Future.successful(ptr)
+  }
+  def lowLevelAllocateKeyValueObject(
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: Map[Array[Byte], Array[Byte]],
+      minimum: Option[Array[Byte]],
+      maximum: Option[Array[Byte]],
+      left: Option[Array[Byte]],
+      right: Option[Array[Byte]],
+      useRevisions: Boolean,
+      useTimestamps: Boolean,
+      useRefcounts: Boolean,
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
+    Future.failed(new Exception("Not supported"))
   }
   
   class Tx extends Transaction {

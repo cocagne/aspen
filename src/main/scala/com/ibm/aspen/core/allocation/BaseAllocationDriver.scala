@@ -30,6 +30,7 @@ class BaseAllocationDriver (
     val objectSize: Option[Int],
     val objectIDA: IDA,
     val objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+    val options: AllocationOptions,
     val timestamp: HLCTimestamp,
     val initialRefcount: ObjectRefcount,
     val allocationTransactionUUID: UUID,
@@ -93,13 +94,14 @@ object BaseAllocationDriver {
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               options: AllocationOptions,
                timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
                allocatingObjectRevision: ObjectRevision): BaseAllocationDriver = {
-      new BaseAllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, timestamp, initialRefcount, 
-                           allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+      new BaseAllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, options, timestamp,  
+                           initialRefcount, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
     }
   }
   

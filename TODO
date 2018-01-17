@@ -78,6 +78,10 @@ From Transaction perspective, it contained vs top-level object shouldn't matter
   * Stores will need to handle contained vs non-contained
   * But even that can be handled at the base-class level. Store Impl don't need to care.
 
+*** KeyValue Optimizations
+  * Read List[Keys]
+  * Read KeyRange
+
 ----------------------------------
 * def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]
   def getStorageNode(nodeUUID: UUID): Future[StorageNode]

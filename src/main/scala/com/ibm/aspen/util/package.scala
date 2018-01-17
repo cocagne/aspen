@@ -1,13 +1,14 @@
-package com.ibm.aspen.core
+package com.ibm.aspen
 
-import java.nio.ByteBuffer
 import java.util.UUID
+import java.nio.ByteBuffer
 import java.io.StringWriter
 import java.io.PrintWriter
 
-object Util {
+package object util {
+  import scala.language.implicitConversions
   
-  def uuid2byte(uuid: UUID): Array[Byte] = {
+  implicit def uuid2byte(uuid: UUID): Array[Byte] = {
     val bb = ByteBuffer.allocate(16)
     bb.putLong(0, uuid.getMostSignificantBits)
     bb.putLong(8, uuid.getLeastSignificantBits)
@@ -21,5 +22,4 @@ object Util {
     e.printStackTrace(pw)
     println(sw.toString())
   }
-  
 }

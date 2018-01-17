@@ -15,8 +15,8 @@ import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import java.util.UUID
 import com.ibm.aspen.base.kvtree.KVTree
-import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.crl.CrashRecoveryLog
+import com.ibm.aspen.util.uuid2byte
 
 /** Implements the Allocation Recovery Process.
  * 
@@ -119,7 +119,7 @@ class SimpleAllocationRecoveryProcess(
     queryTask.cancel()
     
     def resolveObject(objectUUID: UUID, allocTree: KVTree): Future[(UUID, Boolean)] = for {
-      entry <- allocTree.uncachedGet( Util.uuid2byte(objectUUID) )
+      entry <- allocTree.uncachedGet( uuid2byte(objectUUID) )
     } yield {
       (objectUUID, entry.isDefined)
     }

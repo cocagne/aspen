@@ -41,7 +41,7 @@ import com.ibm.aspen.base.Transaction
 import scala.Left
 import scala.Right
 import com.ibm.aspen.base.kvlist.KVList
-import com.ibm.aspen.core.Util._
+import com.ibm.aspen.util.uuid2byte
 import com.ibm.aspen.core.network.NetworkCodec
 import scala.concurrent._
 import scala.concurrent.duration._
@@ -56,6 +56,7 @@ import com.ibm.aspen.core.network.ClientSideAllocationHandler
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.base.DataObjectState
+import com.ibm.aspen.core.allocation.AllocationOptions
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -244,6 +245,7 @@ object MockSystem {
                objectSize: Option[Int],
                objectIDA: IDA,
                objectData: Map[Byte,DataBuffer], // Map DataStore pool index -> store-specific ObjectData
+               options: AllocationOptions,
                timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,

@@ -8,7 +8,6 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StorageNodeID
 import java.nio.ByteBuffer
-import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.kvlist.KVListCodec
 import com.ibm.aspen.core.data_store.BootstrapDataStore
@@ -28,6 +27,8 @@ object Bootstrap {
   val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
   
   val BootstrapAllocatedObjectCount   = 8
+  
+  import com.ibm.aspen.util.uuid2byte
   
   /** Creates the Radicle object and the minimal set of supporting data structures. Returns a Future to the Radicle ObjectPointer
    * Add StoragePoolTreeDef + tier0
@@ -56,10 +57,10 @@ object Bootstrap {
     
     val hostingStorageNodes = List.fill(bootstrapPoolIDA.width)(StorageNodeID(ZeroedUUID)).toArray
     
-    def ins(p: DataObjectPointer): (Array[Byte], Array[Byte]) = (Util.uuid2byte(p.uuid), NetworkCodec.objectPointerToByteArray(p))
+    def ins(p: DataObjectPointer): (Array[Byte], Array[Byte]) = (uuid2byte(p.uuid), NetworkCodec.objectPointerToByteArray(p))
     
     def treeNode(key: UUID, ptr: DataObjectPointer) = {
-      val inserts = (Util.uuid2byte(key) -> NetworkCodec.objectPointerToByteArray(ptr))::Nil
+      val inserts = (uuid2byte(key) -> NetworkCodec.objectPointerToByteArray(ptr))::Nil
       ByteBuffer.wrap(KVListCodec.encodeNewListContent(inserts))
     }
     

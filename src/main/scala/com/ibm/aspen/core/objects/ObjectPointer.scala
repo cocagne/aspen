@@ -25,12 +25,11 @@ sealed abstract class ObjectPointer(
     None
     
   protected def pointerType: String
-  protected def extraToStringContent: String = ""
+  protected def addExtraToStringContent(sb: StringBuilder): Unit = {}
     
   override def toString(): String = {
     val sb = new StringBuilder
-    val extra = extraToStringContent
-    
+
     sb.append(pointerType)
     sb.append("ObjectPointer(")
     sb.append(uuid.toString)
@@ -41,10 +40,7 @@ sealed abstract class ObjectPointer(
     sb.append(',')
     sb.append(ida.toString)
     sb.append(',')
-    if (extra != "") {
-      sb.append(extra)
-      sb.append(',')
-    }
+    addExtraToStringContent(sb)
     sb.append('[')
     storePointers.foreach { sp =>
       sb.append(sp.toString)
@@ -72,4 +68,24 @@ object DataObjectPointer {
       size: Option[Int],
       ida: IDA,
       storePointers: Array[StorePointer]): DataObjectPointer = new DataObjectPointer(uuid, poolUUID, size, ida, storePointers)
+}
+
+class KeyValueObjectPointer(
+    uuid: UUID,
+    poolUUID: UUID,
+    size: Option[Int],
+    ida: IDA,
+    storePointers: Array[StorePointer]) extends ObjectPointer(uuid, poolUUID, size, ida, storePointers) {
+  
+    override def pointerType: String = "KeyValue"
+}
+
+object KeyValueObjectPointer {
+  def apply(
+      uuid: UUID,
+      poolUUID: UUID,
+      size: Option[Int],
+      ida: IDA,
+      storePointers: Array[StorePointer]): KeyValueObjectPointer = new KeyValueObjectPointer(uuid, poolUUID, size, ida, storePointers)
+  
 }

@@ -30,7 +30,6 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.StoreAllocationError
 import com.ibm.aspen.base.RetryStrategy
 import com.google.flatbuffers.FlatBufferBuilder
-import com.ibm.aspen.core.Util
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.network.ClientSideNetwork
 import com.ibm.aspen.core.HLCTimestamp
@@ -50,14 +49,15 @@ import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.base.DataObjectState
-
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.util.uuid2byte
 
 
 object BasicAspenSystem {
   
   import scala.language.implicitConversions
   
-  implicit def uuid2byte(uuid: UUID): Array[Byte] = Util.uuid2byte(uuid)
+  import com.ibm.aspen.util.uuid2byte
   
   type TransactionFactory = (ClientTransactionManager,  
                              (ObjectPointer) => Byte, // Choose the designatedLeader for the Tx based on online/offline peer knowledge
@@ -201,24 +201,45 @@ class BasicAspenSystem(
       objectIDA: IDA,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
-    val encoded = objectIDA.encode(initialContent)
-    val newObjectUUID = UUID.randomUUID()
-    val timestamp = afterTimestamp match {
-      case None => HLCTimestamp.now
-      case Some(ts) => HLCTimestamp.happensAfter(ts)
-    }
-    
+
     for {
       pool <- getStoragePool(poolUUID)
-      hosts = pool.selectStoresForAllocation(objectIDA)
-      objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
-
-      result <- allocManager.allocate(net.allocationHandler, t, pool, newObjectUUID, objectSize, objectIDA, objectData, timestamp, ObjectRefcount(0,1), 
-                                      allocatingObject, allocatingObjectRevision)
+      
+      result <- allocManager.allocateDataObject(net.allocationHandler, t, pool, objectSize, objectIDA, initialContent, afterTimestamp, ObjectRefcount(0,1), 
+                                                allocatingObject, allocatingObjectRevision)
     } yield {
       result match {
         case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
-        case Right(newObjPtr) => newObjPtr.asInstanceOf[DataObjectPointer]
+        case Right(newObjPtr) => newObjPtr
+      }
+    }
+  }
+  
+  def lowLevelAllocateKeyValueObject(
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: Map[Array[Byte], Array[Byte]],
+      minimum: Option[Array[Byte]],
+      maximum: Option[Array[Byte]],
+      left: Option[Array[Byte]],
+      right: Option[Array[Byte]],
+      useRevisions: Boolean,
+      useTimestamps: Boolean,
+      useRefcounts: Boolean,
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
+    for {
+      pool <- getStoragePool(poolUUID)
+      
+      result <- allocManager.allocateKeyValueObject(net.allocationHandler, t, pool, objectSize, objectIDA, afterTimestamp, ObjectRefcount(0,1),
+                                                    allocatingObject, allocatingObjectRevision, initialContent, minimum, maximum, left, right,
+                                                    useRevisions, useTimestamps, useRefcounts)
+    } yield {
+      result match {
+        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
+        case Right(newObjPtr) => newObjPtr
       }
     }
   }

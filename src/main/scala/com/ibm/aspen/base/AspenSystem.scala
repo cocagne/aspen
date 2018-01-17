@@ -13,6 +13,7 @@ import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 trait AspenSystem {
   
@@ -37,21 +38,21 @@ trait AspenSystem {
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
   
-//  def lowLevelAllocateKeyValueObject(
-//      allocatingObject: ObjectPointer,
-//      allocatingObjectRevision: ObjectRevision,
-//      poolUUID: UUID,
-//      objectSize: Option[Int],
-//      objectIDA: IDA,
-//      initialContent: Map[Array[Byte], Array[Byte]],
-//      minimum: Option[Array[Byte]],
-//      maximum: Option[Array[Byte]],
-//      left: Option[Array[Byte]],
-//      right: Option[Array[Byte]],
-//      useKVRevisions: Boolean,
-//      useKVTimestamps: Boolean,
-//      useKVRefcounts: Boolean,
-//      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
+  def lowLevelAllocateKeyValueObject(
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision,
+      poolUUID: UUID,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: Map[Array[Byte], Array[Byte]],
+      minimum: Option[Array[Byte]],
+      maximum: Option[Array[Byte]],
+      left: Option[Array[Byte]],
+      right: Option[Array[Byte]],
+      useRevisions: Boolean,
+      useTimestamps: Boolean,
+      useRefcounts: Boolean,
+      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool]
