@@ -20,6 +20,7 @@ import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.allocation.DataAllocationOptions
 
 object CodecSuite {
   
@@ -250,7 +251,7 @@ object ReadResponse {
     val objUUID = new java.util.UUID(5,6)
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
+    val lno = List(Allocate.NewObject(objUUID, new DataAllocationOptions, s1, ref, d1))
     val ts = HLCTimestamp.now
     val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
     
@@ -283,7 +284,7 @@ object ReadResponse {
     val objUUID = new java.util.UUID(5,6)
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val lno = List(Allocate.NewObject(objUUID, s1, ref, d1))
+    val lno = List(Allocate.NewObject(objUUID, new DataAllocationOptions, s1, ref, d1))
     val ts = HLCTimestamp.now
     val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
     

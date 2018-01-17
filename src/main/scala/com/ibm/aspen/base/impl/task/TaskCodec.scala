@@ -74,6 +74,7 @@ object TaskCodec {
   def decode(n: P.TaskDefinition): TaskDefinition = {
     NetworkCodec.decode(n.taskObject()) match {
       case d: DataObjectPointer => TaskDefinition(NetworkCodec.decode(n.taskTypeUUID()), NetworkCodec.decode(n.taskUUID()), d)
+      case _ => throw new Exception("Unsupported Object Type")
     }
   }
   

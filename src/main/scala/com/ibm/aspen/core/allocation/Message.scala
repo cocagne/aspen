@@ -20,6 +20,7 @@ abstract class StoreMessage extends Message
 object Allocate {
   case class NewObject(
       newObjectUUID: UUID,
+      options: AllocationOptions,
       objectSize: Option[Int],
       initialRefcount: ObjectRefcount,
       objectData: DataBuffer) {

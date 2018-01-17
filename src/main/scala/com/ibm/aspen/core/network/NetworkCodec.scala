@@ -46,6 +46,11 @@ import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.allocation.DataAllocationOptions
+import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
+import com.ibm.aspen.core.allocation.DataAllocationOptions
+import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
 
 
 
@@ -101,6 +106,7 @@ object NetworkCodec {
     P.ObjectPointer.addStorePointers(builder, storePointers)
     o match {
       case d: DataObjectPointer => P.ObjectPointer.addObjectType(builder, P.ObjectType.Data)
+      case k: KeyValueObjectPointer => P.ObjectPointer.addObjectType(builder, P.ObjectType.KeyValue)
     }
     P.ObjectPointer.endObjectPointer(builder)
   }
@@ -125,6 +131,7 @@ object NetworkCodec {
     
     n.objectType() match {
       case P.ObjectType.Data => new DataObjectPointer(uuid, poolUUID, size, ida, storePointers)
+      case P.ObjectType.KeyValue => new KeyValueObjectPointer(uuid, poolUUID, size, ida, storePointers)
     }
   }
   
@@ -698,6 +705,10 @@ object NetworkCodec {
     o.objectSize.foreach( sz => P.AllocateNewObject.addObjectSize(builder, sz) )
     P.AllocateNewObject.addObjectData(builder, objectData)
     P.AllocateNewObject.addInitialRefcount(builder, encode(builder, o.initialRefcount))
+    P.AllocateNewObject.addObjectType(builder, o.options match {
+      case _: DataAllocationOptions => P.ObjectType.Data
+      case _: KeyValueAllocationOptions => P.ObjectType.KeyValue
+    })
     P.AllocateNewObject.endAllocateNewObject(builder)
   }
   def decode(n: P.AllocateNewObject): Allocate.NewObject = {
@@ -707,8 +718,12 @@ object NetworkCodec {
     objectData.put(n.objectDataAsByteBuffer())
     objectData.position(0)
     val initialRefcount = decode(n.initialRefcount())
+    val options = n.objectType match {
+      case P.ObjectType.Data => new DataAllocationOptions
+      case P.ObjectType.KeyValue => new KeyValueAllocationOptions
+    }
     
-    Allocate.NewObject(newObjectUUID, objectSize, initialRefcount, DataBuffer(objectData))
+    Allocate.NewObject(newObjectUUID, options, objectSize, initialRefcount, DataBuffer(objectData))
   }
   
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {

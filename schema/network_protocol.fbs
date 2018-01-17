@@ -38,7 +38,8 @@ table StorePointer {
 }
 
 enum ObjectType:byte { 
-    Data 
+    Data,
+    KeyValue
 }
 
 table ObjectPointer {
@@ -245,6 +246,7 @@ table ReadResponse {
 //---------------------------------------------------------------------------
 table AllocateNewObject {
   newObjectUUID: UUID;
+  objectType: ObjectType;
   objectSize: int;
   initialRefcount: ObjectRefcount;
   objectData: [byte];

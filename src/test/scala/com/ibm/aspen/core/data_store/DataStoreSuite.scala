@@ -21,6 +21,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.allocation.DataAllocationOptions
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -65,8 +66,8 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     implicit val executionContext = ExecutionContext.Implicits.global
     
-    val lno0 = List(Allocate.NewObject(uuid0, None, oneRef, icontent0))
-    val lno1 = List(Allocate.NewObject(uuid1, None, oneRef, icontent1))
+    val lno0 = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent0))
+    val lno1 = List(Allocate.NewObject(uuid1, new DataAllocationOptions, None, oneRef, icontent1))
     
     val f = ds.allocate(lno0, timestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
       case Right(ars0) => ds.allocate(lno1, timestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
@@ -315,7 +316,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
+    val lno = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent))
     val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
             
     futureResponse map { either => either match {
@@ -328,7 +329,7 @@ abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val lno = List(Allocate.NewObject(uuid0, None, oneRef, icontent))
+    val lno = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent))
     val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
             
     val expected = (StoreObjectState(uuid0, ObjectRevision(txUUID), oneRef, timestamp, None), icontent)

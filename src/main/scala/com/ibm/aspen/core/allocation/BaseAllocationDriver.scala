@@ -13,6 +13,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 /** Handles the sending and receiving of messages used to allocate a new object. 
  *  
@@ -52,7 +53,7 @@ class BaseAllocationDriver (
     
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
-      val newObjects = List( Allocate.NewObject(newObjectUUID, objectSize, initialRefcount, objectData) )
+      val newObjects = List( Allocate.NewObject(newObjectUUID, options, objectSize, initialRefcount, objectData) )
       val msg = Allocate(storeId, messenger.clientId, newObjects, timestamp,
                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
@@ -78,9 +79,13 @@ class BaseAllocationDriver (
         case Left(err) => errors += (t._1 -> err)
       })
       
-      if (errors.isEmpty)
-        promise.success(Right(new DataObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)))
-      else 
+      if (errors.isEmpty) {
+        val op = options match {
+          case _: DataAllocationOptions => new DataObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)
+          case _: KeyValueAllocationOptions => new KeyValueObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)
+        }
+        promise.success(Right(op))
+      } else 
         promise.success(Left(errors))
     }
   }

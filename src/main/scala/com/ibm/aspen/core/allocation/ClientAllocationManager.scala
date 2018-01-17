@@ -17,6 +17,13 @@ import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.base.impl.AllocationFinalizationAction
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.keyvalue.SetMin
+import com.ibm.aspen.core.objects.keyvalue.SetMax
+import com.ibm.aspen.core.objects.keyvalue.SetLeft
+import com.ibm.aspen.core.objects.keyvalue.SetRight
+import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
@@ -30,27 +37,23 @@ class ClientAllocationManager(
     }  
   }
   
-  def allocateDataObject(
+  private def allocate[PointerType <: ObjectPointer](
       messenger: ClientSideAllocationMessenger,
       transaction: Transaction,
       pool: StoragePool,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp],
+      encodedContent: Array[DataBuffer],
+      timestamp: HLCTimestamp,
+      options: AllocationOptions,
       initialRefcount: ObjectRefcount,
       allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], DataObjectPointer]] = {
+      allocatingObjectRevision: ObjectRevision,
+      ): Future[Either[Map[Byte,AllocationErrors.Value], PointerType]] = {
     
     val hosts = pool.selectStoresForAllocation(objectIDA)
-    val encoded = objectIDA.encode(initialContent)
-    val objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
+    val objectData = hosts.map(_.asInstanceOf[Byte]).zip(encodedContent).toMap
     val newObjectUUID = UUID.randomUUID()
-    val timestamp = afterTimestamp match {
-      case None => HLCTimestamp.now
-      case Some(ts) => HLCTimestamp.happensAfter(ts)
-    }
-    val options = new DataAllocationOptions
     
     val driver = driverFactory.create(clientMessenger, pool.uuid, newObjectUUID, objectSize, objectIDA, objectData, options, timestamp, 
                                       initialRefcount, transaction.uuid, allocatingObject, allocatingObjectRevision)
@@ -67,8 +70,32 @@ class ClientAllocationManager(
       case Left(err) => Left(err)
       case Right(newObjectPtr) => 
         AllocationFinalizationAction.addToAllocationTree(transaction, pool.poolDefinitionPointer, newObjectPtr)
-        Right(newObjectPtr.asInstanceOf[DataObjectPointer])
+        Right(newObjectPtr.asInstanceOf[PointerType])
     }}
+  }
+  
+  def allocateDataObject(
+      messenger: ClientSideAllocationMessenger,
+      transaction: Transaction,
+      pool: StoragePool,
+      objectSize: Option[Int],
+      objectIDA: IDA,
+      initialContent: DataBuffer,
+      afterTimestamp: Option[HLCTimestamp],
+      initialRefcount: ObjectRefcount,
+      allocatingObject: ObjectPointer,
+      allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], DataObjectPointer]] = {
+    
+    val encoded = objectIDA.encode(initialContent)
+    
+    val timestamp = afterTimestamp match {
+      case None => HLCTimestamp.now
+      case Some(ts) => HLCTimestamp.happensAfter(ts)
+    }
+    val options = new DataAllocationOptions
+    
+    allocate(messenger, transaction, pool, objectSize, objectIDA, encoded, timestamp, options, 
+        initialRefcount, allocatingObject, allocatingObjectRevision)
   }
   
   def allocateKeyValueObject(
@@ -85,39 +112,28 @@ class ClientAllocationManager(
       minimum: Option[Array[Byte]],
       maximum: Option[Array[Byte]],
       left: Option[Array[Byte]],
-      right: Option[Array[Byte]],
-      useRevisions: Boolean,
-      useTimestamps: Boolean,
-      useRefcounts: Boolean): Future[Either[Map[Byte,AllocationErrors.Value], KeyValueObjectPointer]] = {
-    Future.failed(new Exception("TODO"))
-    /*
-    val hosts = pool.selectStoresForAllocation(objectIDA)
-    val encoded = objectIDA.encode(initialContent)
-    val objectData = hosts.map(_.asInstanceOf[Byte]).zip(encoded).toMap
-    val newObjectUUID = UUID.randomUUID()
+      right: Option[Array[Byte]]): Future[Either[Map[Byte,AllocationErrors.Value], KeyValueObjectPointer]] = {
+    
     val timestamp = afterTimestamp match {
       case None => HLCTimestamp.now
       case Some(ts) => HLCTimestamp.happensAfter(ts)
     }
-    val options = new KeyValueAllocationOptions(useRevisions, useRefcounts, useTimestamps)
     
-    val driver = driverFactory.create(clientMessenger, pool.uuid, newObjectUUID, objectSize, objectIDA, objectData, options, timestamp, 
-                                      initialRefcount, transaction.uuid, allocatingObject, allocatingObjectRevision)
-                                      
-    synchronized { outstandingAllocations += (transaction.uuid -> driver) }
+    var ops: List[KeyValueOperation] = Nil
     
-    driver.futureResult onComplete {
-      case _ => synchronized { outstandingAllocations -= transaction.uuid }
+    minimum.foreach( arr => ops = new SetMin(arr) :: ops )
+    maximum.foreach( arr => ops = new SetMax(arr) :: ops )
+    left.foreach( arr => ops = new SetLeft(arr) :: ops )
+    right.foreach( arr => ops = new SetRight(arr) :: ops )
+    
+    initialContent.foreach { t =>
+      ops = new Insert(t._1, t._2, timestamp) :: ops
     }
     
-    driver.start()
+    val encoded = KeyValueObjectCodec.encodeUpdate(objectIDA, ops)
+    val options = new KeyValueAllocationOptions
     
-    driver.futureResult map { eresult => eresult match {
-      case Left(err) => Left(err)
-      case Right(newObjectPtr) => 
-        AllocationFinalizationAction.addToAllocationTree(transaction, pool.poolDefinitionPointer, newObjectPtr)
-        Right(newObjectPtr.asInstanceOf[DataObjectPointer])
-    }}
-    */
+    allocate(messenger, transaction, pool, objectSize, objectIDA, encoded, timestamp, options, 
+        initialRefcount, allocatingObject, allocatingObjectRevision)
   }
 }

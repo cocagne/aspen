@@ -50,9 +50,6 @@ trait AspenSystem {
       maximum: Option[Array[Byte]],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
-      useRevisions: Boolean,
-      useTimestamps: Boolean,
-      useRefcounts: Boolean,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]

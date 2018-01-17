@@ -225,16 +225,12 @@ class BasicAspenSystem(
       maximum: Option[Array[Byte]],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
-      useRevisions: Boolean,
-      useTimestamps: Boolean,
-      useRefcounts: Boolean,
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
     for {
       pool <- getStoragePool(poolUUID)
       
       result <- allocManager.allocateKeyValueObject(net.allocationHandler, t, pool, objectSize, objectIDA, afterTimestamp, ObjectRefcount(0,1),
-                                                    allocatingObject, allocatingObjectRevision, initialContent, minimum, maximum, left, right,
-                                                    useRevisions, useTimestamps, useRefcounts)
+                                                    allocatingObject, allocatingObjectRevision, initialContent, minimum, maximum, left, right)
     } yield {
       result match {
         case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
