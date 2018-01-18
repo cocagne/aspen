@@ -1,7 +1,4 @@
 
-* Move to KeyValue content map that does not use Array[Byte] as a key (doesn't work) 
-
-
 ** Begin impl on KeyValueObjectPointer
    * Allocation
       - Very thin client-side wrapper around a common core

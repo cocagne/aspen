@@ -22,7 +22,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.keyvalue.KVState
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)

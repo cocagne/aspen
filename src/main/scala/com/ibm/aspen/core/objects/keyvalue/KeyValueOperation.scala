@@ -117,9 +117,9 @@ sealed abstract class SingleReplicatedValue(val value: Array[Byte]) extends KeyV
   def opcode: Byte
   
   override def getEncodedLength(ida: IDA): Int = {
-    val bb = ByteBuffer.allocate(12)
-    Varint.putUnsignedInt(bb, value.size)
-    1 + bb.position + value.size
+    val varintLen = Varint.getUnignedIntEncodingLength(value.size)
+    
+    1 + varintLen + value.size
   }
  
   override def encodeGenericIDA(ida: IDA, bbArray:Array[ByteBuffer]): Unit = {
@@ -142,10 +142,11 @@ sealed abstract class SingleEncodedValue(val value: Array[Byte]) extends KeyValu
   def opcode: Byte
   
   override def getEncodedLength(ida: IDA): Int = {
-    val bb = ByteBuffer.allocate(12)
+    
     val encLen = ida.calculateEncodedSegmentLength(value)
-    Varint.putUnsignedInt(bb, encLen)
-    1 + bb.position + encLen
+    val varintLen = Varint.getUnignedIntEncodingLength(encLen)
+    
+    1 + varintLen + encLen
   }
  
   override def encodeGenericIDA(ida: IDA, bbArray:Array[ByteBuffer]): Unit = {
@@ -209,15 +210,10 @@ class Insert(
     val timestamp: HLCTimestamp) extends KeyValueOperation {
   
   override def getEncodedLength(ida: IDA): Int = {
-    val bb = ByteBuffer.allocate(12)
-    
-    Varint.putUnsignedInt(bb, key.size)
-    val keyVarintLen = bb.position
-    bb.reset()
-    
     val encValLen = ida.calculateEncodedSegmentLength(value)
-    Varint.putUnsignedInt(bb, encValLen)
-    val valVarintLen = bb.position
+    
+    val keyVarintLen = Varint.getUnignedIntEncodingLength(key.size)
+    val valVarintLen = Varint.getUnignedIntEncodingLength(encValLen)
     
     1 + 8 + keyVarintLen + valVarintLen + key.size + encValLen
   }

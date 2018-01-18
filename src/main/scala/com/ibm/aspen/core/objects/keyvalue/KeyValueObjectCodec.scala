@@ -64,12 +64,12 @@ object KeyValueObjectCodec {
       } else
         None
       
-      var contents = Map[Array[Byte], KVState]()
+      var contents = Map[Key, Value]()
       
       storeStates.head.idaEncodedContents.foreach { t =>
         val (key, ekv) = t
         val segments = storeStates.map( ss => (ss.idaEncodingIndex, Some(DataBuffer(ss.idaEncodedContents(key).value))) )
-        val kv = KVState(key, ida.restoreToArray(segments), ekv.timestamp)
+        val kv = Value(key, ida.restoreToArray(segments), ekv.timestamp)
         contents += (key -> kv)
       }
       
@@ -95,7 +95,7 @@ object KeyValueObjectCodec {
     kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
     
     kvos.contents.valuesIterator.foreach { kv =>
-      ops = new Insert(kv.key, kv.value, kv.timestamp) :: ops
+      ops = new Insert(kv.key.bytes, kv.value, kv.timestamp) :: ops
     }
     
     KeyValueObjectCodec.encodeUpdate(ida, ops)

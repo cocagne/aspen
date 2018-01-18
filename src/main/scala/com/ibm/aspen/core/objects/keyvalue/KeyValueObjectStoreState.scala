@@ -13,7 +13,7 @@ class KeyValueObjectStoreState(
     val maximum: Option[Array[Byte]],
     val idaEncodedLeft: Option[Array[Byte]],
     val idaEncodedRight: Option[Array[Byte]],
-    val idaEncodedContents: Map[Array[Byte], KVState]) 
+    val idaEncodedContents: Map[Key, Value]) 
     
 object KeyValueObjectStoreState {
   
@@ -23,7 +23,7 @@ object KeyValueObjectStoreState {
       var maximum: Option[Array[Byte]] = None
       var left: Option[Array[Byte]] = None
       var right: Option[Array[Byte]] = None
-      var contents: Map[Array[Byte], KVState] = Map()
+      var contents: Map[Key, Value] = Map()
      
       val bb = db.asReadOnlyBuffer()
       
@@ -38,10 +38,12 @@ object KeyValueObjectStoreState {
           KeyValueOperation.decode(bb) match {
             case op: SetMin => minimum = Some(op.value)
             case op: SetMax => maximum = Some(op.value)
-            case op: SetLeft => maximum = Some(op.value)
-            case op: SetRight => maximum = Some(op.value)
-            case op: Insert => contents += (op.key -> KVState(op.key, op.value, op.timestamp))
-            case op: Delete => contents -= op.value
+            case op: SetLeft => left = Some(op.value)
+            case op: SetRight => right = Some(op.value)
+            case op: Insert => 
+              val key = Key(op.key)
+              contents += (key -> Value(key, op.value, op.timestamp))
+            case op: Delete => contents -= Key(op.value)
           }
         }
         
