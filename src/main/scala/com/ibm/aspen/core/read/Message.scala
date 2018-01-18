@@ -29,6 +29,7 @@ final case class ReadResponse(
 object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
+      updates: Set[UUID],
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],
@@ -46,7 +47,7 @@ object ReadResponse {
           case (None, None) => true
           case _ => false
         }
-        revision == rhs.revision && refcount == rhs.refcount && dmatch && lmatch
+        revision == rhs.revision && refcount == rhs.refcount && dmatch && lmatch && updates == rhs.updates
         
       case _ => false
     }

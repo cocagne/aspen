@@ -904,8 +904,8 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {
     val fromStore = encode(builder, o.fromStore)
     
-    val (objectData, lockedTransaction) = o.result match {
-      case Left(_) => (-1, -1)
+    val (objectData, lockedTransaction, updates) = o.result match {
+      case Left(_) => (-1, -1, -1)
       case Right(cs) => 
         val od = cs.objectData match {
           case None => -1
@@ -917,7 +917,15 @@ object NetworkCodec {
           case None => -1
           case Some(txd) => encode(builder, txd)
         }
-        (od, td)
+        val up = if( cs.updates.isEmpty )
+          -1
+        else {
+          //val storePointers = P.ObjectPointer.createStorePointersVector(builder, o.storePointers.map(sp => encode(builder, sp)))
+          P.ReadResponse.startUpdatesVector(builder, cs.updates.size)
+          cs.updates.foreach { uuid => encode(builder, uuid) }
+          builder.endVector()
+        }
+        (od, td, up)
     }
     
     P.ReadResponse.startReadResponse(builder)
@@ -933,6 +941,7 @@ object NetworkCodec {
         P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
         if (lockedTransaction != -1) P.ReadResponse.addLockedTransaction(builder, lockedTransaction)
+        if (updates != -1) P.ReadResponse.addUpdates(builder, updates)
     }
     P.ReadResponse.endReadResponse(builder)
   }
@@ -951,8 +960,14 @@ object NetworkCodec {
         buff.position(0)
         Some(buff)
       }
+      val updates = if (n.updatesLength() <= 0) Set[UUID]() else {
+        var up = Set[UUID]()
+        for (i <- 0 until n.updatesLength())
+          up += decode(n.updates(i))
+        up
+      }
       val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }
-      Right(ReadResponse.CurrentState(revision, refcount, timestamp, objectData.map(DataBuffer(_)), lockedTransaction))
+      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, objectData.map(DataBuffer(_)), lockedTransaction))
     }
     ReadResponse(fromStore, readUUID, result)
   }

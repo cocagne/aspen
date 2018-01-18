@@ -14,6 +14,9 @@ import com.ibm.aspen.core.data_store.ObjectMismatch
 import com.ibm.aspen.core.data_store.CorruptedObject
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.read.ReadResponse
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import java.util.UUID
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -38,8 +41,18 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             case e: CorruptedObject => Left(ReadError.CorruptedObject)
           }
           
-          case Right((cs, data)) => Right((ReadResponse.CurrentState(cs.revision, cs.refcount, cs.timestamp, if (message.returnObjectData) Some(data) else None,
-                                                                     if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
+          case Right((cs, data)) => 
+            val updates = message.objectPointer match {
+              case _: KeyValueObjectPointer => 
+                if (message.returnObjectData)
+                  Set[UUID]()
+                else 
+                  KeyValueObjectCodec.getUpdateSet(data)
+                  
+              case _ => Set[UUID]()
+            }
+            Right((ReadResponse.CurrentState(cs.revision, updates, cs.refcount, cs.timestamp, if (message.returnObjectData) Some(data) else None,
+                                             if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
         }
         
         response match {

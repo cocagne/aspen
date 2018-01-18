@@ -14,6 +14,8 @@ import com.ibm.aspen.core.objects.StorePointer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -26,6 +28,11 @@ class BaseReadDriver(
   
   protected var responses = Map[DataStoreID, Either[ReadError.Value, StoreState]]()
   protected val promise = Promise[Either[ReadError, ObjectReadState]]
+  
+  val useUpdates = objectPointer match {
+    case _: KeyValueObjectPointer => true
+    case _ => false
+  }
   
   def readResult = promise.future
   
@@ -61,7 +68,7 @@ class BaseReadDriver(
     // If something goes wrong with the IDA, it'll throw an IDAError exception
     val odata = if (retrieveObjectData) Some(objectPointer.ida.restore(segments)) else None
       
-    val zv = ObjectRevision(new UUID(0,0))
+    val zv = (ObjectRevision(new UUID(0,0)), Set[UUID]())
     val zr = ObjectRefcount(0,0)
     val zt = HLCTimestamp(0) 
     val zl = List[(DataStoreID, TransactionDescription)]()
@@ -81,7 +88,7 @@ class BaseReadDriver(
         (hrev, href, hts, locks)
     })
     
-    val objState = ObjectReadState(objectPointer, highestRevision, highestRefcount, highestTimstamp, odata, 
+    val objState = ObjectReadState(objectPointer, highestRevision._1, highestRefcount, highestTimstamp, odata, 
                                if (retrieveLockedTransaction) Some(lockedTransactions) else None )
                                       
     promise.success(Right(objState))
@@ -94,7 +101,16 @@ class BaseReadDriver(
       
     val r = response.result match {
       case Left(err) => Left(err)
-      case Right(cs) => Right(StoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction))
+      case Right(cs) =>
+        val updates = objectPointer match {
+          case _: KeyValueObjectPointer => cs.objectData match {
+            case None => cs.updates
+            case Some(db) => KeyValueObjectCodec.getUpdateSet(db)
+          }
+          case _ => Set[UUID]() 
+        }
+        
+        Right(StoreState(response.fromStore, (cs.revision, updates), cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction))
     }
     
     responses += (response.fromStore -> r)
@@ -102,14 +118,14 @@ class BaseReadDriver(
     if (responses.size < objectPointer.ida.consistentRestoreThreshold)
       return // Definitely can't take any action yet
     
-    val revisionCounts = responses.values.foldLeft(Map[UUID,Int]()){ 
+    val revisionCounts = responses.values.foldLeft(Map[(ObjectRevision, Set[UUID]),Int]()){ 
       (m, e) => e match {
         case Left(err) => m
-        case Right(ss) => m + (ss.revision.lastUpdateTxUUID -> (m.getOrElse(ss.revision.lastUpdateTxUUID, 0)+1)) 
+        case Right(ss) => m + (ss.revision -> (m.getOrElse(ss.revision, 0)+1)) 
       }
     }
     
-    val start: Option[(UUID, Int)] = None
+    val start: Option[((ObjectRevision, Set[UUID]), Int)] = None
     
     // Determine which revision has received the most responses and the number of those responses.
     // If two or more revisions are tied in response counts, we can't figure out which to prune
@@ -132,7 +148,7 @@ class BaseReadDriver(
     }
     
     oMostRepliedRevision foreach { mostRepliedRevision =>
-      val revision = ObjectRevision(mostRepliedRevision._1)
+      val revision = mostRepliedRevision._1
       val count = mostRepliedRevision._2
       val thresholdReached = count >= objectPointer.ida.consistentRestoreThreshold
       
@@ -184,7 +200,7 @@ class BaseReadDriver(
 object BaseReadDriver {
   case class StoreState(
       storeId: DataStoreID,
-      revision: ObjectRevision,
+      revision: (ObjectRevision, Set[UUID]),
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],

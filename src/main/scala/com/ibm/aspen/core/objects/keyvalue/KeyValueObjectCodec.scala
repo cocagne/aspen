@@ -14,6 +14,22 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
     
 object KeyValueObjectCodec {
   
+  def getUpdateSet(db: DataBuffer): Set[UUID] = {
+    var updates = Set[UUID]()
+    
+    val bb = db.asReadOnlyBuffer()
+    
+    while (bb.remaining() != 0) {
+      val msb = bb.getLong()
+      val lsb = bb.getLong()
+      val len = Varint.getUnsignedInt(bb)
+      bb.position( bb.position + len )
+      updates += new UUID(msb, lsb)
+    }
+    
+    updates
+  }
+  
   def decode(
       pointer: ObjectPointer, 
       revision:ObjectRevision, 

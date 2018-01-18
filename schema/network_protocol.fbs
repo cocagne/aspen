@@ -235,6 +235,7 @@ table ReadResponse {
   readUUID: UUID;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
+  updates: [UUID];
   timestamp: long;
   objectData: [byte];
   lockedTransaction: TransactionDescription;
