@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.ObjectEncodingError
     
 object KeyValueObjectCodec {
   
@@ -19,12 +20,16 @@ object KeyValueObjectCodec {
     
     val bb = db.asReadOnlyBuffer()
     
-    while (bb.remaining() != 0) {
-      val msb = bb.getLong()
-      val lsb = bb.getLong()
-      val len = Varint.getUnsignedInt(bb)
-      bb.position( bb.position + len )
-      updates += new UUID(msb, lsb)
+    try {
+      while (bb.remaining() != 0) {
+        val msb = bb.getLong()
+        val lsb = bb.getLong()
+        val len = Varint.getUnsignedInt(bb)
+        bb.position( bb.position + len )
+        updates += new UUID(msb, lsb)
+      }
+    } catch {
+      case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }
     
     updates
@@ -36,39 +41,42 @@ object KeyValueObjectCodec {
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
       storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
-    
-    val ida = storeStates.head.ida
-    val minimum = storeStates.head.minimum
-    val maximum = storeStates.head.maximum
-    
-    // All "left" and "right" must either be Some or None
-    val left = if (storeStates.head.idaEncodedLeft.isDefined) {
-      val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
-        val db = DataBuffer(ss.idaEncodedLeft.get)
-        (ss.idaEncodingIndex, Some(db)) :: l 
+    try {
+      val ida = storeStates.head.ida
+      val minimum = storeStates.head.minimum
+      val maximum = storeStates.head.maximum
+      
+      // All "left" and "right" must either be Some or None
+      val left = if (storeStates.head.idaEncodedLeft.isDefined) {
+        val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
+          val db = DataBuffer(ss.idaEncodedLeft.get)
+          (ss.idaEncodingIndex, Some(db)) :: l 
+        }
+        Some(ida.restoreToArray(segments))
+      } else
+        None
+      val right = if (storeStates.head.idaEncodedRight.isDefined) {
+        val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
+          val db = DataBuffer(ss.idaEncodedRight.get)
+          (ss.idaEncodingIndex, Some(db)) :: l 
+        }
+        Some(ida.restoreToArray(segments))
+      } else
+        None
+      
+      var contents = Map[Array[Byte], KVState]()
+      
+      storeStates.head.idaEncodedContents.foreach { t =>
+        val (key, ekv) = t
+        val segments = storeStates.map( ss => (ss.idaEncodingIndex, Some(DataBuffer(ss.idaEncodedContents(key).value))) )
+        val kv = KVState(key, ida.restoreToArray(segments), ekv.timestamp)
+        contents += (key -> kv)
       }
-      Some(ida.restoreToArray(segments))
-    } else
-      None
-    val right = if (storeStates.head.idaEncodedRight.isDefined) {
-      val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
-        val db = DataBuffer(ss.idaEncodedRight.get)
-        (ss.idaEncodingIndex, Some(db)) :: l 
-      }
-      Some(ida.restoreToArray(segments))
-    } else
-      None
-    
-    var contents = Map[Array[Byte], KVState]()
-    
-    storeStates.head.idaEncodedContents.foreach { t =>
-      val (key, ekv) = t
-      val segments = storeStates.map( ss => (ss.idaEncodingIndex, Some(DataBuffer(ss.idaEncodedContents(key).value))) )
-      val kv = KVState(key, ida.restoreToArray(segments), ekv.timestamp)
-      contents += (key -> kv)
+      
+      new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
+    } catch {
+      case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }
-    
-    new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
   }
   
   /** Encodes the state of a KeyValueObject for sending to DataStores.

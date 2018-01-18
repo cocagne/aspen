@@ -5,7 +5,9 @@ import java.util.UUID
 /** Object Revisions are set to the UUID of the transaction that last updated them
  * 
  */
-final class ObjectRevision(val lastUpdateTxUUID: UUID) extends AnyVal
+final class ObjectRevision(val lastUpdateTxUUID: UUID) extends AnyVal {
+  override def toString(): String = lastUpdateTxUUID.toString
+}
 
 object ObjectRevision {
   def apply(lastUpdateTxUUID: UUID): ObjectRevision = new ObjectRevision(lastUpdateTxUUID)

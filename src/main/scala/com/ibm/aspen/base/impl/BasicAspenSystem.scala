@@ -180,10 +180,7 @@ class BasicAspenSystem(
       readStrategy: Option[ReadDriver.Factory] ): Future[DataObjectState] = readManager.read(objectPointer, true, false, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
-            case Right(os) => os.data match {
-              case Some(data) => DataObjectState(objectPointer, os.revision, os.refcount, os.timestamp, data)
-              case None => throw DataRetrievalFailed()
-            }
+            case Right((os, locks)) => os.asInstanceOf[DataObjectState]
           })
           
   def newTransaction(): Transaction = transactionFactory(txManager, chooseDesignatedLeader, None)

@@ -8,6 +8,8 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
+import com.ibm.aspen.core.objects.ObjectState
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
@@ -30,7 +32,7 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
       objectPointer: ObjectPointer, 
       retrieveData:Boolean=true, 
       retrieveTransactionLocks:Boolean=false, 
-      driverFactory: ReadDriver.Factory): Future[Either[ReadError, ObjectReadState]] = {
+      driverFactory: ReadDriver.Factory): Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]] = {
     
     val readUUID = UUID.randomUUID()
     

@@ -16,6 +16,11 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.objects.ObjectEncodingError
+import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.ObjectState
+import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -26,13 +31,10 @@ class BaseReadDriver(
   
   import BaseReadDriver._
   
-  protected var responses = Map[DataStoreID, Either[ReadError.Value, StoreState]]()
-  protected val promise = Promise[Either[ReadError, ObjectReadState]]
+  protected val promise = Promise[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]]
   
-  val useUpdates = objectPointer match {
-    case _: KeyValueObjectPointer => true
-    case _ => false
-  }
+  protected var storeStates = Map[DataStoreID, StoreState]()
+  protected var errors = Map[DataStoreID, ReadError.Value]()
   
   def readResult = promise.future
   
@@ -42,67 +44,35 @@ class BaseReadDriver(
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
       Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, retrieveObjectData, retrieveLockedTransaction))
       
+  def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
+    storeStates.contains(storeId) || errors.contains(storeId)
+  }
+      
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
-    val heardFrom = synchronized { responses.keySet }
     objectPointer.storePointers.foreach(sp => {
       val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
-      if (!heardFrom.contains(storeId))
+      if (!receivedReplyFrom(storeId))
         sendReadRequest(storeId)
     })
   }
-  
-  /** Successfully complete the read operation or throw and IDAError. Must be called from within a synchronized block */
-  protected def complete(): Unit = {
-    
-    val segments = objectPointer.storePointers.foldLeft(List[(Byte,Option[DataBuffer])]())( (l, sp) => {
-      responses.get(DataStoreID(objectPointer.poolUUID, sp.poolIndex)) match {
-        case None => (sp.poolIndex, None) :: l
-        case Some(either) => either match {
-          case Left(_) => (sp.poolIndex, None) :: l
-          case Right(ss) => (sp.poolIndex, ss.objectData) :: l
-        }
-      }
-    })
-    
-    // If something goes wrong with the IDA, it'll throw an IDAError exception
-    val odata = if (retrieveObjectData) Some(objectPointer.ida.restore(segments)) else None
-      
-    val zv = (ObjectRevision(new UUID(0,0)), Set[UUID]())
-    val zr = ObjectRefcount(0,0)
-    val zt = HLCTimestamp(0) 
-    val zl = List[(DataStoreID, TransactionDescription)]()
-    
-    
-    val (highestRevision, highestRefcount, highestTimstamp, lockedTransactions) = responses.foldLeft((zv,zr,zt,zl))( (h, t) => t._2 match {
-      case Left(_) => h
-      case Right(ss) =>
-        val hrev = if (ss.timestamp.compareTo(h._3) > 0) ss.revision else h._1
-        val href = if (ss.refcount.updateSerial > h._2.updateSerial) ss.refcount else h._2 
-        val hts  = if (ss.timestamp.compareTo(h._3) > 0) ss.timestamp else h._3
-        val locks = ss.lockedTransaction match {
-          case None => h._4
-          case Some(txd) => (ss.storeId, txd) :: h._4
-        }
-        
-        (hrev, href, hts, locks)
-    })
-    
-    val objState = ObjectReadState(objectPointer, highestRevision._1, highestRefcount, highestTimstamp, odata, 
-                               if (retrieveLockedTransaction) Some(lockedTransactions) else None )
-                                      
-    promise.success(Right(objState))
-  }
-  
   
   def receiveReadResponse(response:ReadResponse): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done
       
-    val r = response.result match {
-      case Left(err) => Left(err)
-      case Right(cs) =>
-        val updates = objectPointer match {
+    response.result match {
+      case Left(err) => 
+        errors += (response.fromStore -> err)
+        
+        if (storeStates.contains(response.fromStore))
+          storeStates -= response.fromStore
+          
+      case Right(cs) => try {
+        // KeyValue objects must take the set of update UUID into account as well as the current ObjectRevision when determining when a consistent
+        // read threshold has been achieved.
+        
+        val updateSet = objectPointer match {
           case _: KeyValueObjectPointer => cs.objectData match {
             case None => cs.updates
             case Some(db) => KeyValueObjectCodec.getUpdateSet(db)
@@ -110,90 +80,121 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
-        Right(StoreState(response.fromStore, (cs.revision, updates), cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction))
-    }
-    
-    responses += (response.fromStore -> r)
-    
-    if (responses.size < objectPointer.ida.consistentRestoreThreshold)
-      return // Definitely can't take any action yet
-    
-    val revisionCounts = responses.values.foldLeft(Map[(ObjectRevision, Set[UUID]),Int]()){ 
-      (m, e) => e match {
-        case Left(err) => m
-        case Right(ss) => m + (ss.revision -> (m.getOrElse(ss.revision, 0)+1)) 
-      }
-    }
-    
-    val start: Option[((ObjectRevision, Set[UUID]), Int)] = None
-    
-    // Determine which revision has received the most responses and the number of those responses.
-    // If two or more revisions are tied in response counts, we can't figure out which to prune
-    val oMostRepliedRevision = revisionCounts.foldLeft((start,start)){ (o, t) => o match {
-      case (None, None) => (Some(t), None)
-      case (Some(highest), None) => if (t._2 > highest._2) (Some(t), Some(highest)) else (Some(highest), Some(t))
-      case (Some(highest), Some(nextHighest)) =>
-        if (t._2 > highest._2)
-          (Some(t), Some(highest))
-        else if (t._2 > nextHighest._2)
-          (Some(highest), Some(t))
-        else
-          (Some(highest), Some(nextHighest))
-      case (None, Some(nextHighest)) => o // Can't get here 
-    }} match {
-      case (None, None) => None
-      case (Some(highest), None) => Some(highest)
-      case (Some(highest), Some(nextHighest)) => if (highest._2 == nextHighest._2) None else  Some(highest)
-      case (None, Some(x)) => None // can't get here
-    }
-    
-    oMostRepliedRevision foreach { mostRepliedRevision =>
-      val revision = mostRepliedRevision._1
-      val count = mostRepliedRevision._2
-      val thresholdReached = count >= objectPointer.ida.consistentRestoreThreshold
-      
-      // Filter out revisions that don't match the one with the most responses and request a re-read from all
-      // stores from which we didn't receive that revision
-      responses = responses.filter( t => t._2 match {
-        case Left(_) => true
-        case Right(s) => if (s.revision == revision) 
-          true 
-        else {
-          // We read old state. Discard it and read the current state
-          if (!thresholdReached)
-            sendReadRequest(s.storeId)
-          false
-        }
-      })
-      
-      if (thresholdReached) {
-        try {
-          complete() 
-        } catch {
-          case e: IDAError => 
-            promise.success(Left(e))
-        }
-      }else {
-        val numErrs = responses.foldLeft(0)((errCount, t) => t._2 match {
-          case Left(_) => errCount + 1
-          case Right(_) => errCount
-        })
+        val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction)
         
-        if ( numErrs >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
-          val errMap = objectPointer.storePointers.foldLeft(Map[DataStoreID,Option[ReadError.Value]]())( (m, sp) => {
-            val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex) 
-            responses.get(storeId) match {
-              case None => m + (storeId -> Some(ReadError.NoResponse))
-              case Some(either) => either match {
-                case Left(err) => m + (storeId -> Some(err))
-                case Right(ss) => m + (storeId -> None)
-              }
-            }
-          })
-          promise.success(Left(new ThresholdError(errMap)))
+        storeStates += (response.fromStore -> ss)
+        
+        if (errors.contains(response.fromStore))
+          errors -= response.fromStore
+          
+      } catch {
+        case t: ObjectEncodingError =>
+          errors += (response.fromStore -> ReadError.InvalidObjectEncoding)
+          
+          if (storeStates.contains(response.fromStore))
+            storeStates -= response.fromStore
+      }
+    }
+    
+    if ( errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
+      promise.success(Left(new ThresholdError(errors)))
+    }
+    else if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold)
+      checkComplete()
+  }
+    
+  /** Checks the set of received responses to see if a consistent read has been achieved and initiates
+   *  re-reads if not.
+   *  
+   * This method is not invoked until an ida.consistentRestoreThreshold number of store states is received
+   * We'll count the responses for each (ObjectRevision, Set[UUID]) tuple and if one of them has more responses
+   * than the others, we'll discard the lower-counted responses and re-read those stores. We'll simply repeat
+   * this process until a single (ObjectRevision, Set[UUID]) reaches the consistentRestoreThreshold.
+   */
+  private def checkComplete(): Unit = { 
+      
+    val revisionCounts = storeStates.values.foldLeft(Map[(ObjectRevision, Set[UUID]),Int]()) { (m, ss) =>
+      m + (ss.revision -> (m.getOrElse(ss.revision, 0) + 1))
+    }
+    
+    if (revisionCounts.size > 1) {
+      val sortedCounts = revisionCounts.toList.sortBy( t => - t._2 )
+      
+      if (sortedCounts.head._2 == sortedCounts.tail.head._2)
+        return // No definitive winner. Wait for more responses
+      
+      val pruneSet = sortedCounts.drop(1).map( t => t._1 ).toSet
+      
+      storeStates foreach { t =>
+        val (storeId, ss) = t
+        
+        if (pruneSet.contains(ss.revision)) {
+          storeStates -= storeId
+          sendReadRequest(storeId)
         }
       }
     }
+    
+    // At this point, only a single revision is left in the storeStates map.
+    
+    if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold) {
+      // restore threshold reached. Decode object
+      try {
+        
+        val objectState = objectPointer match {
+          case op: DataObjectPointer     => restoreDataObject()
+          case op: KeyValueObjectPointer => restoreKeyValueObject()
+        }
+        
+        promise.success(Right(objectState))
+        
+      } catch {
+        case e: IDAError => promise.success(Left(e))
+        case e: ObjectEncodingError => promise.success(Left(new EncodingError))
+        case err: Throwable =>
+          println(s"*** This should never happen. Unexpected Exception: $err")
+          com.ibm.aspen.util.printStack()
+          promise.success(Left(new UnexpectedError))
+      }
+    }
+  }
+  
+  def getMetadata = {
+    // The current refcount is the one with the highest updateSerial
+    val refcount = storeStates.foldLeft(ObjectRefcount(0,0))((ref, t) => if (t._2.refcount.updateSerial > ref.updateSerial) t._2.refcount else ref)
+    val revision = storeStates.head._2.revision
+    val timestamp = storeStates.head._2.timestamp
+    val locks = if (!retrieveLockedTransaction) None else {
+      val lockMap = storeStates.foldLeft(Map[DataStoreID, List[TransactionDescription]]()) { (m, t) => t._2.lockedTransaction match {
+        case None => m
+        case Some(txd) => m + (t._1 -> List(txd)) 
+      }}
+      Some(lockMap)
+    }
+    (revision._1, refcount, timestamp, locks)
+  }
+  
+  private def restoreDataObject() : (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]]) = {
+    val segments = storeStates.foldLeft(List[(Byte, Option[DataBuffer])]()) { (l, t) =>
+      (t._1.poolIndex, t._2.objectData) :: l
+    }
+    // If something goes wrong with the IDA, it'll throw an IDAError exception
+    val data = if (retrieveObjectData) objectPointer.ida.restore(segments) else DataBuffer(new Array[Byte](0))
+    
+    val (revision, refcount, timestamp, locks) = getMetadata
+    
+    (DataObjectState(objectPointer, revision, refcount, timestamp, data), locks)
+  }
+  
+  private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]]) = {
+    // Decode to KeyValueObjectStoreState
+    val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
+      KeyValueObjectStoreState(objectPointer.ida, ss.storeId.poolIndex, ss.objectData.get) :: l 
+    }
+    
+    val (revision, refcount, timestamp, locks) = getMetadata
+    
+    (KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList), locks)
   }
 }
 

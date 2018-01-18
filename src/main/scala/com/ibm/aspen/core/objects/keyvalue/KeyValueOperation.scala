@@ -108,7 +108,7 @@ object KeyValueOperation {
     case InsertCode   => Insert.decode(bb)
     case DeleteCode   => Delete.decode(bb)
     
-    case unknownOpCode => throw new KeyValueEncodingError(s"Unknown KeyValue opcode $unknownOpCode")
+    case unknownOpCode => throw new KeyValueObjectEncodingError(new Exception("Unknown KeyValue opcode $unknownOpCode"))
   }
 }
 

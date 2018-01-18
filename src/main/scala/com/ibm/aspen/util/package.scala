@@ -4,6 +4,7 @@ import java.util.UUID
 import java.nio.ByteBuffer
 import java.io.StringWriter
 import java.io.PrintWriter
+import com.ibm.aspen.core.DataBuffer
 
 package object util {
   import scala.language.implicitConversions
@@ -21,5 +22,14 @@ package object util {
     val pw = new PrintWriter(sw)
     e.printStackTrace(pw)
     println(sw.toString())
+  }
+  
+  def db2string(db: DataBuffer): String = {
+    val enc = java.util.Base64.getEncoder()
+    enc.encodeToString(db.getByteArray())
+  }
+  def arr2string(arr: Array[Byte]): String = {
+    val enc = java.util.Base64.getEncoder()
+    enc.encodeToString(arr)
   }
 }

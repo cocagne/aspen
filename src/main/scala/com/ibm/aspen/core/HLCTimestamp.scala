@@ -12,6 +12,8 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
     else
       pdelta
   }
+  
+  override def toString(): String = s"HLCTimestamp($longValue)"
 }
 
 object HLCTimestamp {

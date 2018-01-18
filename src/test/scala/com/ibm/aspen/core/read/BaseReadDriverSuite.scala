@@ -19,6 +19,10 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.objects.keyvalue.KVState
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -45,7 +49,7 @@ object BaseReadDriverSuite {
   
   val odata = DataBuffer(List[Byte](1,2,3,4).toArray)
   
-  val noLocks = List[(DataStoreID,TransactionDescription)]()
+  val noLocks = Some(Map[DataStoreID, List[TransactionDescription]]())
   
   val client = ClientID(cliUUID)
   
@@ -87,9 +91,8 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val o = Await.result(r.readResult, awaitDuration)
     
     o should be (Left(ThresholdError(Map(
-        (ds0 -> None), 
-        (ds1 -> Some(ReadError.InvalidLocalPointer)),
-        (ds2 -> Some(ReadError.NoResponse))))))
+        (ds1 -> ReadError.InvalidLocalPointer),
+        (ds2 -> ReadError.NoResponse)))))
   }
   
   test("Succeed with errors") {
@@ -109,7 +112,14 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectReadState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
+//    o match {
+//      case Left(_) => 
+//      case Right((ds:DataObjectState, o)) => 
+//        println(s"ptr(${ds.pointer}), rev(${ds.revision}), ref(${ds.refcount}), ts(${ds.timestamp}), data(${com.ibm.aspen.util.db2string(ds.data)})")
+//        println(s"ptr(${ptr}), rev(${nrev2}), ref(${ref}), ts(${ts}), data(${com.ibm.aspen.util.db2string(odata)})")
+//    }
+    
+    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, odata), noLocks))))
   }
   
   test("Ignore old revisions") {
@@ -129,27 +139,32 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectReadState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, odata), noLocks))))
   }
   
   test("Ignore mismatching update UUIDs for key-value objects") {
     val m = new TMessenger
-    val r = mkReader(m)
+    val r = mkReader(m, objectPointer=kvptr)
     val nrev = ObjectRevision(new UUID(0,1))
     val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0)), ref, ts, Some(odata), None))))
+    val min = List[Byte](1,2,3,4).toArray
+    val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, Some(min), None, None, None, Map())
+    
+    val enc = KeyValueObjectCodec.encode(ida, kvos)
+    
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0)), ref, ts, None, None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0), new UUID(1,1)), ref, ts, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0), new UUID(1,1)), ref, ts, None, None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(1,1), new UUID(2,2)), ref, ts, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(1,1), new UUID(2,2)), ref, ts, Some(enc(0)), None))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(2,2), new UUID(1,1)), ref, ts, Some(odata), None))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(2,2), new UUID(1,1)), ref, ts, Some(enc(0)), None))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectReadState(ptr, nrev2, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(((kvos, noLocks))))
   }
   
   test("Successful read with data and locks") {
@@ -163,7 +178,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectReadState(ptr, rev, ref, ts, Some(odata), Some(noLocks))))
+    o should be (Right(((DataObjectState(ptr, rev, ref, ts, odata), noLocks))))
   }
   
   test("Successful read without data or locks") {
@@ -177,6 +192,6 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(ObjectReadState(ptr, rev, ref, ts, None, None)))
+    o should be (Right(((DataObjectState(ptr, rev, ref, ts, DataBuffer(new Array[Byte](0))), None))))
   }
 }

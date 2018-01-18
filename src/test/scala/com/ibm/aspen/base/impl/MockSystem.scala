@@ -13,7 +13,6 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.read.InvalidObject
-import com.ibm.aspen.core.read.ObjectReadState
 import scala.concurrent.Promise
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.data_store.DataStoreID
@@ -57,6 +56,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.allocation.AllocationOptions
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -131,10 +131,10 @@ object MockSystem {
   
   class Reader(storage: StorageSystem, pointer:ObjectPointer) extends ReadDriver {
     
-    def readResult: Future[Either[ReadError, ObjectReadState]] = {
-      val e: Either[ReadError, ObjectReadState] = storage.read(pointer) match {
+    def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]] = {
+      val e: Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])] = storage.read(pointer) match {
           case None => Left(new InvalidObject)
-          case Some(osd) => Right(ObjectReadState(pointer, osd.revision, osd.refcount, osd.timestamp, Some(osd.data), None))
+          case Some(osd) => Right((DataObjectState(pointer, osd.revision, osd.refcount, osd.timestamp, osd.data), None))
         }
       Future.successful(e)
     } 

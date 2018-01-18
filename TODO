@@ -1,18 +1,5 @@
 
-** Read Reimplementation
-  * Probably want to use template mechanism for tracking responses and determining matching versions (or use wrapper object)
-  * For replication, we only want to send the data once in ideal case
-     * Choose one peer for data and get only revisions from others
-        - requires key-value specific code for determining all update UUIDs
-     * Once version is determined, either use the data or drop the response from a good peer and restart the read with that one
-     
-  * Start on store
-      - If read of KeyValue, find all update UUIDs 
-      - Update read message to support list of update UUIDs
-      - Modify read to always use (revision, Set[UUID]) as the revision
-      - Add single-node replication read
-          - Background Task sends read to another peer if > 2sec response?
-          - Just need something simple here
+* Move to KeyValue content map that does not use Array[Byte] as a key (doesn't work) 
 
 
 ** Begin impl on KeyValueObjectPointer
