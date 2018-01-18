@@ -1,83 +1,22 @@
 
-** Begin impl on KeyValueObjectPointer
-   * Allocation
-      - Very thin client-side wrapper around a common core
-      - Server side should break out implementation into multiple methods that default to common  alloc method
-          - allows subclasses to differentiate if they choose (good rocksdb?) but leave alone if not
-   * Read Impl
-      - This could get interesting. Not all discovered keys are guaranteed to exist.
-      - is a read threshold number of non-error responses always enough?
-         - should be... right?
-         
-   * Transaction Impl
-      - Start with raw object
-         - may be able to use an overrideable method for fetch or decode of kv object data
-         
-   * Good time to separate out transaction lock scope ownership
-      - Break locks into a hierarchy of lock types for return in read messages
+KeyValueObject Update Transactions
 
-ObjectPointer -> sealed abstract class
-  DataObjectPointer
-  LogObjectPointer
-  KeyValueObjectPointer
-  
-Transaction API methods take the proper pointer type. This restricts operations to the
-supporting object types.
+** Extend DataStore getObjectState() to optionally return object Data
+    - create set of objects for which Data is needed (key-value objects that operate on key-value pairs will require data)
+    - Use getOrElse to get the current KeyValue object state (parse and cache if not saved)
+         
+** Good time to separate out transaction lock scope ownership
+    - Break locks into a hierarchy of lock types for return in read messages
 
-Read methods are overloaded on arguments. Return value matches the type of Object
-  |-> eliminates ObjectStateAndData confusion
+** Add Transaction methods for KeyValue object operations & transaction requirements
   
 *** Right thing to do but this is going to have an enormous code impact :(
 
 Non-Revision-checked updates to non-conflicting Key-Value pairs.
 * We'll still lock the object. We just wont check the revision
 * After the update the revision then remains untouched 
-   
-* Rename ObjectStateAndData to ObjectState
-  - Convert to sealed class
-  - ObjectState is not abstract, it holds refcount,revision,option(tx)
-      |-> Allows reads w/o data
-  - Data is type-dependent. DataBuffer in normal object, KV map in KVContainer object
-  
-Overloaded read methods can return direct subclasses of appropriate type
-  * While type-checking the ObjectPointer type to ensure compatibility
-     |-> immediately fail on mismatch
-     
-- Will need to think through what the KVContainer stuff looks like on the
-  client side. Probably best to add new Transaction API methods and not change
-  the ObjectPointer. Therefore instead of DataUpdate we have ContainedKeyUpdate
-  and ContainerObjectUpdate (for key/next ptr modifications)
-   
-Non-conflicting Append Objects
 
-* ReadResults depend on the type of object being read
- - We still return ObjectStateAndData but the Data attribute is a sealed abstract class
-     - DataBuffer - Normal object
-     - List[(HLCTimestamp, DataBuffer)] - For non-conflicting append objects
-     - KVContainerState
-        - min & max keys
-        - map of key -> (revision, refcount, timestamp, value)
-
-* Series of UpdateUUID, HLC Timestamp
-   * If ensure after TS, check against highest update TS
-   * Content of each update must be IDA encoded independently
-      - Padding will apply
-      - Full size of object is sizeof(UpdateUUID+HLCTimestamp+4-byte-length * numUpdates) + sizeof(each encoded udpate)
-      
-KVContainer Objects
-   * Object prefixed with min,max keys
-   * KV Entries
-     * Revision, Refcount, Timestamp, varint-key-length, Key, IDA-encoded-Value
-   
-KVContainerObjectPointer
-  * ObjectType = KVContainerObject
-  * key = Some(array[byte])  If set, Pointer points to contained object. If unset, pointer is to container object itself
-  * Container object's timestamp is max(key timestamps)
-  * ObjectRevision doesn't contain current length any longer. It's just an update serial
-  
-From Transaction perspective, it contained vs top-level object shouldn't matter
-  * Stores will need to handle contained vs non-contained
-  * But even that can be handled at the base-class level. Store Impl don't need to care.
+* Implement new KeyValueLinkedList & KeyValueTree in base.keyvalue
 
 *** KeyValue Optimizations
   * Read List[Keys]

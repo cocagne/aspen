@@ -23,6 +23,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -51,6 +52,7 @@ class SimpleTestSystem extends AspenSystem {
       case None => Future.failed(new DataRetrievalFailed)
     }
   }
+  def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
   def newTransaction(): Transaction = new Tx
   

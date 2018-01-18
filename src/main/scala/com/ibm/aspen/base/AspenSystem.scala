@@ -15,6 +15,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 trait AspenSystem {
   
@@ -25,6 +26,12 @@ trait AspenSystem {
   
   /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:DataObjectPointer): Future[DataObjectState] = readObject(pointer, None)
+  
+  /** Reads and returns the current state of the object. No caches are used */
+  def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState]
+  
+  /** Reads and returns the current state of the object. No caches are used */
+  def readObject(pointer:KeyValueObjectPointer): Future[KeyValueObjectState] = readObject(pointer, None)
   
   def newTransaction(): Transaction
   
