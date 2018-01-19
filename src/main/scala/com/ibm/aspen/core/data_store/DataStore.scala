@@ -3,6 +3,7 @@ package com.ibm.aspen.core.data_store
 import java.util.UUID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.concurrent.Future
+import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.StorePointer
@@ -34,6 +35,8 @@ object DataStore {
 }
 
 trait DataStore {
+  
+  implicit val executionContext: ExecutionContext
   
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
@@ -89,6 +92,18 @@ trait DataStore {
       case Some(sp) => getObject(objectPointer, sp)
       case None => Future.successful(Left(new InvalidLocalPointer))
     }
+  }
+  
+  /** Returns the object metadata but not the object data itself.
+   *  This may be used to optimize reads on DataStores that separate object metadata from the data itself. Whenever read
+   *  and transaction requests can be satisfied without reading the object data, this method will be used instead of
+   *  getObject
+   */
+  def getObjectState(objectPointer: ObjectPointer): Future[Either[ObjectReadError, StoreObjectState]] = {
+    getObject(objectPointer).map { e => e match {
+      case Left(err) => Left(err)
+      case Right((state, data)) => Right(state)
+    }}
   }
   
   

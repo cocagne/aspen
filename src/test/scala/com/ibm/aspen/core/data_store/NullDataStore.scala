@@ -24,6 +24,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   import NullDataStore._
   
+  override val executionContext: ExecutionContext = ExecutionContext.global
+  
   def initialized: Future[DataStore] = Future.successful(this)
   
   def close(): Future[Unit] = Future.successful(())

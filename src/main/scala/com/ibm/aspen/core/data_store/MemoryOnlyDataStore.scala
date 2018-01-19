@@ -19,6 +19,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.HLCTimestamp
+import scala.concurrent.ExecutionContext
 
 // TODO: Use separate locks for DataUpdates and RefcountUpdates. This would allow them to not conflict
 
@@ -26,6 +27,8 @@ class MemoryOnlyDataStore(
     override val storeId: DataStoreID) extends DataStore with BootstrapDataStore {
   
   import MemoryOnlyDataStore._
+  
+  override val executionContext: ExecutionContext = ExecutionContext.global
   
   private [this] var objects:Map[Int, Object] = Map()
   private [this] var nextLocalPointerId = 1

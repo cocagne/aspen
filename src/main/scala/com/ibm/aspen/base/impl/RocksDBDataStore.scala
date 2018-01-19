@@ -119,6 +119,8 @@ class RocksDBDataStore(
   
   import RocksDBDataStore._
   
+  override val executionContext: ExecutionContext = ec
+  
   private[this] val db = new BufferedConsistentRocksDB(dbPath)
   
   /** Holds map of objectUUID -> loadingState. Each operation requiring the WorkingState is identified by a UUID. For transaction-based operations, the UUID
