@@ -42,7 +42,6 @@ class MutableObject(val objectId: StoreObjectID, initialOperation: UUID, loader:
   var objectRefcountWriteLock: Option[TransactionDescription] = None
   var keyRevisionReadLocks: Map[UUID, TransactionDescription] = Map()
   var keyRevisionWriteLock: Map[Key, TransactionDescription] = Map()
-  var lockedTransaction: Option[TransactionDescription] = None
   var pendingOperations: Set[UUID] = Set(initialOperation)
   
   private[this] var err: Option[ObjectReadError] = None

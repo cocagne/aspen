@@ -1,10 +1,19 @@
 
-* Impl MemoryOnlyDataStoreBackend
-   - Should get us up and running quickly for unit tests
+* Remove MemoryOnlyDataStore and RocksDBDataStore
+   
+* Move DataStore tests to use just MemoryOnlyDataStoreBackend
 
+* Add DataStoreBackendSuite
+   - Derive per-backend suites from these
+   
 * Simplify DataStore interface
 * Move BootstrapDataStore into DataStore
 * Ditch LocalUpdates and replace with a Map[UUID, DataBuffer]
+
+* Audit the Requirements Check, Lock, Commit, & Release logic
+
+* Add more Commit tests! LOTS of combinations to test
+  
 
 KeyValueObject Update Transactions
 
@@ -16,6 +25,8 @@ KeyValueObject Update Transactions
     - Break locks into a hierarchy of lock types for return in read messages
 
 ** Add Transaction methods for KeyValue object operations & transaction requirements
+
+* Audit the Requirements Check, Lock, Commit, & Release logic
   
 *** Right thing to do but this is going to have an enormous code impact :(
 
@@ -28,6 +39,8 @@ Non-Revision-checked updates to non-conflicting Key-Value pairs.
 *** KeyValue Optimizations
   * Read List[Keys]
   * Read KeyRange
+
+* Audit the Requirements Check, Lock, Commit, & Release logic
 
 ----------------------------------
 * def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]

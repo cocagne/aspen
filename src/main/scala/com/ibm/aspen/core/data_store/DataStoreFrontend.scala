@@ -55,12 +55,14 @@ class DataStoreFrontend(
     Future.sequence(flocks).map(_=> this)
   }
   
-  override def close(): Future[Unit] = backend.close()
+  override def close(): Future[Unit] = synchronized {
+    backend.close()
+  }
   
   override def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = synchronized {
     backend.allocateObject(objectUUID, ObjectMetadata(ObjectRevision(new UUID(0,0)), ObjectRefcount(0,1), timestamp), initialContent) map { e => e match { 
       case Left(err) => throw new Exception(s"Allocation failed: $err")
-      case Right(sp) => sp
+      case Right(arr) => new StorePointer(storeId.poolIndex, arr)
     }}
   }
   
@@ -83,7 +85,9 @@ class DataStoreFrontend(
       
       backend.allocateObject(no.newObjectUUID, md, no.objectData) map { e => e match {
         case Left(err) => Left(err)
-        case Right(sp) => Right(AllocationRecoveryState.NewObject(sp, no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount))
+        case Right(arr) =>
+          val sp = new StorePointer(storeId.poolIndex, arr)
+          Right(AllocationRecoveryState.NewObject(sp, no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount))
       }}
     }} map { recoveryStateList =>
       
@@ -148,7 +152,14 @@ class DataStoreFrontend(
       case Left(err) => Left(err)
       case Right(obj) => synchronized {
         obj.completeOperation(readUUID)
-        Right((StoreObjectState(objectPointer.uuid, obj.revision, obj.refcount, obj.timestamp, obj.lockedTransaction), obj.data))
+        val lockedTransaction = (obj.objectRevisionWriteLock, obj.objectRefcountWriteLock) match {
+          case (None, None) => None
+          case (Some(txd), None) => Some(txd)
+          case (None, Some(txd)) => Some(txd)
+          case (Some(t1), Some(t2)) => Some(t1)
+        }
+        
+        Right((StoreObjectState(objectPointer.uuid, obj.revision, obj.refcount, obj.timestamp, lockedTransaction), obj.data))
       }
     }}
   }
@@ -231,6 +242,8 @@ class DataStoreFrontend(
     
     def commit(): Future[Unit] = {
       
+      val timestamp = HLCTimestamp(txd.startTimestamp)
+      
       class CommitState(val obj: MutableObject) {
         var commitMetadata = false
         var commitData = false
@@ -249,71 +262,81 @@ class DataStoreFrontend(
       
       requirements.foreach { r =>
         val cs = getCommitState(r.objectPointer.uuid)
+       
+        // It's possible we've been asked to commit a transaction that references objects we don't have (missed the
+        // creation transaction). We can safely ignore these objects and allow the repair process to clean up what
+        // we miss
+        if (!cs.obj.readError.isDefined) {
         
-        // In order to commit each update, we must ensure that the relevant attributes are either locked
-        // to this transaction or that no locks for that attribute are currently held. Otherwise we may break 
-        // the contract we committed to for another concurrent transaction. The transaction leader will see that 
-        // we did not vote for the commit of this transaction and will schedule a repair operation to correct
-        // anything we miss updating.
-        
-        r match {
-          case du: DataUpdate => 
-            
-            val canCommit = cs.obj.objectRevisionWriteLock match {
-              case None => cs.obj.objectRevisionReadLocks.isEmpty
-              case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
-            }
-            
-            if (canCommit) {
-              dataUpdates.get(r.objectPointer.uuid) match {
-                case None => // Can't commit data we don't have
-                  
-                case Some(data) => du.operation match {
-                  case DataUpdateOperation.Overwrite => 
-                    cs.obj.data = data
-                    cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                    cs.commitData = true
-                    cs.commitMetadata = true
+          // In order to commit each update, we must ensure that the relevant attributes are either locked
+          // to this transaction or that no locks for that attribute are currently held. Otherwise we may break 
+          // the contract we committed to for another concurrent transaction. The transaction leader will see that 
+          // we did not vote for the commit of this transaction and will schedule a repair operation to correct
+          // anything we miss updating.
+          
+          r match {
+            case du: DataUpdate => 
+              
+              val canCommit = cs.obj.objectRevisionWriteLock match {
+                case None => cs.obj.objectRevisionReadLocks.isEmpty
+                case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
+              }
+              
+              if (canCommit) {
+                dataUpdates.get(r.objectPointer.uuid) match {
+                  case None => // Can't commit data we don't have
                     
-                  case DataUpdateOperation.Append =>
-                    // Can't append if we don't have the correct pre-append object revision
-                    if (cs.obj.revision == du.requiredRevision) {
-                      val buf = ByteBuffer.allocate( cs.obj.data.size + data.size )
-                      buf.put(cs.obj.data.asReadOnlyBuffer())
-                      buf.put(data.asReadOnlyBuffer())
-                      buf.position(0)
-                      cs.obj.data = DataBuffer(buf)
+                  case Some(data) => du.operation match {
+                    case DataUpdateOperation.Overwrite => 
+                      cs.obj.data = data
                       cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                      cs.obj.timestamp = timestamp
                       cs.commitData = true
                       cs.commitMetadata = true
-                    }
+                      
+                    case DataUpdateOperation.Append =>
+                      // Can't append if we don't have the correct pre-append object revision
+                      if (cs.obj.revision == du.requiredRevision) {
+                        val buf = ByteBuffer.allocate( cs.obj.data.size + data.size )
+                        buf.put(cs.obj.data.asReadOnlyBuffer())
+                        buf.put(data.asReadOnlyBuffer())
+                        buf.position(0)
+                        cs.obj.data = DataBuffer(buf)
+                        cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                        cs.obj.timestamp = timestamp
+                        cs.commitData = true
+                        cs.commitMetadata = true
+                      }
+                  }
                 }
               }
-            }
-
-          case ru: RefcountUpdate => 
-            val canCommit = cs.obj.objectRefcountWriteLock match {
-              case None => cs.obj.objectRefcountReadLocks.isEmpty
-              case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRefcountReadLocks.isEmpty
-            }
-            
-            if (canCommit) {
-              cs.obj.refcount = ru.newRefcount
-              cs.commitMetadata = true
-              if (cs.obj.refcount.count == 0)
-                cs.deleteObject = true
-            }
-            
-          case vb: VersionBump =>
-            val canCommit = cs.obj.objectRevisionWriteLock match {
-              case None => cs.obj.objectRevisionReadLocks.isEmpty
-              case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
-            }
-            
-            if (canCommit) {
-              cs.obj.revision = ObjectRevision(txd.transactionUUID)
-              cs.commitMetadata = true
-            }
+  
+            case ru: RefcountUpdate => 
+              val canCommit = cs.obj.objectRefcountWriteLock match {
+                case None => cs.obj.objectRefcountReadLocks.isEmpty
+                case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRefcountReadLocks.isEmpty
+              }
+              
+              if (canCommit) {
+                cs.obj.refcount = ru.newRefcount
+                cs.obj.timestamp = timestamp // TODO - Do we want to update the timestamp on refcount changes?
+                cs.commitMetadata = true
+                if (cs.obj.refcount.count == 0)
+                  cs.deleteObject = true
+              }
+              
+            case vb: VersionBump =>
+              val canCommit = cs.obj.objectRevisionWriteLock match {
+                case None => cs.obj.objectRevisionReadLocks.isEmpty
+                case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
+              }
+              
+              if (canCommit) {
+                cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                cs.obj.timestamp = timestamp
+                cs.commitMetadata = true
+              }
+          }
         }
       }
       
@@ -406,7 +429,7 @@ class DataStoreFrontend(
               
               obj.objectRevisionReadLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
               
-              if (dataUpdates.contains(obj.objectId.objectUUID))
+              if (!dataUpdates.contains(obj.objectId.objectUUID))
                 err(MissingUpdateContent(obj))
               
               if (obj.revision != du.requiredRevision)
@@ -416,6 +439,11 @@ class DataStoreFrontend(
             case ru: RefcountUpdate => 
               if (obj.refcount != ru.requiredRefcount) 
                 err(RefcountMismatch(obj, ru.requiredRefcount, obj.refcount))
+                
+              obj.objectRefcountWriteLock match {
+                case Some(lockedTxd) => err(TransactionCollision(obj, lockedTxd))
+                case None =>
+              }
                 
               obj.objectRefcountReadLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
                 

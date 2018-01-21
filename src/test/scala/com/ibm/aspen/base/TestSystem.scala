@@ -3,7 +3,6 @@ package com.ibm.aspen.base
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.data_store.MemoryOnlyDataStore
 import com.ibm.aspen.core.crl.MemoryOnlyCRL
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
@@ -37,10 +36,14 @@ import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.data_store.BootstrapDataStore
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.data_store.DataStoreFrontend
+import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (BootstrapDataStore, CrashRecoveryLog) = {
-    (new MemoryOnlyDataStore(storeId), new MemoryOnlyCRL)
+    val ds = new DataStoreFrontend(storeId, 
+      new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
+    (ds, new MemoryOnlyCRL)
   }
   
   def noTreeNodeCacheFactory(sys: AspenSystem): KVTreeNodeCache = new KVTreeNodeCache {}
