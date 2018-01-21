@@ -361,9 +361,18 @@ class DataStoreFrontend(
           val obj = objects(r.objectPointer.uuid)
           
           r match {
-            case du: DataUpdate     => obj.objectRevisionWriteLock = None
-            case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
-            case vb: VersionBump    => obj.objectRevisionWriteLock = None
+            case du: DataUpdate     => obj.objectRevisionWriteLock foreach { lockedTx =>
+              if (lockedTx.transactionUUID == txd.transactionUUID)
+                obj.objectRevisionWriteLock = None
+            }
+            case ru: RefcountUpdate => obj.objectRefcountWriteLock foreach { lockedTx =>
+              if (lockedTx.transactionUUID == txd.transactionUUID)
+                obj.objectRefcountWriteLock = None
+            }
+            case vb: VersionBump    => obj.objectRevisionWriteLock foreach { lockedTx =>
+              if (lockedTx.transactionUUID == txd.transactionUUID)
+                obj.objectRevisionWriteLock = None
+            }
           }
         }
       }

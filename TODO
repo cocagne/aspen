@@ -1,4 +1,7 @@
 
+* Impl MemoryOnlyDataStoreBackend
+   - Should get us up and running quickly for unit tests
+
 * Simplify DataStore interface
 * Move BootstrapDataStore into DataStore
 * Ditch LocalUpdates and replace with a Map[UUID, DataBuffer]
