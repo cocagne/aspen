@@ -1,4 +1,8 @@
 
+* Simplify DataStore interface
+* Move BootstrapDataStore into DataStore
+* Ditch LocalUpdates and replace with a Map[UUID, DataBuffer]
+
 KeyValueObject Update Transactions
 
 ** Extend DataStore getObjectState() to optionally return object Data
