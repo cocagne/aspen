@@ -81,6 +81,18 @@ class MutableObject(val objectId: StoreObjectID, initialOperation: UUID, loader:
   
   def readError: Option[ObjectReadError] = err
   
+  def locks: List[Lock] = {
+    var ll: List[Lock] = Nil
+    
+    objectRevisionWriteLock.foreach { txd => ll = RevisionWriteLock(txd) :: ll }
+    objectRefcountWriteLock.foreach { txd => ll = RefcountWriteLock(txd) :: ll }
+    
+    ll = objectRevisionReadLocks.foldLeft(ll)( (l, t) => RevisionReadLock(t._2) :: l )
+    ll = objectRefcountReadLocks.foldLeft(ll)( (l, t) => RefcountReadLock(t._2) :: l )
+    
+    ll
+  }
+  
   def commitMetadata(): Future[Unit] = loader.backend.putObjectMetaData(objectId, ObjectMetadata(revision, refcount, timestamp))
   
   def commitData(): Future[Unit] = loader.backend.putObjectData(objectId, data)

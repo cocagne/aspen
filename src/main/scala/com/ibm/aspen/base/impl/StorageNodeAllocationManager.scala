@@ -111,10 +111,10 @@ class StorageNodeAllocationManager(
   }
   
   def receive(message: AllocationStatusRequest, txStatus: Option[TransactionStatus.Value]): Unit = getStore(message.to) foreach { store =>
-    store.getObject(message.primaryObject) foreach { os => 
+    store.getObjectMetadata(message.primaryObject) foreach { os => 
       val state = os match {
         case Left(err) => Left(ReadError(err))
-        case Right((s, data)) => Right(AllocationObjectStatus.State(s.revision, s.refcount, s.lockedTransaction))
+        case Right((md, locks)) => Right(AllocationObjectStatus.State(md.revision, md.refcount, locks))
       }
       allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, txStatus, 
                                            AllocationObjectStatus(message.primaryObject.uuid, state))) 

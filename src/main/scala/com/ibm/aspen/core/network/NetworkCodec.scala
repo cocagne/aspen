@@ -51,6 +51,11 @@ import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
 import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
+import com.ibm.aspen.core.data_store.Lock
+import com.ibm.aspen.core.data_store.RevisionWriteLock
+import com.ibm.aspen.core.data_store.RevisionReadLock
+import com.ibm.aspen.core.data_store.RefcountReadLock
+import com.ibm.aspen.core.data_store.RefcountWriteLock
 
 
 
@@ -166,11 +171,10 @@ object NetworkCodec {
   
   
   def encode(builder:FlatBufferBuilder, o:AllocationObjectStatus): Int = {
-    val lockedTransactionOffset = o.state match {
+    val locksOffset = o.state match {
       case Left(_) => -1
-      case Right(state) => state.lockedTransaction match {
-        case None => -1
-        case Some(txd) => encode(builder, txd)
+      case Right(state) => if (state.locks.isEmpty) -1 else {
+        P.AllocationObjectStatus.createLocksVector(builder, state.locks.map(ue => encode(builder, ue)).toArray)
       }
     }
     
@@ -180,9 +184,10 @@ object NetworkCodec {
       case Right(state) =>
         P.AllocationObjectStatus.addRevision(builder, encodeObjectRevision(builder, state.revision))
         P.AllocationObjectStatus.addRefcount(builder, encode(builder, state.refcount))
-        state.lockedTransaction.foreach { _ =>
-          P.AllocationObjectStatus.addLockedTransaction(builder, lockedTransactionOffset)
-        }
+        
+        if (!state.locks.isEmpty)
+          P.AllocationObjectStatus.addLocks(builder, locksOffset)
+        
       case Left(err) =>
         P.AllocationObjectStatus.addReadError(builder, encodeReadError(err))
         
@@ -195,9 +200,13 @@ object NetworkCodec {
     if (n.revision() != null) {
       val rev = decode(n.revision())
       val ref = decode(n.refcount())
-      val lock = if ( n.lockedTransaction() == null ) None else Some(decode(n.lockedTransaction()))
+      
+      def locks(idx: Int, l:List[Lock]): List[Lock] = if (idx == -1) 
+        l
+      else 
+        locks(idx-1, decode(n.locks(idx)) :: l)
     
-      AllocationObjectStatus(objUUID, Right(AllocationObjectStatus.State(rev, ref, lock)))
+      AllocationObjectStatus(objUUID, Right(AllocationObjectStatus.State(rev, ref, locks(n.locksLength()-1, Nil))))
     } else {
       AllocationObjectStatus(objUUID, Left(decodeReadError(n.readError()))) 
     }
@@ -901,10 +910,34 @@ object NetworkCodec {
     case P.ReadError.UnexpectedInternalError => ReadError.UnexpectedInternalError
   }
   
+  def getLockType(lock: Lock): Byte = lock match {
+    case _:RevisionWriteLock => P.LockType.RevisionWriteLock
+    case _:RevisionReadLock  => P.LockType.RevisionReadLock
+    case _:RefcountWriteLock => P.LockType.RefcountWriteLock
+    case _:RefcountReadLock  => P.LockType.RefcountReadLock
+  }
+  
+  def encode(builder:FlatBufferBuilder, o:Lock): Int = {
+    val txd = encode(builder, o.txd)
+    P.Lock.startLock(builder)
+    P.Lock.addType(builder, getLockType(o))
+    P.Lock.addTxd(builder, txd)
+    P.Lock.endLock(builder)
+  }
+  def decode(n: P.Lock): Lock = {
+    val txd = decode(n.txd())
+    n.`type`() match {
+      case P.LockType.RevisionWriteLock  => RevisionWriteLock(txd)
+      case P.LockType.RevisionReadLock   => RevisionReadLock(txd)
+      case P.LockType.RefcountWriteLock  => RefcountWriteLock(txd)
+      case P.LockType.RefcountReadLock   => RefcountReadLock(txd)
+    }
+  }
+  
   def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {
     val fromStore = encode(builder, o.fromStore)
     
-    val (objectData, lockedTransaction, updates) = o.result match {
+    val (objectData, locks, updates) = o.result match {
       case Left(_) => (-1, -1, -1)
       case Right(cs) => 
         val od = cs.objectData match {
@@ -913,9 +946,8 @@ object NetworkCodec {
             builder.createUnintializedVector(1, d.size, 1).put(d.asReadOnlyBuffer())
             builder.endVector()
         }
-        val td = cs.lockedTransaction match {
-          case None => -1
-          case Some(txd) => encode(builder, txd)
+        val locks = if (cs.locks.isEmpty) -1 else {
+          P.ReadResponse.createLocksVector(builder, cs.locks.map(ue => encode(builder, ue)).toArray)
         }
         val up = if( cs.updates.isEmpty )
           -1
@@ -925,7 +957,7 @@ object NetworkCodec {
           cs.updates.foreach { uuid => encode(builder, uuid) }
           builder.endVector()
         }
-        (od, td, up)
+        (od, locks, up)
     }
     
     P.ReadResponse.startReadResponse(builder)
@@ -940,7 +972,7 @@ object NetworkCodec {
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
         P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
-        if (lockedTransaction != -1) P.ReadResponse.addLockedTransaction(builder, lockedTransaction)
+        if (locks != -1) P.ReadResponse.addLocks(builder, locks)
         if (updates != -1) P.ReadResponse.addUpdates(builder, updates)
     }
     P.ReadResponse.endReadResponse(builder)
@@ -966,8 +998,13 @@ object NetworkCodec {
           up += decode(n.updates(i))
         up
       }
-      val lockedTransaction = if (n.lockedTransaction() == null) None else { Some(decode(n.lockedTransaction())) }
-      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, objectData.map(DataBuffer(_)), lockedTransaction))
+      
+      def locks(idx: Int, l:List[Lock]): List[Lock] = if (idx == -1) 
+        l
+      else 
+        locks(idx-1, decode(n.locks(idx)) :: l)
+      
+      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
     }
     ReadResponse(fromStore, readUUID, result)
   }

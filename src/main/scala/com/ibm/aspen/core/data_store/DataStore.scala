@@ -44,23 +44,15 @@ trait DataStore {
   /** Completes when the store is fully initialized and ready for use */
   val initialized: Future[DataStore]
   
-  /** Shuts down the store and releases all runtime resources
-   */
+  /** Shuts down the store and releases all runtime resources */
   def close(): Future[Unit]
-  
-  /** Used during the initialization process to determine which objects should start off in a locked state.
-   * 
-   */
-  def getTransactionsToBeLocked(transactionRecoveryStates: List[TransactionRecoveryState]): List[TransactionRecoveryState] = {
-    transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
-  }
   
   def maximumAllowedObjectSize: Option[Int] = None
   
-  /** Allocates a new Object on the store */
+  /** Allocates a new Object on the store during the system bootstrapping process */
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer]
   
-  /** Overwrites the object content. Future is to data at rest on disk */
+  /** Overwrites the object content during the system bootstrapping process. Future is to data at rest on disk */
   def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit]
   
   /** Allocates new objects on the store.
@@ -89,33 +81,25 @@ trait DataStore {
    */
   def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit]
   
-  /** Reads an object on the store 
-   *
-   *  This is the method that should be overridden by subclasses. The getObject method that accepts only the objectPointer checks to ensure that
-   *  this store hosts the object before calling this method to do the actual fetch.  
-   */
-  protected def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]]
   
+  /** Reads and returns the object metadata, data, and a list of any active locks on the object */
+  def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]]
   
-  /** Reads an object on the store */
-  def getObject(objectPointer: ObjectPointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]] = {
-    objectPointer.storePointers.find(_.poolIndex == storeId.poolIndex) match {
-      case Some(sp) => getObject(objectPointer, sp)
-      case None => Future.successful(Left(new InvalidLocalPointer))
-    }
-  }
   
   /** Returns the object metadata but not the object data itself.
    *  This may be used to optimize reads on DataStores that separate object metadata from the data itself. Whenever read
    *  and transaction requests can be satisfied without reading the object data, this method will be used instead of
    *  getObject
    */
-  def getObjectState(objectPointer: ObjectPointer): Future[Either[ObjectReadError, StoreObjectState]] = {
-    getObject(objectPointer).map { e => e match {
-      case Left(err) => Left(err)
-      case Right((state, data)) => Right(state)
-    }}
-  }
+  def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]]
+  
+  
+  /** Returns the object data without the metadata.
+   *  This may be used to optimize reads on DataStores that separate object metadata from the data itself. Whenever
+   *  read and transaction requests can be satisfied without reading the object metadata, this method will be used
+   *  instead of getObject
+   */
+  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]]
   
   
   /** Attempts to locks all objects referenced by the transaction that are hosted by this store.
@@ -141,69 +125,5 @@ trait DataStore {
    * 
    */
   def discardTransaction(txd: TransactionDescription): Unit
-  
-  protected class TransactionErrorChecker(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]) {
-    
-    val localObjects = txd.allReferencedObjectsSet.foldLeft(List[(ObjectPointer, StorePointer)]())((l, op) => {
-      if (op.poolUUID == storeId.poolUUID) {
-        op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
-          case Some(sp) => (op, sp) :: l
-          case None => l
-        }
-      } else
-        l
-    })
-    
-    var requiredRevisions = Map[UUID, ObjectRevision]()
-    var requiredRefcounts = Map[UUID, ObjectRefcount]()
-    var requiredData = Set[UUID]()
-    
-    txd.requirements.foreach { r => r match {
-      case du: DataUpdate =>  
-        requiredRevisions += (r.objectPointer.uuid -> du.requiredRevision)
-        requiredData += r.objectPointer.uuid
-        
-      case vb: VersionBump =>  
-        requiredRevisions += (r.objectPointer.uuid -> vb.requiredRevision)
-        
-      case ru: RefcountUpdate => 
-        requiredRefcounts += (r.objectPointer.uuid -> ru.requiredRefcount)
-    }}
-    
-    val updates = updateData match {
-      case None => Set[UUID]()
-      case Some(lst) => lst.foldLeft(Set[UUID]())((s, lu) => s + lu.objectUUID)
-    }
-    
-    def getErrors( getCurrentState: (ObjectPointer, StorePointer) => Either[ObjectReadError, (ObjectRevision, ObjectRefcount, Option[TransactionDescription])] 
-                 ): List[ObjectTransactionError] = {
-      localObjects.foldLeft(List[ObjectTransactionError]()) { (l, t) =>
-        val (op, sp) = t
-        case class Err(e: ObjectTransactionError) extends Throwable
-        try {
-          getCurrentState(op, sp) match {
-            case Left(err) => throw Err(TransactionReadError(op, err))
-            
-            case Right((currentRevision, currentRefcount, lockedTransaction)) =>
-              
-              if (!requiredRevisions.contains(op.uuid) && !requiredRefcounts.contains(op.uuid))
-                throw Err(TransactionReadError(op, ObjectMismatch()))
-              
-              if (requiredData.contains(op.uuid) && !updates.contains(op.uuid)) throw Err(MissingUpdateContent(op))
-              
-              requiredRevisions.get(op.uuid).foreach(req => if (req != currentRevision) throw Err(RevisionMismatch(op, req, currentRevision)))
-                
-              requiredRefcounts.get(op.uuid).foreach(req => if (req != currentRefcount) throw Err(RefcountMismatch(op, req, currentRefcount)))
-              
-              lockedTransaction.foreach(ltxd => if (ltxd.transactionUUID != txd.transactionUUID) throw Err(TransactionCollision(op, ltxd)))
-              
-              l
-          }
-        } catch {
-          case Err(e) => e :: l
-        }
-      }
-    }
-  }
 }
 

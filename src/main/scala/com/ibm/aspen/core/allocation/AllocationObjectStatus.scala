@@ -5,11 +5,12 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.data_store.Lock
 
 object AllocationObjectStatus {
   case class State(revision: ObjectRevision,
                    refcount: ObjectRefcount,
-                   lockedTransaction: Option[TransactionDescription])
+                   locks: List[Lock])
 }
 
 case class AllocationObjectStatus(

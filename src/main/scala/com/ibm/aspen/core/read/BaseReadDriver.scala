@@ -6,7 +6,6 @@ import java.util.UUID
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Promise
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
@@ -21,6 +20,7 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.core.data_store.Lock
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -31,7 +31,7 @@ class BaseReadDriver(
   
   import BaseReadDriver._
   
-  protected val promise = Promise[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]]
+  protected val promise = Promise[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]]
   
   protected var storeStates = Map[DataStoreID, StoreState]()
   protected var errors = Map[DataStoreID, ReadError.Value]()
@@ -80,7 +80,7 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
-        val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.objectData, cs.lockedTransaction)
+        val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.objectData, cs.locks)
         
         storeStates += (response.fromStore -> ss)
         
@@ -165,16 +165,13 @@ class BaseReadDriver(
     val revision = storeStates.head._2.revision
     val timestamp = storeStates.head._2.timestamp
     val locks = if (!retrieveLockedTransaction) None else {
-      val lockMap = storeStates.foldLeft(Map[DataStoreID, List[TransactionDescription]]()) { (m, t) => t._2.lockedTransaction match {
-        case None => m
-        case Some(txd) => m + (t._1 -> List(txd)) 
-      }}
+      val lockMap = storeStates.foldLeft(Map[DataStoreID, List[Lock]]()) { (m, t) => if (t._2.locks.isEmpty) m else m + (t._1 -> t._2.locks) }
       Some(lockMap)
     }
     (revision._1, refcount, timestamp, locks)
   }
   
-  private def restoreDataObject() : (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]]) = {
+  private def restoreDataObject() : (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     val segments = storeStates.foldLeft(List[(Byte, Option[DataBuffer])]()) { (l, t) =>
       (t._1.poolIndex, t._2.objectData) :: l
     }
@@ -186,7 +183,7 @@ class BaseReadDriver(
     (DataObjectState(objectPointer, revision, refcount, timestamp, data), locks)
   }
   
-  private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]]) = {
+  private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     // Decode to KeyValueObjectStoreState
     val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
       KeyValueObjectStoreState(objectPointer.ida, ss.storeId.poolIndex, ss.objectData.get) :: l 
@@ -205,7 +202,7 @@ object BaseReadDriver {
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],
-      lockedTransaction: Option[TransactionDescription])
+      locks: List[Lock])
       
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
       clientMessenger: ClientSideReadMessenger,

@@ -17,6 +17,7 @@ import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -29,36 +30,50 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
   def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
       
   def receive(message: Read): Unit = getStore(message.toStore).foreach { store => 
-      
-    val f = store.getObject(message.objectPointer)
-                                 
-    f foreach {
-      result => 
-        val response = result match {
-          case Left(err) => err match {
-            case e: InvalidLocalPointer => Left(ReadError.InvalidLocalPointer)
-            case e: ObjectMismatch => Left(ReadError.ObjectMismatch)
-            case e: CorruptedObject => Left(ReadError.CorruptedObject)
+    
+    def cvt(err: ObjectReadError): ReadError.Value = err match {
+      case e: InvalidLocalPointer => ReadError.InvalidLocalPointer
+      case e: ObjectMismatch => ReadError.ObjectMismatch
+      case e: CorruptedObject => ReadError.CorruptedObject
+    }
+    
+    val readData = message.returnObjectData || (message.objectPointer match {
+      case _ : KeyValueObjectPointer => true
+      case _ => false
+    })
+    
+    if (readData) {
+      store.getObject(message.objectPointer) foreach { result => result match { 
+        case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(cvt(err))))
+        
+        case Right((md, data, locks)) => 
+          val updates = message.objectPointer match {
+            case _: KeyValueObjectPointer => 
+              if (message.returnObjectData)
+                Set[UUID]()
+              else 
+                KeyValueObjectCodec.getUpdateSet(data)
+                
+            case _ => Set[UUID]()
           }
           
-          case Right((cs, data)) => 
-            val updates = message.objectPointer match {
-              case _: KeyValueObjectPointer => 
-                if (message.returnObjectData)
-                  Set[UUID]()
-                else 
-                  KeyValueObjectCodec.getUpdateSet(data)
-                  
-              case _ => Set[UUID]()
-            }
-            Right((ReadResponse.CurrentState(cs.revision, updates, cs.refcount, cs.timestamp, if (message.returnObjectData) Some(data) else None,
-                                             if (message.returnLockedTransaction) cs.lockedTransaction else None), data))
-        }
+          val cs = ReadResponse.CurrentState(md.revision, updates, md.refcount, md.timestamp, 
+              if (message.returnObjectData) Some(data) else None,
+              if (message.returnLockedTransaction) locks else Nil)
+              
+          messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
+       }}
+    } else {
+      store.getObjectMetadata(message.objectPointer) foreach { result => result match { 
+        case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(cvt(err))))
         
-        response match {
-          case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(err)), None)
-          case Right((state, data)) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(state)), Some(data))
-        }
+        case Right((md, locks)) => 
+
+          val cs = ReadResponse.CurrentState(md.revision, Set[UUID](), md.refcount, md.timestamp, None,
+              if (message.returnLockedTransaction) locks else Nil)
+              
+          messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
+       }}
     }
   }
   

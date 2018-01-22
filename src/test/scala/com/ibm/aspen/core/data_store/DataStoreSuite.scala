@@ -62,9 +62,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
   // Helper method that creates a store and adds two objects. Returns (DataStore, Obj0StorePointer, Obj1StorePointer)
   def initObjects(): (DataStore, StorePointer, StorePointer) = {
     val ds = newStore
-    
-    val expected = (StoreObjectState(uuid0, irev, oneRef, timestamp, None), icontent0)
-    
+
     implicit val executionContext = ExecutionContext.Implicits.global
     
     val lno0 = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent0))
@@ -82,16 +80,19 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
   }
   
   // Helper method that reads an object and validates it's state
-  def checkState(ds: DataStore, op: ObjectPointer, cs: StoreObjectState, obuf: Option[DataBuffer] = None, ignoreTimestamp: Boolean = false) = {
+  def checkState(ds: DataStore, op: ObjectPointer, md: ObjectMetadata, locks: List[Lock], obuf: Option[DataBuffer] = None, ignoreTimestamp: Boolean = false) = {
     val r = Await.result(ds.getObject(op), awaitDuration)
     r match {      
       case Left(_) => fail
-      case Right(t) => 
-        obuf.foreach(buf => t._2 should be (buf))
+      case Right((rmeta, rdata, rlocks)) =>
+        obuf.foreach(buf => rdata should be (buf))
+        
         if (ignoreTimestamp)
-          t._1.copy(timestamp=HLCTimestamp(0)) should be (cs.copy(timestamp=HLCTimestamp(0)))
+          rmeta.copy(timestamp=HLCTimestamp(0)) should be (md.copy(timestamp=HLCTimestamp(0)))
         else
-          t._1 should be (cs)
+          rmeta should be (md)
+        
+        rlocks.toSet should be (locks.toSet)
     }
   }
   
@@ -105,8 +106,8 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
-    checkState(ds, op1, StoreObjectState(uuid1, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, txdts), Nil, ignoreTimestamp=true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, txdts), Nil, ignoreTimestamp=true)
   }
   
   test("Get Invalid Object State") {
@@ -119,7 +120,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, txdts), Nil, ignoreTimestamp=true)
     
     val r = Await.result(ds.getObject(op2), awaitDuration)
     r should matchPattern { case Left(e: InvalidLocalPointer) => }
@@ -136,7 +137,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
-    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, None), ignoreTimestamp=true)
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, txdts), Nil, ignoreTimestamp=true)
     
     val r = Await.result(ds.getObject(op1), awaitDuration)
     r should matchPattern { 
@@ -165,7 +166,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val lno = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent))
     val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
             
-    val expected = (StoreObjectState(uuid0, ObjectRevision(txUUID), oneRef, timestamp, None), icontent)
+    val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, timestamp), icontent, Nil)
     
     futureResponse flatMap { either => either match {
       case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.newObjects.head.storePointer)).flatMap(er => er match {
@@ -247,8 +248,8 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, StoreObjectState(uuid0, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
-    checkState(ds, op1, StoreObjectState(uuid1, irev, oneRef, txdts, Some(txd)), ignoreTimestamp=true)
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, txdts), List(RevisionWriteLock(txd)), ignoreTimestamp=true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, txdts), List(RefcountWriteLock(txd)), ignoreTimestamp=true)
     
   }
   
@@ -276,8 +277,8 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val txdts = HLCTimestamp(txd.startTimestamp)
     
-    checkState(ds, op0, StoreObjectState(uuid0, newRev, oneRef, txdts, None), Some(newContent))
-    checkState(ds, op1, StoreObjectState(uuid1, irev, newRef, txdts, None), Some(icontent1))
+    checkState(ds, op0, ObjectMetadata(newRev, oneRef, txdts), Nil, Some(newContent))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
     
     // Ensure new Tx can lock against updated attributes
     val tx2UUID = new UUID(99,99)

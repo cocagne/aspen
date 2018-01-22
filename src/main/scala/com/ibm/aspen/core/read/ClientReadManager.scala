@@ -5,11 +5,11 @@ import scala.concurrent.ExecutionContext
 import java.util.UUID
 import scala.concurrent.Future
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.StoreObjectState
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.data_store.Lock
 
 class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
@@ -32,7 +32,7 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
       objectPointer: ObjectPointer, 
       retrieveData:Boolean=true, 
       retrieveTransactionLocks:Boolean=false, 
-      driverFactory: ReadDriver.Factory): Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]] = {
+      driverFactory: ReadDriver.Factory): Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]] = {
     
     val readUUID = UUID.randomUUID()
     

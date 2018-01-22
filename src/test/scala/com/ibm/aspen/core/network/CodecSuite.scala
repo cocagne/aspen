@@ -21,6 +21,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.allocation.DataAllocationOptions
+import com.ibm.aspen.core.data_store.RevisionWriteLock
 
 object CodecSuite {
   
@@ -86,7 +87,7 @@ class CodecSuite extends FunSuite with Matchers {
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(DataBuffer(List[Byte](1,2,3).toArray)), Some(txd))
+    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(DataBuffer(List[Byte](1,2,3).toArray)), List(RevisionWriteLock(txd)))
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -114,7 +115,7 @@ class CodecSuite extends FunSuite with Matchers {
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, None, None)
+    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, None, Nil)
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -143,7 +144,7 @@ class CodecSuite extends FunSuite with Matchers {
     val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
     val updates = Set[UUID](new UUID(2,2))
-    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, None, None)
+    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, None, Nil)
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     
@@ -176,7 +177,7 @@ class CodecSuite extends FunSuite with Matchers {
     val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
     val updates = Set[UUID](new UUID(2,2), new UUID(3,3))
-    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, None, None)
+    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, None, Nil)
     
     val rr = ReadResponse(storeId, readUUID, Right(cs))
     

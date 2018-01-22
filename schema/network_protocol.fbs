@@ -221,6 +221,19 @@ enum ReadError:byte
     UnexpectedInternalError
 }
 
+enum LockType:byte
+{
+  RevisionWriteLock,
+  RevisionReadLock,
+  RefcountWriteLock,
+  RefcountReadLock
+}
+
+table Lock {
+   type: LockType;
+   txd: TransactionDescription;
+}
+
 table Read {
    toStore: DataStoreID;
    fromClient: [byte];
@@ -238,7 +251,7 @@ table ReadResponse {
   updates: [UUID];
   timestamp: long;
   objectData: [byte];
-  lockedTransaction: TransactionDescription;
+  locks: [Lock];
   readError: ReadError;
 }
 
@@ -300,7 +313,7 @@ table AllocationObjectStatus {
   readError: ReadError;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
-  lockedTransaction: TransactionDescription;
+  locks: [Lock];
 }
 
 

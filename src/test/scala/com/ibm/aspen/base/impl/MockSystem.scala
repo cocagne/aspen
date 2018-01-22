@@ -42,7 +42,6 @@ import scala.Right
 import com.ibm.aspen.base.kvlist.KVList
 import com.ibm.aspen.util.uuid2byte
 import com.ibm.aspen.core.network.NetworkCodec
-import scala.concurrent._
 import scala.concurrent.duration._
 import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.transaction.LocalUpdate
@@ -57,6 +56,9 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.allocation.AllocationOptions
 import com.ibm.aspen.core.transaction.TransactionDescription
+import scala.concurrent.ExecutionContext
+import com.ibm.aspen.core.data_store.Lock
+import scala.concurrent.Await
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -131,8 +133,8 @@ object MockSystem {
   
   class Reader(storage: StorageSystem, pointer:ObjectPointer) extends ReadDriver {
     
-    def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])]] = {
-      val e: Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[TransactionDescription]]])] = storage.read(pointer) match {
+    def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]] = {
+      val e: Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])] = storage.read(pointer) match {
           case None => Left(new InvalidObject)
           case Some(osd) => Right((DataObjectState(pointer, osd.revision, osd.refcount, osd.timestamp, osd.data), None))
         }

@@ -82,7 +82,7 @@ class TestNetwork {
     def send(message: AllocationStatusRequest): Unit = get(message.to).foreach(sn => sn.a.foreach(a => a.receive(message)))
     def send(message: AllocationStatusReply): Unit = get(message.to).foreach(sn => sn.a.foreach(a => a.receive(message)))
     
-    def send(client: ClientID, message: read.ReadResponse, data:Option[DataBuffer]): Unit = get(client).foreach(c => c.r.foreach(r => r.receive(message)))
+    def send(client: ClientID, message: read.ReadResponse): Unit = get(client).foreach(c => c.r.foreach(r => r.receive(message)))
   }
   
   class CNet(override val clientId: ClientID) extends ClientSideNetwork 

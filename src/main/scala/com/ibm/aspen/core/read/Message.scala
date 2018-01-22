@@ -10,6 +10,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.data_store.Lock
 
 sealed abstract class Message
 
@@ -33,21 +34,18 @@ object ReadResponse {
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
       objectData: Option[DataBuffer],
-      lockedTransaction: Option[TransactionDescription]) {
+      locks: List[Lock]) {
     
     override def equals(other: Any): Boolean = other match {
-      case rhs: CurrentState => 
+      case rhs: CurrentState =>
+        
         val dmatch = (objectData, rhs.objectData) match {
           case (Some(lhs), Some(rhs)) => lhs.compareTo(rhs) == 0
           case (None, None) => true
           case _ => false
         }
-        val lmatch = (lockedTransaction, rhs.lockedTransaction) match {
-          case (Some(lhs), Some(rhs)) => lhs == rhs
-          case (None, None) => true
-          case _ => false
-        }
-        revision == rhs.revision && refcount == rhs.refcount && dmatch && lmatch && updates == rhs.updates
+        
+        revision == rhs.revision && refcount == rhs.refcount && dmatch && updates == rhs.updates && locks == rhs.locks
         
       case _ => false
     }

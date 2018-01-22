@@ -23,6 +23,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.transaction.DataUpdateOperation
+import com.ibm.aspen.core.transaction.TransactionDisposition
 
 
 class DataStoreFrontend(
@@ -42,7 +43,11 @@ class DataStoreFrontend(
     
     allocationRecoveryStates.foreach(loadAllocatedObjects)
     
-    val flocks = getTransactionsToBeLocked(transactionRecoveryStates).foldLeft(List[Future[Unit]]()) { (l, trs) => 
+    // Re-establish locks on all transactions we voted to commit
+    
+    val txToLock = transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit) 
+    
+    val flocks = txToLock.foldLeft(List[Future[Unit]]()) { (l, trs) => 
       val t = new StoreTransaction(trs.txd, trs.localUpdates.getOrElse(Nil))
       
       t.lockObjects()
@@ -60,9 +65,13 @@ class DataStoreFrontend(
   }
   
   override def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = synchronized {
-    backend.allocateObject(objectUUID, ObjectMetadata(ObjectRevision(new UUID(0,0)), ObjectRefcount(0,1), timestamp), initialContent) map { e => e match { 
+    val metadata = ObjectMetadata(ObjectRevision(new UUID(0,0)), ObjectRefcount(0,1), timestamp)
+    
+    backend.allocateObject(objectUUID, metadata, initialContent) flatMap { e => e match { 
       case Left(err) => throw new Exception(s"Allocation failed: $err")
-      case Right(arr) => new StorePointer(storeId.poolIndex, arr)
+      case Right(arr) => 
+        val sp = new StorePointer(storeId.poolIndex, arr)
+        backend.putObject(StoreObjectID(objectUUID, sp), metadata, initialContent).map( _ => sp )
     }}
   }
   
@@ -145,23 +154,62 @@ class DataStoreFrontend(
     }} map (_ => ())
   }
   
-  def getObject(objectPointer: ObjectPointer, storePointer: StorePointer): Future[Either[ObjectReadError, (StoreObjectState,DataBuffer)]] = synchronized {
-    val readUUID = UUID.randomUUID()
+  override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
+    case None => Future.successful(Left(new InvalidLocalPointer))
     
-    objectLoader.load(StoreObjectID(objectPointer.uuid, storePointer), readUUID).loadBoth().map{ e => e match {
-      case Left(err) => Left(err)
-      case Right(obj) => synchronized {
-        obj.completeOperation(readUUID)
-        val lockedTransaction = (obj.objectRevisionWriteLock, obj.objectRefcountWriteLock) match {
-          case (None, None) => None
-          case (Some(txd), None) => Some(txd)
-          case (None, Some(txd)) => Some(txd)
-          case (Some(t1), Some(t2)) => Some(t1)
+    case Some(sp) => 
+      val objectId = StoreObjectID(pointer.uuid, sp)
+      val readUUID = UUID.randomUUID()
+      synchronized {
+        objectLoader.load(objectId, readUUID).loadBoth()
+      } map { e => e match {
+        case Left(err) => Left(err)
+        case Right(obj) => synchronized {
+          obj.completeOperation(readUUID)
+          Right((obj.metadata, obj.data, obj.locks))
         }
-        
-        Right((StoreObjectState(objectPointer.uuid, obj.revision, obj.refcount, obj.timestamp, lockedTransaction), obj.data))
-      }
-    }}
+      }}
+  }
+  
+  
+  /** Returns the object metadata but not the object data itself.
+   *  This may be used to optimize reads on DataStores that separate object metadata from the data itself. Whenever read
+   *  and transaction requests can be satisfied without reading the object data, this method will be used instead of
+   *  getObject
+   */
+  override def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]] = pointer.getStorePointer(storeId) match {
+    case None => Future.successful(Left(new InvalidLocalPointer))
+    
+    case Some(sp) => 
+      val objectId = StoreObjectID(pointer.uuid, sp)
+      val readUUID = UUID.randomUUID()
+      synchronized {
+        objectLoader.load(objectId, readUUID).loadMetadata()
+      } map { e => e match {
+        case Left(err) => Left(err)
+        case Right(obj) => synchronized {
+          obj.completeOperation(readUUID)
+          Right((obj.metadata, obj.locks))
+        }
+      }}
+  }
+  
+ 
+  override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
+    case None => Future.successful(Left(new InvalidLocalPointer))
+    
+    case Some(sp) => 
+      val objectId = StoreObjectID(pointer.uuid, sp)
+      val readUUID = UUID.randomUUID()
+      synchronized {
+        objectLoader.load(objectId, readUUID).loadData()
+      } map { e => e match {
+        case Left(err) => Left(err)
+        case Right(obj) => synchronized {
+          obj.completeOperation(readUUID)
+          Right((obj.data, obj.locks))
+        }
+      }}
   }
   
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
