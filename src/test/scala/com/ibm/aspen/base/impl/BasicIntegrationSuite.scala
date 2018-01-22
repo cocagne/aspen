@@ -31,6 +31,11 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TestSystem
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.data_store.DataStoreFrontend
+import com.ibm.aspen.core.data_store.RocksDBDataStoreBackend
+import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
+import com.ibm.aspen.core.crl.MemoryOnlyCRL
+import com.ibm.aspen.core.crl.CrashRecoveryLog
 
 object BasicIntegrationSuite {
   trait Closeable {
@@ -52,11 +57,13 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
     closeables = Nil
   }
   
-  def newStore(storeId: DataStoreID): (RocksDBDataStore, RocksDBCrashRecoveryLog) = {
+  def newStore(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
     val dbpath = new File(tdir, s"dbdir_${storeId.poolIndex}").getAbsolutePath
     val crlpath = new File(tdir, s"crldir_${storeId.poolIndex}").getAbsolutePath
-    val crl = new RocksDBCrashRecoveryLog(crlpath)(ExecutionContext.Implicits.global) with Closeable
-    val db = new RocksDBDataStore(storeId, dbpath, Nil, Nil)(ExecutionContext.Implicits.global) with Closeable
+    //val crl = new RocksDBCrashRecoveryLog(crlpath)(ExecutionContext.Implicits.global) with Closeable
+    //val db = new DataStoreFrontend(storeId, new RocksDBDataStoreBackend(dbpath), Nil, Nil) with Closeable
+    val crl = new MemoryOnlyCRL() with Closeable
+    val db = new DataStoreFrontend(storeId, new MemoryOnlyDataStoreBackend(), Nil, Nil) with Closeable
     Await.result(db.initialized, Duration(10000, MILLISECONDS))
     closeables = db :: crl :: closeables
     (db, crl)
@@ -80,8 +87,8 @@ class BasicIntegrationSuite  extends TempDirSuiteBase {
   }
   
   def mkStorageNode(
-      store: RocksDBDataStore, 
-      crl:RocksDBCrashRecoveryLog,
+      store: DataStore, 
+      crl:CrashRecoveryLog,
       net: TestNetwork,
       reader: TriggeredReread,
       radiclePointer: DataObjectPointer): (BasicAspenSystem, StorageNode) = {

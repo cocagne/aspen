@@ -1,8 +1,4 @@
 
-* Remove MemoryOnlyDataStore and RocksDBDataStore
-   
-* Move DataStore tests to use just MemoryOnlyDataStoreBackend
-
 * Add DataStoreBackendSuite
    - Derive per-backend suites from these
    

@@ -53,10 +53,11 @@ object DataStoreSuite {
   val irev = ObjectRevision(allocUUID)
 }
 
-abstract class DataStoreSuite extends AsyncFunSuite with Matchers {
+class DataStoreSuite extends AsyncFunSuite with Matchers {
   import DataStoreSuite._
   
-  def newStore: DataStore
+  def newStore: DataStore = new DataStoreFrontend(DataStoreSuite.storeId, 
+      new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
   
   // Helper method that creates a store and adds two objects. Returns (DataStore, Obj0StorePointer, Obj1StorePointer)
   def initObjects(): (DataStore, StorePointer, StorePointer) = {

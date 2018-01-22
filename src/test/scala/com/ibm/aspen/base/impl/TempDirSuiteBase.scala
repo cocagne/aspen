@@ -12,7 +12,7 @@ trait TempDirSuiteBase extends AsyncFunSuite with Matchers with BeforeAndAfter {
   before {
     tdirMgr = new TempDirManager
     tdir = tdirMgr.tdir
-    
+    preTest()
   }
 
   after {
@@ -21,5 +21,6 @@ trait TempDirSuiteBase extends AsyncFunSuite with Matchers with BeforeAndAfter {
     tdirMgr.delete()
   }
   
+  def preTest(): Unit = {}
   def preTempDirDeletion(): Unit = ()
 }

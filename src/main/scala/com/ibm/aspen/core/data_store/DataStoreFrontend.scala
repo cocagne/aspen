@@ -30,7 +30,7 @@ class DataStoreFrontend(
     val backend: DataStoreBackend,
     transactionRecoveryStates: List[TransactionRecoveryState], 
     allocationRecoveryStates: List[AllocationRecoveryState]
-    ) extends DataStore with BootstrapDataStore { 
+    ) extends DataStore { 
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
   
@@ -38,7 +38,7 @@ class DataStoreFrontend(
 
   private[this] var lockedTransactions = Map[UUID, StoreTransaction]()
   
-  val initialized: Future[DataStore] = synchronized {
+  override val initialized: Future[DataStore] = synchronized {
     
     allocationRecoveryStates.foreach(loadAllocatedObjects)
     

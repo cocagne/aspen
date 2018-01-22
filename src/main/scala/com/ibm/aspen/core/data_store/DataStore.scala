@@ -41,6 +41,9 @@ trait DataStore {
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
   
+  /** Completes when the store is fully initialized and ready for use */
+  val initialized: Future[DataStore]
+  
   /** Shuts down the store and releases all runtime resources
    */
   def close(): Future[Unit]
@@ -51,6 +54,14 @@ trait DataStore {
   def getTransactionsToBeLocked(transactionRecoveryStates: List[TransactionRecoveryState]): List[TransactionRecoveryState] = {
     transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit)
   }
+  
+  def maximumAllowedObjectSize: Option[Int] = None
+  
+  /** Allocates a new Object on the store */
+  def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer]
+  
+  /** Overwrites the object content. Future is to data at rest on disk */
+  def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit]
   
   /** Allocates new objects on the store.
    *

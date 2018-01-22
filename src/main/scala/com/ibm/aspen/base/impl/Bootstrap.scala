@@ -10,11 +10,11 @@ import com.ibm.aspen.core.network.StorageNodeID
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.kvlist.KVListCodec
-import com.ibm.aspen.core.data_store.BootstrapDataStore
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.data_store.DataStore
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -96,7 +96,7 @@ object Bootstrap {
   }
   
   def initializeNewSystem(
-      bootstrapStores: List[BootstrapDataStore],
+      bootstrapStores: List[DataStore],
       bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[DataObjectPointer] = {
     
     require( bootstrapPoolIDA.width >= bootstrapStores.length)

@@ -34,13 +34,13 @@ import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.core.data_store.BootstrapDataStore
+import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 
 object TestSystem {
-  def memoryStoreFactory(storeId: DataStoreID): (BootstrapDataStore, CrashRecoveryLog) = {
+  def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
     val ds = new DataStoreFrontend(storeId, 
       new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
     (ds, new MemoryOnlyCRL)
@@ -59,7 +59,7 @@ object TestSystem {
  *  Defaults to memory-only data store but may use other stores via the constructor param  
  */
 class TestSystem(
-    val storeFactory: (DataStoreID) => (BootstrapDataStore, CrashRecoveryLog) = TestSystem.memoryStoreFactory,
+    val storeFactory: (DataStoreID) => (DataStore, CrashRecoveryLog) = TestSystem.memoryStoreFactory,
     val noRetry: RetryStrategy = TestSystem.NoRetry,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
