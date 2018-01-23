@@ -22,6 +22,8 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.allocation.DataAllocationOptions
+import com.ibm.aspen.core.transaction.VersionBump
+import com.ibm.aspen.core.transaction.TransactionRequirement
 
 object DataStoreSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -40,8 +42,8 @@ object DataStoreSuite {
   
   def mkObjPtr(objUUID:UUID, sp:StorePointer) = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
   
-  def mktxd(du: List[DataUpdate], ru: List[RefcountUpdate], txdUUID:UUID=txUUID) = {
-    TransactionDescription(txdUUID, 100, allocObj, 0, du ++ ru, Nil)
+  def mktxd(reqs: List[TransactionRequirement], txdUUID:UUID=txUUID) = {
+    TransactionDescription(txdUUID, 100, allocObj, 0, reqs, Nil)
   }
   
   def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, DataBuffer(ByteBuffer.allocate(0)))))
@@ -101,8 +103,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -115,8 +116,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op2 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op2, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op2, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -132,8 +132,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val badUUID = new UUID(99,99)
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(badUUID, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -193,8 +192,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -208,8 +206,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                   
     val err1 = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -221,8 +218,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     // Ensure new Tx can lock against unmodified objects
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
     val err2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -239,8 +235,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
               
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -260,8 +255,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
@@ -284,8 +278,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val tx2UUID = new UUID(99,99)
     
     
-    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -297,8 +290,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -308,8 +300,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op3 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -325,13 +316,25 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val badRev = ObjectRevision(new UUID(0,3))
     val badRef = ObjectRefcount(5,6)
     
-    val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, badRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, badRef, oneRef) :: Nil)
          
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs.toSet should be (Set(RevisionMismatch(op0, badRev, irev), RefcountMismatch(op1, badRef, oneRef)))
+  }
+  
+  test("Lock With Version Bump Revision Error") {
+    val (ds, sp0, sp1) = initObjects()
     
+    val op0 = mkObjPtr(uuid0, sp0)
+
+    val badRev = ObjectRevision(new UUID(0,3))
+    
+    val txd = mktxd(VersionBump(op0, badRev) :: Nil)
+         
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    errs.toSet should be (Set(RevisionMismatch(op0, badRev, irev)))
   }
   
   test("Lock With Collisions") {
@@ -339,8 +342,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -348,13 +350,221 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil, 
-                    RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
     errs2.toSet should be (Set(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
   }
   
+  test("Commit Unlocked Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
+    
+    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+
+    Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
+    
+    val newRev = ObjectRevision(txd.transactionUUID)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(newRev, oneRef, txdts), Nil, Some(newContent))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+    
+    // Ensure new Tx can lock against updated attributes
+    val tx2UUID = new UUID(99,99)
+    
+    
+    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+                    
+    val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
+    
+    errs2.isEmpty should be (true)
+  }
   
+  test("Commit Unlocked Transaction with Invalid Object") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val bad = mkObjPtr(new UUID(9,9), StorePointer(storeId.poolIndex, new Array[Byte](0)))
+    
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: 
+                    DataUpdate(bad, irev, DataUpdateOperation.Overwrite) ::  
+                    RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
+    
+    val lu = Some(List(LocalUpdate(op0.uuid, newContent), LocalUpdate(bad.uuid, newContent)))
+
+    Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
+    
+    val newRev = ObjectRevision(txd.transactionUUID)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(newRev, oneRef, txdts), Nil, Some(newContent))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+  }
+  
+  test("Commit Unlocked Transaction with Different Locked Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil)
+                     
+    val tx2UUID = new UUID(99,99)
+    
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+                    
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
+    
+    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+    
+    val errs = Await.result(ds.lockTransaction(txd, lu), awaitDuration)
+    
+    errs.isEmpty should be (true)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0))
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent1))
+    
+    // Commit different Tx. Data revision should stay the same on op0 but refcount should change for op1
+    Await.result(ds.commitTransactionUpdates(txd2, lu), awaitDuration)
+    
+    val txdts = HLCTimestamp(txd2.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+  }
+  
+  test("Commit Unlocked Transaction with Missing Data") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
+
+    Await.result(ds.commitTransactionUpdates(txd, None), awaitDuration)
+    
+    val newRev = ObjectRevision(txd.transactionUUID)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent0))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+  }
+  
+  test("Commit Append Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Append) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+                    
+    val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
+    
+    val bb = ByteBuffer.allocate(icontent0.size + newContent.size)
+    bb.put(icontent0)
+    bb.put(newContent)
+    bb.position(0)
+    
+    val appended = DataBuffer(bb)
+    
+    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+
+    Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
+    
+    val newRev = ObjectRevision(txd.transactionUUID)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(newRev, oneRef, txdts), Nil, Some(appended))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+  }
+  
+  test("Commit VersionBump Transaction") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val newRef = ObjectRefcount(0,2)
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(VersionBump(op0, irev) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+
+    Await.result(ds.commitTransactionUpdates(txd, None), awaitDuration)
+    
+    val newRev = ObjectRevision(txd.transactionUUID)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    checkState(ds, op0, ObjectMetadata(newRev, oneRef, txdts), Nil, Some(icontent0))
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+  }
+  
+  test("Fail lock on revision collision") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: VersionBump(op1, irev) :: Nil)
+              
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    errs should be (Nil)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    
+    val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
+    
+    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    
+    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd), new TransactionCollision(op1, txd)))
+  }
+  
+  test("Fail lock on refcount collision") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val newRef = ObjectRefcount(0,2)
+    
+    val txd = mktxd(RefcountUpdate(op1, oneRef, newRef) :: Nil)
+              
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    errs should be (Nil)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RefcountWriteLock(txd)))
+    
+    val txd2 = mktxd(RefcountUpdate(op1, oneRef, newRef) :: Nil, new UUID(99,99))
+    
+    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    
+    errs2.toSet should be (Set(new TransactionCollision(op1, txd)))
+  }
 }

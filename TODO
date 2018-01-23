@@ -1,33 +1,10 @@
 
-* Add DataStoreBackendSuite
-   - Derive per-backend suites from these
-   
-* Simplify DataStore interface
-* Move BootstrapDataStore into DataStore
-* Ditch LocalUpdates and replace with a Map[UUID, DataBuffer]
-
-* Audit the Requirements Check, Lock, Commit, & Release logic
-
-* Add more Commit tests! LOTS of combinations to test
-  
-
 KeyValueObject Update Transactions
-
-** Extend DataStore getObjectState() to optionally return object Data
-    - create set of objects for which Data is needed (key-value objects that operate on key-value pairs will require data)
-    - Use getOrElse to get the current KeyValue object state (parse and cache if not saved)
-         
-** Good time to separate out transaction lock scope ownership
-    - Break locks into a hierarchy of lock types for return in read messages
 
 ** Add Transaction methods for KeyValue object operations & transaction requirements
 
-* Audit the Requirements Check, Lock, Commit, & Release logic
-  
-*** Right thing to do but this is going to have an enormous code impact :(
-
 Non-Revision-checked updates to non-conflicting Key-Value pairs.
-* We'll still lock the object. We just wont check the revision
+* We'll "ReadLock" the object to ensure the revision doesn't change. We just wont check the revision
 * After the update the revision then remains untouched 
 
 * Implement new KeyValueLinkedList & KeyValueTree in base.keyvalue
