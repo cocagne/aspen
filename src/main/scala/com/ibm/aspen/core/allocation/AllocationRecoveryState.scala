@@ -8,11 +8,13 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectType
 
 object AllocationRecoveryState { 
   case class NewObject(
       storePointer: StorePointer,
       newObjectUUID: UUID,
+      objectType: ObjectType.Value,
       objectSize: Option[Int],
       objectData: DataBuffer,
       initialRefcount: ObjectRefcount)

@@ -24,6 +24,9 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.core.transaction.TransactionDisposition
+import com.ibm.aspen.core.allocation.DataAllocationOptions
+import com.ibm.aspen.core.objects.ObjectType
+import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
 
 
 class DataStoreFrontend(
@@ -96,7 +99,11 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(arr) =>
           val sp = new StorePointer(storeId.poolIndex, arr)
-          Right(AllocationRecoveryState.NewObject(sp, no.newObjectUUID, no.objectSize, no.objectData, no.initialRefcount))
+          val objectType = no.options match {
+            case _: DataAllocationOptions => ObjectType.Data
+            case _: KeyValueAllocationOptions => ObjectType.KeyValue
+          }
+          Right(AllocationRecoveryState.NewObject(sp, no.newObjectUUID, objectType, no.objectSize, no.objectData, no.initialRefcount))
       }}
     }} map { recoveryStateList =>
       
@@ -126,7 +133,7 @@ class DataStoreFrontend(
   private def loadAllocatedObjects(ars: AllocationRecoveryState): Unit = synchronized {
     ars.newObjects foreach { no =>
       val metadata = ObjectMetadata(ObjectRevision(ars.allocationTransactionUUID), no.initialRefcount, ars.timestamp)
-      objectLoader.createNewObject(no.newObjectUUID, ars.allocationTransactionUUID, no.storePointer, metadata, no.objectData)
+      objectLoader.createNewObject(no.newObjectUUID, ars.allocationTransactionUUID, no.storePointer, metadata, no.objectData, no.objectType)
     }
   }
   
@@ -161,7 +168,7 @@ class DataStoreFrontend(
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
       synchronized {
-        objectLoader.load(objectId, readUUID).loadBoth()
+        objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
       } map { e => e match {
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
@@ -184,7 +191,7 @@ class DataStoreFrontend(
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
       synchronized {
-        objectLoader.load(objectId, readUUID).loadMetadata()
+        objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
       } map { e => e match {
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
@@ -202,7 +209,7 @@ class DataStoreFrontend(
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
       synchronized {
-        objectLoader.load(objectId, readUUID).loadData()
+        objectLoader.load(objectId, pointer.objectType, readUUID).loadData()
       } map { e => e match {
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
@@ -267,7 +274,7 @@ class DataStoreFrontend(
     val objects: Map[UUID, MutableObject] = txd.allReferencedObjectsSet.foldLeft(Map[UUID, MutableObject]())((m, op) => {
       if (op.poolUUID == storeId.poolUUID) {
         op.storePointers.find(_.poolIndex == storeId.poolIndex) match {
-          case Some(sp) => m + (op.uuid -> objectLoader.load(StoreObjectID(op.uuid, sp), txd.transactionUUID))
+          case Some(sp) => m + (op.uuid -> objectLoader.load(StoreObjectID(op.uuid, sp), op.objectType, txd.transactionUUID))
           case None => m
         }
       } else

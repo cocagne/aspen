@@ -13,9 +13,19 @@ import java.util.UUID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectType
 
 object CRLCodec {
   import com.ibm.aspen.core.network.NetworkCodec
+  
+  def encodeObjectType(e:ObjectType.Value): Byte = e match {
+    case ObjectType.Data     => C.ObjectType.Data
+    case ObjectType.KeyValue => C.ObjectType.KeyValue
+  }
+  def decodeObjectType(e: Byte): ObjectType.Value = e match {
+    case C.ObjectType.Data     => ObjectType.Data
+    case C.ObjectType.KeyValue => ObjectType.KeyValue
+  }
   
   case class TransactionData( 
       dataStoreId: DataStoreID,
@@ -212,6 +222,7 @@ object CRLCodec {
     C.CRLNewObject.startCRLNewObject(builder)
     C.CRLNewObject.addStorePointer(builder, storePointer)
     C.CRLNewObject.addNewObjectUUID(builder, NetworkCodec.encode(builder, o.newObjectUUID))
+    C.CRLNewObject.addObjectType(builder, encodeObjectType(o.objectType))
     C.CRLNewObject.addObjectSize(builder, o.objectSize.getOrElse(0))
     C.CRLNewObject.addObjectData(builder, objectData)
     C.CRLNewObject.addInitialRefcount(builder, NetworkCodec.encode(builder, o.initialRefcount))
@@ -221,13 +232,14 @@ object CRLCodec {
     
     val storePointer = NetworkCodec.decode(e.storePointer())
     val newObjectUUID = NetworkCodec.decode(e.newObjectUUID())
+    val objectType = decodeObjectType(e.objectType())
     val objectSize = if (e.objectSize() == 0) None else Some(e.objectSize())
     val data = ByteBuffer.allocate(e.objectDataLength())
     data.put(e.objectDataAsByteBuffer().asReadOnlyBuffer())
     data.position(0)
     val initialRefcount = NetworkCodec.decode(e.initialRefcount())
     
-    AllocationRecoveryState.NewObject(storePointer, newObjectUUID, objectSize, DataBuffer(data), initialRefcount)
+    AllocationRecoveryState.NewObject(storePointer, newObjectUUID, objectType, objectSize, DataBuffer(data), initialRefcount)
   }
   
   def encode(builder:FlatBufferBuilder, o:AllocationRecoveryState): Int = {

@@ -20,6 +20,7 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectType
 
 object RocksDBCrashRecoveryLogSuite {
   import TransactionSuite._
@@ -114,7 +115,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val ars = AllocationRecoveryState(
             storeId, 
-            List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            List(AllocationRecoveryState.NewObject(sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
             txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
     
     newCRL()
@@ -186,7 +187,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val ars = AllocationRecoveryState(
             storeId, 
-            List(AllocationRecoveryState.NewObject(sp, uuid1, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            List(AllocationRecoveryState.NewObject(sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
             txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
     
     newCRL()

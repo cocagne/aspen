@@ -5,6 +5,11 @@ namespace com.ibm.aspen.base.impl.codec;
 //---------------------------------------------------------------------------
 //- CRL State 
 //---------------------------------------------------------------------------
+enum ObjectType:byte {
+    Data,
+    KeyValue
+}
+
 table CRLTransactionData {
     dataStoreId: com.ibm.aspen.core.network.protocol.DataStoreID;
     txd: com.ibm.aspen.core.network.protocol.TransactionDescription;
@@ -25,6 +30,7 @@ table CRLTransactionState {
 table CRLNewObject {
     storePointer: com.ibm.aspen.core.network.protocol.StorePointer;
     newObjectUUID: com.ibm.aspen.core.network.protocol.UUID;
+    objectType: ObjectType;
     objectSize: int;
     objectData: [byte];
     initialRefcount: com.ibm.aspen.core.network.protocol.ObjectRefcount;

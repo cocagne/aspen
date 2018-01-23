@@ -24,13 +24,14 @@ sealed abstract class ObjectPointer(
   } else
     None
     
-  protected def pointerType: String
+  def objectType: ObjectType.Value
+    
   protected def addExtraToStringContent(sb: StringBuilder): Unit = {}
     
   override def toString(): String = {
     val sb = new StringBuilder
 
-    sb.append(pointerType)
+    sb.append(objectType.toString)
     sb.append("ObjectPointer(")
     sb.append(uuid.toString)
     sb.append(',')
@@ -58,7 +59,7 @@ class DataObjectPointer(
     ida: IDA,
     storePointers: Array[StorePointer]) extends ObjectPointer(uuid, poolUUID, size, ida, storePointers) {
   
-    override def pointerType: String = "Data"
+  override def objectType: ObjectType.Value = ObjectType.Data
 }
 
 object DataObjectPointer {
@@ -77,7 +78,7 @@ class KeyValueObjectPointer(
     ida: IDA,
     storePointers: Array[StorePointer]) extends ObjectPointer(uuid, poolUUID, size, ida, storePointers) {
   
-    override def pointerType: String = "KeyValue"
+  override def objectType: ObjectType.Value = ObjectType.KeyValue
 }
 
 object KeyValueObjectPointer {

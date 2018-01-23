@@ -4,6 +4,7 @@ import java.util.UUID
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.ObjectType
 
 class MutableObjectLoader(val backend: DataStoreBackend) {
   
@@ -17,8 +18,12 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
       allocationTransactionUUID: UUID,
       storePointer: StorePointer, 
       metadata: ObjectMetadata, 
-      data: DataBuffer): MutableObject = synchronized {
-    val obj = new MutableObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this)
+      data: DataBuffer,
+      objectType: ObjectType.Value): MutableObject = synchronized {
+    val obj = objectType match {
+      case ObjectType.Data => new MutableObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this)
+      case ObjectType.KeyValue => new MutableKeyValueObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this)
+    }
     obj.metadata = metadata
     obj.data = data
     objects += (objectUUID -> obj)
@@ -30,14 +35,17 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
   /** Immediately returns a MutableObject to represent the requested object. 
    * 
    */
-  def load(objectId: StoreObjectID, operation: UUID): MutableObject = synchronized {
+  def load(objectId: StoreObjectID, objectType: ObjectType.Value, operation: UUID): MutableObject = synchronized {
     objects.get(objectId.objectUUID) match {
       case Some(obj) =>
         obj.beginOperation(operation)
         obj
         
       case None =>
-        val obj = new MutableObject(objectId, operation, this)
+        val obj = objectType match {
+          case ObjectType.Data => new MutableObject(objectId, operation, this)
+          case ObjectType.KeyValue => new MutableKeyValueObject(objectId, operation, this)
+        }
         objects += (objectId.objectUUID -> obj)
         obj
     }
