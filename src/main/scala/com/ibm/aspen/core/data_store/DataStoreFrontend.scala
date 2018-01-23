@@ -345,20 +345,17 @@ class DataStoreFrontend(
           
           r match {
             case du: DataUpdate => if ( getRequirementErrors(du).isEmpty ) {
-              dataUpdates.get(r.objectPointer.uuid) match {
-                case None => // Can't commit data we don't have
+              val data = dataUpdates(r.objectPointer.uuid)
                   
-                case Some(data) =>
-                  
-                  du.operation match {
-                    case DataUpdateOperation.Overwrite => cs.obj.data = data
-                    case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
-                  }
-                  cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                  cs.obj.timestamp = timestamp
-                  cs.commitData = true
-                  cs.commitMetadata = true
+              du.operation match {
+                case DataUpdateOperation.Overwrite => cs.obj.data = data
+                case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
               }
+              
+              cs.obj.revision = ObjectRevision(txd.transactionUUID)
+              cs.obj.timestamp = timestamp
+              cs.commitData = true
+              cs.commitMetadata = true
             }
   
             case ru: RefcountUpdate => if ( getRequirementErrors(ru).isEmpty ) {
