@@ -428,7 +428,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
                      
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
