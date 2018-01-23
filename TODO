@@ -1,3 +1,7 @@
+* Break check requirements into separate function that returns an optional error
+   * Lock method uses this to check all requirements
+   * Commit uses this to verify each operation before committing it's changes
+
 ** Switch to KeyValue Update
   - Include Requirements
   - Include Append/Overwrite

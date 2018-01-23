@@ -27,7 +27,19 @@ import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.objects.ObjectType
 import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
+import com.ibm.aspen.core.transaction.TransactionRequirement
 
+object DataStoreFrontend {
+  
+  def appendDataBuffer(src: DataBuffer, append: DataBuffer): DataBuffer = {
+    val buf = ByteBuffer.allocate( src.size + append.size )
+    buf.put(src.asReadOnlyBuffer())
+    buf.put(append.asReadOnlyBuffer())
+    buf.position(0)
+    DataBuffer(buf)
+  }
+  
+}
 
 class DataStoreFrontend(
     val storeId: DataStoreID,
@@ -35,6 +47,8 @@ class DataStoreFrontend(
     transactionRecoveryStates: List[TransactionRecoveryState], 
     allocationRecoveryStates: List[AllocationRecoveryState]
     ) extends DataStore { 
+  
+  import DataStoreFrontend._
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
   
@@ -337,32 +351,20 @@ class DataStoreFrontend(
                 case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
               }
               
-              if (canCommit) {
+              if (cs.obj.revision == du.requiredRevision && canCommit) {
                 dataUpdates.get(r.objectPointer.uuid) match {
                   case None => // Can't commit data we don't have
                     
-                  case Some(data) => du.operation match {
-                    case DataUpdateOperation.Overwrite => 
-                      cs.obj.data = data
-                      cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                      cs.obj.timestamp = timestamp
-                      cs.commitData = true
-                      cs.commitMetadata = true
-                      
-                    case DataUpdateOperation.Append =>
-                      // Can't append if we don't have the correct pre-append object revision
-                      if (cs.obj.revision == du.requiredRevision) {
-                        val buf = ByteBuffer.allocate( cs.obj.data.size + data.size )
-                        buf.put(cs.obj.data.asReadOnlyBuffer())
-                        buf.put(data.asReadOnlyBuffer())
-                        buf.position(0)
-                        cs.obj.data = DataBuffer(buf)
-                        cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                        cs.obj.timestamp = timestamp
-                        cs.commitData = true
-                        cs.commitMetadata = true
-                      }
-                  }
+                  case Some(data) =>
+                    
+                    du.operation match {
+                      case DataUpdateOperation.Overwrite => cs.obj.data = data
+                      case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
+                    }
+                    cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                    cs.obj.timestamp = timestamp
+                    cs.commitData = true
+                    cs.commitMetadata = true
                 }
               }
   
@@ -386,7 +388,7 @@ class DataStoreFrontend(
                 case Some(lockedTxd) => lockedTxd.transactionUUID == txd.transactionUUID && cs.obj.objectRevisionReadLocks.isEmpty
               }
               
-              if (canCommit) {
+              if (cs.obj.revision == vb.requiredRevision && canCommit) {
                 cs.obj.revision = ObjectRevision(txd.transactionUUID)
                 cs.obj.timestamp = timestamp
                 cs.commitMetadata = true
@@ -459,63 +461,60 @@ class DataStoreFrontend(
         obj.completeOperation(txd.transactionUUID)
       }
     }
-      
-    def checkRequirementsAndLock(): List[ObjectTransactionError] = {
+    
+    def checkRequirement(requirement: TransactionRequirement): List[ObjectTransactionError] = {
       var errors = List[ObjectTransactionError]()
-
+      
       def err(e: ObjectTransactionError): Unit = errors = e :: errors
       
       import scala.language.implicitConversions
       
       implicit def mo2ptr(mo: MutableObject): ObjectPointer = txd.allReferencedObjectsSet.find(ptr => ptr.uuid == mo.objectId.objectUUID).get
       
-      requirements foreach { r =>
-        val obj = objects(r.objectPointer.uuid)
+      val obj = objects(requirement.objectPointer.uuid)
+      
+      def collisionCheck(writeLock: Option[TransactionDescription], readLocks: Map[UUID, TransactionDescription]): Unit = {
+        writeLock foreach { lockedTxd =>
+          if (lockedTxd.transactionUUID != txd.transactionUUID) 
+            err(TransactionCollision(obj, lockedTxd))
+        }
         
-        obj.readError match {
-          case Some(readErr) => err(TransactionReadError(obj, readErr))
-          
-          case None => r match {
-            case du: DataUpdate => 
-              obj.objectRevisionWriteLock match {
-                case Some(lockedTxd) => err(TransactionCollision(obj, lockedTxd))
-                case None =>
-              }
+        readLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
+      }
+      
+      obj.readError match {
+        case Some(readErr) => err(TransactionReadError(obj, readErr))
+        
+        case None => requirement match {
+          case du: DataUpdate =>
+            collisionCheck(obj.objectRevisionWriteLock, obj.objectRevisionReadLocks)
+            
+            if (!dataUpdates.contains(obj.objectId.objectUUID))
+              err(MissingUpdateContent(obj))
+            
+            if (obj.revision != du.requiredRevision)
+              err(RevisionMismatch(obj, du.requiredRevision, obj.revision))
+            
               
-              obj.objectRevisionReadLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
+          case ru: RefcountUpdate =>
+            collisionCheck(obj.objectRefcountWriteLock, obj.objectRefcountReadLocks)
+            
+            if (obj.refcount != ru.requiredRefcount) 
+              err(RefcountMismatch(obj, ru.requiredRefcount, obj.refcount))  
               
-              if (!dataUpdates.contains(obj.objectId.objectUUID))
-                err(MissingUpdateContent(obj))
-              
-              if (obj.revision != du.requiredRevision)
-                err(RevisionMismatch(obj, du.requiredRevision, obj.revision))
-              
-                
-            case ru: RefcountUpdate => 
-              if (obj.refcount != ru.requiredRefcount) 
-                err(RefcountMismatch(obj, ru.requiredRefcount, obj.refcount))
-                
-              obj.objectRefcountWriteLock match {
-                case Some(lockedTxd) => err(TransactionCollision(obj, lockedTxd))
-                case None =>
-              }
-                
-              obj.objectRefcountReadLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
-                
-                
-            case vb: VersionBump => 
-              if (obj.revision != vb.requiredRevision)
-                err(RevisionMismatch(obj, vb.requiredRevision, obj.revision))
-                
-              obj.objectRevisionWriteLock match {
-                case Some(lockedTxd) => err(TransactionCollision(obj, lockedTxd))
-                case None =>
-              }
-              
-              obj.objectRevisionReadLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
-          }
+          case vb: VersionBump =>
+            collisionCheck(obj.objectRevisionWriteLock, obj.objectRevisionReadLocks)
+            
+            if (obj.revision != vb.requiredRevision)
+              err(RevisionMismatch(obj, vb.requiredRevision, obj.revision))
         }
       }
+      
+      errors
+    }
+      
+    def checkRequirementsAndLock(): List[ObjectTransactionError] = {
+      val errors = requirements.flatMap( requirement => checkRequirement(requirement) ) 
       
       if (errors.isEmpty)
         lockObjects()
