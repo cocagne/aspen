@@ -167,7 +167,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val op = mkobj
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
     
     val tx = Transaction(crl, messenger, t => (), store, txd, mkLU(op.uuid))
@@ -193,7 +193,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val crl = new NullCRL
     val op = mkobj
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -226,7 +226,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     
     val op = mkobj
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -262,7 +262,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
   test("Vote abort on refcount mismatch") {
     val op = mkobj
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -297,7 +297,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
   test("Vote abort on revision & refcount mismatch") {
     val op = mkobj
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -338,7 +338,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val op = mkobj
     val collidingTxd = mktxd(Nil, Nil)
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -374,7 +374,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val op = mkobj
     val collidingTxd = mktxd(Nil, Nil)
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {
@@ -410,7 +410,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
     val op = mkobj
     val collidingTxd = mktxd(Nil, Nil)
     val txd = mktxd(
-        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite) :: Nil, 
+        DataUpdate(op, NullDataStore.revision, DataUpdateOperation.Overwrite, true) :: Nil, 
         RefcountUpdate(op, NullDataStore.refcount, ObjectRefcount(2,150)) :: Nil)
         
     val store = new NullDataStore(DataStoreID(poolUUID,0)) {

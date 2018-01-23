@@ -74,7 +74,7 @@ class TransactionBuilder(
       throw MultipleDataUpdatesToObject(objectPointer)
     
     objectUpdates += (objectPointer -> data)
-    requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append) :: requirements
+    requirements = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Append, true) :: requirements
     
     ObjectRevision(transactionUUID)
   }
@@ -84,7 +84,7 @@ class TransactionBuilder(
       throw MultipleDataUpdatesToObject(objectPointer)
     
     objectUpdates += (objectPointer -> data)
-    requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite) :: requirements
+    requirements  = DataUpdate(objectPointer, requiredRevision, DataUpdateOperation.Overwrite, true) :: requirements
     
     ObjectRevision(transactionUUID)
   }

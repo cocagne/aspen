@@ -76,7 +76,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   import TransactionDriverSuite._
   
   test("Simple PrepareResponse Handling") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
@@ -111,7 +111,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   }
   
   test("Ignore invalid acceptors") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
@@ -175,7 +175,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val ods0 = DataStoreID(otherPool, 0)
     val ods1 = DataStoreID(otherPool, 1)
     
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite, true) ::Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
@@ -239,7 +239,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     val ods0 = DataStoreID(otherPool, 0)
     val ods1 = DataStoreID(otherPool, 1)
     
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite, true) ::Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
@@ -296,7 +296,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   }
   
   test("Simple AcceptResponse Handling - Abort") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
@@ -326,7 +326,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   }
   
   test("Simple AcceptResponse Handling - Commit") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer(false)
     val messenger = new TMessenger()
@@ -366,7 +366,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
   }
   
   test("Simple AcceptResponse Handling - Ignore invalid acceptor") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite, true) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()

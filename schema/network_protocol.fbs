@@ -87,10 +87,18 @@ enum DataUpdateOperation:byte {
   Overwrite
 }
 
+enum KeyValueTimestampRequirementEnum:byte {
+  Equals,
+  LessThan,
+  Exists,
+  DoesNotExist
+}
+
 table DataUpdate {
   object_pointer: ObjectPointer;
   required_revision: ObjectRevision;
   operation: DataUpdateOperation;
+  update_metadata: bool;
 }
 
 table RefcountUpdate {
@@ -104,10 +112,22 @@ table VersionBump {
   required_revision: ObjectRevision;
 }
 
+table KVReq {
+  tsRequirement: KeyValueTimestampRequirementEnum;
+  key: [byte];
+}
+
+table KeyValueTimestampRequirement {
+  object_pointer: ObjectPointer;
+  requirements: [KVReq];
+  timestamp: long;
+}
+
 table TransactionRequirement {
   data_update: DataUpdate;
   refcount_update: RefcountUpdate;
   version_bump: VersionBump;
+  kv_requirement: KeyValueTimestampRequirement;
 }
 
 table SerializedFinalizationAction {

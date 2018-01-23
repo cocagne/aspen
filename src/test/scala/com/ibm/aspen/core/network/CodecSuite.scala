@@ -40,7 +40,7 @@ object CodecSuite {
     val txuuid = java.util.UUID.randomUUID()
     val startTs = 100
     val leader: Byte = 4
-    val dataUpdates = DataUpdate(op, ObjectRevision(new UUID(0,1)), DataUpdateOperation.Overwrite) :: Nil
+    val dataUpdates = DataUpdate(op, ObjectRevision(new UUID(0,1)), DataUpdateOperation.Overwrite, true) :: Nil
     val refcountUpdates = RefcountUpdate(op, ObjectRefcount(1,150), ObjectRefcount(2,150)) :: Nil
     val finalz = SerializedFinalizationAction(java.util.UUID.randomUUID(), Array[Byte](3,4)) :: Nil
     val client = ClientID(cliUUID)
