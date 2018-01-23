@@ -1,3 +1,9 @@
+** Switch to KeyValue Update
+  - Include Requirements
+  - Include Append/Overwrite
+     - Probably ought to create a new update operation enum. may add new ones in the future
+  - Remove updateMetadata flag from data object updates
+
 
 KeyValueObject Update Transactions
   * Overwrite,Min,Max,Left,Right can be modified with revision requirements

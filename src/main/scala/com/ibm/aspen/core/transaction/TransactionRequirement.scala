@@ -14,8 +14,7 @@ sealed abstract class TransactionRequirement {
 case class DataUpdate(
     objectPointer: ObjectPointer, 
     requiredRevision: ObjectRevision, 
-    operation: DataUpdateOperation.Value,
-    updateMetadata: Boolean) extends TransactionRequirement
+    operation: DataUpdateOperation.Value) extends TransactionRequirement
     
 case class RefcountUpdate(
     objectPointer: ObjectPointer, 
@@ -30,12 +29,18 @@ sealed abstract class KeyValueTransactionRequirement extends TransactionRequirem
     override val objectPointer: KeyValueObjectPointer
 }
     
-case class KeyValueTimestampRequirement(
+case class KeyValueUpdate(
     objectPointer: KeyValueObjectPointer,
-    requirements: List[KeyValueTimestampRequirement.KVReq],
+    updateType: KeyValueUpdate.UpdateType.Value,
+    requirements: List[KeyValueUpdate.KVReq],
     timestamp: HLCTimestamp) extends KeyValueTransactionRequirement
     
-object KeyValueTimestampRequirement {
+object KeyValueUpdate {
+  
+  object UpdateType extends Enumeration {
+    val Overwrite = Value("Overwrite")
+    val Append    = Value("Append")
+  }
   
   object TimestampRequirement extends Enumeration {
     val Equals       = Value("Equals")

@@ -42,7 +42,7 @@ object KeyValueObjectCodec {
       timestamp: HLCTimestamp,
       storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
     try {
-      val ida = storeStates.head.ida
+      val ida = pointer.ida
       val minimum = storeStates.head.minimum
       val maximum = storeStates.head.maximum
       

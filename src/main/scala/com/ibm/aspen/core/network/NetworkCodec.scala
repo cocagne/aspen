@@ -16,6 +16,7 @@ import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.UpdateError
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.core.transaction.DataUpdate
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.SerializedFinalizationAction
 import com.ibm.aspen.core.transaction.TransactionDescription
@@ -56,7 +57,6 @@ import com.ibm.aspen.core.data_store.RevisionWriteLock
 import com.ibm.aspen.core.data_store.RevisionReadLock
 import com.ibm.aspen.core.data_store.RefcountReadLock
 import com.ibm.aspen.core.data_store.RefcountWriteLock
-import com.ibm.aspen.core.transaction.KeyValueTimestampRequirement
 import com.ibm.aspen.core.objects.keyvalue.Key
 
 
@@ -243,17 +243,7 @@ object NetworkCodec {
     case P.TransactionStatus.Aborted    => TransactionStatus.Aborted
   }
   
-  
-  def encodeUpdateType(e:UpdateType.Value): Byte = e match {
-    case UpdateType.Data     => P.UpdateType.Data
-    case UpdateType.Refcount => P.UpdateType.Refcount
-  }
-  def decodeUpdateType(e: Byte): UpdateType.Value = e match {
-    case P.UpdateType.Data     => UpdateType.Data
-    case P.UpdateType.Refcount => UpdateType.Refcount
-  }
-  
-  
+
   def encodeTransactionDisposition(e:TransactionDisposition.Value): Byte = e match {
     case TransactionDisposition.Undetermined => P.TransactionDisposition.Undetermined
     case TransactionDisposition.VoteCommit   => P.TransactionDisposition.VoteCommit
@@ -296,17 +286,26 @@ object NetworkCodec {
   }
   
   
-  def encodeKeyValueTimestampRequirementEnum(e:KeyValueTimestampRequirement.TimestampRequirement.Value): Byte = e match {
-    case KeyValueTimestampRequirement.TimestampRequirement.Equals       => P.KeyValueTimestampRequirementEnum.Equals
-    case KeyValueTimestampRequirement.TimestampRequirement.LessThan     => P.KeyValueTimestampRequirementEnum.LessThan
-    case KeyValueTimestampRequirement.TimestampRequirement.Exists       => P.KeyValueTimestampRequirementEnum.Exists
-    case KeyValueTimestampRequirement.TimestampRequirement.DoesNotExist => P.KeyValueTimestampRequirementEnum.DoesNotExist
+  def encodeKeyValueUpdateType(e:KeyValueUpdate.UpdateType.Value): Byte = e match {
+    case KeyValueUpdate.UpdateType.Append    => P.KeyValueUpdateType.Append
+    case KeyValueUpdate.UpdateType.Overwrite => P.KeyValueUpdateType.Overwrite
   }
-  def decodeKeyValueTimestampRequirementEnum(e: Byte): KeyValueTimestampRequirement.TimestampRequirement.Value = e match {
-    case P.KeyValueTimestampRequirementEnum.Equals       => KeyValueTimestampRequirement.TimestampRequirement.Equals
-    case P.KeyValueTimestampRequirementEnum.LessThan     => KeyValueTimestampRequirement.TimestampRequirement.LessThan
-    case P.KeyValueTimestampRequirementEnum.Exists       => KeyValueTimestampRequirement.TimestampRequirement.Exists
-    case P.KeyValueTimestampRequirementEnum.DoesNotExist => KeyValueTimestampRequirement.TimestampRequirement.DoesNotExist
+  def decodeKeyValueUpdateType(e: Byte): KeyValueUpdate.UpdateType.Value = e match {
+    case P.KeyValueUpdateType.Append     => KeyValueUpdate.UpdateType.Append
+    case P.KeyValueUpdateType.Overwrite  => KeyValueUpdate.UpdateType.Overwrite
+  }
+  
+  def encodeKeyValueTimestampRequirementEnum(e:KeyValueUpdate.TimestampRequirement.Value): Byte = e match {
+    case KeyValueUpdate.TimestampRequirement.Equals       => P.KeyValueTimestampRequirementEnum.Equals
+    case KeyValueUpdate.TimestampRequirement.LessThan     => P.KeyValueTimestampRequirementEnum.LessThan
+    case KeyValueUpdate.TimestampRequirement.Exists       => P.KeyValueTimestampRequirementEnum.Exists
+    case KeyValueUpdate.TimestampRequirement.DoesNotExist => P.KeyValueTimestampRequirementEnum.DoesNotExist
+  }
+  def decodeKeyValueTimestampRequirementEnum(e: Byte): KeyValueUpdate.TimestampRequirement.Value = e match {
+    case P.KeyValueTimestampRequirementEnum.Equals       => KeyValueUpdate.TimestampRequirement.Equals
+    case P.KeyValueTimestampRequirementEnum.LessThan     => KeyValueUpdate.TimestampRequirement.LessThan
+    case P.KeyValueTimestampRequirementEnum.Exists       => KeyValueUpdate.TimestampRequirement.Exists
+    case P.KeyValueTimestampRequirementEnum.DoesNotExist => KeyValueUpdate.TimestampRequirement.DoesNotExist
   }
   
   
@@ -318,16 +317,14 @@ object NetworkCodec {
     P.DataUpdate.addObjectPointer(builder,optr)
     P.DataUpdate.addRequiredRevision(builder, encodeObjectRevision(builder, o.requiredRevision))
     P.DataUpdate.addOperation(builder, op)
-    P.DataUpdate.addUpdateMetadata(builder, o.updateMetadata)
     P.DataUpdate.endDataUpdate(builder)
   }
   def decode(n: P.DataUpdate): DataUpdate = {
     val optr =  decode(n.objectPointer())
     val rrev = decode(n.requiredRevision())
     val op = decodeDataUpdateOperation(n.operation())
-    val umd = n.updateMetadata()
     
-    DataUpdate(optr, rrev, op, umd)
+    DataUpdate(optr, rrev, op)
   }
   
   
@@ -365,41 +362,43 @@ object NetworkCodec {
   }
   
   
-  def encode(builder:FlatBufferBuilder, o:KeyValueTimestampRequirement.KVReq): Int = {
+  def encode(builder:FlatBufferBuilder, o:KeyValueUpdate.KVReq): Int = {
     val key = P.KVReq.createKeyVector(builder, o.key.bytes)
     P.KVReq.startKVReq(builder)
     P.KVReq.addTsRequirement(builder, encodeKeyValueTimestampRequirementEnum(o.tsRequirement))
     P.KVReq.addKey(builder, key)
     P.KVReq.endKVReq(builder)
   }
-  def decode(n: P.KVReq): KeyValueTimestampRequirement.KVReq = {
+  def decode(n: P.KVReq): KeyValueUpdate.KVReq = {
     val tsRequirement =  decodeKeyValueTimestampRequirementEnum(n.tsRequirement())
     val key = new Array[Byte](n.keyLength())
     n.keyAsByteBuffer().get(key)
-    KeyValueTimestampRequirement.KVReq(Key(key), tsRequirement)
+    KeyValueUpdate.KVReq(Key(key), tsRequirement)
   }
   
   
-  def encode(builder:FlatBufferBuilder, o:KeyValueTimestampRequirement): Int = {
+  def encode(builder:FlatBufferBuilder, o:KeyValueUpdate): Int = {
     val objectPointer = encode(builder, o.objectPointer)
-    val requirements = P.KeyValueTimestampRequirement.createRequirementsVector(builder, o.requirements.map(r => encode(builder, r)).toArray)
+    val requirements = P.KeyValueUpdate.createRequirementsVector(builder, o.requirements.map(r => encode(builder, r)).toArray)
     
-    P.KeyValueTimestampRequirement.startKeyValueTimestampRequirement(builder)
-    P.KeyValueTimestampRequirement.addObjectPointer(builder, objectPointer)
-    P.KeyValueTimestampRequirement.addRequirements(builder, requirements)
-    P.KeyValueTimestampRequirement.addTimestamp(builder, o.timestamp.asLong)
-    P.KeyValueTimestampRequirement.endKeyValueTimestampRequirement(builder)
+    P.KeyValueUpdate.startKeyValueUpdate(builder)
+    P.KeyValueUpdate.addObjectPointer(builder, objectPointer)
+    P.KeyValueUpdate.addUpdateType(builder, encodeKeyValueUpdateType(o.updateType))
+    P.KeyValueUpdate.addRequirements(builder, requirements)
+    P.KeyValueUpdate.addTimestamp(builder, o.timestamp.asLong)
+    P.KeyValueUpdate.endKeyValueUpdate(builder)
   }
-  def decode(n: P.KeyValueTimestampRequirement): KeyValueTimestampRequirement = {
+  def decode(n: P.KeyValueUpdate): KeyValueUpdate = {
     val timestamp = HLCTimestamp(n.timestamp())
     val objectPointer = decode(n.objectPointer())
+    val updateType = decodeKeyValueUpdateType(n.updateType())
     
-    def requirements(idx: Int, l:List[KeyValueTimestampRequirement.KVReq]): List[KeyValueTimestampRequirement.KVReq] = if (idx == -1)
+    def requirements(idx: Int, l:List[KeyValueUpdate.KVReq]): List[KeyValueUpdate.KVReq] = if (idx == -1)
         l
       else
         requirements(idx-1, decode(n.requirements(idx)) :: l)
         
-    KeyValueTimestampRequirement(objectPointer.asInstanceOf[KeyValueObjectPointer], requirements(n.requirementsLength()-1, Nil), timestamp)
+    KeyValueUpdate(objectPointer.asInstanceOf[KeyValueObjectPointer], updateType, requirements(n.requirementsLength()-1, Nil), timestamp)
   }
   
   
@@ -408,7 +407,7 @@ object NetworkCodec {
       case du: DataUpdate => encode(builder, du)
       case ru: RefcountUpdate => encode(builder, ru)
       case vb: VersionBump => encode(builder, vb)
-      case kv: KeyValueTimestampRequirement => encode(builder, kv)
+      case kv: KeyValueUpdate => encode(builder, kv)
     }
     
     P.TransactionRequirement.startTransactionRequirement(builder)
@@ -416,7 +415,7 @@ object NetworkCodec {
       case _: DataUpdate => P.TransactionRequirement.addDataUpdate(builder, offset)
       case _: RefcountUpdate => P.TransactionRequirement.addRefcountUpdate(builder, offset)
       case _: VersionBump => P.TransactionRequirement.addVersionBump(builder, offset)
-      case _: KeyValueTimestampRequirement => P.TransactionRequirement.addKvRequirement(builder, offset)
+      case _: KeyValueUpdate => P.TransactionRequirement.addKvUpdate(builder, offset)
     }
     P.TransactionRequirement.endTransactionRequirement(builder)
   }
@@ -427,8 +426,8 @@ object NetworkCodec {
       decode(n.refcountUpdate())
     else if (n.versionBump() != null)
       decode(n.versionBump())
-    else if (n.kvRequirement() != null)
-      decode(n.kvRequirement())
+    else if (n.kvUpdate() != null)
+      decode(n.kvUpdate())
     else
       throw new EncodingError("Unknown Transaction Requirement")
   }

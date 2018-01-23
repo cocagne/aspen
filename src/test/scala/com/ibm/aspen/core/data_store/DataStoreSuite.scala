@@ -103,7 +103,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -116,7 +116,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op2 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op2, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op2, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -132,7 +132,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val badUUID = new UUID(99,99)
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(badUUID, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
                     
@@ -192,7 +192,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -206,7 +206,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                   
     val err1 = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -218,7 +218,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     // Ensure new Tx can lock against unmodified objects
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil, tx2UUID)
                     
     val err2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -235,7 +235,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
               
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -255,7 +255,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
@@ -278,7 +278,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val tx2UUID = new UUID(99,99)
     
     
-    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -290,7 +290,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -300,7 +300,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op3 = mkObjPtr(uuid2, StorePointer(storeId.poolIndex, List[Byte](1,2,3,4).toArray))
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op3, oneRef, oneRef) :: Nil, tx2UUID)
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -316,7 +316,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val badRev = ObjectRevision(new UUID(0,3))
     val badRef = ObjectRefcount(5,6)
     
-    val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, badRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, badRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, badRef, oneRef) :: Nil)
          
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -342,7 +342,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -350,7 +350,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -364,7 +364,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
@@ -383,7 +383,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val tx2UUID = new UUID(99,99)
     
     
-    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, newRev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
@@ -399,8 +399,8 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val op1 = mkObjPtr(uuid1, sp1)
     val bad = mkObjPtr(new UUID(9,9), StorePointer(storeId.poolIndex, new Array[Byte](0)))
     
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: 
-                    DataUpdate(bad, irev, DataUpdateOperation.Overwrite, true) ::  
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: 
+                    DataUpdate(bad, irev, DataUpdateOperation.Overwrite) ::  
                     RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
@@ -424,11 +424,11 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil)
                      
     val tx2UUID = new UUID(99,99)
     
-    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, newRef, newRef) :: Nil, tx2UUID)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
@@ -457,7 +457,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
 
@@ -478,7 +478,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Append, true) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Append) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
@@ -525,7 +525,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
-    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite, true) :: VersionBump(op1, irev) :: Nil)
+    val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: VersionBump(op1, irev) :: Nil)
               
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -536,7 +536,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
     checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
     
-    val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite, true) :: Nil, new UUID(99,99))
+    val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
     
     val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
     

@@ -60,11 +60,6 @@ enum TransactionStatus:byte {
     Aborted 
 }
 
-enum UpdateType:byte {
-    Data,
-    Refcount
-}
-
 enum TransactionDisposition:byte {
     Undetermined,
     VoteCommit,
@@ -87,6 +82,11 @@ enum DataUpdateOperation:byte {
   Overwrite
 }
 
+enum KeyValueUpdateType:byte {
+  Overwrite,
+  Append
+}
+
 enum KeyValueTimestampRequirementEnum:byte {
   Equals,
   LessThan,
@@ -98,7 +98,6 @@ table DataUpdate {
   object_pointer: ObjectPointer;
   required_revision: ObjectRevision;
   operation: DataUpdateOperation;
-  update_metadata: bool;
 }
 
 table RefcountUpdate {
@@ -117,8 +116,9 @@ table KVReq {
   key: [byte];
 }
 
-table KeyValueTimestampRequirement {
+table KeyValueUpdate {
   object_pointer: ObjectPointer;
+  update_type: KeyValueUpdateType;
   requirements: [KVReq];
   timestamp: long;
 }
@@ -127,7 +127,7 @@ table TransactionRequirement {
   data_update: DataUpdate;
   refcount_update: RefcountUpdate;
   version_bump: VersionBump;
-  kv_requirement: KeyValueTimestampRequirement;
+  kv_update: KeyValueUpdate;
 }
 
 table SerializedFinalizationAction {

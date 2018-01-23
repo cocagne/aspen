@@ -7,7 +7,6 @@ import com.ibm.aspen.util.Varint
 /** Represents the decoded object state from a single DataStore.
  */
 class KeyValueObjectStoreState(
-    val ida: IDA,
     val idaEncodingIndex: Byte,
     val minimum: Option[Array[Byte]],
     val maximum: Option[Array[Byte]],
@@ -17,7 +16,7 @@ class KeyValueObjectStoreState(
     
 object KeyValueObjectStoreState {
   
-  def apply(ida: IDA, idaEncodingIndex: Byte, db: DataBuffer): KeyValueObjectStoreState = {
+  def apply(idaEncodingIndex: Byte, db: DataBuffer): KeyValueObjectStoreState = {
     try {
       var minimum: Option[Array[Byte]] = None
       var maximum: Option[Array[Byte]] = None
@@ -49,9 +48,31 @@ object KeyValueObjectStoreState {
         
       }
       
-      new KeyValueObjectStoreState(ida, idaEncodingIndex, minimum, maximum, left, right, contents)
+      new KeyValueObjectStoreState(idaEncodingIndex, minimum, maximum, left, right, contents)
     } catch {
       case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }
+  }
+  
+  def decodeUpdates(db: DataBuffer): List[KeyValueOperation] = {
+    
+    var ops = List[KeyValueOperation]()
+    
+    val bb = db.asReadOnlyBuffer()
+      
+    while (bb.remaining() > 0) {
+      bb.getLong() // Update UUID mostSignificantBits
+      bb.getLong() // Update UUID leastSignificantBits
+      
+      val updateSize = Varint.getUnsignedInt(bb)
+      
+      val updateEndPosition = bb.position + updateSize
+        
+      while (bb.position != updateEndPosition) {
+        ops = KeyValueOperation.decode(bb) :: ops
+      }
+    }
+    
+    ops
   }
 }

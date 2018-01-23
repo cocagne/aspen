@@ -186,7 +186,7 @@ class BaseReadDriver(
   private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     // Decode to KeyValueObjectStoreState
     val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
-      KeyValueObjectStoreState(objectPointer.ida, ss.storeId.poolIndex, ss.objectData.get) :: l 
+      KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
     }
     
     val (revision, refcount, timestamp, locks) = getMetadata

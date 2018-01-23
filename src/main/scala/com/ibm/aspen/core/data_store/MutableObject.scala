@@ -26,7 +26,7 @@ object MutableObject {
  *  Instances of this class are maintained in memory until the set of operations referencing the object drops
  *  to zero or a read error is encountered.
  */
-class MutableObject(val objectId: StoreObjectID, initialOperation: UUID, loader: MutableObjectLoader) {
+abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID, loader: MutableObjectLoader) {
   
   import MutableObject._
   
