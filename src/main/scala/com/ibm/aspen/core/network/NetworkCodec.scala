@@ -257,22 +257,28 @@ object NetworkCodec {
   
   
   def encodeUpdateError(e:UpdateError.Value): Byte = e match {
-    case UpdateError.MissingUpdateData   => P.UpdateError.MissingUpdateData
-    case UpdateError.ObjectMismatch      => P.UpdateError.ObjectMismatch
-    case UpdateError.InvalidLocalPointer => P.UpdateError.InvalidLocalPointer
-    case UpdateError.RevisionMismatch    => P.UpdateError.RevisionMismatch
-    case UpdateError.RefcountMismatch    => P.UpdateError.RefcountMismatch
-    case UpdateError.Collision           => P.UpdateError.Collision
-    case UpdateError.CorruptedObject     => P.UpdateError.CorruptedObject
+    case UpdateError.MissingUpdateData        => P.UpdateError.MissingUpdateData
+    case UpdateError.ObjectMismatch           => P.UpdateError.ObjectMismatch
+    case UpdateError.InvalidLocalPointer      => P.UpdateError.InvalidLocalPointer
+    case UpdateError.RevisionMismatch         => P.UpdateError.RevisionMismatch
+    case UpdateError.RefcountMismatch         => P.UpdateError.RefcountMismatch
+    case UpdateError.Collision                => P.UpdateError.Collision
+    case UpdateError.CorruptedObject          => P.UpdateError.CorruptedObject
+    case UpdateError.InsufficientFreeSpace    => P.UpdateError.InsufficientFreeSpace
+    case UpdateError.InvalidObjectType        => P.UpdateError.InvalidObjectType
+    case UpdateError.KeyValueRequirementError => P.UpdateError.KeyValueRequirementError
   }
   def decodeUpdateErrore(e: Byte): UpdateError.Value = e match {
-    case P.UpdateError.MissingUpdateData   => UpdateError.MissingUpdateData
-    case P.UpdateError.ObjectMismatch      => UpdateError.ObjectMismatch
-    case P.UpdateError.InvalidLocalPointer => UpdateError.InvalidLocalPointer
-    case P.UpdateError.RevisionMismatch    => UpdateError.RevisionMismatch
-    case P.UpdateError.RefcountMismatch    => UpdateError.RefcountMismatch
-    case P.UpdateError.Collision           => UpdateError.Collision
-    case P.UpdateError.CorruptedObject     => UpdateError.CorruptedObject
+    case P.UpdateError.MissingUpdateData        => UpdateError.MissingUpdateData
+    case P.UpdateError.ObjectMismatch           => UpdateError.ObjectMismatch
+    case P.UpdateError.InvalidLocalPointer      => UpdateError.InvalidLocalPointer
+    case P.UpdateError.RevisionMismatch         => UpdateError.RevisionMismatch
+    case P.UpdateError.RefcountMismatch         => UpdateError.RefcountMismatch
+    case P.UpdateError.Collision                => UpdateError.Collision
+    case P.UpdateError.CorruptedObject          => UpdateError.CorruptedObject
+    case P.UpdateError.InsufficientFreeSpace    => UpdateError.InsufficientFreeSpace
+    case P.UpdateError.InvalidObjectType        => UpdateError.InvalidObjectType
+    case P.UpdateError.KeyValueRequirementError => UpdateError.KeyValueRequirementError
   }
   
   
@@ -366,14 +372,16 @@ object NetworkCodec {
     val key = P.KVReq.createKeyVector(builder, o.key.bytes)
     P.KVReq.startKVReq(builder)
     P.KVReq.addTsRequirement(builder, encodeKeyValueTimestampRequirementEnum(o.tsRequirement))
+    P.KVReq.addTimestamp(builder, o.timestamp.asLong)
     P.KVReq.addKey(builder, key)
     P.KVReq.endKVReq(builder)
   }
   def decode(n: P.KVReq): KeyValueUpdate.KVReq = {
     val tsRequirement =  decodeKeyValueTimestampRequirementEnum(n.tsRequirement())
     val key = new Array[Byte](n.keyLength())
+    val timestamp = HLCTimestamp(n.timestamp())
     n.keyAsByteBuffer().get(key)
-    KeyValueUpdate.KVReq(Key(key), tsRequirement)
+    KeyValueUpdate.KVReq(Key(key), timestamp, tsRequirement)
   }
   
   
@@ -384,6 +392,7 @@ object NetworkCodec {
     P.KeyValueUpdate.startKeyValueUpdate(builder)
     P.KeyValueUpdate.addObjectPointer(builder, objectPointer)
     P.KeyValueUpdate.addUpdateType(builder, encodeKeyValueUpdateType(o.updateType))
+    o.requiredRevision.foreach { rr => P.KeyValueUpdate.addRequiredRevision(builder, encodeObjectRevision(builder, rr)) } 
     P.KeyValueUpdate.addRequirements(builder, requirements)
     P.KeyValueUpdate.addTimestamp(builder, o.timestamp.asLong)
     P.KeyValueUpdate.endKeyValueUpdate(builder)
@@ -392,13 +401,14 @@ object NetworkCodec {
     val timestamp = HLCTimestamp(n.timestamp())
     val objectPointer = decode(n.objectPointer())
     val updateType = decodeKeyValueUpdateType(n.updateType())
+    val requiredRevision = if (n.requiredRevision() == null) None else Some(decode(n.requiredRevision()))
     
     def requirements(idx: Int, l:List[KeyValueUpdate.KVReq]): List[KeyValueUpdate.KVReq] = if (idx == -1)
         l
       else
         requirements(idx-1, decode(n.requirements(idx)) :: l)
         
-    KeyValueUpdate(objectPointer.asInstanceOf[KeyValueObjectPointer], updateType, requirements(n.requirementsLength()-1, Nil), timestamp)
+    KeyValueUpdate(objectPointer.asInstanceOf[KeyValueObjectPointer], updateType, requiredRevision, requirements(n.requirementsLength()-1, Nil), timestamp)
   }
   
   

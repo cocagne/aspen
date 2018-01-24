@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.Delete
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 
 class MutableKeyValueObject(
@@ -25,7 +26,22 @@ class MutableKeyValueObject(
   var idaEncodedLeft: Option[Array[Byte]] = None
   var idaEncodedRight: Option[Array[Byte]] = None
   var idaEncodedContents: Map[Key, Value] = Map()
-  
+  var keyRevisionReadLocks: Map[Key, Map[UUID,TransactionDescription]] = Map()
+  var keyRevisionWriteLocks: Map[Key, TransactionDescription] = Map()
+
+  override def getTransactionPreventingRevisionWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
+    super.getTransactionPreventingRevisionWriteLock(ignoreTxd) match {
+      case Some(txd) => Some(txd)
+      case None => if (keyRevisionWriteLocks.isEmpty) {
+        if (keyRevisionReadLocks.isEmpty)
+          None
+        else
+          Some(keyRevisionReadLocks.head._2.head._2)
+      } else
+        Some(keyRevisionWriteLocks.head._2)
+    }
+  }
+
   /** This MUST be called before using any of the variables defined in this class */
   def parseKeyValueContent(): Unit = {
     assert(dataLoaded)

@@ -22,6 +22,10 @@ class MemoryOnlyDataStoreBackend(
   
   override def close(): Future[Unit] = Future.successful(())
   
+  override def haveFreeSpaceForOverwrite(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean = true
+  
+  override def haveFreeSpaceForAppend(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean = true
+  
   override def allocateObject(objectUUID: UUID, metadata: ObjectMetadata, data: DataBuffer): Future[Either[AllocationErrors.Value, Array[Byte]]] = {
     val o = new Obj(metadata, data)
     objects += (objectUUID -> o)

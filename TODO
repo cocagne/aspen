@@ -1,32 +1,8 @@
-* Break check requirements into separate function that returns an optional error
-   * Lock method uses this to check all requirements
-   * Commit uses this to verify each operation before committing it's changes
-
-** Switch to KeyValue Update
-  - Include Requirements
-  - Include Append/Overwrite
-     - Probably ought to create a new update operation enum. may add new ones in the future
-  - Remove updateMetadata flag from data object updates
-
-
-KeyValueObject Update Transactions
-  * Overwrite,Min,Max,Left,Right can be modified with revision requirements
-     - Revision lock is mutually exclusive with empty Key/Val lock map
-     - Still need the Overwrite/Append ops to actually accomplish the overwrite/append
-        - Optional parameter for "change metadata"?
-        - Default to true but turn off for key/val mods only?
-  * Insert/Delete
-     - Optional KeyTimestampRequirement
-        - EqualsTimestampRequirement
-        - LessThanTimestampRequirement
-
 Use separate KeyValueTransactionSuite
+  - Ensure key-val locks block revision changes
+  - Ensure non-conflicting updates
 
 ** Add Transaction methods for KeyValue object operations & transaction requirements
-
-Non-Revision-checked updates to non-conflicting Key-Value pairs.
-* We'll "ReadLock" the object to ensure the revision doesn't change. We just wont check the revision
-* After the update the revision then remains untouched 
 
 * Implement new KeyValueLinkedList & KeyValueTree in base.keyvalue
 

@@ -74,7 +74,10 @@ enum UpdateError:byte
     RevisionMismatch,
     RefcountMismatch,
     Collision,
-    CorruptedObject
+    CorruptedObject,
+    InsufficientFreeSpace,
+    InvalidObjectType,
+    KeyValueRequirementError
 }
 
 enum DataUpdateOperation:byte {
@@ -113,12 +116,14 @@ table VersionBump {
 
 table KVReq {
   tsRequirement: KeyValueTimestampRequirementEnum;
+  timestamp: long;
   key: [byte];
 }
 
 table KeyValueUpdate {
   object_pointer: ObjectPointer;
   update_type: KeyValueUpdateType;
+  required_revision: ObjectRevision;
   requirements: [KVReq];
   timestamp: long;
 }

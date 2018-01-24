@@ -27,6 +27,9 @@ import com.ibm.aspen.core.data_store.ObjectTransactionError
 import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.TransactionCollision
 import com.ibm.aspen.core.data_store.MissingUpdateContent
+import com.ibm.aspen.core.data_store.InsufficientFreeSpace
+import com.ibm.aspen.core.data_store.InvalidObjectType
+import com.ibm.aspen.core.data_store.KeyValueRequirementError
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -245,14 +248,17 @@ object Transaction {
   
   def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
     case e: TransactionReadError => e.kind match {
-      case r: InvalidLocalPointer => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
-      case r: ObjectMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
-      case r: CorruptedObject     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
-    }
-    case e: RevisionMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
-    case e: RefcountMismatch      => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
-    case e: TransactionCollision  => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, Some(e.lockedTransaction))
-    case e: MissingUpdateContent  => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.MissingUpdateData, None, None, None)
+      case r: InvalidLocalPointer    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
+      case r: ObjectMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
+      case r: CorruptedObject        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
+    }                                
+    case e: RevisionMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
+    case e: RefcountMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
+    case e: TransactionCollision     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, Some(e.lockedTransaction))
+    case e: MissingUpdateContent     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.MissingUpdateData, None, None, None)
+    case e: InsufficientFreeSpace    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InsufficientFreeSpace, None, None, None)
+    case e: InvalidObjectType        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidObjectType, None, None, None)
+    case e: KeyValueRequirementError => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.KeyValueRequirementError, None, None, None)
   }
   
 }

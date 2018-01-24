@@ -32,6 +32,7 @@ sealed abstract class KeyValueTransactionRequirement extends TransactionRequirem
 case class KeyValueUpdate(
     objectPointer: KeyValueObjectPointer,
     updateType: KeyValueUpdate.UpdateType.Value,
+    requiredRevision: Option[ObjectRevision],
     requirements: List[KeyValueUpdate.KVReq],
     timestamp: HLCTimestamp) extends KeyValueTransactionRequirement
     
@@ -49,5 +50,5 @@ object KeyValueUpdate {
     val DoesNotExist = Value("DoesNotExist")
   }
   
-  case class KVReq(key: Key, tsRequirement: TimestampRequirement.Value)
+  case class KVReq(key: Key, timestamp: HLCTimestamp, tsRequirement: TimestampRequirement.Value)
 }

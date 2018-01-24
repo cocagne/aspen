@@ -40,8 +40,6 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
   var objectRevisionWriteLock: Option[TransactionDescription] = None
   var objectRefcountReadLocks: Map[UUID, TransactionDescription] = Map()
   var objectRefcountWriteLock: Option[TransactionDescription] = None
-  var keyRevisionReadLocks: Map[UUID, TransactionDescription] = Map()
-  var keyRevisionWriteLock: Map[Key, TransactionDescription] = Map()
   var pendingOperations: Set[UUID] = Set(initialOperation)
   
   private[this] var err: Option[ObjectReadError] = None
@@ -80,6 +78,30 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
   }
   
   def readError: Option[ObjectReadError] = err
+  
+  def getTransactionPreventingRevisionWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
+    val o = objectRevisionWriteLock match {
+      case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
+      case None => None
+    } 
+    
+    o match {
+      case Some(txd) => Some(txd)
+      case None => if (objectRevisionReadLocks.isEmpty) None else Some(objectRevisionReadLocks.head._2)
+    }
+  }
+  
+  def getTransactionPreventingRefcountWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
+    val o = objectRefcountWriteLock match {
+      case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
+      case None => None
+    }
+    
+    o match {
+      case Some(txd) => Some(txd)
+      case None => if (objectRefcountReadLocks.isEmpty) None else Some(objectRefcountReadLocks.head._2)
+    }
+  }
   
   def locks: List[Lock] = {
     var ll: List[Lock] = Nil

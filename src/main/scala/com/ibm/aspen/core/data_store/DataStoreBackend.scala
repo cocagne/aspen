@@ -24,6 +24,10 @@ trait DataStoreBackend {
    */
   def close(): Future[Unit]
   
+  def haveFreeSpaceForOverwrite(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean
+  
+  def haveFreeSpaceForAppend(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean
+  
   /** Allocates an object on the store. When the future returns, the data does not need to have been written to the store.
    *  The returned array will go in to the StorePointer of the resulting ObjectPointer and is provided for all future
    *  gets and puts via the objectId.storePointer.data array.

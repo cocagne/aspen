@@ -28,6 +28,9 @@ import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.objects.ObjectType
 import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
 import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 
 object DataStoreFrontend {
   
@@ -329,23 +332,22 @@ class DataStoreFrontend(
           cs
       }
       
-      requirements.foreach { r =>
-        val cs = getCommitState(r.objectPointer.uuid)
+      requirements.foreach { requirement =>
+        val cs = getCommitState(requirement.objectPointer.uuid)
        
         // It's possible we've been asked to commit a transaction that references objects we don't have (missed the
         // creation transaction). We can safely ignore these objects and allow the repair process to clean up what
         // we miss
         if (!cs.obj.readError.isDefined) {
         
-          // In order to commit each update, we must ensure that the relevant attributes are either locked
-          // to this transaction or that no locks for that attribute are currently held. Otherwise we may break 
-          // the contract we committed to for another concurrent transaction. The transaction leader will see that 
-          // we did not vote for the commit of this transaction and will schedule a repair operation to correct
-          // anything we miss updating.
+          // Before committing the updates associated with each transaction requirement, we must first ensure
+          // that the requirement is met. We may be committing a transaction that we didn't vote to commit due
+          // to a problem with one or more of the requirements. Commit the ones that match and skip those that
+          // do not. 
           
-          r match {
+          requirement match {
             case du: DataUpdate => if ( getRequirementErrors(du).isEmpty ) {
-              val data = dataUpdates(r.objectPointer.uuid)
+              val data = dataUpdates(requirement.objectPointer.uuid)
                   
               du.operation match {
                 case DataUpdateOperation.Overwrite => cs.obj.data = data
@@ -370,6 +372,28 @@ class DataStoreFrontend(
               cs.obj.revision = ObjectRevision(txd.transactionUUID)
               cs.obj.timestamp = timestamp
               cs.commitMetadata = true
+            }
+            
+            case kv: KeyValueUpdate => if ( getRequirementErrors(kv).isEmpty ) {
+              val kvobj = cs.obj.asInstanceOf[MutableKeyValueObject]
+              val data = dataUpdates(requirement.objectPointer.uuid)
+              cs.commitData = true
+              
+              kv.requiredRevision.foreach { _ =>
+                cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                cs.obj.timestamp = timestamp
+                cs.commitMetadata = true 
+              }
+              
+              kv.updateType match {
+                case KeyValueUpdate.UpdateType.Overwrite => 
+                  cs.obj.data = data
+                  kvobj.dropKeyValueContent() // Object content will need to be parsed from the new data
+                  
+                case KeyValueUpdate.UpdateType.Append    => 
+                  cs.obj.data = appendDataBuffer(cs.obj.data, data)
+                  kvobj.updateKeyValueContent(data) // Updates the already-parsed data (if it's been parsed) with the new values
+              }
             }
           }
         }
@@ -406,6 +430,18 @@ class DataStoreFrontend(
           case du: DataUpdate     => obj.objectRevisionWriteLock = Some(txd)
           case ru: RefcountUpdate => obj.objectRefcountWriteLock = Some(txd)
           case vb: VersionBump    => obj.objectRevisionWriteLock = Some(txd)
+          case kv: KeyValueUpdate =>
+            val kvobj = obj.asInstanceOf[MutableKeyValueObject]
+            
+            kv.requiredRevision match {
+              // If we're locking the revision, there's no need to lock each key separately
+              case Some(_) => obj.objectRevisionWriteLock = Some(txd)
+              
+              case None =>
+                kv.requirements.foreach { req => 
+                  kvobj.keyRevisionWriteLocks += (req.key -> txd)
+                }    
+            }
         }
       }
     }
@@ -419,18 +455,23 @@ class DataStoreFrontend(
           val obj = objects(r.objectPointer.uuid)
           
           r match {
-            case du: DataUpdate     => obj.objectRevisionWriteLock foreach { lockedTx =>
-              if (lockedTx.transactionUUID == txd.transactionUUID)
-                obj.objectRevisionWriteLock = None
-            }
-            case ru: RefcountUpdate => obj.objectRefcountWriteLock foreach { lockedTx =>
-              if (lockedTx.transactionUUID == txd.transactionUUID)
-                obj.objectRefcountWriteLock = None
-            }
-            case vb: VersionBump    => obj.objectRevisionWriteLock foreach { lockedTx =>
-              if (lockedTx.transactionUUID == txd.transactionUUID)
-                obj.objectRevisionWriteLock = None
-            }
+            case du: DataUpdate     => obj.objectRevisionWriteLock = None
+            
+            case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
+            
+            case vb: VersionBump    => obj.objectRevisionWriteLock = None
+            
+            case kv: KeyValueUpdate =>
+              val kvobj = obj.asInstanceOf[MutableKeyValueObject]
+              
+              kv.requiredRevision match { 
+                case Some(_) => obj.objectRevisionWriteLock = None
+                
+                case None => 
+                  kv.requirements.foreach { req => 
+                    kvobj.keyRevisionWriteLocks -= req.key
+                  }
+              }
           }
         }
       }
@@ -451,41 +492,96 @@ class DataStoreFrontend(
       
       val obj = objects(requirement.objectPointer.uuid)
       
-      def collisionCheck(writeLock: Option[TransactionDescription], readLocks: Map[UUID, TransactionDescription]): Unit = {
-        writeLock foreach { lockedTxd =>
-          if (lockedTxd.transactionUUID != txd.transactionUUID) 
-            err(TransactionCollision(obj, lockedTxd))
-        }
-        
-        readLocks.foreach { t => err(TransactionCollision(obj, t._2)) }
-      }
-      
+
       obj.readError match {
         case Some(readErr) => err(TransactionReadError(obj, readErr))
         
         case None => requirement match {
           case du: DataUpdate =>
-            collisionCheck(obj.objectRevisionWriteLock, obj.objectRevisionReadLocks)
-            
-            if (!dataUpdates.contains(obj.objectId.objectUUID))
-              err(MissingUpdateContent(obj))
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(obj, lockedTxd)) }
             
             if (obj.revision != du.requiredRevision)
               err(RevisionMismatch(obj, du.requiredRevision, obj.revision))
+              
+            dataUpdates.get(obj.objectId.objectUUID) match {
+              case None => err(MissingUpdateContent(obj))
+              
+              case Some(data) =>
+                val haveSpace = du.operation match {
+                  case DataUpdateOperation.Overwrite => backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
+                  case DataUpdateOperation.Append    => backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
+                }
+                if (!haveSpace)
+                  err(InsufficientFreeSpace(obj))
+            }
             
               
           case ru: RefcountUpdate =>
-            collisionCheck(obj.objectRefcountWriteLock, obj.objectRefcountReadLocks)
+            obj.getTransactionPreventingRefcountWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(obj, lockedTxd)) }
             
             if (obj.refcount != ru.requiredRefcount) 
               err(RefcountMismatch(obj, ru.requiredRefcount, obj.refcount))  
               
               
           case vb: VersionBump =>
-            collisionCheck(obj.objectRevisionWriteLock, obj.objectRevisionReadLocks)
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(obj, lockedTxd)) }
             
             if (obj.revision != vb.requiredRevision)
               err(RevisionMismatch(obj, vb.requiredRevision, obj.revision))
+              
+          case kv: KeyValueUpdate => 
+            obj match {
+              case kvobj: MutableKeyValueObject =>
+                
+                kv.requiredRevision.foreach { requiredRevision =>
+                  obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(obj, lockedTxd)) }
+                  
+                  if (obj.revision != requiredRevision)
+                    err(RevisionMismatch(obj, requiredRevision, obj.revision))
+                }
+                
+                dataUpdates.get(obj.objectId.objectUUID) match {
+                  case None => err(MissingUpdateContent(obj))
+                  
+                  case Some(data) =>
+                    val haveSpace = kv.updateType match {
+                      case KeyValueUpdate.UpdateType.Overwrite => backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
+                      case KeyValueUpdate.UpdateType.Append    => backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
+                    }
+                    
+                    if (!haveSpace)
+                      err(InsufficientFreeSpace(obj))
+                }
+                
+                if (!kv.requirements.isEmpty)
+                  kvobj.parseKeyValueContent()
+                
+                kv.requirements.foreach { req => 
+                  val ov = kvobj.idaEncodedContents.get(req.key)
+                  
+                  req.tsRequirement match {
+                    case KeyValueUpdate.TimestampRequirement.Equals => ov match {
+                      case None => err(KeyValueRequirementError(obj, req.key))
+                      case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(obj, req.key))
+                    }
+                    case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
+                      case None => err(KeyValueRequirementError(obj, req.key))
+                      case Some(v) => if (v.timestamp.asLong >= req.timestamp.asLong) err(KeyValueRequirementError(obj, req.key))
+                    }
+                    case KeyValueUpdate.TimestampRequirement.Exists => ov match {
+                      case None => err(KeyValueRequirementError(obj, req.key))
+                      case Some(v) => 
+                    }
+                    case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
+                      case None => 
+                      case Some(v) => err(KeyValueRequirementError(obj, req.key))
+                    }
+                  }
+                }
+
+              case _ => err(InvalidObjectType(obj))
+            }
+            
         }
       }
       

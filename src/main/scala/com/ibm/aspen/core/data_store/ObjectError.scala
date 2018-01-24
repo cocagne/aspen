@@ -4,6 +4,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 sealed abstract class ObjectError 
 
@@ -55,3 +56,12 @@ case class TransactionCollision(objectPointer: ObjectPointer, lockedTransaction:
  *  
  */
 case class MissingUpdateContent(objectPointer: ObjectPointer) extends ObjectTransactionError
+
+/** Insufficient free space available to store the data associated with the transaction */
+case class InsufficientFreeSpace(objectPointer: ObjectPointer) extends ObjectTransactionError
+
+/** Indicates an operation was attempted on an object type that doesn't support it */
+case class InvalidObjectType(objectPointer: ObjectPointer) extends ObjectTransactionError
+
+/** Indicates that a KeyValue requirement was not satisfied */
+case class KeyValueRequirementError(objectPointer: ObjectPointer, key: Key) extends ObjectTransactionError

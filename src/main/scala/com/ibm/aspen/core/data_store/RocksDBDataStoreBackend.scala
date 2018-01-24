@@ -67,6 +67,11 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   
   override def close(): Future[Unit] = db.close()
   
+  // TODO - Freespace checking
+  override def haveFreeSpaceForOverwrite(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean = true
+  
+  override def haveFreeSpaceForAppend(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean = true
+  
   override def allocateObject(objectUUID: UUID, metadata: ObjectMetadata, data: DataBuffer): Future[Either[AllocationErrors.Value, Array[Byte]]] = {
     allocating += (objectUUID -> (metadata, data))
     Future.successful(Right(NullArray))

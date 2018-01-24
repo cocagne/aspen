@@ -262,7 +262,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
     
     val errs = Await.result(ds.lockTransaction(txd, lu), awaitDuration)
-    
+    println(s"Errors is $errs")
     errs.isEmpty should be (true)
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
