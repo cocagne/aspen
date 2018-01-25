@@ -45,7 +45,7 @@ object KeyValueUpdate {
   
   object TimestampRequirement extends Enumeration {
     val Equals       = Value("Equals")
-    val LessThan     = Value("LessThen")
+    val LessThan     = Value("LessThan")
     val Exists       = Value("Exists")
     val DoesNotExist = Value("DoesNotExist")
   }

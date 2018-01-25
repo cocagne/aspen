@@ -25,7 +25,7 @@ import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.transaction.TransactionRequirement
 
-object DataStoreSuite {
+object DataObjectTransactionSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
   val uuid0 = new UUID(0,0)
   val uuid1 = new UUID(0,1)
@@ -55,10 +55,10 @@ object DataStoreSuite {
   val irev = ObjectRevision(allocUUID)
 }
 
-class DataStoreSuite extends AsyncFunSuite with Matchers {
-  import DataStoreSuite._
+class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
+  import DataObjectTransactionSuite._
   
-  def newStore: DataStore = new DataStoreFrontend(DataStoreSuite.storeId, 
+  def newStore: DataStore = new DataStoreFrontend(DataObjectTransactionSuite.storeId, 
       new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
   
   // Helper method that creates a store and adds two objects. Returns (DataStore, Obj0StorePointer, Obj1StorePointer)
@@ -262,7 +262,7 @@ class DataStoreSuite extends AsyncFunSuite with Matchers {
     val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
     
     val errs = Await.result(ds.lockTransaction(txd, lu), awaitDuration)
-    println(s"Errors is $errs")
+    //println(s"Errors is $errs")
     errs.isEmpty should be (true)
     
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)

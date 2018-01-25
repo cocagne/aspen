@@ -260,11 +260,9 @@ class DataStoreFrontend(
     st.objectsLoaded flatMap { _ => synchronized { 
       val fcommit = st.commit()
       
-      fcommit foreach { _ =>
+      fcommit map { _ => synchronized {
         st.releaseObjects()
-      }
-      
-      fcommit
+      }}
     }}
   }
   
@@ -305,6 +303,7 @@ class DataStoreFrontend(
       // Only load data if its needed by the transaction requirements
       val dataNeeded = requirements.foldLeft(Set[UUID]())((s, r) => r match {
         case _: DataUpdate => s + r.objectPointer.uuid
+        case kv: KeyValueUpdate => if (kv.requirements.isEmpty) s else s + r.objectPointer.uuid
         case _ => s
       })
       
@@ -553,28 +552,43 @@ class DataStoreFrontend(
                       err(InsufficientFreeSpace(obj))
                 }
                 
-                if (!kv.requirements.isEmpty)
+                if (!kv.requirements.isEmpty) {
                   kvobj.parseKeyValueContent()
                 
-                kv.requirements.foreach { req => 
-                  val ov = kvobj.idaEncodedContents.get(req.key)
+                  val objectLocked = kvobj.objectRevisionWriteLock match {
+                    case None => false
+                    case Some(lockedTxd) => lockedTxd.transactionUUID != txd.transactionUUID
+                  }
                   
-                  req.tsRequirement match {
-                    case KeyValueUpdate.TimestampRequirement.Equals => ov match {
-                      case None => err(KeyValueRequirementError(obj, req.key))
-                      case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(obj, req.key))
-                    }
-                    case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
-                      case None => err(KeyValueRequirementError(obj, req.key))
-                      case Some(v) => if (v.timestamp.asLong >= req.timestamp.asLong) err(KeyValueRequirementError(obj, req.key))
-                    }
-                    case KeyValueUpdate.TimestampRequirement.Exists => ov match {
-                      case None => err(KeyValueRequirementError(obj, req.key))
-                      case Some(v) => 
-                    }
-                    case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
-                      case None => 
-                      case Some(v) => err(KeyValueRequirementError(obj, req.key))
+                  if (objectLocked) {
+                    err(TransactionCollision(obj, kvobj.objectRevisionWriteLock.get))
+                  } else {
+                    kv.requirements.foreach { req => 
+                      val ov = kvobj.idaEncodedContents.get(req.key)
+
+                      kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
+                        if (lockedTxd.transactionUUID != txd.transactionUUID)
+                          err(KeyValueRequirementError(obj, req.key))
+                      }
+                      
+                      req.tsRequirement match {
+                        case KeyValueUpdate.TimestampRequirement.Equals => ov match {
+                          case None => err(KeyValueRequirementError(obj, req.key))
+                          case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(obj, req.key))
+                        }
+                        case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
+                          case None => err(KeyValueRequirementError(obj, req.key))
+                          case Some(v) => if (req.timestamp.asLong >= v.timestamp.asLong) err(KeyValueRequirementError(obj, req.key))
+                        }
+                        case KeyValueUpdate.TimestampRequirement.Exists => ov match {
+                          case None => err(KeyValueRequirementError(obj, req.key))
+                          case Some(v) => 
+                        }
+                        case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
+                          case None => 
+                          case Some(v) => err(KeyValueRequirementError(obj, req.key))
+                        }
+                      }
                     }
                   }
                 }

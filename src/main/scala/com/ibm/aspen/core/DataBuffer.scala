@@ -38,6 +38,8 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
 }
 
 object DataBuffer {
+  val Empty = DataBuffer(new Array[Byte](0))
+  
   implicit def apply(buf: ByteBuffer): DataBuffer = new DataBuffer(buf.asReadOnlyBuffer())
   implicit def apply(arr: Array[Byte]): DataBuffer = new DataBuffer(ByteBuffer.wrap(arr))
   implicit def db2bb(db: DataBuffer): ByteBuffer = db.asReadOnlyBuffer()
