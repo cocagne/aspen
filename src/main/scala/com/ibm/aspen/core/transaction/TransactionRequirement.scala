@@ -33,7 +33,7 @@ case class KeyValueUpdate(
     objectPointer: KeyValueObjectPointer,
     updateType: KeyValueUpdate.UpdateType.Value,
     requiredRevision: Option[ObjectRevision],
-    requirements: List[KeyValueUpdate.KVReq],
+    requirements: List[KeyValueUpdate.KVRequirement],
     timestamp: HLCTimestamp) extends KeyValueTransactionRequirement
     
 object KeyValueUpdate {
@@ -50,5 +50,5 @@ object KeyValueUpdate {
     val DoesNotExist = Value("DoesNotExist")
   }
   
-  case class KVReq(key: Key, timestamp: HLCTimestamp, tsRequirement: TimestampRequirement.Value)
+  case class KVRequirement(key: Key, timestamp: HLCTimestamp, tsRequirement: TimestampRequirement.Value)
 }

@@ -21,6 +21,9 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
 object KVListSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -67,6 +70,18 @@ object KVListSuite {
       overwriteOp = Op(objectPointer, requiredRevision, rightContent, rightRightPointer)
       txRevision
     }
+    
+    def append(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: Option[ObjectRevision],
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
+      
+    def overwrite(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: ObjectRevision,
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
     

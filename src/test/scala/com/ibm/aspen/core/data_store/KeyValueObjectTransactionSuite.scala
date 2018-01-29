@@ -450,7 +450,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
   test("Key lock prevents revision lock") {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -482,7 +482,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, HLCTimestamp(10)) :: Nil, txUUID2)
     
@@ -495,7 +495,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
     
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Overwrite, Some(irev), reqs, initialTimestamp) :: Nil)
     
     val ops = List(new Insert(k(2).bytes, List[Byte](3,4).toArray, HLCTimestamp(10))) 
@@ -509,7 +509,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
   test("Key lock conflicts") {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -530,7 +530,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
   test("No lock conflicts for differing keys") {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -542,7 +542,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     errs should be (Nil)
     
     val key2 = k(3)
-    val reqs2 = List(KeyValueUpdate.KVReq(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
@@ -554,7 +554,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
   test("Key existece required, failure") {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Exists))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Exists))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -569,7 +569,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
   test("Key existence required, success") {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -578,7 +578,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu(op0, db)), awaitDuration)
     
-    val reqs2 = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Exists))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Exists))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
@@ -590,7 +590,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
     val keyts = HLCTimestamp(10)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -599,7 +599,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu(op0, db)), awaitDuration)
     
-    val reqs2 = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Equals))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Equals))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
@@ -611,7 +611,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
     val keyts = HLCTimestamp(10)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -620,7 +620,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu(op0, db)), awaitDuration)
     
-    val reqs2 = List(KeyValueUpdate.KVReq(key, keyts, KeyValueUpdate.TimestampRequirement.Equals))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key, keyts, KeyValueUpdate.TimestampRequirement.Equals))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
@@ -632,7 +632,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
     val keyts = HLCTimestamp(10)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -641,7 +641,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu(op0, db)), awaitDuration)
     
-    val reqs2 = List(KeyValueUpdate.KVReq(key, keyts, KeyValueUpdate.TimestampRequirement.LessThan))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key, keyts, KeyValueUpdate.TimestampRequirement.LessThan))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
@@ -653,7 +653,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     val key = k(2)
     val keyts = HLCTimestamp(10)
-    val reqs = List(KeyValueUpdate.KVReq(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
         
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs, initialTimestamp) :: Nil)
     
@@ -662,7 +662,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     Await.result(ds.commitTransactionUpdates(txd, lu(op0, db)), awaitDuration)
     
-    val reqs2 = List(KeyValueUpdate.KVReq(key, HLCTimestamp(5), KeyValueUpdate.TimestampRequirement.LessThan))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key, HLCTimestamp(5), KeyValueUpdate.TimestampRequirement.LessThan))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, HLCTimestamp(10)) :: Nil, txUUID2)
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
@@ -681,7 +681,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val valuets = HLCTimestamp(10)
     val valuets2 = HLCTimestamp(15)
     
-    val reqs1 = List(KeyValueUpdate.KVReq(key1, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs1 = List(KeyValueUpdate.KVRequirement(key1, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs1, initialTimestamp) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
@@ -692,7 +692,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val updates = lu(op0, db)
     
     //-- 
-    val reqs2 = List(KeyValueUpdate.KVReq(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, txdts) :: Nil, txUUID2)
                     
     val txdts2 = HLCTimestamp(txd2.startTimestamp)
@@ -745,7 +745,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val valuets = HLCTimestamp(10)
     val valuets2 = HLCTimestamp(15)
     
-    val reqs1 = List(KeyValueUpdate.KVReq(key1, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs1 = List(KeyValueUpdate.KVRequirement(key1, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs1, initialTimestamp) :: Nil)
                     
     val txdts = HLCTimestamp(txd.startTimestamp)
@@ -756,7 +756,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val updates = lu(op0, db)
     
     //-- 
-    val reqs2 = List(KeyValueUpdate.KVReq(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
+    val reqs2 = List(KeyValueUpdate.KVRequirement(key2, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.DoesNotExist))
     val txd2 = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Append, None, reqs2, txdts) :: Nil, txUUID2)
                     
     val txdts2 = HLCTimestamp(txd2.startTimestamp)

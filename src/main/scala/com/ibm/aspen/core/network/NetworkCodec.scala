@@ -383,7 +383,7 @@ object NetworkCodec {
   }
   
   
-  def encode(builder:FlatBufferBuilder, o:KeyValueUpdate.KVReq): Int = {
+  def encode(builder:FlatBufferBuilder, o:KeyValueUpdate.KVRequirement): Int = {
     val key = P.KVReq.createKeyVector(builder, o.key.bytes)
     P.KVReq.startKVReq(builder)
     P.KVReq.addTsRequirement(builder, encodeKeyValueTimestampRequirementEnum(o.tsRequirement))
@@ -391,12 +391,12 @@ object NetworkCodec {
     P.KVReq.addKey(builder, key)
     P.KVReq.endKVReq(builder)
   }
-  def decode(n: P.KVReq): KeyValueUpdate.KVReq = {
+  def decode(n: P.KVReq): KeyValueUpdate.KVRequirement = {
     val tsRequirement =  decodeKeyValueTimestampRequirementEnum(n.tsRequirement())
     val key = new Array[Byte](n.keyLength())
     val timestamp = HLCTimestamp(n.timestamp())
     n.keyAsByteBuffer().get(key)
-    KeyValueUpdate.KVReq(Key(key), timestamp, tsRequirement)
+    KeyValueUpdate.KVRequirement(Key(key), timestamp, tsRequirement)
   }
   
   
@@ -418,7 +418,7 @@ object NetworkCodec {
     val updateType = decodeKeyValueUpdateType(n.updateType())
     val requiredRevision = if (n.requiredRevision() == null) None else Some(decode(n.requiredRevision()))
     
-    def requirements(idx: Int, l:List[KeyValueUpdate.KVReq]): List[KeyValueUpdate.KVReq] = if (idx == -1)
+    def requirements(idx: Int, l:List[KeyValueUpdate.KVRequirement]): List[KeyValueUpdate.KVRequirement] = if (idx == -1)
         l
       else
         requirements(idx-1, decode(n.requirements(idx)) :: l)

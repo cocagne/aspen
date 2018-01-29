@@ -19,6 +19,9 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 
 object BaseTransaction {
   def Factory(
@@ -44,6 +47,25 @@ class BaseTransaction(
     case Some(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
     case None => throw PostCommitTransactionModification()
   }
+  
+  def append(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: Option[ObjectRevision],
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = synchronized { builder } match {
+    case Some(bldr) => bldr.append(pointer, requiredRevision, requirements, operations)
+    case None => throw PostCommitTransactionModification()
+  }
+  
+  def overwrite(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: ObjectRevision,
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = synchronized { builder } match {
+    case Some(bldr) => bldr.overwrite(pointer, requiredRevision, requirements, operations)
+    case None => throw PostCommitTransactionModification()
+  }
+  
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized { builder } match {
     case Some(bldr) => bldr.setRefcount(objectPointer, requiredRefcount, refcount)
     case None => throw PostCommitTransactionModification()

@@ -11,6 +11,9 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 
 trait Transaction {
   
@@ -21,6 +24,18 @@ trait Transaction {
   // All returns are what the new object revision/refcount will be if the transaction completes successfully
   def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
   def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
+  
+  def append(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: Option[ObjectRevision],
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit
+      
+  def overwrite(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: ObjectRevision,
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
   

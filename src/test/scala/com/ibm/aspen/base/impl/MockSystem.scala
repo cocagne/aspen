@@ -60,6 +60,9 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.data_store.Lock
 import scala.concurrent.Await
 import com.ibm.aspen.core.read.ReadType
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -182,6 +185,18 @@ object MockSystem {
       ops = Overwrite(objectPointer, requiredRevision, data) :: ops
       txRevision
     }
+    
+    def append(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: Option[ObjectRevision],
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
+      
+    def overwrite(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: ObjectRevision,
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
     
     def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = throw new Exception("Should not be used")
     

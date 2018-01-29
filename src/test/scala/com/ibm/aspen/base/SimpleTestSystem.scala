@@ -24,6 +24,8 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -135,6 +137,18 @@ class SimpleTestSystem extends AspenSystem {
       ops = fn _ :: ops
       txRevision
     }
+    
+    def append(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: Option[ObjectRevision],
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
+      
+    def overwrite(
+      pointer: KeyValueObjectPointer, 
+      requiredRevision: ObjectRevision,
+      requirements: List[KeyValueUpdate.KVRequirement],
+      operations: List[KeyValueOperation]): Unit = ()
     
     override def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = {
       def fn() = {
