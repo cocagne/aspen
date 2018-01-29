@@ -27,18 +27,16 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 
 class SimpleTaskSuite extends AsyncFunSuite with Matchers {
-  
-  override implicit val executionContext = ExecutionContext.Implicits.global
-  
+
   def waitForIt(errMsg: String)(fn: => Boolean): Future[Unit] = Future {
     
     var count = 0
-    while (!fn && count < 100) {
+    while (!fn && count < 500) {
       count += 1
       Thread.sleep(5) 
     }
         
-    if (count >= 100)
+    if (count >= 500)
       throw new Exception(errMsg)
   }
   
