@@ -2,7 +2,6 @@ package com.ibm.aspen.core.read
 
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store
-import com.ibm.aspen.core.data_store
 
 sealed abstract class ReadError(msg: String) extends Exception(msg)
 
@@ -41,9 +40,13 @@ object ReadError extends Enumeration {
   /** Invalid object encoding */
   val InvalidObjectEncoding = Value("InvalidObjectEncoding")
   
+  /** Requested ByteRange exceeds current object size */
+  val InvalidByteRange = Value("InvalidByteRange")
+  
   def apply(objectReadError: data_store.ObjectReadError): Value = objectReadError match {
     case _: data_store.InvalidLocalPointer => InvalidLocalPointer
     case _: data_store.ObjectMismatch => ObjectMismatch
     case _: data_store.CorruptedObject => CorruptedObject
+    case _: data_store.InvalidByteRange => InvalidByteRange
   }
 }

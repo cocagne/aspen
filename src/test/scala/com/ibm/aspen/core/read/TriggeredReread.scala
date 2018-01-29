@@ -18,10 +18,10 @@ class TriggeredReread {
   class TriggerDriver(
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
-    retrieveObjectData: Boolean,
+    readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
-        retrieveObjectData, retrieveLockedTransaction, readUUID)(ec) {
+        readType, retrieveLockedTransaction, readUUID)(ec) {
     
     addActive(this)
     
@@ -33,9 +33,9 @@ class TriggeredReread {
   def triggeredReadDriver(ec: ExecutionContext)(
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
-      retrieveObjectData: Boolean,
+      readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID): ReadDriver = {
-    new TriggerDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
+    new TriggerDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
   }
 }

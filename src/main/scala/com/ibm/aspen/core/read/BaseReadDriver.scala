@@ -21,15 +21,25 @@ import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.data_store.Lock
+import com.ibm.aspen.core.objects.MetadataObjectState
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
-    val retrieveObjectData: Boolean,
+    val readType: ReadType,
     val retrieveLockedTransaction: Boolean, 
     val readUUID:UUID)(implicit ec: ExecutionContext) extends ReadDriver {
   
   import BaseReadDriver._
+  
+  // Detect invalid combinations
+  (objectPointer, readType) match {
+    case (_:DataObjectPointer,     _:SingleKey)          => assert(false)
+    case (_:DataObjectPointer,     _:LargestKeyLessThan) => assert(false)
+    case (_:DataObjectPointer,     _:KeyRange)           => assert(false)
+    case (_:KeyValueObjectPointer, _:ByteRange)          => assert(false)
+    case _ =>
+  }
   
   protected val promise = Promise[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]]
   
@@ -42,7 +52,7 @@ class BaseReadDriver(
   
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
-      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, retrieveObjectData, retrieveLockedTransaction))
+      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType, retrieveLockedTransaction))
       
   def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
     storeStates.contains(storeId) || errors.contains(storeId)
@@ -172,26 +182,50 @@ class BaseReadDriver(
   }
   
   private def restoreDataObject() : (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
+    val (revision, refcount, timestamp, locks) = getMetadata
+    
     val segments = storeStates.foldLeft(List[(Byte, Option[DataBuffer])]()) { (l, t) =>
       (t._1.poolIndex, t._2.objectData) :: l
     }
+    
     // If something goes wrong with the IDA, it'll throw an IDAError exception
-    val data = if (retrieveObjectData) objectPointer.ida.restore(segments) else DataBuffer(new Array[Byte](0))
-    
-    val (revision, refcount, timestamp, locks) = getMetadata
-    
-    (DataObjectState(objectPointer, revision, refcount, timestamp, data), locks)
+    val objectState = readType match {
+      case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp)
+      case _: FullObject => DataObjectState(objectPointer, revision, refcount, timestamp, objectPointer.ida.restore(segments)) 
+      case _: ByteRange => DataObjectState(objectPointer, revision, refcount, timestamp, objectPointer.ida.restore(segments))
+      case _ => throw new Exception("Invalid Read Type")
+    }
+
+    (objectState, locks)
   }
   
   private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
-    // Decode to KeyValueObjectStoreState
-    val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
-      KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
-    }
-    
     val (revision, refcount, timestamp, locks) = getMetadata
     
-    (KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList), locks)
+    def decodePartialRead(): ObjectState = {
+      val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
+        KeyValueObjectStoreState.decodePartialRead(ss.storeId.poolIndex, ss.objectData.get) :: l 
+      }
+      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList)
+    }
+    
+    def decodeFullRead(): ObjectState = {
+      val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
+        KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
+      }
+      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList)
+    }
+    
+    val objectState = readType match {
+      case _: MetadataOnly       => MetadataObjectState(objectPointer, revision, refcount, timestamp)
+      case _: FullObject         => decodeFullRead()
+      case _: SingleKey          => decodePartialRead()
+      case _: LargestKeyLessThan => decodePartialRead()
+      case _: KeyRange           => decodePartialRead()
+      case _ => throw new Exception("Invalid Read Type")
+    }
+    
+    (objectState, locks)
   }
 }
 
@@ -207,9 +241,9 @@ object BaseReadDriver {
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
-      retrieveObjectData: Boolean,
+      readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID): ReadDriver = {
-    new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)(ec)
+    new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
   }
 }

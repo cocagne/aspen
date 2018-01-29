@@ -24,9 +24,9 @@ object ReadDriver {
    * 
    * Factory( clientMessenger: ClientSideReadMessenger
    *          objectPointer: ObjectPointer,
-   *          retrieveObjectData: Boolean,
+   *          readType: ReadType,
    *          retrieveLockedTransaction: Boolean,
    * ,        readUUID:UUID)
    */
-  type Factory = (ClientSideReadMessenger, ObjectPointer, Boolean, Boolean, UUID) => ReadDriver
+  type Factory = (ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID) => ReadDriver
 }

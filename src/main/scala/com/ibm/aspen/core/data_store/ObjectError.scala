@@ -30,6 +30,9 @@ case class ObjectMismatch() extends ObjectReadError
  */
 case class CorruptedObject() extends ObjectReadError
 
+/** Returned if the requested ByteRange exceeds the size of the object */
+case class InvalidByteRange() extends ObjectReadError
+
 /** Used to indicate an ObjectReadError occurred as part of a transaction
  * 
  */

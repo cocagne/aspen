@@ -58,6 +58,19 @@ import com.ibm.aspen.core.data_store.RevisionReadLock
 import com.ibm.aspen.core.data_store.RefcountReadLock
 import com.ibm.aspen.core.data_store.RefcountWriteLock
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.read.ReadType
+import com.ibm.aspen.core.read.MetadataOnly
+import com.ibm.aspen.core.read.FullObject
+import com.ibm.aspen.core.read.ByteRange
+import com.ibm.aspen.core.read.SingleKey
+import com.ibm.aspen.core.read.LargestKeyLessThan
+import com.ibm.aspen.core.read.KeyRange
+import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
+import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
+import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
+import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
+import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
 
 
 
@@ -260,6 +273,7 @@ object NetworkCodec {
     case UpdateError.MissingUpdateData        => P.UpdateError.MissingUpdateData
     case UpdateError.ObjectMismatch           => P.UpdateError.ObjectMismatch
     case UpdateError.InvalidLocalPointer      => P.UpdateError.InvalidLocalPointer
+    case UpdateError.InvalidByteRange         => P.UpdateError.InvalidByteRange
     case UpdateError.RevisionMismatch         => P.UpdateError.RevisionMismatch
     case UpdateError.RefcountMismatch         => P.UpdateError.RefcountMismatch
     case UpdateError.Collision                => P.UpdateError.Collision
@@ -272,6 +286,7 @@ object NetworkCodec {
     case P.UpdateError.MissingUpdateData        => UpdateError.MissingUpdateData
     case P.UpdateError.ObjectMismatch           => UpdateError.ObjectMismatch
     case P.UpdateError.InvalidLocalPointer      => UpdateError.InvalidLocalPointer
+    case P.UpdateError.InvalidByteRange         => UpdateError.InvalidByteRange
     case P.UpdateError.RevisionMismatch         => UpdateError.RevisionMismatch
     case P.UpdateError.RefcountMismatch         => UpdateError.RefcountMismatch
     case P.UpdateError.Collision                => UpdateError.Collision
@@ -944,18 +959,61 @@ object NetworkCodec {
   //-----------------------------------------------------------------------------------------------
   // Read Messages
   //-----------------------------------------------------------------------------------------------
+  
+  def encodeKeyComparison(c: KeyComparison): Byte = c match {
+    case _: ByteArrayComparison => P.KeyComparison.ByteArray
+    case _: IntegerComparison   => P.KeyComparison.Integer
+    case _: LexicalComparison   => P.KeyComparison.Lexical
+  }
+  def decodeKeyComparison(b: Byte): KeyComparison = b match {
+    case P.KeyComparison.ByteArray => new ByteArrayComparison
+    case P.KeyComparison.Integer   => new IntegerComparison
+    case P.KeyComparison.Lexical   => new LexicalComparison
+  }
+  
   def encode(builder:FlatBufferBuilder, o:Read): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Read.createFromClientVector(builder, o.fromClient.serialized)
     val optr = encode(builder, o.objectPointer)
+    val keyOffset = o.readType match {
+      case rt: SingleKey          => P.Read.createKeyVector(builder, rt.key.bytes)
+      case rt: LargestKeyLessThan => P.Read.createKeyVector(builder, rt.key.bytes)
+      case _ => -1
+    }
+    val (minOffset, maxOffset) = o.readType match {
+      case rt: KeyRange => 
+        val min = P.Read.createMinVector(builder, rt.minimum.bytes)
+        val max = P.Read.createMaxVector(builder, rt.maximum.bytes)
+        (min, max)
+      
+      case _ => (-1, -1)
+    }
     
     P.Read.startRead(builder)
     P.Read.addToStore(builder, toStore)
     P.Read.addFromClient(builder, clientData)
     P.Read.addReadUUID(builder, encode(builder, o.readUUID))
     P.Read.addObjectPointer(builder, optr)
-    P.Read.addReturnObjectData(builder, o.returnObjectData)
     P.Read.addReturnLockedTransaction(builder, o.returnLockedTransaction)
+    
+    o.readType match {
+      case rt: MetadataOnly       => P.Read.addReadType(builder, P.ReadType.MetadataOnly)
+      case rt: FullObject         => P.Read.addReadType(builder, P.ReadType.FullObject)
+      case rt: ByteRange          => P.Read.addReadType(builder, P.ReadType.ByteRange)
+        P.Read.addOffset(builder, rt.offset)
+        P.Read.addLength(builder, rt.length)
+      case rt: SingleKey          => P.Read.addReadType(builder, P.ReadType.SingleKey)
+        P.Read.addKey(builder, keyOffset)
+        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+      case rt: LargestKeyLessThan => P.Read.addReadType(builder, P.ReadType.LargestKeyLessThan)
+        P.Read.addKey(builder, keyOffset)
+        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+      case rt: KeyRange           => P.Read.addReadType(builder, P.ReadType.KeyRange)
+        P.Read.addMin(builder, minOffset)
+        P.Read.addMax(builder, maxOffset)
+        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+    }
+    
     P.Read.endRead(builder)
   }
   def decode(n: P.Read): Read = {
@@ -964,22 +1022,40 @@ object NetworkCodec {
     n.fromClientAsByteBuffer().get(fromClient)
     val readUUID = decode(n.readUUID())
     val objectPointer = decode(n.objectPointer())
-    val returnObjectData = n.returnObjectData()
     val returnLockedTransaction = n.returnLockedTransaction()
     
-    Read(toStore, ClientID(fromClient), readUUID, objectPointer, returnObjectData, returnLockedTransaction)
+    import scala.language.implicitConversions
+    
+    implicit def bb2arr(bb: ByteBuffer): Array[Byte] = {
+      val arr = new Array[Byte](bb.remaining())
+      bb.asReadOnlyBuffer().get(arr)
+      arr
+    }
+    
+    val readType = n.readType() match {
+      case P.ReadType.MetadataOnly       => MetadataOnly()           
+      case P.ReadType.FullObject         => FullObject()
+      case P.ReadType.ByteRange          => ByteRange(n.offset(), n.length())
+      case P.ReadType.SingleKey          => SingleKey(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.LargestKeyLessThan => LargestKeyLessThan(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.KeyRange           => KeyRange(Key(n.minAsByteBuffer()), Key(n.maxAsByteBuffer()), decodeKeyComparison(n.comparison()))
+    }
+    
+    Read(toStore, ClientID(fromClient), readUUID, objectPointer, readType, returnLockedTransaction)
   }
   
   def encodeReadError(err: ReadError.Value): Byte = err match {
     case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
     case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
     case ReadError.CorruptedObject => P.ReadError.CorruptedObject
+    case ReadError.InvalidByteRange => P.ReadError.InvalidByteRange
     case ReadError.UnexpectedInternalError => P.ReadError.UnexpectedInternalError
   }
   def decodeReadError(err: Byte): ReadError.Value = err match {
     case P.ReadError.ObjectMismatch => ReadError.ObjectMismatch
     case P.ReadError.InvalidLocalPointer => ReadError.InvalidLocalPointer
     case P.ReadError.CorruptedObject => ReadError.CorruptedObject
+    case P.ReadError.InvalidByteRange => ReadError.InvalidByteRange
     case P.ReadError.UnexpectedInternalError => ReadError.UnexpectedInternalError
   }
   

@@ -23,6 +23,7 @@ import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.MetadataObjectState
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -69,9 +70,9 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   
   def mkReader(clientMessenger: ClientSideReadMessenger,
                objectPointer: ObjectPointer = ptr,
-               retrieveObjectData: Boolean = true,
+               readType: ReadType = FullObject(),
                retrieveLockedTransaction: Boolean = true,
-               readUUID:UUID = readUUID) = new BaseReadDriver(clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)
+               readUUID:UUID = readUUID) = new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
   
   test("Fail with too many errors") {
     val m = new TMessenger
@@ -183,7 +184,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   
   test("Successful read without data or locks") {
     val m = new TMessenger
-    val r = mkReader(m, retrieveObjectData=false, retrieveLockedTransaction=false)
+    val r = mkReader(m, readType=MetadataOnly(), retrieveLockedTransaction=false)
     val ts = HLCTimestamp.now
     
     r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
@@ -192,6 +193,6 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, rev, ref, ts, DataBuffer(new Array[Byte](0))), None))))
+    o should be (Right(((MetadataObjectState(ptr, rev, ref, ts), None))))
   }
 }

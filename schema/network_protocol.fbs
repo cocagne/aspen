@@ -71,6 +71,7 @@ enum UpdateError:byte
     MissingUpdateData, 
     ObjectMismatch,    
     InvalidLocalPointer,
+    InvalidByteRange,
     RevisionMismatch,
     RefcountMismatch,
     Collision,
@@ -243,6 +244,7 @@ enum ReadError:byte
     ObjectMismatch,    
     InvalidLocalPointer,
     CorruptedObject,
+    InvalidByteRange,
     UnexpectedInternalError
 }
 
@@ -252,6 +254,22 @@ enum LockType:byte
   RevisionReadLock,
   RefcountWriteLock,
   RefcountReadLock
+}
+
+enum KeyComparison:byte
+{
+  ByteArray,
+  Integer,
+  Lexical
+}
+
+enum ReadType:byte {
+  MetadataOnly,
+  FullObject,
+  ByteRange,
+  SingleKey,
+  LargestKeyLessThan,
+  KeyRange,
 }
 
 table Lock {
@@ -264,8 +282,14 @@ table Read {
    fromClient: [byte];
    readUUID: UUID;
    objectPointer: ObjectPointer;
-   returnObjectData: bool;
    returnLockedTransaction: bool;
+   readType: ReadType;
+   key: [byte];
+   min: [byte];
+   max: [byte];
+   comparison: KeyComparison;
+   offset: int;
+   length: int;
 }
 
 table ReadResponse {

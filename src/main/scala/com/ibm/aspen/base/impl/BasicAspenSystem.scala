@@ -51,6 +51,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.util.uuid2byte
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.read.FullObject
 
 
 object BasicAspenSystem {
@@ -178,7 +179,7 @@ class BasicAspenSystem(
   
   def readObject(
       objectPointer:DataObjectPointer, 
-      readStrategy: Option[ReadDriver.Factory] ): Future[DataObjectState] = readManager.read(objectPointer, true, false, 
+      readStrategy: Option[ReadDriver.Factory] ): Future[DataObjectState] = readManager.read(objectPointer, FullObject(), false, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
             case Right((os, locks)) => os.asInstanceOf[DataObjectState]
@@ -186,7 +187,7 @@ class BasicAspenSystem(
           
   def readObject(
       pointer:KeyValueObjectPointer, 
-      readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState] = readManager.read(pointer, true, false, 
+      readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState] = readManager.read(pointer, FullObject(), false, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
             case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]

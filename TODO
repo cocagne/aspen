@@ -1,3 +1,46 @@
+* Add KeyValue udpate transactions
+* Test basic object transactions with TestSystem backend
+* Add API for optimized reads
+* Test Optimized reads: SingleKey, range, lessthan
+   - Include error-handling tests
+   
+* Implement KeyValueLinkedList
+* Implement KeyValueTree
+    ** CACHING - never cache raw data content. only application-level objects that serve navigation purposes
+                 These can be library-level node representations as consumers should not care about the
+                 tree structure beyond tuning parameters. 
+
+* Read Separation of Concerns
+  - Kind of read: DataObject, KeyValueObject, Key, LargestKeyLessThan, KeyRange - Base Class
+  - Strategy for retransmissions - Mixin
+  - Strategy for selecting Data targets vs MetadataOnly - Mixin
+  - read(DataObjectPtr)
+  - read(KeyValueObjectPtr)
+  - read(KeyValueObjectPtr, Key) ... KeyRange(min, max), LargetsKeyLessThan(key)
+  - read[T](ReadDriver[T]): T
+  
+  * Maybe add a distinct read method for each read type
+     - Returns a future to the appropriate type.
+     - Other read() methods immediately fail with AlreadyCalled error
+     - Avoids modification of constructor arguments (which is a nice bonus)
+     - Top-level promise is promise: Promise[ObjectState]
+        - Different reads return different kinds of state
+     
+  * Reads are either Data or Update-based. 
+     - KeyValue reads EITHER return the update set explicitly OR return the full data (from which the updates can be derived)
+     - Which makes KeyValue reads just plan "reads"
+     - Key-specific reads throw an exception if the object pointer is not a KeyValueObjectPointer
+     - Non-Data key-value reads just need a separate set of cases for how to decode the data once a consistent threshold is
+       achieved. Won't even need separate subclasses, just a ReadType enum put into the read request
+     - KeyValue Data for ReadType
+        - FullObject - (null, Raw Data) *** This works for DataObjects as well
+        - ByteRange - (min,max) *** DUDE!
+        - Key - (updateSet, metadata + ida-encoded value | null)
+        - LargetsKeyLessThan (updateSet, key + metadata + ida-encoded value | null)
+        - KeyRange (updateSet, [key + metadat + ida-encoded value] | null)
+        
+
+
 Use separate KeyValueTransactionSuite
   - Ensure key-val locks block revision changes
   - Ensure non-conflicting updates

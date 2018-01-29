@@ -30,13 +30,13 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
    */
   def read(
       objectPointer: ObjectPointer, 
-      retrieveData:Boolean=true, 
+      readType: ReadType,
       retrieveTransactionLocks:Boolean=false, 
       driverFactory: ReadDriver.Factory): Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]] = {
     
     val readUUID = UUID.randomUUID()
     
-    val driver = driverFactory(clientMessenger, objectPointer, retrieveData, retrieveTransactionLocks, readUUID)
+    val driver = driverFactory(clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID)
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     

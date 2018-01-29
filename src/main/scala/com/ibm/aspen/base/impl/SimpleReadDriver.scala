@@ -7,6 +7,7 @@ import java.util.UUID
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
 import com.ibm.aspen.core.read.ReadDriver
+import com.ibm.aspen.core.read.ReadType
 
 object SimpleReadDriver {
   class Factory(
@@ -15,10 +16,10 @@ object SimpleReadDriver {
     def apply(
         clientMessenger: ClientSideReadMessenger,
         objectPointer: ObjectPointer,
-        retrieveObjectData: Boolean,
+        readType: ReadType,
         retrieveLockedTransaction: Boolean, 
         readUUID:UUID): ReadDriver = {
-      new SimpleReadDriver(initialDelay, maxDelay, clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID)
+      new SimpleReadDriver(initialDelay, maxDelay, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
     }
   }
 }
@@ -32,10 +33,10 @@ class SimpleReadDriver(
     val maxDelay: Duration,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
-    retrieveObjectData: Boolean,
+    readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        clientMessenger, objectPointer, retrieveObjectData, retrieveLockedTransaction, readUUID) {
+        clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
   
   private[this] var task: Option[BackgroundTask.ScheduledTask] = None
   

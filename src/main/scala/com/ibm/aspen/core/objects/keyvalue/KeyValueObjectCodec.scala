@@ -101,6 +101,29 @@ object KeyValueObjectCodec {
     KeyValueObjectCodec.encodeUpdate(ida, ops)
   }
   
+  /** Used on a DataStore to return a subset of the local key-value object state. */
+  def encodePartialRead(kvos: KeyValueObjectStoreState, includeMinMax: Boolean, kvlist: List[Value]): DataBuffer = {
+    var ops: List[KeyValueOperation] = Nil
+    
+    if (includeMinMax) {
+      kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
+      kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
+      kvos.idaEncodedLeft.foreach( arr => ops = new SetLeft(arr) :: ops )
+      kvos.idaEncodedRight.foreach( arr => ops = new SetRight(arr) :: ops )
+    }
+    
+    kvlist.foreach{ kv => 
+      ops = new Insert(kv.key.bytes, kv.value, kv.timestamp) :: ops 
+    }
+    
+    val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(Replication(1,1)) )
+    val bb = ByteBuffer.allocate(encodedSize)
+    ops.foreach(op => op.encodeReplicated(bb))
+        
+    bb.position(0)
+    DataBuffer(bb)
+  }
+  
   /** Encodes a list of updates to the state of a KeyValueObject for sending to DataStores.
    *
    * Data contained within the objects is a series of top-level "update blocks" which

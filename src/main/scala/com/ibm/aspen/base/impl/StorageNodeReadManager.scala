@@ -18,6 +18,20 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.read.MetadataOnly
+import com.ibm.aspen.core.data_store.Lock
+import com.ibm.aspen.core.data_store.ObjectMetadata
+import com.ibm.aspen.core.read.FullObject
+import com.ibm.aspen.core.read.ByteRange
+import com.ibm.aspen.core.data_store.InvalidByteRange
+import com.ibm.aspen.core.read.SingleKey
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.core.read.LargestKeyLessThan
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.read.KeyRange
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -30,51 +44,126 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
   def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
       
   def receive(message: Read): Unit = getStore(message.toStore).foreach { store => 
-    
-    def cvt(err: ObjectReadError): ReadError.Value = err match {
-      case e: InvalidLocalPointer => ReadError.InvalidLocalPointer
-      case e: ObjectMismatch => ReadError.ObjectMismatch
-      case e: CorruptedObject => ReadError.CorruptedObject
+
+    def updateSet(db: DataBuffer): Set[UUID] = message.objectPointer match {
+      case _: KeyValueObjectPointer => KeyValueObjectCodec.getUpdateSet(db)
+      case _ => Set()
     }
     
-    val readData = message.returnObjectData || (message.objectPointer match {
-      case _ : KeyValueObjectPointer => true
-      case _ => false
-    })
+    def sendErrorResponse(err: ObjectReadError): Unit = {
+      val e = err match {
+        case e: InvalidLocalPointer => ReadError.InvalidLocalPointer
+        case e: ObjectMismatch => ReadError.ObjectMismatch
+        case e: CorruptedObject => ReadError.CorruptedObject
+        case e: InvalidByteRange => ReadError.InvalidByteRange
+      }
+      messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(e)))
+    }
     
-    if (readData) {
-      store.getObject(message.objectPointer) foreach { result => result match { 
-        case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(cvt(err))))
+    def respond(md: ObjectMetadata, updates: Set[UUID], odata: Option[DataBuffer], locks: List[Lock]): Unit = {
+      val cs = ReadResponse.CurrentState(md.revision, updates, md.refcount, md.timestamp, odata,
+                                         if (message.returnLockedTransaction) locks else Nil)
+              
+        messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
+    }
+    
+    def rangeCheck(kvos: KeyValueObjectStoreState, key: Key, compare: KeyComparison): Boolean = {
+      val minOk = kvos.minimum match {
+        case None => true
+        case Some(min) => compare(key, min) >= 0
+      }
+      val maxOk = kvos.maximum match {
+        case None => true
+        case Some(max) => compare(key, max) <= 0
+      }
+      minOk && maxOk
+    }
+    
+    message.readType match {
+      case rt: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, locks)) => respond(metadata, Set(), None, locks)
+      }}
         
-        case Right((md, data, locks)) => 
-          val updates = message.objectPointer match {
-            case _: KeyValueObjectPointer => 
-              if (message.returnObjectData)
-                Set[UUID]()
-              else 
-                KeyValueObjectCodec.getUpdateSet(data)
-                
-            case _ => Set[UUID]()
+      case rt: FullObject => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) => respond(metadata, updateSet(data), Some(data), locks)
+      }} 
+      
+      case rt: ByteRange => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) => 
+          if (rt.offset + rt.length <= data.size)
+            respond(metadata, Set(), Some(data.slice(rt.offset, rt.length)), locks)
+          else
+            sendErrorResponse(new InvalidByteRange)
+      }}
+      
+      case rt: SingleKey => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) =>
+          try {
+            val kvos = KeyValueObjectStoreState(0, data)
+            
+            val includeMinMax = !rangeCheck(kvos, rt.key, rt.comparison)
+            
+            val values = kvos.idaEncodedContents.get(rt.key) match {
+              case Some(v) => List(v)
+              case None => Nil
+            }
+            
+            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=values)
+            respond(metadata, updateSet(data), Some(partialData), locks)  
+          } catch {
+            case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
-          
-          val cs = ReadResponse.CurrentState(md.revision, updates, md.refcount, md.timestamp, 
-              if (message.returnObjectData) Some(data) else None,
-              if (message.returnLockedTransaction) locks else Nil)
-              
-          messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
-       }}
-    } else {
-      store.getObjectMetadata(message.objectPointer) foreach { result => result match { 
-        case Left(err) => messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(cvt(err))))
-        
-        case Right((md, locks)) => 
-
-          val cs = ReadResponse.CurrentState(md.revision, Set[UUID](), md.refcount, md.timestamp, None,
-              if (message.returnLockedTransaction) locks else Nil)
-              
-          messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
-       }}
+      }}
+      
+      case rt: LargestKeyLessThan => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) =>
+          try {
+            val kvos = KeyValueObjectStoreState(0, data)
+            
+            val (includeMinMax, kvlist: List[Value]) = if (rangeCheck(kvos, rt.key, rt.comparison)) {
+              val init: Option[Value] = None
+              val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
+                case None => if (rt.comparison(t._1, rt.key) < 0) Some(t._2) else None
+                case Some(lv) => if (rt.comparison(t._1, rt.key) < 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
+              }}
+              (false, okey.toList) 
+            } else {
+              (true, Nil)
+            }
+            
+            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
+            respond(metadata, updateSet(data), Some(partialData), locks)  
+          } catch {
+            case _: Throwable => sendErrorResponse(new CorruptedObject)
+          }
+      }}
+      
+      case rt: KeyRange => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) =>
+          try {
+            val kvos = KeyValueObjectStoreState(0, data)
+            
+            val includeMinMax = !rangeCheck(kvos, rt.minimum, rt.comparison) || !rangeCheck(kvos, rt.maximum, rt.comparison) 
+            
+            val kvlist = kvos.idaEncodedContents.foldLeft(List[Value]()){ (l, t) =>
+              if ( rt.comparison(t._1, rt.minimum) >= 0 && rt.comparison(t._1, rt.maximum) <= 0 ) 
+                t._2 :: l
+              else
+                l
+            }
+            
+            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
+            respond(metadata, updateSet(data), Some(partialData), locks)  
+          } catch {
+            case _: Throwable => sendErrorResponse(new CorruptedObject)
+          }
+      }}
     }
   }
-  
 }

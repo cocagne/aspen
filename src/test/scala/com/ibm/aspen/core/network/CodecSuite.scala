@@ -22,6 +22,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.data_store.RevisionWriteLock
+import com.ibm.aspen.core.read.FullObject
 
 object CodecSuite {
   
@@ -224,7 +225,7 @@ class CodecSuite extends FunSuite with Matchers {
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     
-    val r = Read(storeId, c, readUUID, op, true, false)
+    val r = Read(storeId, c, readUUID, op, FullObject(), false)
     
     val builder = new FlatBufferBuilder(1024)
     

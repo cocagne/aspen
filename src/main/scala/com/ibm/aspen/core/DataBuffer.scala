@@ -35,6 +35,13 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
   
   def compareTo(that: DataBuffer): Int = buf.compareTo(that.buf)
   
+  def slice(offset: Int, length: Int): DataBuffer = {
+    val bb = buf.asReadOnlyBuffer()
+    bb.position( bb.position + offset )
+    bb.limit(bb.position + length)
+    DataBuffer(bb)
+  }
+  
 }
 
 object DataBuffer {

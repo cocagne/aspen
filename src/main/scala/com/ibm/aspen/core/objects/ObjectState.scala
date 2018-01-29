@@ -14,6 +14,35 @@ sealed abstract class ObjectState(
   
   def canEqual(other: Any): Boolean
 }
+
+class MetadataObjectState(
+    pointer: ObjectPointer, 
+    revision:ObjectRevision, 
+    refcount:ObjectRefcount, 
+    timestamp: HLCTimestamp) extends ObjectState(pointer, revision, refcount, timestamp) {
+  
+  def canEqual(other: Any): Boolean = other.isInstanceOf[MetadataObjectState]
+  
+  override def equals(other: Any): Boolean = {
+    other match {
+      case that: MetadataObjectState => (that canEqual this) && pointer == that.pointer && revision == that.revision && refcount == that.refcount 
+      case _ => false
+    }
+  }
+  
+  override def hashCode: Int = {
+    val hashCodes = List(pointer.hashCode, revision.hashCode, refcount.hashCode, timestamp.hashCode)
+    hashCodes.reduce( (a,b) => a ^ b )
+  }
+}
+
+object MetadataObjectState {
+  def apply(
+      pointer: ObjectPointer, 
+      revision:ObjectRevision, 
+      refcount:ObjectRefcount, 
+      timestamp: HLCTimestamp): MetadataObjectState = new MetadataObjectState(pointer, revision, refcount, timestamp) 
+}
     
 class DataObjectState(
     pointer: ObjectPointer, 

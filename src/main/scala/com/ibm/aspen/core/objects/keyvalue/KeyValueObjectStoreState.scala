@@ -54,6 +54,35 @@ object KeyValueObjectStoreState {
     }
   }
   
+  def decodePartialRead(idaEncodingIndex: Byte, db: DataBuffer): KeyValueObjectStoreState = {
+    try {
+      var minimum: Option[Array[Byte]] = None
+      var maximum: Option[Array[Byte]] = None
+      var left: Option[Array[Byte]] = None
+      var right: Option[Array[Byte]] = None
+      var contents: Map[Key, Value] = Map()
+     
+      val bb = db.asReadOnlyBuffer()
+            
+      while (bb.remaining() > 0) {
+        KeyValueOperation.decode(bb) match {
+          case op: SetMin => minimum = Some(op.value)
+          case op: SetMax => maximum = Some(op.value)
+          case op: SetLeft => left = Some(op.value)
+          case op: SetRight => right = Some(op.value)
+          case op: Insert => 
+            val key = Key(op.key)
+            contents += (key -> Value(key, op.value, op.timestamp))
+          case op: Delete => contents -= Key(op.value)
+        }
+      }
+
+      new KeyValueObjectStoreState(idaEncodingIndex, minimum, maximum, left, right, contents)
+    } catch {
+      case t: Throwable => throw new KeyValueObjectEncodingError(t)
+    }
+  }
+  
   def decodeUpdates(db: DataBuffer): List[KeyValueOperation] = {
     
     var ops = List[KeyValueOperation]()

@@ -19,7 +19,7 @@ final case class Read(
     fromClient: ClientID,
     readUUID: UUID,
     objectPointer: ObjectPointer,
-    returnObjectData: Boolean = true,
+    readType: ReadType,
     returnLockedTransaction: Boolean = false) extends Message
     
 final case class ReadResponse(

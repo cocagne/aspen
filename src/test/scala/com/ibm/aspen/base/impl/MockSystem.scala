@@ -59,6 +59,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.data_store.Lock
 import scala.concurrent.Await
+import com.ibm.aspen.core.read.ReadType
 
 object MockSystem {
   val poolUUID = new UUID(0,0)
@@ -148,7 +149,7 @@ object MockSystem {
   class ReaderFactory(storage: StorageSystem) {
     def apply( clientMessenger: ClientSideReadMessenger,
                objectPointer: ObjectPointer,
-               retrieveObjectData: Boolean,
+               readType: ReadType,
                retrieveLockedTransaction: Boolean,
                readUUID:UUID) : ReadDriver = new Reader(storage, objectPointer)
   }
