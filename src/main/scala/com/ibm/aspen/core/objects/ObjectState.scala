@@ -5,6 +5,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -88,6 +89,18 @@ class KeyValueObjectState(
     ) extends ObjectState(pointer, revision, refcount, timestamp) {
   
   import KeyValueObjectState._
+  
+  def keyInRange(key: Key, compare: KeyComparison): Boolean = {
+    val minOk = minimum match {
+      case None => true
+      case Some(min) => compare(key, min) >= 0
+    }
+    val maxOk = maximum match {
+      case None => true
+      case Some(max) => compare(key, max) <= 0
+    }
+    minOk && maxOk
+  }
   
   def canEqual(other: Any): Boolean = other.isInstanceOf[KeyValueObjectState]
   

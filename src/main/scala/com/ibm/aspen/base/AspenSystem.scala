@@ -16,6 +16,8 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 
 trait AspenSystem {
   
@@ -32,6 +34,12 @@ trait AspenSystem {
   
   /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:KeyValueObjectPointer): Future[KeyValueObjectState] = readObject(pointer, None)
+  
+  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  
+  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  
+  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState]
   
   def newTransaction(): Transaction
   

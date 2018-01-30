@@ -66,19 +66,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
               
         messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
     }
-    
-    def rangeCheck(kvos: KeyValueObjectStoreState, key: Key, compare: KeyComparison): Boolean = {
-      val minOk = kvos.minimum match {
-        case None => true
-        case Some(min) => compare(key, min) >= 0
-      }
-      val maxOk = kvos.maximum match {
-        case None => true
-        case Some(max) => compare(key, max) <= 0
-      }
-      minOk && maxOk
-    }
-    
+
     message.readType match {
       case rt: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
@@ -105,7 +93,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           try {
             val kvos = KeyValueObjectStoreState(0, data)
             
-            val includeMinMax = !rangeCheck(kvos, rt.key, rt.comparison)
+            val includeMinMax = !kvos.keyInRange(rt.key, rt.comparison)
             
             val values = kvos.idaEncodedContents.get(rt.key) match {
               case Some(v) => List(v)
@@ -125,13 +113,13 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           try {
             val kvos = KeyValueObjectStoreState(0, data)
             
-            val (includeMinMax, kvlist: List[Value]) = if (rangeCheck(kvos, rt.key, rt.comparison)) {
+            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.comparison)) {
               val init: Option[Value] = None
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
                 case None => if (rt.comparison(t._1, rt.key) < 0) Some(t._2) else None
                 case Some(lv) => if (rt.comparison(t._1, rt.key) < 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
               }}
-              (false, okey.toList) 
+              (okey.isEmpty, okey.toList) 
             } else {
               (true, Nil)
             }
@@ -148,9 +136,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Right((metadata, data, locks)) =>
           try {
             val kvos = KeyValueObjectStoreState(0, data)
-            
-            val includeMinMax = !rangeCheck(kvos, rt.minimum, rt.comparison) || !rangeCheck(kvos, rt.maximum, rt.comparison) 
-            
+
             val kvlist = kvos.idaEncodedContents.foldLeft(List[Value]()){ (l, t) =>
               if ( rt.comparison(t._1, rt.minimum) >= 0 && rt.comparison(t._1, rt.maximum) <= 0 ) 
                 t._2 :: l
@@ -158,7 +144,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
                 l
             }
             
-            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
+            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=true, kvlist=kvlist)
             respond(metadata, updateSet(data), Some(partialData), locks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)

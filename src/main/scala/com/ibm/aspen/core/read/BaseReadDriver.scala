@@ -70,7 +70,7 @@ class BaseReadDriver(
   def receiveReadResponse(response:ReadResponse): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done
-      
+    
     response.result match {
       case Left(err) => 
         errors += (response.fromStore -> err)
@@ -85,7 +85,7 @@ class BaseReadDriver(
         val updateSet = objectPointer match {
           case _: KeyValueObjectPointer => cs.objectData match {
             case None => cs.updates
-            case Some(db) => KeyValueObjectCodec.getUpdateSet(db)
+            case Some(db) => if (cs.updates.isEmpty) KeyValueObjectCodec.getUpdateSet(db) else cs.updates
           }
           case _ => Set[UUID]() 
         }
@@ -107,6 +107,7 @@ class BaseReadDriver(
     }
     
     if ( errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
+      //println(s"ERRORS $errors")
       promise.success(Left(new ThresholdError(errors)))
     }
     else if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold)

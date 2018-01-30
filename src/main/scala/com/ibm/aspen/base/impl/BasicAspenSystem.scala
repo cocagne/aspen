@@ -52,6 +52,11 @@ import com.ibm.aspen.util.uuid2byte
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.read.FullObject
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.read.SingleKey
+import com.ibm.aspen.core.read.LargestKeyLessThan
+import com.ibm.aspen.core.read.KeyRange
 
 
 object BasicAspenSystem {
@@ -192,6 +197,24 @@ class BasicAspenSystem(
             case Left(err) => throw err
             case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
           })
+          
+  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = readManager.read(pointer, 
+      SingleKey(key, comparison), false, defaultReadDriverFactory).map(r => r match {
+        case Left(err) => throw err
+        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+      })
+      
+  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = readManager.read(pointer, 
+      LargestKeyLessThan(key, comparison), false, defaultReadDriverFactory).map(r => r match {
+        case Left(err) => throw err
+        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+      })
+      
+  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState] = readManager.read(pointer, 
+      KeyRange(minimum, maximum, comparison), false, defaultReadDriverFactory).map(r => r match {
+        case Left(err) => throw err
+        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+      })
           
   def newTransaction(): Transaction = transactionFactory(txManager, chooseDesignatedLeader, None)
   
