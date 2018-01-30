@@ -118,7 +118,7 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
     val task1 = new UUID(3,3)
     val num1 = 3
     
-    for {
+    val fresult = for {
       r <- sys.radicle
       stg <- sys.createTaskGroup(groupUUID, SimpleTaskGroupType.groupTypeUUID, SimpleTaskGroupType.createNewTaskGroup())
       
@@ -139,6 +139,10 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
       }
     } yield {
       TestTask.execMap should be(Map( (task0 -> num0), (task1 -> num1) ))
+    } 
+    
+    fresult andThen { 
+      case _ => ts.shutdown()
     }
   }
   

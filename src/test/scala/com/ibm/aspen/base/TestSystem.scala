@@ -69,10 +69,10 @@ class TestSystem(
   import scala.language.postfixOps
   import Bootstrap._
   
-  def waitForTransactionsComplete(sn: StorageNode): Future[Unit] = Future {
+  def waitForTransactionsComplete(): Future[Unit] = Future {
     
     var count = 0
-    while (!sn.allTransactionsComplete && count < 100) {
+    while (!sn0.allTransactionsComplete && !sn1.allTransactionsComplete && !sn2.allTransactionsComplete && count < 100) {
       count += 1
       Thread.sleep(5) 
     }
@@ -160,6 +160,13 @@ class TestSystem(
   recover(sys0, sn0)
   recover(sys1, sn1)
   recover(sys2, sn2)
+  
+  def shutdown(): Unit = {
+    sys0.shutdown()
+    sys1.shutdown()
+    sys2.shutdown()
+    Await.result(Future.sequence(List(sn0.shutdown(), sn1.shutdown(), sn2.shutdown())), 1000 milliseconds)
+  }
   
   val aspenSystem = sys0
 }

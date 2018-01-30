@@ -21,6 +21,10 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
     }  
   }
   
+  def shutdown(): Unit = {
+    outstandingReads.foreach( t => t._2.shutdown() )
+  }
+  
   /** Creates a ReadDriver from the passed-in factory function and returns a Future to the eventual result.
    * 
    * The purpose of using a factory here is to allow for flexibility in the strategies used to drive the reads. Reads of objects

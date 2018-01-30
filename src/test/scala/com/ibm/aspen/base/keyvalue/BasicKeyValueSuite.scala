@@ -15,15 +15,13 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
+import com.ibm.aspen.base.TestSystemSuite
 
-class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
+class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
   
   test("Test keyvalue object creation and read") {
-    
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
+
     val minimum = List[Byte](1,2).toArray
     val maximum = List[Byte](3,4).toArray
     val right   = List[Byte](5,6).toArray
@@ -79,9 +77,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   }
   
   test("Test keyvalue object creation, update, and read") {
-    
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
     
     val minimum = List[Byte](1,2).toArray
     val maximum = List[Byte](3,4).toArray
@@ -145,9 +140,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   
   test("Test single-key read, success") {
     
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     val minimum = List[Byte](1,2).toArray
     val maximum = List[Byte](3,4).toArray
     val right   = List[Byte](5,6).toArray
@@ -198,9 +190,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   
   test("Test single-key read, out of bounds") {
     
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     val minimum = List[Byte](0).toArray
     val maximum = List[Byte](7).toArray
     val right   = List[Byte](5,6).toArray
@@ -250,9 +239,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   
   test("Test single-key read, in bounds no key") {
     
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     val minimum = List[Byte](0).toArray
     val maximum = List[Byte](9).toArray
     val right   = List[Byte](5,6).toArray
@@ -297,9 +283,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   }
   
   test("Test LargetKeyLessThan read, success") {
-    
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
     
     val minimum = List[Byte](0).toArray
     val maximum = List[Byte](9).toArray
@@ -353,9 +336,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   
   test("Test LargetKeyLessThan read, no matching key") {
     
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     val minimum = List[Byte](0).toArray
     val maximum = List[Byte](9).toArray
     val right   = List[Byte](5,6).toArray
@@ -405,9 +385,6 @@ class BasicKeyValueSuite extends AsyncFunSuite with Matchers {
   }
   
   test("Test KeyRange reads") {
-    
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
     
     val minimum = List[Byte](0).toArray
     val maximum = List[Byte](9).toArray

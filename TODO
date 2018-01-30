@@ -1,10 +1,14 @@
-* Add KeyValue udpate transactions
-* Test basic object transactions with TestSystem backend
-* Add API for optimized reads
-* Test Optimized reads: SingleKey, range, lessthan
-   - Include error-handling tests
    
 * Implement KeyValueLinkedList
+   * Make TestSystem solid so we can use it for reliably testing Lists & Trees
+   * Separate node interface and navigation from object model for testing
+   -- how to handle transactions though?
+   * Need a NodePointer on client side only. In object it's key,value pair
+   * What if we put the logic into ListNode and TierNode instead of into object wrappers?
+      - each implements just what it needs to for navigation and points to a single node
+      
+
+
 * Implement KeyValueTree
     ** CACHING - never cache raw data content. only application-level objects that serve navigation purposes
                  These can be library-level node representations as consumers should not care about the

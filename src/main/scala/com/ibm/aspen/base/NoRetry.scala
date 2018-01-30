@@ -15,4 +15,6 @@ class NoRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     }
     p.future
   }
+  
+  def shutdown(): Unit = ()
 }

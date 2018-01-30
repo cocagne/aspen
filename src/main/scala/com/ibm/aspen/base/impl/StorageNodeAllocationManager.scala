@@ -44,6 +44,8 @@ class StorageNodeAllocationManager(
     
   protected[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
+  def shutdown(): Unit = {}
+  
   def addStore(store: DataStore): Unit = { 
     val lars = crl.getAllocationRecoveryStateForStore(store.storeId)
     lars.foreach(ars => trackAllocation(store, ars))

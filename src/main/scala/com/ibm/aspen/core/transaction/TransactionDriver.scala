@@ -34,6 +34,8 @@ abstract class TransactionDriver(
  
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
   
+  def shutdown(): Unit = {}
+  
   def heartbeat(): Unit = messenger.send(allDataStores.map(toStoreId => TxHeartbeat(toStoreId, storeId, txd.transactionUUID)))
       
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {

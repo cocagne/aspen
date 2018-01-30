@@ -61,6 +61,11 @@ class SimpleAllocationRecoveryProcess(
     }
   }}
   
+  def shutdown(): Unit = {
+    queryTask.cancel()
+    retryStrategy.shutdown()
+  }
+  
   def receive(m: AllocationStatusReply): Unit = synchronized {
     replies += (m.from -> m)
     

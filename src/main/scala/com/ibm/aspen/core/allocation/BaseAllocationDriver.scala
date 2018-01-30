@@ -45,6 +45,8 @@ class BaseAllocationDriver (
   
   private[this] var responses =  Map[Byte, Either[AllocationErrors.Value,  List[AllocateResponse.Allocated]]]()
   
+  def shutdown(): Unit = {}
+  
   /** Initiates the allocation process */
   def start() = sendAllocationMessages()
   

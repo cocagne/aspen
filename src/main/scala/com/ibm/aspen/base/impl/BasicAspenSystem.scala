@@ -97,6 +97,14 @@ class BasicAspenSystem(
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   
+  /** Immediately cancels all future activity scheduled for execution */
+  def shutdown(): Unit = {
+    readManager.shutdown()
+    txManager.shutdown()
+    allocManager.shutdown()
+    initializationRetryStrategy.shutdown()
+  }
+  
   val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA)
   
   net.readHandler.setReceiver(readManager)

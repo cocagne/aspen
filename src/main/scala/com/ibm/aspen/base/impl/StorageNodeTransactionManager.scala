@@ -45,6 +45,10 @@ class StorageNodeTransactionManager(
                                                       
   private[this] val resultCache = Scaffeine().maximumSize(1000)
                                              .build[UUID, Boolean]()
+                                             
+  def shutdown(): Future[Unit] = synchronized {
+    Future.sequence( stores.valuesIterator.map( s => s.shutdown() ) ).map(_ => ())
+  }
   
   def addStore(store: DataStore): Unit = synchronized {
     val ltrs = crl.getTransactionRecoveryStateForStore(store.storeId)
@@ -94,6 +98,11 @@ class StorageNodeTransactionManager(
     private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs => 
       (trs.txd.transactionUUID -> Transaction(crl, messenger, onTransactionDiscarded _, store, trs.txd, trs.localUpdates))
     }.toMap
+    
+    def shutdown(): Future[Unit] = {
+      transactionDrivers.valuesIterator.foreach( d => d.shutdown() )
+      store.close()
+    }
     
     def allTransactionsComplete: Boolean = synchronized { transactions.isEmpty }
     

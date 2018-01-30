@@ -13,11 +13,13 @@ class ClientTransactionManager(
     messenger: ClientSideTransactionMessenger,
     val defaultDriverFactory: ClientTransactionDriver.Factory
     ) extends ClientSideTransactionMessageReceiver {
-  import ClientTransactionManager._
   
   val clientId = messenger.clientId
   
   private[this] var transactions = Map[UUID, ClientTransactionDriver]()
+  
+  /** Immediately cancels all activity scheduled for future execution */
+  def shutdown(): Unit = transactions.foreach( t => t._2.shutdown() )
   
   def runTransaction(
       txd: TransactionDescription,
@@ -47,6 +49,3 @@ class ClientTransactionManager(
   }
 }
 
-object ClientTransactionManager {
-  
-}

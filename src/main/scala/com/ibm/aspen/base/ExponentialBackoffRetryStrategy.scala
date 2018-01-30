@@ -29,21 +29,31 @@ object ExponentialBackoffRetryStrategy {
 class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetryDelay: Int = 15) extends RetryStrategy {
   import ExponentialBackoffRetryStrategy._
   
+  private [this] var exit = false
+  
+  def shutdown(): Unit = synchronized { exit = true }
+  
   def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
     val p = Promise[T]()
     
     implicit val ec = getExecutionContext()
     
-    def retry(limit: Int): Unit = attempt onComplete {
-      case Success(result) => p.success(result)
+    def retry(limit: Int): Unit = {
+      val shouldAttempt = synchronized { !exit }
       
-      case Failure(cause) => cause match {
-        case StopRetrying(reason) => p.failure(reason)
-        
-        case _ =>
-          val delay = rand.nextInt(limit)
-          val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
-          getScheduler().schedule(new Runnable { override def run(): Unit = retry(nextLimit) }, delay, TimeUnit.MILLISECONDS)
+      if (shouldAttempt) {
+        attempt onComplete {
+          case Success(result) => p.success(result)
+          
+          case Failure(cause) => cause match {
+            case StopRetrying(reason) => p.failure(reason)
+            
+            case _ =>
+              val delay = rand.nextInt(limit)
+              val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
+              getScheduler().schedule(new Runnable { override def run(): Unit = retry(nextLimit) }, delay, TimeUnit.MILLISECONDS)
+          }
+        }
       }
     }
     

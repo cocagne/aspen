@@ -77,4 +77,6 @@ trait AspenSystem {
   // TODO: ObjectAllocater tree + save/restore
   //def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
+  /** Immediately cancels all future activity scheduled for execution */
+  def shutdown(): Unit
 }

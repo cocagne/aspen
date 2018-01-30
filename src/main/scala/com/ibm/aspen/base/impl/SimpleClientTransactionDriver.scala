@@ -25,6 +25,8 @@ class SimpleClientTransactionDriver(
     retransmit()
   }
   
+  override def shutdown(): Unit = task.cancel()
+  
   result onComplete { _ => task.cancel() }
   
   override def receive(acceptResponse: TxAcceptResponse): Unit = synchronized {

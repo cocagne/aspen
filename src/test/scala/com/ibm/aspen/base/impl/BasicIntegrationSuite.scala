@@ -36,28 +36,14 @@ import com.ibm.aspen.core.data_store.RocksDBDataStoreBackend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.crl.MemoryOnlyCRL
 import com.ibm.aspen.core.crl.CrashRecoveryLog
+import com.ibm.aspen.base.TestSystemSuite
 
 
-class BasicIntegrationSuite extends AsyncFunSuite with Matchers {
+class BasicIntegrationSuite extends TestSystemSuite { 
   import Bootstrap._
   
-  def waitForTransactionsComplete(ts: TestSystem): Future[Unit] = Future {
+  test("Test Bootstrapping Logic") { 
 
-    var count = 0
-    while (!ts.sn0.allTransactionsComplete && count < 100) {
-      count += 1
-      Thread.sleep(5)
-    }
-
-    if (count > 100)
-      throw new Exception("Finalization Actions Timed Out")
-  }
-  
-  test("Test Bootstrapping Logic") {
-    
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     var allocTreeEntryCount = 0
     
     def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
@@ -90,9 +76,6 @@ class BasicIntegrationSuite extends AsyncFunSuite with Matchers {
   
   test("Test Allocation & Finalization") {
     
-    val ts = new TestSystem()
-    val sys = ts.aspenSystem
-    
     var allocCount = 0
     
     def allocObj(r: Radicle): Future[ObjectPointer] = {
@@ -121,9 +104,9 @@ class BasicIntegrationSuite extends AsyncFunSuite with Matchers {
     for {
       r <- sys.radicle
       fp1 <- allocObj(r)
-      faComplete1 <- waitForTransactionsComplete(ts)
+      faComplete1 <- waitForTransactionsComplete()
       fp2 <- allocObj(r)
-      faComplete2 <- waitForTransactionsComplete(ts)
+      faComplete2 <- waitForTransactionsComplete()
       
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
       
@@ -144,9 +127,4 @@ class BasicIntegrationSuite extends AsyncFunSuite with Matchers {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
     }
   }
-  
-  
-  
-  
- 
 }

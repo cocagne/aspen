@@ -31,6 +31,8 @@ class ClientAllocationManager(
   
   private[this] var outstandingAllocations = Map[UUID, AllocationDriver]()
   
+  def shutdown(): Unit = outstandingAllocations.foreach( t => t._2.shutdown() )
+  
   def receive(m: AllocateResponse): Unit = { 
     synchronized { outstandingAllocations.get(m.allocationTransactionUUID) } foreach {
       driver => driver.receiveAllocationResult(m.fromStoreId, m.allocationTransactionUUID, m.result)

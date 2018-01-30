@@ -67,6 +67,15 @@ class StorageNode(
   private case class Recovered(
     transactionManager: StorageNodeTransactionManager,
     allocationManager: StorageNodeAllocationManager) 
+    
+  def shutdown(): Future[Unit] = synchronized {
+    recoveredOption match {
+      case None => Future.successful(())
+      case Some(r) => 
+        r.allocationManager.shutdown()
+        r.transactionManager.shutdown()
+    }
+  }
   
   def recoverPendingOperations(txMgr: StorageNodeTransactionManager, allocMgr:StorageNodeAllocationManager): Unit = synchronized {
         

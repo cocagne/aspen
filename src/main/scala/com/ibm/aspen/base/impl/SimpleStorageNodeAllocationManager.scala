@@ -23,7 +23,7 @@ class SimpleStorageNodeAllocationManagerclass(
   // Periodically check out heartbeats for all outstanding allocation transactions. If any haven't received
   // heart beat updates within the timeout window, begin the recovery process
   //
-  BackgroundTask.schedulePeriodic(heartbeatPeriod) { synchronized {
+  private[this] val bgTask = BackgroundTask.schedulePeriodic(heartbeatPeriod) { synchronized {
     val now = System.currentTimeMillis()
     
     val (allocs, recovers) = synchronized { (allocations, recoveryProcesses) }
@@ -41,4 +41,6 @@ class SimpleStorageNodeAllocationManagerclass(
       }
     }
   }}
+  
+  override def shutdown(): Unit = bgTask.cancel()
 }

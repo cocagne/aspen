@@ -30,6 +30,8 @@ class ClientTransactionDriver(
   // Send initial set of messages
   sendPrepareMessages()
   
+  def shutdown(): Unit = {}
+  
   def receive(acceptResponse: TxAcceptResponse): Unit = synchronized {
     if (promise.isCompleted)
       return

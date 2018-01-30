@@ -50,6 +50,8 @@ class BaseReadDriver(
   
   def begin() = sendReadRequests()
   
+  def shutdown(): Unit = {}
+  
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
       Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType, retrieveLockedTransaction))

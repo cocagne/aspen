@@ -34,6 +34,8 @@ class SimpleTestSystem extends AspenSystem {
   
   val now = HLCTimestamp.now
   
+  def shutdown(): Unit = ()
+  
   def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))

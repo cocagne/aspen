@@ -25,6 +25,9 @@ trait AllocationDriver {
     
   def futureResult: Future[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]]
   
+  /** Immediately cancels all future activity scheduled for execution */
+  def shutdown(): Unit
+  
   /** Initiates the allocation process */
   def start(): Unit
   

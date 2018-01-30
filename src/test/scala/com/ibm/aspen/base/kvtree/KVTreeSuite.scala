@@ -354,6 +354,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     val v = iarr(10)
     
     val noRetry = new RetryStrategy {
+      def shutdown(): Unit = ()
       def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
         val p = Promise[T]()
         attempt onComplete {
@@ -412,6 +413,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     val v = iarr(10)
     
     val noRetry = new RetryStrategy {
+      def shutdown(): Unit = ()
       def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
         val p = Promise[T]()
         attempt onComplete {
@@ -486,6 +488,7 @@ class KVTreeSuite extends AsyncFunSuite with Matchers {
     }
     
     val noRetry = new RetryStrategy {
+      def shutdown(): Unit = ()
       def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
         val p = Promise[T]()
         attempt onComplete {

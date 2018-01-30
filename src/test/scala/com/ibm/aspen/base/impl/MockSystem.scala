@@ -146,6 +146,8 @@ object MockSystem {
     } 
     
     override def begin(): Unit = ()
+    
+    override def shutdown(): Unit = ()
   
     override def receiveReadResponse(response:ReadResponse): Unit = ()
   }
@@ -249,6 +251,8 @@ object MockSystem {
     
     /** Initiates the allocation process */
     def start(): Unit = ()
+    
+    def shutdown(): Unit = {}
     
     def receiveAllocationResult(fromStoreId: DataStoreID, 
                                 allocationTransactionUUID: UUID, 

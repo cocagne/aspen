@@ -25,6 +25,8 @@ class SimpleStoreTransactionDriver(
   private[this] var backoffDelay = initialDelay
   private[this] var nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }
   
+  override def shutdown(): Unit = nextTry.cancel()
+  
   private def sendMessages(): Unit = synchronized {
     proposer.currentAcceptMessage() match {
       case Some(_) => sendAcceptMessages()
