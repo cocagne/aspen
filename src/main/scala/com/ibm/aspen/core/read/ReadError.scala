@@ -5,7 +5,7 @@ import com.ibm.aspen.core.data_store
 
 sealed abstract class ReadError(msg: String) extends Exception(msg)
 
-class IDAError(msg:String) extends ReadError(msg)
+class ReadIDAError(msg:String) extends ReadError(msg)
 
 case class ThresholdError(errors: Map[DataStoreID, ReadError.Value]) extends ReadError("ThresholdError")
 

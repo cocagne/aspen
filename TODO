@@ -1,3 +1,18 @@
+* Manual Encoding of ObjectPointer
+  - IDA - decode(bb: ByteBuffer): IDA
+     - byte-type, byte-width, byte-threshold, [optional stuff afterward]
+  - ObjectPointer
+    * Byte - 0: has-size, 1: has-store-pointer-arrays, 2-8 EncodingFormat
+    * 16 uuid
+    * 16 pool ID
+    * ida
+    * [size]
+    * StorePointers
+       * Array of bytes with width # of bits. 1 for each used index
+       - End of buffer if no objects have StorePointer with data array
+       - Width-number of length varints
+       - data for each store pointer (lowest index to highest)
+       
    
 * Implement KeyValueLinkedList
    * Make TestSystem solid so we can use it for reliably testing Lists & Trees

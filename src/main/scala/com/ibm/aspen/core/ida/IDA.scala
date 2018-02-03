@@ -1,9 +1,33 @@
 package com.ibm.aspen.core.ida
 
 import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.read.IDAError
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+
+object IDA {
+  val ReplicationCode: Byte = 0
+  val ReedSolomonCode: Byte = 1
+  
+  /** Deserializes the IDA type and returns the matching IDA instance */
+  def deserializeIDAType(bb: ByteBuffer): IDA = {
+    val typeCode = bb.get()
+    
+    typeCode match {
+      case ReplicationCode => 
+        val width = bb.get()
+        val writeThreshold = bb.get()
+        new Replication(width, writeThreshold)
+        
+      case ReedSolomonCode => 
+        val width = bb.get()
+        val readThreshold = bb.get()
+        val writeThreshold = bb.get()
+        new ReedSolomon(width, readThreshold, writeThreshold)
+        
+      case _ => throw new IDAEncodingError
+    }
+  }
+}
 
 sealed abstract class IDA extends Ordered[IDA] {
   
@@ -63,6 +87,14 @@ sealed abstract class IDA extends Ordered[IDA] {
   
   /** Returns length of the DataBuffers that would be returned by calling encode() on the provided DataBuffer */ 
   def calculateEncodedSegmentLength(objectContent: DataBuffer): Int
+  
+  /** Returns the number of bytes needed to serialize the IDA type. */
+  def getSerializedIDATypeLength(): Int
+  
+  /** Serializes the IDA type into the ByteBuffer such that when the IDA type is decoded, an identical copy
+   *  of this class is returned.
+   */
+  def serializeIDAType(bb: ByteBuffer): Unit
 }
 
 case class Replication(width: Int, writeThreshold: Int) extends IDA {
@@ -75,7 +107,7 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
     case None => false
     case Some(_) => true
   }) match {
-    case None => throw new IDAError("No stores returned data")
+    case None => throw new IDARestoreError
     case Some(t) => t._2.get
   }
   
@@ -93,6 +125,14 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
   }
   
   def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = objectContent.size
+  
+  def getSerializedIDATypeLength(): Int = 3 // <type><width><writeThreshold>
+  
+  def serializeIDAType(bb: ByteBuffer): Unit = {
+    bb.put(IDA.ReplicationCode)
+    bb.put(width.asInstanceOf[Byte])
+    bb.put(writeThreshold.asInstanceOf[Byte])
+  }
 }
 
 case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int) 
@@ -100,11 +140,20 @@ case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int)
   
   def consistentRestoreThreshold: Int = restoreThreshold
   
-  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = throw new IDAError("Read Solomon not yet supported")
+  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = throw new IDANotSupportedError
   
-  def encode(objectContent: DataBuffer): Array[DataBuffer] = throw new IDAError("Read Solomon not yet supported")
+  def encode(objectContent: DataBuffer): Array[DataBuffer] = throw new IDANotSupportedError
   
-  def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = throw new IDAError("Read Solomon not yet supported")
+  def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = throw new IDANotSupportedError
   
-  def encodeInto(objectContent: DataBuffer, bbArray: Array[ByteBuffer]): Unit = throw new IDAError("Read Solomon not yet supported")
+  def encodeInto(objectContent: DataBuffer, bbArray: Array[ByteBuffer]): Unit = throw new IDANotSupportedError
+  
+  def getSerializedIDATypeLength(): Int = 4 // <type><width><restoreThreshold><writeThreshold>
+  
+  def serializeIDAType(bb: ByteBuffer): Unit = {
+    bb.put(IDA.ReplicationCode)
+    bb.put(width.asInstanceOf[Byte])
+    bb.put(restoreThreshold.asInstanceOf[Byte])
+    bb.put(writeThreshold.asInstanceOf[Byte])
+  }
 }

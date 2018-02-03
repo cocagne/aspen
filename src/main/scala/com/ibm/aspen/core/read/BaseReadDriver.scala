@@ -22,6 +22,7 @@ import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.data_store.Lock
 import com.ibm.aspen.core.objects.MetadataObjectState
+import com.ibm.aspen.core.ida.IDAError
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -162,7 +163,7 @@ class BaseReadDriver(
         promise.success(Right(objectState))
         
       } catch {
-        case e: IDAError => promise.success(Left(e))
+        case e: IDAError => promise.success(Left(new ReadIDAError("IDA Restore Failed")))
         case e: ObjectEncodingError => promise.success(Left(new EncodingError))
         case err: Throwable =>
           println(s"*** This should never happen. Unexpected Exception: $err")
