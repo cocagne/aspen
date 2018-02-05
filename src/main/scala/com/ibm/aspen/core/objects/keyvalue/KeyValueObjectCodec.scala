@@ -134,7 +134,7 @@ object KeyValueObjectCodec {
   def encodeUpdate(ida: IDA, ops: List[KeyValueOperation]): Array[DataBuffer] = {
     
     val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
-    val lenVarInt = Varint.getUnignedIntEncodingLength(encodedSize)
+    val lenVarInt = Varint.getUnsignedIntEncodingLength(encodedSize)
     val updateUUID = UUID.randomUUID()
     
     val bbArray = new Array[ByteBuffer](ida.width)

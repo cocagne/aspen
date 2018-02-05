@@ -128,14 +128,14 @@ object ObjectPointer {
   }
   
   def numBytesNeededToEncode(o: ObjectPointer): Int = {
-    val sizeLen = Varint.getUnignedIntEncodingLength(o.size.getOrElse(0))
+    val sizeLen = Varint.getUnsignedIntEncodingLength(o.size.getOrElse(0))
     
     val idaLen = o.ida.getSerializedIDATypeLength()
     
     val indexMaskLen = bytesNeededForBits(o.storePointers(o.storePointers.length-1).poolIndex)
     
     val pointerDataLen = if (o.storePointers.forall( sp => sp.data.length == 0 )) 0 else {
-      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnignedIntEncodingLength(sp.data.length) + sp.data.length)
+      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnsignedIntEncodingLength(sp.data.length) + sp.data.length)
     }
     
     1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen  
@@ -149,7 +149,7 @@ object ObjectPointer {
    */
   def encodeToByteArray(o: ObjectPointer, numPaddingBytes: Option[Int]=None): Array[Byte] = {
     
-    val sizeLen = Varint.getUnignedIntEncodingLength(o.size.getOrElse(0))
+    val sizeLen = Varint.getUnsignedIntEncodingLength(o.size.getOrElse(0))
     
     val idaLen = o.ida.getSerializedIDATypeLength()
     
@@ -164,7 +164,7 @@ object ObjectPointer {
     }
     
     val pointerDataLen = if (o.storePointers.forall( sp => sp.data.length == 0 )) 0 else {
-      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnignedIntEncodingLength(sp.data.length) + sp.data.length)
+      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnsignedIntEncodingLength(sp.data.length) + sp.data.length)
     }
     
     val totalSize = 1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen

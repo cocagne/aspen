@@ -117,7 +117,7 @@ sealed abstract class SingleReplicatedValue(val value: Array[Byte]) extends KeyV
   def opcode: Byte
   
   override def getEncodedLength(ida: IDA): Int = {
-    val varintLen = Varint.getUnignedIntEncodingLength(value.size)
+    val varintLen = Varint.getUnsignedIntEncodingLength(value.size)
     
     1 + varintLen + value.size
   }
@@ -144,7 +144,7 @@ sealed abstract class SingleEncodedValue(val value: Array[Byte]) extends KeyValu
   override def getEncodedLength(ida: IDA): Int = {
     
     val encLen = ida.calculateEncodedSegmentLength(value)
-    val varintLen = Varint.getUnignedIntEncodingLength(encLen)
+    val varintLen = Varint.getUnsignedIntEncodingLength(encLen)
     
     1 + varintLen + encLen
   }
@@ -212,8 +212,8 @@ class Insert(
   override def getEncodedLength(ida: IDA): Int = {
     val encValLen = ida.calculateEncodedSegmentLength(value)
     
-    val keyVarintLen = Varint.getUnignedIntEncodingLength(key.size)
-    val valVarintLen = Varint.getUnignedIntEncodingLength(encValLen)
+    val keyVarintLen = Varint.getUnsignedIntEncodingLength(key.size)
+    val valVarintLen = Varint.getUnsignedIntEncodingLength(encValLen)
     
     1 + 8 + keyVarintLen + valVarintLen + key.size + encValLen
   }

@@ -1,26 +1,34 @@
-* Manual Encoding of ObjectPointer
-  - IDA - decode(bb: ByteBuffer): IDA
-     - byte-type, byte-width, byte-threshold, [optional stuff afterward]
-  - ObjectPointer
-    * Byte - 0: has-size, 1: has-store-pointer-arrays, 2-8 EncodingFormat
-    * 16 uuid
-    * 16 pool ID
-    * ida
-    * [size]
-    * StorePointers
-       * Array of bytes with width # of bits. 1 for each used index
-       - End of buffer if no objects have StorePointer with data array
-       - Width-number of length varints
-       - data for each store pointer (lowest index to highest)
-       
    
 * Implement KeyValueLinkedList
    * Make TestSystem solid so we can use it for reliably testing Lists & Trees
-   * Separate node interface and navigation from object model for testing
+   * Separate node interface and navigation from object model for testing?
    -- how to handle transactions though?
    * Need a NodePointer on client side only. In object it's key,value pair
    * What if we put the logic into ListNode and TierNode instead of into object wrappers?
       - each implements just what it needs to for navigation and points to a single node
+      - A ListNode isa list. Similar to Scala, we can ignore the "Node" concept entirely. It's up to the user to
+        track the head... though this is a MutableList Or is it? If we modify a list node, we could copy. It wouldn't
+        break Prev pointers but it would screw up navigation via the original list. But that could be desired in some
+        circumstances. Flags or subclasses (probably better left to subclasses) could augment the top-level logic to
+        do copies, update references in prev/next nodes. Etc.
+      - Similarly, a IndexedKeyValueList isa tree, just potentially a smaller one as we navigate down. Can also track its parent
+        node.
+      ** At the bottom, we could just have a List. The "Tree" concept could just extend to tiers 1+ and therefore
+         consist exclusively of List pointers. Perhaps better named ListIndex or TieredList
+      - We don't need "descriptors". It's up to the application level to figure out which allocater should be used.
+        IndexedKeyValueList pointers include a tier number. Constructor takes InexedKeyValueListRootNodeManager
+        provides fetch()/set(newRootNode, tierNumber)(implicit tx) methods.
+           -- Base implementation tracks the current root tier number. If the actual root is updated, it calls the
+              subclass methods. Otherwise it simply inserts into the tier's list
+           -- All tiers need to share the same implementation
+           -- Maybe this is the "IndexRoot"?
+               |-> To enforce a clean separation, it could have only a few methods. The primary of which is
+                   fetchTree(): Future[Tree]
+                     |-> Always reads the pointer and returns the tree (to avoid caching issues if other
+                         entities are updating the tree). Application can cache this for as long as it likes.
+           -- Should we use an explicit cache?
+               - Every node will have a pointer to the IndexRoot. We could fetch all nodes through this.
+               - Would allow mixin classes to add caching strategies
       
 
 
