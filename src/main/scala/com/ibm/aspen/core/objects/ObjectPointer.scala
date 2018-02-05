@@ -80,9 +80,10 @@ object ObjectPointer {
       (numBits / 8) + 1
   }
   
-  def fromArray(arr: Array[Byte]): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr))
+  def fromArray(arr: Array[Byte], endPosition: Option[Int]=None): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr), endPosition)
   
-  def fromByteBuffer(bb: ByteBuffer): ObjectPointer = {
+  def fromByteBuffer(bb: ByteBuffer, endPosition: Option[Int]=None): ObjectPointer = {
+    val endPos = endPosition.getOrElse( bb.limit )
     val typeCode = bb.get()
     
     def getUUID(): UUID = {
@@ -104,7 +105,7 @@ object ObjectPointer {
       val thisStore = indexMask(byte) & (1 << bit).asInstanceOf[Byte]
       
       if (thisStore != 0) {
-        val spArr = if (bb.remaining() > 0) {
+        val spArr = if (bb.position < endPos) {
           val len = Varint.getUnsignedInt(bb)
           val spArr = new Array[Byte](len)
           bb.get(spArr)
@@ -149,9 +150,16 @@ object ObjectPointer {
    */
   def encodeToByteArray(o: ObjectPointer, numPaddingBytes: Option[Int]=None): Array[Byte] = {
     
-    val sizeLen = Varint.getUnsignedIntEncodingLength(o.size.getOrElse(0))
+    val totalSize = numBytesNeededToEncode(o) + numPaddingBytes.getOrElse(0)
+    val arr = new Array[Byte](totalSize)
+    val bb = ByteBuffer.wrap(arr)
     
-    val idaLen = o.ida.getSerializedIDATypeLength()
+    encodeInto(bb, o)
+     
+    arr
+  }
+  
+  def encodeInto(bb: ByteBuffer, o: ObjectPointer): Unit = {
     
     val indexMaskLen = bytesNeededForBits(o.storePointers(o.storePointers.length-1).poolIndex)
     
@@ -166,12 +174,7 @@ object ObjectPointer {
     val pointerDataLen = if (o.storePointers.forall( sp => sp.data.length == 0 )) 0 else {
       o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnsignedIntEncodingLength(sp.data.length) + sp.data.length)
     }
-    
-    val totalSize = 1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen
-    
-    val arr = new Array[Byte](totalSize)
-    val bb = ByteBuffer.wrap(arr)
-    
+
     val typeCode = o match {
       case _: DataObjectPointer => DataObjectPointerCode
       case _: KeyValueObjectPointer => KeyValueObjectPointerCode
@@ -192,8 +195,6 @@ object ObjectPointer {
         bb.put(sp.data)
       }
     }
-    
-    arr
   }
 }
 

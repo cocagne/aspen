@@ -16,6 +16,9 @@ import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
 import com.ibm.aspen.base.TestSystemSuite
+import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.core.ida.Replication
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
@@ -468,5 +471,49 @@ class BasicKeyValueSuite extends TestSystemSuite {
       
       kvos5.contents.size should be (0)
     }
+  }
+  
+  test("KeyValueListPointer Encoding") {
+    val objUUID = new UUID(3,4)
+    val poolUUID = new UUID(5,6)
+    val size = Some(10)
+    val p1 = StorePointer(0, new Array[Byte](0))
+    val p2 = StorePointer(1, new Array[Byte](0))
+    val p3 = StorePointer(2, new Array[Byte](0))
+    val pointers = (p1::p2::p3::Nil).toArray
+    val ida = Replication(3,2)
+    
+    val op = KeyValueObjectPointer(objUUID, poolUUID, size, ida, pointers)
+    val min = Array[Byte](0,1,2,3,4)
+    
+    val kvlp = KeyValueListPointer(Key(min), op)
+    
+    val arr = kvlp.toArray
+    
+    val kvlp2 = KeyValueListPointer.fromArray(arr)
+    
+    kvlp2 should be (kvlp)
+  }
+  
+  test("KeyValueListPointer Encoding - Empty Minimum Array") {
+    val objUUID = new UUID(3,4)
+    val poolUUID = new UUID(5,6)
+    val size = Some(10)
+    val p1 = StorePointer(0, new Array[Byte](0))
+    val p2 = StorePointer(1, new Array[Byte](0))
+    val p3 = StorePointer(2, new Array[Byte](0))
+    val pointers = (p1::p2::p3::Nil).toArray
+    val ida = Replication(3,2)
+    
+    val op = KeyValueObjectPointer(objUUID, poolUUID, size, ida, pointers)
+    val min = new Array[Byte](0)
+    
+    val kvlp = KeyValueListPointer(Key(min), op)
+    
+    val arr = kvlp.toArray
+    
+    val kvlp2 = KeyValueListPointer.fromArray(arr)
+    
+    kvlp2 should be (kvlp)
   }
 }
