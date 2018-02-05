@@ -82,9 +82,10 @@ class BaseAllocationDriver (
       })
       
       if (errors.isEmpty) {
+        val sortedPointersArray = pointers.sortBy(sp => sp.poolIndex).toArray
         val op = options match {
-          case _: DataAllocationOptions => new DataObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)
-          case _: KeyValueAllocationOptions => new KeyValueObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, pointers.toArray)
+          case _: DataAllocationOptions => new DataObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, sortedPointersArray)
+          case _: KeyValueAllocationOptions => new KeyValueObjectPointer(newObjectUUID, poolUUID, objectSize, objectIDA, sortedPointersArray)
         }
         promise.success(Right(op))
       } else 

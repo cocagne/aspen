@@ -6,6 +6,10 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.util.Varint
 import java.nio.ByteBuffer
 
+/** 
+ * 
+ * storePointers must be a sorted array based on the poolIndex for each store 
+ */
 sealed abstract class ObjectPointer(
     val uuid: UUID,
     val poolUUID: UUID,
@@ -15,7 +19,12 @@ sealed abstract class ObjectPointer(
   
   import ObjectPointer._
   
+  // Require that storePointers is a sorted by pool index
+  require(storePointers.zip(storePointers.sortBy(sp => sp.poolIndex)).forall(t => t._1 == t._2))
+  
   def toArray: Array[Byte] = encodeToByteArray(this)
+  
+  def encodedSize: Int = numBytesNeededToEncode(this)
   
   final override def equals(other: Any): Boolean = other match {
     case rhs: ObjectPointer => uuid == rhs.uuid && poolUUID == rhs.poolUUID && size == rhs.size &&
@@ -71,8 +80,9 @@ object ObjectPointer {
       (numBits / 8) + 1
   }
   
-  def fromArray(arr: Array[Byte]): ObjectPointer = {
-    val bb = ByteBuffer.wrap(arr)
+  def fromArray(arr: Array[Byte]): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr))
+  
+  def fromByteBuffer(bb: ByteBuffer): ObjectPointer = {
     val typeCode = bb.get()
     
     def getUUID(): UUID = {
@@ -117,26 +127,44 @@ object ObjectPointer {
     }
   }
   
-  def encodeToByteArray(o: ObjectPointer): Array[Byte] = {
+  def numBytesNeededToEncode(o: ObjectPointer): Int = {
+    val sizeLen = Varint.getUnignedIntEncodingLength(o.size.getOrElse(0))
     
-    val sorted = o.storePointers.sortBy(sp => sp.poolIndex)
+    val idaLen = o.ida.getSerializedIDATypeLength()
+    
+    val indexMaskLen = bytesNeededForBits(o.storePointers(o.storePointers.length-1).poolIndex)
+    
+    val pointerDataLen = if (o.storePointers.forall( sp => sp.data.length == 0 )) 0 else {
+      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnignedIntEncodingLength(sp.data.length) + sp.data.length)
+    }
+    
+    1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen  
+  }
+  
+  /** Creates a new array containing the encoded representation of the object pointer.
+   *
+   * If numPaddingBytes is provided, that many extra bytes will be allocated for the array and
+   * left unused after the object is encoded. This is primarily intended to allow extra data
+   * to be easily saved alongside the encoded object pointer.   
+   */
+  def encodeToByteArray(o: ObjectPointer, numPaddingBytes: Option[Int]=None): Array[Byte] = {
     
     val sizeLen = Varint.getUnignedIntEncodingLength(o.size.getOrElse(0))
     
     val idaLen = o.ida.getSerializedIDATypeLength()
     
-    val indexMaskLen = bytesNeededForBits(sorted(sorted.length-1).poolIndex)
+    val indexMaskLen = bytesNeededForBits(o.storePointers(o.storePointers.length-1).poolIndex)
     
     val indexMask = new Array[Byte](indexMaskLen)
     
-    sorted.foreach { sp =>
+    o.storePointers.foreach { sp =>
       val byte = sp.poolIndex / 8
       val bit = sp.poolIndex % 8
       indexMask(byte) = (indexMask(byte) | 1 << bit).asInstanceOf[Byte]
     }
     
-    val pointerDataLen = if (sorted.forall( sp => sp.data.length == 0 )) 0 else {
-      sorted.foldLeft(0)( (accum, sp) => accum + Varint.getUnignedIntEncodingLength(sp.data.length) + sp.data.length)
+    val pointerDataLen = if (o.storePointers.forall( sp => sp.data.length == 0 )) 0 else {
+      o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnignedIntEncodingLength(sp.data.length) + sp.data.length)
     }
     
     val totalSize = 1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen
@@ -159,7 +187,7 @@ object ObjectPointer {
     bb.put(indexMaskLen.asInstanceOf[Byte])
     bb.put(indexMask)
     if (pointerDataLen != 0) {
-      sorted.foreach { sp =>
+      o.storePointers.foreach { sp =>
         Varint.putUnsignedInt(bb, sp.data.length)
         bb.put(sp.data)
       }
