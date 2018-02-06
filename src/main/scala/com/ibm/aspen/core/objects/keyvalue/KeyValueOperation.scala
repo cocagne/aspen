@@ -166,18 +166,18 @@ sealed abstract class SingleEncodedValue(val value: Array[Byte]) extends KeyValu
 }
 
 
-class SetMin(value: Array[Byte])  extends SingleReplicatedValue(value) {
+class SetMin(value: Key)  extends SingleReplicatedValue(value.bytes) {
   def opcode: Byte = KeyValueOperation.SetMinCode
 }
 object SetMin extends KeyValueOperation.SingleValueDecoder {
-  def create(value: Array[Byte]) = new SetMin(value)
+  def create(value: Array[Byte]) = new SetMin(Key(value))
 }
 
-class SetMax(value: Array[Byte])  extends SingleReplicatedValue(value) {
+class SetMax(value: Key)  extends SingleReplicatedValue(value.bytes) {
   def opcode: Byte = KeyValueOperation.SetMaxCode
 }
 object SetMax extends KeyValueOperation.SingleValueDecoder {
-  def create(value: Array[Byte]) = new SetMax(value)
+  def create(value: Array[Byte]) = new SetMax(Key(value))
 }
 
 class SetLeft(value: Array[Byte])  extends SingleEncodedValue(value) {

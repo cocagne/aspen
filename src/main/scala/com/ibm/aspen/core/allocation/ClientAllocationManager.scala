@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
@@ -111,8 +112,8 @@ class ClientAllocationManager(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Array[Byte]],
-      maximum: Option[Array[Byte]],
+      minimum: Option[Key],
+      maximum: Option[Key],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]]): Future[Either[Map[Byte,AllocationErrors.Value], KeyValueObjectPointer]] = {
     

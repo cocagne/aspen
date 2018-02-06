@@ -81,8 +81,8 @@ class KeyValueObjectState(
     revision:ObjectRevision, 
     refcount:ObjectRefcount, 
     timestamp: HLCTimestamp,
-    val minimum: Option[Array[Byte]],
-    val maximum: Option[Array[Byte]],
+    val minimum: Option[Key],
+    val maximum: Option[Key],
     val left: Option[Array[Byte]],
     val right: Option[Array[Byte]],
     val contents: Map[Key, Value]
@@ -108,16 +108,20 @@ class KeyValueObjectState(
     other match {
       case that: KeyValueObjectState =>
         (that canEqual this) && pointer == that.pointer && revision == that.revision && refcount == that.refcount && 
-        cmp(minimum,that.minimum) && cmp(maximum, that.maximum) && cmp(left, that.left) && cmp(right, that.right) && contents == that.contents
+        cmpk(minimum,that.minimum) && cmpk(maximum, that.maximum) && cmp(left, that.left) && cmp(right, that.right) && contents == that.contents
       case _ => false
     }
   }
   override def hashCode: Int = {
-    def h(o: Option[Array[Byte]]): Int = o match {
+    def hk(o: Option[Key]): Int = o match {
+      case None => 0
+      case Some(key) => java.util.Arrays.hashCode(key.bytes)
+    }
+    def ha(o: Option[Array[Byte]]): Int = o match {
       case None => 0
       case Some(arr) => java.util.Arrays.hashCode(arr)
     }
-    val hashCodes = List(pointer.hashCode, revision.hashCode, refcount.hashCode, timestamp.hashCode, h(minimum), h(maximum), h(left), h(right), contents.hashCode)
+    val hashCodes = List(pointer.hashCode, revision.hashCode, refcount.hashCode, timestamp.hashCode, hk(minimum), hk(maximum), ha(left), ha(right), contents.hashCode)
     hashCodes.reduce( (a,b) => a ^ b )
   }
   
@@ -126,7 +130,11 @@ class KeyValueObjectState(
       case None => ""
       case Some(arr) => com.ibm.aspen.util.arr2string(arr)
     }
-    s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: ${p(minimum)}, max: ${p(maximum)}, left: ${p(left)}, right: ${p(right)}, contents: ${contents}"
+    def pk(o:Option[Key]): String = o match {
+      case None => ""
+      case Some(key) => com.ibm.aspen.util.arr2string(key.bytes)
+    }
+    s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: ${pk(minimum)}, max: ${pk(maximum)}, left: ${p(left)}, right: ${p(right)}, contents: ${contents}"
   }
 }
 
@@ -136,8 +144,8 @@ object KeyValueObjectState {
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp, 
-      minimum: Option[Array[Byte]],
-      maximum: Option[Array[Byte]],
+      minimum: Option[Key],
+      maximum: Option[Key],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
       contents: Map[Key, Value]): KeyValueObjectState = {
@@ -149,5 +157,12 @@ object KeyValueObjectState {
     case (Some(_), None) => false
     case (None, Some(_)) => false
     case (Some(x), Some(y)) => java.util.Arrays.equals(x, y)
+  }
+  
+  def cmpk(a: Option[Key], b: Option[Key]): Boolean = (a,b) match {
+    case (None, None) => true
+    case (Some(_), None) => false
+    case (None, Some(_)) => false
+    case (Some(x), Some(y)) => java.util.Arrays.equals(x.bytes, y.bytes)
   }
 }

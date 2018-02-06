@@ -67,6 +67,18 @@ object KeyValueObjectTransactionSuite {
     }
   }
   
+  def okeq(a: Option[Key], b: Option[Key]): Boolean = {
+    //println(s"Comparing $a to $b")
+    (a,b) match {
+      case (None,None) => true
+      case (Some(_), None) => false
+      case (None, Some(_)) => false
+      case (Some(aa), Some(bb)) =>
+        //println(s"aa ${arr2string(aa)} bb ${arr2string(bb)}")
+        java.util.Arrays.equals(aa.bytes, bb.bytes)
+    }
+  }
+  
   case class State(md: ObjectMetadata, kv: KeyValueObjectStoreState, locks: Set[Lock])
   
   def k(i: Byte): Key = Key(List[Byte](i).toArray)
@@ -133,8 +145,8 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val aleft = List[Byte](1,2).toArray
     val aright = List[Byte](3,4).toArray
-    val amin = List[Byte](5,6).toArray
-    val amax = List[Byte](5,6).toArray
+    val amin = Key(List[Byte](5,6).toArray)
+    val amax = Key(List[Byte](5,6).toArray)
     
     val ops = List(new SetLeft(aleft), new SetRight(aright), new SetMin(amin), new SetMax(amax)) 
     val db = KeyValueObjectCodec.encodeUpdate(ida, ops)(0)
@@ -165,8 +177,8 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     a0.md should be (ObjectMetadata(ObjectRevision(txd.transactionUUID), ObjectRefcount(0,1), txdts))
     a1.md should be (ObjectMetadata(irev, ObjectRefcount(0,1), initialTimestamp))
     
-    oeq(a0.kv.minimum, Some(amin)) should be (true)
-    oeq(a0.kv.maximum, Some(amax)) should be (true)
+    okeq(a0.kv.minimum, Some(amin)) should be (true)
+    okeq(a0.kv.maximum, Some(amax)) should be (true)
     a1.kv.minimum.isEmpty && a1.kv.maximum.isEmpty should be (true)
     
     oeq(a0.kv.idaEncodedLeft, Some(aleft)) should be (true)

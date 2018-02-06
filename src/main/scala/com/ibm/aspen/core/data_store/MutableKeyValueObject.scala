@@ -21,8 +21,8 @@ class MutableKeyValueObject(
   
   protected var contentValid = false
   
-  var minimum: Option[Array[Byte]] = None
-  var maximum: Option[Array[Byte]] = None
+  var minimum: Option[Key] = None
+  var maximum: Option[Key] = None
   var idaEncodedLeft: Option[Array[Byte]] = None
   var idaEncodedRight: Option[Array[Byte]] = None
   var idaEncodedContents: Map[Key, Value] = Map()
@@ -73,8 +73,8 @@ class MutableKeyValueObject(
    */
   def updateKeyValueContent(appendData: DataBuffer): Unit = if (contentValid) {
     KeyValueObjectStoreState.decodeUpdates(appendData) foreach { op => op match { 
-      case op: SetMin => minimum = Some(op.value)
-      case op: SetMax => maximum = Some(op.value)
+      case op: SetMin => minimum = Some(Key(op.value))
+      case op: SetMax => maximum = Some(Key(op.value))
       case op: SetLeft => idaEncodedLeft = Some(op.value)
       case op: SetRight => idaEncodedRight = Some(op.value)
       case op: Insert => 

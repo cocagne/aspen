@@ -8,8 +8,8 @@ import com.ibm.aspen.util.Varint
  */
 class KeyValueObjectStoreState(
     val idaEncodingIndex: Byte,
-    val minimum: Option[Array[Byte]],
-    val maximum: Option[Array[Byte]],
+    val minimum: Option[Key],
+    val maximum: Option[Key],
     val idaEncodedLeft: Option[Array[Byte]],
     val idaEncodedRight: Option[Array[Byte]],
     val idaEncodedContents: Map[Key, Value]) {
@@ -31,8 +31,8 @@ object KeyValueObjectStoreState {
   
   def apply(idaEncodingIndex: Byte, db: DataBuffer): KeyValueObjectStoreState = {
     try {
-      var minimum: Option[Array[Byte]] = None
-      var maximum: Option[Array[Byte]] = None
+      var minimum: Option[Key] = None
+      var maximum: Option[Key] = None
       var left: Option[Array[Byte]] = None
       var right: Option[Array[Byte]] = None
       var contents: Map[Key, Value] = Map()
@@ -48,8 +48,8 @@ object KeyValueObjectStoreState {
           
         while (bb.position != updateEndPosition) {
           KeyValueOperation.decode(bb) match {
-            case op: SetMin => minimum = Some(op.value)
-            case op: SetMax => maximum = Some(op.value)
+            case op: SetMin => minimum = Some(Key(op.value))
+            case op: SetMax => maximum = Some(Key(op.value))
             case op: SetLeft => left = Some(op.value)
             case op: SetRight => right = Some(op.value)
             case op: Insert => 
@@ -69,8 +69,8 @@ object KeyValueObjectStoreState {
   
   def decodePartialRead(idaEncodingIndex: Byte, db: DataBuffer): KeyValueObjectStoreState = {
     try {
-      var minimum: Option[Array[Byte]] = None
-      var maximum: Option[Array[Byte]] = None
+      var minimum: Option[Key] = None
+      var maximum: Option[Key] = None
       var left: Option[Array[Byte]] = None
       var right: Option[Array[Byte]] = None
       var contents: Map[Key, Value] = Map()
@@ -79,8 +79,8 @@ object KeyValueObjectStoreState {
             
       while (bb.remaining() > 0) {
         KeyValueOperation.decode(bb) match {
-          case op: SetMin => minimum = Some(op.value)
-          case op: SetMax => maximum = Some(op.value)
+          case op: SetMin => minimum = Some(Key(op.value))
+          case op: SetMax => maximum = Some(Key(op.value))
           case op: SetLeft => left = Some(op.value)
           case op: SetRight => right = Some(op.value)
           case op: Insert => 

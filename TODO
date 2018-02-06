@@ -1,3 +1,21 @@
+* Perhaps its better to focus on desired operations
+   - Find containing node (key): KeyValueObjectState
+   - Get(key): Find + inspect state of KeyValueObjectState
+   - foreach(fn: (KeyValueObjectState) => Unit): iterate over each and call fn
+   - could even do map filter etc
+   - InsertIntoNode (key,value, KeyValueObjectState, onsplitCallback)
+      - Throws exception if state does not own the range
+      - does 
+      ********************************************************
+   *** This suggests KeyValueList wraps a KeyValueListPointer ***
+      - KeyValueList
+         - Immutable. 
+      - Cannot reliably store the Next pointer as its mutable
+      - Mixin class could cache this & optimize various aspects
+      - We can rely on never having keys go backward
+      - May need to seek to where we need to get to but thats it
+      - From tree its okay since we should be exact or very close
+      - From list its fine. We'll never really use a raw list in the traditional sense
    
 * Implement KeyValueLinkedList
    * Make TestSystem solid so we can use it for reliably testing Lists & Trees

@@ -25,8 +25,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test keyvalue object creation and read") {
 
-    val minimum = List[Byte](1,2).toArray
-    val maximum = List[Byte](3,4).toArray
+    val minimum = Key(List[Byte](1,2).toArray)
+    val maximum = Key(List[Byte](3,4).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -81,8 +81,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test keyvalue object creation, update, and read") {
     
-    val minimum = List[Byte](1,2).toArray
-    val maximum = List[Byte](3,4).toArray
+    val minimum = Key(List[Byte](1,2).toArray)
+    val maximum = Key(List[Byte](3,4).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -143,8 +143,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test single-key read, success") {
     
-    val minimum = List[Byte](1,2).toArray
-    val maximum = List[Byte](3,4).toArray
+    val minimum = Key(List[Byte](1,2).toArray)
+    val maximum = Key(List[Byte](3,4).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -193,8 +193,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test single-key read, out of bounds") {
     
-    val minimum = List[Byte](0).toArray
-    val maximum = List[Byte](7).toArray
+    val minimum = Key(List[Byte](0).toArray)
+    val maximum = Key(List[Byte](7).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -242,8 +242,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test single-key read, in bounds no key") {
     
-    val minimum = List[Byte](0).toArray
-    val maximum = List[Byte](9).toArray
+    val minimum = Key(List[Byte](0).toArray)
+    val maximum = Key(List[Byte](9).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -287,8 +287,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test LargetKeyLessThan read, success") {
     
-    val minimum = List[Byte](0).toArray
-    val maximum = List[Byte](9).toArray
+    val minimum = Key(List[Byte](0).toArray)
+    val maximum = Key(List[Byte](9).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -339,8 +339,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test LargetKeyLessThan read, no matching key") {
     
-    val minimum = List[Byte](0).toArray
-    val maximum = List[Byte](9).toArray
+    val minimum = Key(List[Byte](0).toArray)
+    val maximum = Key(List[Byte](9).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     
@@ -389,8 +389,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
   
   test("Test KeyRange reads") {
     
-    val minimum = List[Byte](0).toArray
-    val maximum = List[Byte](9).toArray
+    val minimum = Key(List[Byte](0).toArray)
+    val maximum = Key(List[Byte](9).toArray)
     val right   = List[Byte](5,6).toArray
     val left    = List[Byte](7,8,9).toArray
     

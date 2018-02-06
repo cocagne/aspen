@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.MetadataObjectState
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -150,7 +151,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
-    val min = List[Byte](1,2,3,4).toArray
+    val min = Key(List[Byte](1,2,3,4).toArray)
     val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, Some(min), None, None, None, Map())
     
     val enc = KeyValueObjectCodec.encode(ida, kvos)

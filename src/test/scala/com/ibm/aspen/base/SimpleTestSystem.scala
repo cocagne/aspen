@@ -92,8 +92,8 @@ class SimpleTestSystem extends AspenSystem {
       objectSize: Option[Int],
       objectIDA: IDA,
       initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Array[Byte]],
-      maximum: Option[Array[Byte]],
+      minimum: Option[Key],
+      maximum: Option[Key],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {

@@ -59,7 +59,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
   
   test("Simple Encoding Optional State") {
     
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Some(d0), Some(d1), Some(d2), Some(d3), Map())
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Some(Key(d0)), Some(Key(d1)), Some(d2), Some(d3), Map())
 
     encdec(kvos) should be (kvos)
   }
