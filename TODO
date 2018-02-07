@@ -1,3 +1,10 @@
+* Create test suite now.
+   - Test scanning implementation
+       - single node
+       - two nodes, second is target
+       - three nodes, last is target (no maximum)
+       - corrupted list
+
 * Perhaps its better to focus on desired operations
    - Find containing node (key): KeyValueObjectState
    - Get(key): Find + inspect state of KeyValueObjectState
@@ -9,13 +16,20 @@
       ********************************************************
    *** This suggests KeyValueList wraps a KeyValueListPointer ***
       - KeyValueList
-         - Immutable. 
+         - Immutable. Can use it to fetch the KeyValueObjectState and perform navigation
       - Cannot reliably store the Next pointer as its mutable
       - Mixin class could cache this & optimize various aspects
       - We can rely on never having keys go backward
       - May need to seek to where we need to get to but thats it
       - From tree its okay since we should be exact or very close
       - From list its fine. We'll never really use a raw list in the traditional sense
+      - We don't need the split handler outside the scope of the put function.
+      ------------------------------------------------------
+      THIS
+        -- We could usepass an allocNewNode or.. better, an allocater interface
+           Raw interface would alloc the object. For indexed list, we simply provide a wrapper iface
+           that adds a tree insert to the tx finalizers
+           
    
 * Implement KeyValueLinkedList
    * Make TestSystem solid so we can use it for reliably testing Lists & Trees

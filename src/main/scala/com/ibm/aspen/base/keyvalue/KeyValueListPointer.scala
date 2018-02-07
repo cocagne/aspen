@@ -23,6 +23,7 @@ final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer)
 }
 
 object KeyValueListPointer {
+  val AbsoluteMinimum = Key(new Array[Byte](0))
   
   def encodeToByteArray(p: KeyValueListPointer): Array[Byte] = {
     val arr = new Array[Byte](p.encodedSize)
