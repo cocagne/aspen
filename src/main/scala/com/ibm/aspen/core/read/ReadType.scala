@@ -15,4 +15,6 @@ case class SingleKey(key: Key, comparison: KeyComparison) extends ReadType
 
 case class LargestKeyLessThan(key: Key, comparison: KeyComparison) extends ReadType
 
+case class LargestKeyLessThanOrEqualTo(key: Key, comparison: KeyComparison) extends ReadType
+
 case class KeyRange(minimum: Key, maximum: Key, comparison: KeyComparison) extends ReadType

@@ -57,6 +57,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.read.SingleKey
 import com.ibm.aspen.core.read.LargestKeyLessThan
 import com.ibm.aspen.core.read.KeyRange
+import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 
 
 object BasicAspenSystem {
@@ -214,6 +215,12 @@ class BasicAspenSystem(
       
   def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = readManager.read(pointer, 
       LargestKeyLessThan(key, comparison), false, defaultReadDriverFactory).map(r => r match {
+        case Left(err) => throw err
+        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+      })
+      
+  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = readManager.read(pointer, 
+      LargestKeyLessThanOrEqualTo(key, comparison), false, defaultReadDriverFactory).map(r => r match {
         case Left(err) => throw err
         case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
       })

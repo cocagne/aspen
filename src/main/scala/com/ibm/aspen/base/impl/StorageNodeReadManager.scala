@@ -32,6 +32,7 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyComparison
 import com.ibm.aspen.core.read.KeyRange
 import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -118,6 +119,30 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
                 case None => if (rt.comparison(t._1, rt.key) < 0) Some(t._2) else None
                 case Some(lv) => if (rt.comparison(t._1, rt.key) < 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
+              }}
+              (okey.isEmpty, okey.toList) 
+            } else {
+              (true, Nil)
+            }
+            
+            val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
+            respond(metadata, updateSet(data), Some(partialData), locks)  
+          } catch {
+            case _: Throwable => sendErrorResponse(new CorruptedObject)
+          }
+      }}
+      
+      case rt: LargestKeyLessThanOrEqualTo => store.getObject(message.objectPointer) foreach { result => result match {
+        case Left(err) => sendErrorResponse(err)
+        case Right((metadata, data, locks)) =>
+          try {
+            val kvos = KeyValueObjectStoreState(0, data)
+            
+            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.comparison)) {
+              val init: Option[Value] = None
+              val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
+                case None => if (rt.comparison(t._1, rt.key) <= 0) Some(t._2) else None
+                case Some(lv) => if (rt.comparison(t._1, rt.key) <= 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
               }}
               (okey.isEmpty, okey.toList) 
             } else {

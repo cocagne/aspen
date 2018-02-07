@@ -269,6 +269,7 @@ enum ReadType:byte {
   ByteRange,
   SingleKey,
   LargestKeyLessThan,
+  LargestKeyLessThanOrEqualTo,
   KeyRange,
 }
 

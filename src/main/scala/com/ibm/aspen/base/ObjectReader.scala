@@ -26,5 +26,7 @@ trait ObjectReader {
   
   def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
   
+  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  
   def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState]
 }

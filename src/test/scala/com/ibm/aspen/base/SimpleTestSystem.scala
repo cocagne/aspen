@@ -64,6 +64,8 @@ class SimpleTestSystem extends AspenSystem {
   
   def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
+  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
+  
   def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
   def newTransaction(): Transaction = new Tx

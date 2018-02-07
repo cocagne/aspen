@@ -71,6 +71,7 @@ import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
 import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
 import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
 import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
+import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 
 
 
@@ -1008,6 +1009,9 @@ object NetworkCodec {
       case rt: LargestKeyLessThan => P.Read.addReadType(builder, P.ReadType.LargestKeyLessThan)
         P.Read.addKey(builder, keyOffset)
         P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+      case rt: LargestKeyLessThanOrEqualTo => P.Read.addReadType(builder, P.ReadType.LargestKeyLessThan)
+        P.Read.addKey(builder, keyOffset)
+        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
       case rt: KeyRange           => P.Read.addReadType(builder, P.ReadType.KeyRange)
         P.Read.addMin(builder, minOffset)
         P.Read.addMax(builder, maxOffset)
@@ -1033,12 +1037,13 @@ object NetworkCodec {
     }
     
     val readType = n.readType() match {
-      case P.ReadType.MetadataOnly       => MetadataOnly()           
-      case P.ReadType.FullObject         => FullObject()
-      case P.ReadType.ByteRange          => ByteRange(n.offset(), n.length())
-      case P.ReadType.SingleKey          => SingleKey(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
-      case P.ReadType.LargestKeyLessThan => LargestKeyLessThan(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
-      case P.ReadType.KeyRange           => KeyRange(Key(n.minAsByteBuffer()), Key(n.maxAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.MetadataOnly                => MetadataOnly()           
+      case P.ReadType.FullObject                  => FullObject()
+      case P.ReadType.ByteRange                   => ByteRange(n.offset(), n.length())
+      case P.ReadType.SingleKey                   => SingleKey(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.LargestKeyLessThan          => LargestKeyLessThan(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.LargestKeyLessThanOrEqualTo => LargestKeyLessThanOrEqualTo(Key(n.keyAsByteBuffer()), decodeKeyComparison(n.comparison()))
+      case P.ReadType.KeyRange                    => KeyRange(Key(n.minAsByteBuffer()), Key(n.maxAsByteBuffer()), decodeKeyComparison(n.comparison()))
     }
     
     Read(toStore, ClientID(fromClient), readUUID, objectPointer, readType, returnLockedTransaction)
