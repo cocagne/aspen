@@ -40,6 +40,7 @@ object KeyValueObjectCodec {
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
+      sizeOnStore: Int,
       storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
     try {
       val ida = pointer.ida
@@ -73,7 +74,7 @@ object KeyValueObjectCodec {
         contents += (key -> kv)
       }
       
-      new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
+      new KeyValueObjectState(pointer, revision, refcount, timestamp, sizeOnStore, minimum, maximum, left, right, contents)
     } catch {
       case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }

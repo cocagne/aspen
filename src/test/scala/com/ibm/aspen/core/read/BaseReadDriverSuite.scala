@@ -83,7 +83,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
@@ -104,13 +104,13 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
@@ -121,7 +121,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
 //        println(s"ptr(${ptr}), rev(${nrev2}), ref(${ref}), ts(${ts}), data(${com.ibm.aspen.util.db2string(odata)})")
 //    }
     
-    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, odata), noLocks))))
+    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, 5, odata), noLocks))))
   }
   
   test("Ignore old revisions") {
@@ -131,17 +131,17 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val nrev2 = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, odata), noLocks))))
+    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, 5, odata), noLocks))))
   }
   
   test("Ignore mismatching update UUIDs for key-value objects") {
@@ -152,17 +152,17 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val ts = HLCTimestamp.now
     
     val min = Key(List[Byte](1,2,3,4).toArray)
-    val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, Some(min), None, None, None, Map())
+    val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, 5, Some(min), None, None, None, Map())
     
     val enc = KeyValueObjectCodec.encode(ida, kvos)
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0)), ref, ts, None, Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0)), ref, ts, 5, None, Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0), new UUID(1,1)), ref, ts, None, Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(nrev, Set[UUID](new UUID(0,0), new UUID(1,1)), ref, ts, 5, None, Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(1,1), new UUID(2,2)), ref, ts, Some(enc(0)), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(1,1), new UUID(2,2)), ref, ts, 5, Some(enc(0)), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(2,2), new UUID(1,1)), ref, ts, Some(enc(0)), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](new UUID(2,2), new UUID(1,1)), ref, ts, 5, Some(enc(0)), Nil))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
@@ -174,13 +174,13 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val r = mkReader(m)
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, rev, ref, ts, odata), noLocks))))
+    o should be (Right(((DataObjectState(ptr, rev, ref, ts, 5, odata), noLocks))))
   }
   
   test("Successful read without data or locks") {
@@ -188,9 +188,9 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val r = mkReader(m, readType=MetadataOnly(), retrieveLockedTransaction=false)
     val ts = HLCTimestamp.now
     
-    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 0, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, Some(odata), Nil))))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 0, Some(odata), Nil))))
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     

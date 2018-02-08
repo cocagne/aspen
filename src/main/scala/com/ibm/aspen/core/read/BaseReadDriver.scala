@@ -93,7 +93,7 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
-        val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.objectData, cs.locks)
+        val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
         
         storeStates += (response.fromStore -> ss)
         
@@ -188,6 +188,8 @@ class BaseReadDriver(
   private def restoreDataObject() : (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     val (revision, refcount, timestamp, locks) = getMetadata
     
+    val sizeOnStore = storeStates.head._2.sizeOnStore
+    
     val segments = storeStates.foldLeft(List[(Byte, Option[DataBuffer])]()) { (l, t) =>
       (t._1.poolIndex, t._2.objectData) :: l
     }
@@ -195,8 +197,8 @@ class BaseReadDriver(
     // If something goes wrong with the IDA, it'll throw an IDAError exception
     val objectState = readType match {
       case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp)
-      case _: FullObject => DataObjectState(objectPointer, revision, refcount, timestamp, objectPointer.ida.restore(segments)) 
-      case _: ByteRange => DataObjectState(objectPointer, revision, refcount, timestamp, objectPointer.ida.restore(segments))
+      case _: FullObject => DataObjectState(objectPointer, revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments)) 
+      case _: ByteRange => DataObjectState(objectPointer, revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments))
       case _ => throw new Exception("Invalid Read Type")
     }
 
@@ -206,18 +208,20 @@ class BaseReadDriver(
   private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     val (revision, refcount, timestamp, locks) = getMetadata
     
+    val sizeOnStore = storeStates.head._2.sizeOnStore
+    
     def decodePartialRead(): ObjectState = {
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState.decodePartialRead(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList)
+      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     def decodeFullRead(): ObjectState = {
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, kvosList)
+      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     val objectState = readType match {
@@ -239,6 +243,7 @@ object BaseReadDriver {
       revision: (ObjectRevision, Set[UUID]),
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
+      sizeOnStore: Int,
       objectData: Option[DataBuffer],
       locks: List[Lock])
       

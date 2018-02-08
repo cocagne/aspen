@@ -49,7 +49,8 @@ class DataObjectState(
     pointer: ObjectPointer, 
     revision:ObjectRevision, 
     refcount:ObjectRefcount, 
-    timestamp: HLCTimestamp, 
+    timestamp: HLCTimestamp,
+    val sizeOnStore: Int,
     val data: DataBuffer) extends ObjectState(pointer, revision, refcount, timestamp) {
   
   def canEqual(other: Any): Boolean = other.isInstanceOf[DataObjectState]
@@ -72,8 +73,9 @@ object DataObjectState {
       pointer: ObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
-      timestamp: HLCTimestamp, 
-      data: DataBuffer): DataObjectState = new DataObjectState(pointer, revision, refcount, timestamp, data) 
+      timestamp: HLCTimestamp,
+      sizeOnStore: Int,
+      data: DataBuffer): DataObjectState = new DataObjectState(pointer, revision, refcount, timestamp, sizeOnStore, data) 
 }
 
 class KeyValueObjectState(
@@ -81,6 +83,7 @@ class KeyValueObjectState(
     revision:ObjectRevision, 
     refcount:ObjectRefcount, 
     timestamp: HLCTimestamp,
+    val sizeOnStore: Int,
     val minimum: Option[Key],
     val maximum: Option[Key],
     val left: Option[Array[Byte]],
@@ -143,13 +146,14 @@ object KeyValueObjectState {
       pointer: ObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
-      timestamp: HLCTimestamp, 
+      timestamp: HLCTimestamp,
+      sizeOnStore: Int,
       minimum: Option[Key],
       maximum: Option[Key],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
       contents: Map[Key, Value]): KeyValueObjectState = {
-    new KeyValueObjectState(pointer, revision, refcount, timestamp, minimum, maximum, left, right, contents)
+    new KeyValueObjectState(pointer, revision, refcount, timestamp, sizeOnStore, minimum, maximum, left, right, contents)
   }
   
   def cmp(a: Option[Array[Byte]], b: Option[Array[Byte]]): Boolean = (a,b) match {

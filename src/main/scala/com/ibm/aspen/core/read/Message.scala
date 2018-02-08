@@ -33,6 +33,7 @@ object ReadResponse {
       updates: Set[UUID],
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
+      sizeOnStore: Int,
       objectData: Option[DataBuffer],
       locks: List[Lock]) {
     

@@ -61,8 +61,8 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(e)))
     }
     
-    def respond(md: ObjectMetadata, updates: Set[UUID], odata: Option[DataBuffer], locks: List[Lock]): Unit = {
-      val cs = ReadResponse.CurrentState(md.revision, updates, md.refcount, md.timestamp, odata,
+    def respond(md: ObjectMetadata, updates: Set[UUID], sizeOnStore: Int, odata: Option[DataBuffer], locks: List[Lock]): Unit = {
+      val cs = ReadResponse.CurrentState(md.revision, updates, md.refcount, md.timestamp, sizeOnStore, odata,
                                          if (message.returnLockedTransaction) locks else Nil)
               
         messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Right(cs)))
@@ -71,19 +71,19 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     message.readType match {
       case rt: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, locks)) => respond(metadata, Set(), None, locks)
+        case Right((metadata, locks)) => respond(metadata, Set(), 0, None, locks)
       }}
         
       case rt: FullObject => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) => respond(metadata, updateSet(data), Some(data), locks)
+        case Right((metadata, data, locks)) => respond(metadata, updateSet(data), data.size, Some(data), locks)
       }} 
       
       case rt: ByteRange => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, locks)) => 
           if (rt.offset + rt.length <= data.size)
-            respond(metadata, Set(), Some(data.slice(rt.offset, rt.length)), locks)
+            respond(metadata, Set(), data.size, Some(data.slice(rt.offset, rt.length)), locks)
           else
             sendErrorResponse(new InvalidByteRange)
       }}
@@ -102,7 +102,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=values)
-            respond(metadata, updateSet(data), Some(partialData), locks)  
+            respond(metadata, updateSet(data), data.size, Some(partialData), locks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -126,7 +126,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
-            respond(metadata, updateSet(data), Some(partialData), locks)  
+            respond(metadata, updateSet(data), data.size, Some(partialData), locks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -150,7 +150,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=includeMinMax, kvlist=kvlist)
-            respond(metadata, updateSet(data), Some(partialData), locks)  
+            respond(metadata, updateSet(data), data.size, Some(partialData), locks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -170,7 +170,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = KeyValueObjectCodec.encodePartialRead(kvos, includeMinMax=true, kvlist=kvlist)
-            respond(metadata, updateSet(data), Some(partialData), locks)  
+            respond(metadata, updateSet(data), data.size, Some(partialData), locks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }

@@ -54,7 +54,7 @@ class SimpleTestSystem extends AspenSystem {
   
   def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[DataObjectState] = {
     content.get(pointer.uuid) match {
-      case Some(o) => Future.successful(DataObjectState(pointer, o.rev, o.ref, o.timestamp, o.data))
+      case Some(o) => Future.successful(DataObjectState(pointer, o.rev, o.ref, o.timestamp, 0, o.data))
       case None => Future.failed(new DataRetrievalFailed)
     }
   }

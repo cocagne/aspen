@@ -124,7 +124,7 @@ object KVListSuite {
         val p = mkptr(nextAllocId)
         nextAllocId += 1
         
-        m += (p.uuid -> DataObjectState(p, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), initialContent))
+        m += (p.uuid -> DataObjectState(p, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), 0, initialContent))
         
         Future.successful(p)
       }
@@ -136,7 +136,7 @@ object KVListSuite {
     
     val objectAllocater: KVListNodeAllocater = new Alloc
     
-    m += (rootObjectPointer.uuid -> DataObjectState(rootObjectPointer, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), DataBuffer(ByteBuffer.allocate(0))))
+    m += (rootObjectPointer.uuid -> DataObjectState(rootObjectPointer, ObjectRevision.Null, ObjectRefcount(0,1), HLCTimestamp(0), 0, DataBuffer(ByteBuffer.allocate(0))))
     
     def root = KVListNode(this, KVListNodePointer(rootObjectPointer, new Array[Byte](0)), m(rootObjectPointer.uuid))
   }

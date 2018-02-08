@@ -1,10 +1,15 @@
-* Create test suite now.
-   - Test scanning implementation
-       - single node
-       - two nodes, second is target
-       - three nodes, last is target (no maximum)
-       - corrupted list
-
+* Impl insert
+   - May need a split manager interface that must be implemented by consumer
+   - work through how to calculate sizes
+   
+   - Calculate size to encode all attributes
+      * Works on a list of operations.
+      * if not append, apply to KVOS then encode the entire object
+      - if size < free space, append
+      - if size < total space, overwrite
+      - if size > total space, split
+          - if either size > total, error
+   
 * Perhaps its better to focus on desired operations
    - Find containing node (key): KeyValueObjectState
    - Get(key): Find + inspect state of KeyValueObjectState

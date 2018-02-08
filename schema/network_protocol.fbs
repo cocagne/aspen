@@ -300,6 +300,7 @@ table ReadResponse {
   refcount: ObjectRefcount;
   updates: [UUID];
   timestamp: long;
+  sizeOnStore: int;
   objectData: [byte];
   locks: [Lock];
   readError: ReadError;

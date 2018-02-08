@@ -1125,6 +1125,7 @@ object NetworkCodec {
         P.ReadResponse.addRevision(builder, encodeObjectRevision(builder, cs.revision))
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
         P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
+        P.ReadResponse.addSizeOnStore(builder, cs.sizeOnStore)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
         if (locks != -1) P.ReadResponse.addLocks(builder, locks)
         if (updates != -1) P.ReadResponse.addUpdates(builder, updates)
@@ -1140,6 +1141,7 @@ object NetworkCodec {
       val revision = decode(n.revision())
       val refcount = decode(n.refcount())
       val timestamp = HLCTimestamp(n.timestamp())
+      val sizeOnStore = n.sizeOnStore()
       val objectData = if (n.objectDataLength() <= 0) None else {
         val buff = ByteBuffer.allocateDirect(n.objectDataLength())
         buff.put(n.objectDataAsByteBuffer())
@@ -1158,7 +1160,7 @@ object NetworkCodec {
       else 
         locks(idx-1, decode(n.locks(idx)) :: l)
       
-      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
+      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
     }
     ReadResponse(fromStore, readUUID, result)
   }
