@@ -544,8 +544,19 @@ class DataStoreFrontend(
                   
                   case Some(data) =>
                     val haveSpace = kv.updateType match {
-                      case KeyValueUpdate.UpdateType.Overwrite => backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
-                      case KeyValueUpdate.UpdateType.Append    => backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
+                      case KeyValueUpdate.UpdateType.Overwrite =>
+                        val meetsSizeRequirement = requirement.objectPointer.size match {
+                          case None => true
+                          case Some(maxSize) => data.size <= maxSize
+                        }
+                        meetsSizeRequirement && backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
+                        
+                      case KeyValueUpdate.UpdateType.Append    => 
+                        val meetsSizeRequirement = requirement.objectPointer.size match {
+                          case None => true
+                          case Some(maxSize) => (obj.data.size + data.size) <= maxSize
+                        }
+                        meetsSizeRequirement && backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
                     }
                     
                     if (!haveSpace)
