@@ -12,6 +12,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.ObjectEncodingError
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
     
 object KeyValueObjectCodec {
   
@@ -36,7 +37,7 @@ object KeyValueObjectCodec {
   }
   
   def decode(
-      pointer: ObjectPointer, 
+      pointer: KeyValueObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
@@ -123,6 +124,14 @@ object KeyValueObjectCodec {
         
     bb.position(0)
     DataBuffer(bb)
+  }
+  
+  /** Returns the number of bytes needed to store a list of KeyValueOperations using the provided IDA 
+   */
+  def calculateEncodedSize(ida: IDA, ops: List[KeyValueOperation]): Int = {
+    val encodedDataSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
+    val lenVarInt = Varint.getUnsignedIntEncodingLength(encodedDataSize)
+    16 + lenVarInt + encodedDataSize
   }
   
   /** Encodes a list of updates to the state of a KeyValueObject for sending to DataStores.

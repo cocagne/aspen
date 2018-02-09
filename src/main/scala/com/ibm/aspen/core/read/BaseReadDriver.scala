@@ -197,8 +197,8 @@ class BaseReadDriver(
     // If something goes wrong with the IDA, it'll throw an IDAError exception
     val objectState = readType match {
       case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp)
-      case _: FullObject => DataObjectState(objectPointer, revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments)) 
-      case _: ByteRange => DataObjectState(objectPointer, revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments))
+      case _: FullObject => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments)) 
+      case _: ByteRange => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments))
       case _ => throw new Exception("Invalid Read Type")
     }
 
@@ -214,14 +214,14 @@ class BaseReadDriver(
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState.decodePartialRead(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, sizeOnStore, kvosList)
+      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     def decodeFullRead(): ObjectState = {
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer, revision, refcount, timestamp, sizeOnStore, kvosList)
+      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     val objectState = readType match {

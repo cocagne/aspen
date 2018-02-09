@@ -115,7 +115,7 @@ object MockSystem {
       newData.position(0)
       val newRev = ObjectRevision(txUUID)
       
-      objects += (ptr.uuid -> DataObjectState(ptr, newRev, orig.refcount, timestamp, 0, DataBuffer(newData)))
+      objects += (ptr.uuid -> DataObjectState(ptr.asInstanceOf[DataObjectPointer], newRev, orig.refcount, timestamp, 0, DataBuffer(newData)))
     }
     
     def overwrite(txUUID: UUID, ptr: ObjectPointer, buf: DataBuffer, timestamp: HLCTimestamp): Unit =  {
@@ -126,12 +126,12 @@ object MockSystem {
       newData.position(0)
       val newRev = ObjectRevision(txUUID)
       
-      objects += (ptr.uuid -> DataObjectState(ptr, newRev, orig.refcount, timestamp, 0, DataBuffer(newData)))
+      objects += (ptr.uuid -> DataObjectState(ptr.asInstanceOf[DataObjectPointer], newRev, orig.refcount, timestamp, 0, DataBuffer(newData)))
     }
     
     private def setref(ptr:ObjectPointer, newRef: ObjectRefcount): Unit = {
       val orig = objects(ptr.uuid)
-      objects += (ptr.uuid -> DataObjectState(ptr, orig.revision, newRef, orig.timestamp, 0, orig.data))
+      objects += (ptr.uuid -> DataObjectState(ptr.asInstanceOf[DataObjectPointer], orig.revision, newRef, orig.timestamp, 0, orig.data))
     }
   }
   
@@ -140,7 +140,7 @@ object MockSystem {
     def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]] = {
       val e: Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])] = storage.read(pointer) match {
           case None => Left(new InvalidObject)
-          case Some(osd) => Right((DataObjectState(pointer, osd.revision, osd.refcount, osd.timestamp, 0, osd.data), None))
+          case Some(osd) => Right((DataObjectState(pointer.asInstanceOf[DataObjectPointer], osd.revision, osd.refcount, osd.timestamp, 0, osd.data), None))
         }
       Future.successful(e)
     } 

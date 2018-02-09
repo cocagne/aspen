@@ -6,4 +6,6 @@ sealed abstract class KeyValueError extends Exception
 
 class BelowMinimumError(minimum: Key, attempted: Key) extends KeyValueError
 
+class OutOfRange extends KeyValueError
+
 class CorruptedLinkedList extends KeyValueError

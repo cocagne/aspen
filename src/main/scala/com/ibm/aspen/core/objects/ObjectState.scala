@@ -46,7 +46,7 @@ object MetadataObjectState {
 }
     
 class DataObjectState(
-    pointer: ObjectPointer, 
+    override val pointer: DataObjectPointer, 
     revision:ObjectRevision, 
     refcount:ObjectRefcount, 
     timestamp: HLCTimestamp,
@@ -70,7 +70,7 @@ class DataObjectState(
 
 object DataObjectState {
   def apply(
-      pointer: ObjectPointer, 
+      pointer: DataObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
@@ -79,7 +79,7 @@ object DataObjectState {
 }
 
 class KeyValueObjectState(
-    pointer: ObjectPointer, 
+    override val pointer: KeyValueObjectPointer, 
     revision:ObjectRevision, 
     refcount:ObjectRefcount, 
     timestamp: HLCTimestamp,
@@ -143,7 +143,7 @@ class KeyValueObjectState(
 
 object KeyValueObjectState {
   def apply(
-      pointer: ObjectPointer, 
+      pointer: KeyValueObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
