@@ -12,9 +12,9 @@ import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.TestSystemSuite
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.Replication
@@ -174,7 +174,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos <- sys.readSingleKey(kvp, Key(k2), new ByteArrayComparison())
+      kvos <- sys.readSingleKey(kvp, Key(k2), ByteArrayKeyOrdering)
       
     } yield {
       kvos.minimum.isDefined should be (false)
@@ -225,7 +225,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos <- sys.readSingleKey(kvp, Key(k3), new ByteArrayComparison())
+      kvos <- sys.readSingleKey(kvp, Key(k3), ByteArrayKeyOrdering)
       
     } yield {
       kvos.minimum.isDefined should be (true)
@@ -274,7 +274,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos <- sys.readSingleKey(kvp, Key(k3), new ByteArrayComparison())
+      kvos <- sys.readSingleKey(kvp, Key(k3), ByteArrayKeyOrdering)
       
     } yield {
       kvos.minimum.isDefined should be (false)
@@ -320,7 +320,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos <- sys.readLargestKeyLessThan(kvp, Key(kt), new ByteArrayComparison())
+      kvos <- sys.readLargestKeyLessThan(kvp, Key(kt), ByteArrayKeyOrdering)
       
     } yield {
       kvos.minimum.isDefined should be (false)
@@ -372,7 +372,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos <- sys.readLargestKeyLessThan(kvp, Key(kt), new ByteArrayComparison())
+      kvos <- sys.readLargestKeyLessThan(kvp, Key(kt), ByteArrayKeyOrdering)
       
     } yield {
       kvos.minimum.isDefined should be (true)
@@ -430,11 +430,11 @@ class BasicKeyValueSuite extends TestSystemSuite {
           
       done <- tx.commit()
       
-      kvos1 <- sys.readKeyRange(kvp, kprepre, kpre, new ByteArrayComparison())
-      kvos2 <- sys.readKeyRange(kvp, kpre, Key(k1), new ByteArrayComparison())
-      kvos3 <- sys.readKeyRange(kvp, k1x2, k3x4, new ByteArrayComparison())
-      kvos4 <- sys.readKeyRange(kvp, k3x4, kpost, new ByteArrayComparison())
-      kvos5 <- sys.readKeyRange(kvp, kpost, kpost2, new ByteArrayComparison())
+      kvos1 <- sys.readKeyRange(kvp, kprepre, kpre, ByteArrayKeyOrdering)
+      kvos2 <- sys.readKeyRange(kvp, kpre, Key(k1), ByteArrayKeyOrdering)
+      kvos3 <- sys.readKeyRange(kvp, k1x2, k3x4, ByteArrayKeyOrdering)
+      kvos4 <- sys.readKeyRange(kvp, k3x4, kpost, ByteArrayKeyOrdering)
+      kvos5 <- sys.readKeyRange(kvp, kpost, kpost2, ByteArrayKeyOrdering)
       
     } yield {
       kvos1.minimum.isDefined should be (true)

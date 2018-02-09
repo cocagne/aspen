@@ -7,7 +7,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 
 trait ObjectReader {
   /** Reads and returns the current state of the object. No caches are used */
@@ -22,11 +22,11 @@ trait ObjectReader {
   /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:KeyValueObjectPointer): Future[KeyValueObjectState] = readObject(pointer, None)
   
-  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState]
   
-  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState]
   
-  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState]
   
-  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState]
+  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyOrdering): Future[KeyValueObjectState]
 }

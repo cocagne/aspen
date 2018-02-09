@@ -5,7 +5,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -93,14 +93,14 @@ class KeyValueObjectState(
   
   import KeyValueObjectState._
   
-  def keyInRange(key: Key, compare: KeyComparison): Boolean = {
+  def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {
     val minOk = minimum match {
       case None => true
-      case Some(min) => compare(key, min) >= 0
+      case Some(min) => ordering.compare(key, min) >= 0
     }
     val maxOk = maximum match {
       case None => true
-      case Some(max) => compare(key, max) <= 0
+      case Some(max) => ordering.compare(key, max) < 0
     }
     minOk && maxOk
   }
@@ -142,7 +142,7 @@ class KeyValueObjectState(
 }
 
 object KeyValueObjectState {
-  def apply(
+  def compare(
       pointer: KeyValueObjectPointer, 
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 

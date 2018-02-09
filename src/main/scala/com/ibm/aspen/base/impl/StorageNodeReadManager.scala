@@ -29,7 +29,7 @@ import com.ibm.aspen.core.read.SingleKey
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.read.LargestKeyLessThan
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.read.KeyRange
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
@@ -94,7 +94,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           try {
             val kvos = KeyValueObjectStoreState(0, data)
             
-            val includeMinMax = !kvos.keyInRange(rt.key, rt.comparison)
+            val includeMinMax = !kvos.keyInRange(rt.key, rt.ordering)
             
             val values = kvos.idaEncodedContents.get(rt.key) match {
               case Some(v) => List(v)
@@ -114,11 +114,11 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           try {
             val kvos = KeyValueObjectStoreState(0, data)
             
-            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.comparison)) {
+            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
-                case None => if (rt.comparison(t._1, rt.key) < 0) Some(t._2) else None
-                case Some(lv) => if (rt.comparison(t._1, rt.key) < 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
+                case None => if (rt.ordering.compare(t._1, rt.key) < 0) Some(t._2) else None
+                case Some(lv) => if (rt.ordering.compare(t._1, rt.key) < 0 && rt.ordering.compare(t._1, lv.key) > 0) Some(t._2) else Some(lv)
               }}
               (okey.isEmpty, okey.toList) 
             } else {
@@ -138,11 +138,11 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           try {
             val kvos = KeyValueObjectStoreState(0, data)
             
-            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.comparison)) {
+            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
-                case None => if (rt.comparison(t._1, rt.key) <= 0) Some(t._2) else None
-                case Some(lv) => if (rt.comparison(t._1, rt.key) <= 0 && rt.comparison(t._1, lv.key) > 0) Some(t._2) else Some(lv)
+                case None => if (rt.ordering.compare(t._1, rt.key) <= 0) Some(t._2) else None
+                case Some(lv) => if (rt.ordering.compare(t._1, rt.key) <= 0 && rt.ordering.compare(t._1, lv.key) > 0) Some(t._2) else Some(lv)
               }}
               (okey.isEmpty, okey.toList) 
             } else {
@@ -163,7 +163,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             val kvos = KeyValueObjectStoreState(0, data)
 
             val kvlist = kvos.idaEncodedContents.foldLeft(List[Value]()){ (l, t) =>
-              if ( rt.comparison(t._1, rt.minimum) >= 0 && rt.comparison(t._1, rt.maximum) <= 0 ) 
+              if ( rt.ordering.compare(t._1, rt.minimum) >= 0 && rt.ordering.compare(t._1, rt.maximum) <= 0 ) 
                 t._2 :: l
               else
                 l

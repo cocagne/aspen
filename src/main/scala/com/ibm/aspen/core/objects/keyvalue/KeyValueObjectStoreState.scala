@@ -14,14 +14,14 @@ class KeyValueObjectStoreState(
     val idaEncodedRight: Option[Array[Byte]],
     val idaEncodedContents: Map[Key, Value]) {
   
-  def keyInRange(key: Key, compare: KeyComparison): Boolean = {
+  def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {
     val minOk = minimum match {
       case None => true
-      case Some(min) => compare(key, min) >= 0
+      case Some(min) => ordering.compare(key, min) >= 0
     }
     val maxOk = maximum match {
       case None => true
-      case Some(max) => compare(key, max) <= 0
+      case Some(max) => ordering.compare(key, max) < 0
     }
     minOk && maxOk
   }

@@ -11,15 +11,12 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 
-object KeyValueListSuite {
-  val bcmp = new ByteArrayComparison
-}
+
 
 class KeyValueListSuite extends TestSystemSuite {
   import Bootstrap._
-  import KeyValueListSuite._
   
   def alloc(min: Option[Key], max: Option[Key], right: Option[KeyValueObjectPointer]): Future[KeyValueObjectPointer] = {
     implicit val tx = sys.newTransaction()
@@ -52,7 +49,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
       
-      kvos <- KeyValueList.fetchContainingNode(sys, lptr, bcmp, target)
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
     } yield {
       kvos.pointer should be (l0) 
@@ -70,7 +67,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
       
-      kvos <- KeyValueList.fetchContainingNode(sys, lptr, bcmp, target)
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
     } yield {
       kvos.pointer should be (l1) 
@@ -90,7 +87,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
       
-      kvos <- KeyValueList.fetchContainingNode(sys, lptr, bcmp, target)
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
     } yield {
       kvos.pointer should be (l1) 

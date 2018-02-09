@@ -1,14 +1,14 @@
 package com.ibm.aspen.core.objects.keyvalue
 
-sealed abstract class KeyComparison {
-  def apply(a: Key, b: Key): Int
-  def apply(a: Key, b: Array[Byte]): Int = apply(a, Key(b))
-  def apply(a: Array[Byte], b: Key): Int = apply(Key(a), b)
-  def apply(a: Array[Byte], b: Array[Byte]): Int = apply(Key(a), Key(b))
+sealed abstract class KeyOrdering extends Ordering[Key] {
+  def compare(a: Key, b: Key): Int
+  def compare(a: Key, b: Array[Byte]): Int = compare(a, Key(b))
+  def compare(a: Array[Byte], b: Key): Int = compare(Key(a), b)
+  def compare(a: Array[Byte], b: Array[Byte]): Int = compare(Key(a), Key(b))
 }
 
-class ByteArrayComparison extends KeyComparison {
-  override def apply(a: Key, b: Key): Int = {
+object ByteArrayKeyOrdering extends KeyOrdering {
+  override def compare(a: Key, b: Key): Int = {
     if (b.bytes.length == 0 && a.bytes.length != 0) return 1
     
     for (i <- 0 until a.bytes.length) {
@@ -23,8 +23,8 @@ class ByteArrayComparison extends KeyComparison {
   }
 }
 
-class IntegerComparison extends KeyComparison {
-  override def apply(a: Key, b: Key): Int = {
+object IntegerKeyOrdering extends KeyOrdering {
+  override def compare(a: Key, b: Key): Int = {
     if (a.bytes.length == 0 && b.bytes.length == 0)
       0
     else if (a.bytes.length == 0 && b.bytes.length != 0)
@@ -39,8 +39,8 @@ class IntegerComparison extends KeyComparison {
   }
 }
 
-class LexicalComparison extends KeyComparison {
-  override def apply(a: Key, b: Key): Int = {
+object LexicalKeyOrdering extends KeyOrdering {
+  override def compare(a: Key, b: Key): Int = {
     val sa = new String(a.bytes, "UTF-8")
     val sb = new String(b.bytes, "UTF-8")
     sa.compareTo(sb)

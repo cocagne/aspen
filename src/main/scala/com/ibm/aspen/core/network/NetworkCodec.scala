@@ -65,12 +65,12 @@ import com.ibm.aspen.core.read.ByteRange
 import com.ibm.aspen.core.read.SingleKey
 import com.ibm.aspen.core.read.LargestKeyLessThan
 import com.ibm.aspen.core.read.KeyRange
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayComparison
-import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
-import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
-import com.ibm.aspen.core.objects.keyvalue.IntegerComparison
-import com.ibm.aspen.core.objects.keyvalue.LexicalComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 
 
@@ -961,15 +961,15 @@ object NetworkCodec {
   // Read Messages
   //-----------------------------------------------------------------------------------------------
   
-  def encodeKeyComparison(c: KeyComparison): Byte = c match {
-    case _: ByteArrayComparison => P.KeyComparison.ByteArray
-    case _: IntegerComparison   => P.KeyComparison.Integer
-    case _: LexicalComparison   => P.KeyComparison.Lexical
+  def encodeKeyComparison(c: KeyOrdering): Byte = c match {
+    case ByteArrayKeyOrdering => P.KeyComparison.ByteArray
+    case IntegerKeyOrdering   => P.KeyComparison.Integer
+    case LexicalKeyOrdering  => P.KeyComparison.Lexical
   }
-  def decodeKeyComparison(b: Byte): KeyComparison = b match {
-    case P.KeyComparison.ByteArray => new ByteArrayComparison
-    case P.KeyComparison.Integer   => new IntegerComparison
-    case P.KeyComparison.Lexical   => new LexicalComparison
+  def decodeKeyComparison(b: Byte): KeyOrdering = b match {
+    case P.KeyComparison.ByteArray => ByteArrayKeyOrdering
+    case P.KeyComparison.Integer   => IntegerKeyOrdering
+    case P.KeyComparison.Lexical   => LexicalKeyOrdering
   }
   
   def encode(builder:FlatBufferBuilder, o:Read): Int = {
@@ -1005,17 +1005,17 @@ object NetworkCodec {
         P.Read.addLength(builder, rt.length)
       case rt: SingleKey          => P.Read.addReadType(builder, P.ReadType.SingleKey)
         P.Read.addKey(builder, keyOffset)
-        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+        P.Read.addComparison(builder, encodeKeyComparison(rt.ordering))
       case rt: LargestKeyLessThan => P.Read.addReadType(builder, P.ReadType.LargestKeyLessThan)
         P.Read.addKey(builder, keyOffset)
-        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+        P.Read.addComparison(builder, encodeKeyComparison(rt.ordering))
       case rt: LargestKeyLessThanOrEqualTo => P.Read.addReadType(builder, P.ReadType.LargestKeyLessThan)
         P.Read.addKey(builder, keyOffset)
-        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+        P.Read.addComparison(builder, encodeKeyComparison(rt.ordering))
       case rt: KeyRange           => P.Read.addReadType(builder, P.ReadType.KeyRange)
         P.Read.addMin(builder, minOffset)
         P.Read.addMax(builder, maxOffset)
-        P.Read.addComparison(builder, encodeKeyComparison(rt.comparison))
+        P.Read.addComparison(builder, encodeKeyComparison(rt.ordering))
     }
     
     P.Read.endRead(builder)

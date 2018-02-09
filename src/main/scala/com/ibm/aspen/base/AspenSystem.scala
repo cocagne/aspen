@@ -17,7 +17,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 
 trait AspenSystem extends ObjectReader {
   

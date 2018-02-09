@@ -7,7 +7,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.ObjectReader
 import scala.concurrent.Promise
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import scala.util.Failure
 import scala.util.Success
@@ -31,11 +31,11 @@ object KeyValueList {
   def fetchContainingNode(
       objectReader: ObjectReader, 
       listPointer: KeyValueListPointer, 
-      comparison: KeyComparison,
+      ordering: KeyOrdering,
       key: Key)(implicit ec: ExecutionContext) : Future[KeyValueObjectState] = {
     
     // exit immediately if the requested key is below the minimum range
-    if (comparison(key, listPointer.minimum) < 0)
+    if (ordering.compare(key, listPointer.minimum) < 0)
       return Future.failed(new BelowMinimumError(listPointer.minimum, key))
      
     val p = Promise[KeyValueObjectState]()
@@ -43,7 +43,7 @@ object KeyValueList {
     def scanToContainingNode(pointer: KeyValueObjectPointer): Unit = objectReader.readObject(pointer) onComplete {
       case Failure(err) => p.failure(err)
       case Success(kvos) => 
-        if (kvos.keyInRange(key, comparison))
+        if (kvos.keyInRange(key, ordering))
           p.success(kvos)
         else {
           kvos.right match {
@@ -68,7 +68,7 @@ object KeyValueList {
       inserts: List[(Key, Array[Byte])],
       deletes: List[Key],
       requirements: List[KeyValueUpdate.KVRequirement],
-      comparison: KeyComparison,
+      comparison: KeyOrdering,
       reader: ObjectReader,
       allocater: ObjectAllocater,
       onSplit: (KeyValueObjectPointer) => Unit,
@@ -140,7 +140,7 @@ object KeyValueList {
       nodeSizeLimit: Int,
       inserts: List[(Key, Array[Byte])],
       deletes: List[Key],
-      comparison: KeyComparison,
+      comparison: KeyOrdering,
       allocater: ObjectAllocater,
       onSplit: (KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
     Future.failed(new Exception("TODO"))

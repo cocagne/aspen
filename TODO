@@ -1,3 +1,5 @@
+* Test find node with key equal to minimum (boundary conditions)
+
 * Impl insert
    - May need a split manager interface that must be implemented by consumer
    - work through how to calculate sizes

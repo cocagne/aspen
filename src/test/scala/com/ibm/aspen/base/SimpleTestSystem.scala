@@ -27,7 +27,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 
 class SimpleTestSystem extends AspenSystem {
   val poolUUID = new UUID(0,0)
@@ -60,13 +60,13 @@ class SimpleTestSystem extends AspenSystem {
   }
   def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
-  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
+  def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
-  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
+  def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
-  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
+  def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
-  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyComparison): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
+  def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = Future.failed(new Exception("not supported"))
   
   def newTransaction(): Transaction = new Tx
   
