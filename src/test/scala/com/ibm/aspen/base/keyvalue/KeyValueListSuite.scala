@@ -93,4 +93,24 @@ class KeyValueListSuite extends TestSystemSuite {
       kvos.pointer should be (l1) 
     }
   }
+  
+  test("Test three-node scan, find middle with target key equal to node minimum") {
+  
+    val max0 = Key(Array[Byte](5))
+    val max1 = Key(Array[Byte](10))
+    val target = Key(Array[Byte](5))
+    
+    for {
+      l2 <- alloc(Some(max1), None, None)
+      l1 <- alloc(Some(max0), Some(max1), Some(l2))
+      l0 <- alloc(None, Some(max0), Some(l1))
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
+     
+    } yield {
+      kvos.pointer should be (l1) 
+    }
+  }
 }
