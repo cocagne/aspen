@@ -20,10 +20,10 @@ import com.ibm.aspen.core.objects.keyvalue.Delete
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.keyvalue.SetMin
 import com.ibm.aspen.core.objects.keyvalue.SetMax
-import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.HLCTimestamp
 
 
 object KeyValueList {
@@ -96,22 +96,21 @@ object KeyValueList {
       val deleteSet = deletes.toSet
       var ops = List[KeyValueOperation]()
       
-      kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-      kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-      kvos.left.foreach( arr => ops = new SetLeft(arr) :: ops )
-      kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
-      
       inserts.foreach(t => ops = new Insert(t._1.bytes, t._2, timestamp) :: ops)
       kvos.contents.foreach { t => 
         if (!deleteSet.contains(t._1))
           ops = new Insert(t._1.bytes, t._2.value, t._2.timestamp) :: ops
       }
+
+      kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
+      kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
+      kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
       
       if (KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, ops) <= maxSize) {
         tx.overwrite(kvos.pointer, kvos.revision, requirements, ops)
         Future.successful(updateState(kvos, appendOps, sizeAfterAppend, kvos.maximum, kvos.right))
       } else
-        split(kvos, requirements, nodeSizeLimit, inserts, deletes, comparison, allocater, onSplit)
+        split(kvos, requirements, nodeSizeLimit, inserts, deleteSet, timestamp, maxSize, comparison, allocater, onSplit)
     }
   }
   
@@ -139,10 +138,53 @@ object KeyValueList {
       requirements: List[KeyValueUpdate.KVRequirement],
       nodeSizeLimit: Int,
       inserts: List[(Key, Array[Byte])],
-      deletes: List[Key],
-      comparison: KeyOrdering,
+      deleteSet: Set[Key],
+      timestamp: HLCTimestamp,
+      maxSize: Int,
+      ordering: KeyOrdering,
       allocater: ObjectAllocater,
       onSplit: (KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
-    Future.failed(new Exception("TODO"))
+    
+    val contents = inserts.foldLeft(kvos.contents.filter(t => !deleteSet.contains(t._1))){ (m, t) =>
+      m + (t._1 -> Value(t._1, t._2, timestamp))
+    }
+
+    val keys = contents.keysIterator.toArray
+    
+    scala.util.Sorting.quickSort(keys)(ordering)
+    
+    var rightIndex = keys.length / 2
+    var rightMin = keys(rightIndex)
+    
+    var leftOps = List[KeyValueOperation]()
+    var rightOps = List[KeyValueOperation]()
+    
+    for (i <- 0 until keys.length) {
+      val v = contents(keys(i))
+      val ins = new Insert(v.key.bytes, v.value, v.timestamp)
+      
+      if ( i < rightIndex )
+        leftOps = ins :: leftOps
+      else
+        rightOps = ins :: rightOps
+    }
+    
+    kvos.maximum.foreach( arr => rightOps = new SetMax(arr) :: rightOps )
+    kvos.right.foreach( arr => rightOps = new SetRight(arr) :: rightOps )
+    rightOps = new SetMin(rightMin) :: rightOps
+
+    allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, rightOps, None) map { rightNodePointer =>
+      val rnpArr = rightNodePointer.toArray
+      leftOps = new SetMax(rightMin) :: leftOps
+      leftOps = new SetRight(rnpArr) :: leftOps
+      val newSizeOnStore = KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, leftOps)
+      
+      tx.overwrite(kvos.pointer, kvos.revision, requirements, leftOps)
+      
+      onSplit(rightNodePointer)
+      
+      new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, newSizeOnStore, 
+        kvos.minimum, Some(rightMin), kvos.left, Some(rnpArr), contents)
+    }
   }
 }

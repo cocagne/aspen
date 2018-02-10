@@ -170,6 +170,8 @@ class SetMin(value: Key)  extends SingleReplicatedValue(value.bytes) {
   def opcode: Byte = KeyValueOperation.SetMinCode
 }
 object SetMin extends KeyValueOperation.SingleValueDecoder {
+  def apply(value: Array[Byte]) = new SetMin(Key(value))
+  def apply(value: Key) = new SetMin(value)
   def create(value: Array[Byte]) = new SetMin(Key(value))
 }
 
@@ -177,6 +179,8 @@ class SetMax(value: Key)  extends SingleReplicatedValue(value.bytes) {
   def opcode: Byte = KeyValueOperation.SetMaxCode
 }
 object SetMax extends KeyValueOperation.SingleValueDecoder {
+  def apply(value: Array[Byte]) = new SetMax(Key(value))
+  def apply(value: Key) = new SetMax(value)
   def create(value: Array[Byte]) = new SetMax(Key(value))
 }
 
@@ -184,6 +188,7 @@ class SetLeft(value: Array[Byte])  extends SingleEncodedValue(value) {
   def opcode: Byte = KeyValueOperation.SetLeftCode
 }
 object SetLeft extends KeyValueOperation.SingleValueDecoder {
+  def apply(value: Array[Byte]) = new SetLeft(value)
   def create(value: Array[Byte]) = new SetLeft(value)
 }
 
@@ -191,6 +196,7 @@ class SetRight(value: Array[Byte])  extends SingleEncodedValue(value) {
   def opcode: Byte = KeyValueOperation.SetRightCode
 }
 object SetRight extends KeyValueOperation.SingleValueDecoder {
+  def apply(value: Array[Byte]) = new SetRight(value)
   def create(value: Array[Byte]) = new SetRight(value)
 }
 
@@ -198,6 +204,7 @@ class Delete(value: Array[Byte])  extends SingleReplicatedValue(value) {
   def opcode: Byte = KeyValueOperation.DeleteCode
 }
 object Delete extends KeyValueOperation.SingleValueDecoder {
+  def apply(value: Array[Byte]) = new Delete(value)
   def create(value: Array[Byte]) = new Delete(value)
 }
 
@@ -208,6 +215,8 @@ class Insert(
     val key: Array[Byte], 
     val value: Array[Byte], 
     val timestamp: HLCTimestamp) extends KeyValueOperation {
+  
+  def this(key:Key, value: Array[Byte], timestamp: HLCTimestamp) = this(key.bytes, value, timestamp)
   
   override def getEncodedLength(ida: IDA): Int = {
     val encValLen = ida.calculateEncodedSegmentLength(value)
@@ -239,6 +248,9 @@ class Insert(
   }
 }
 object Insert {
+  def apply(key: Array[Byte], value: Array[Byte], timestamp: HLCTimestamp) = new Insert(key, value, timestamp)
+  def apply(key: Key, value: Array[Byte], timestamp: HLCTimestamp) = new Insert(key.bytes, value, timestamp)
+  
   def decode(bb: ByteBuffer): KeyValueOperation = {
     val timestamp = HLCTimestamp(bb.getLong)
     val key = new Array[Byte](Varint.getUnsignedInt(bb))

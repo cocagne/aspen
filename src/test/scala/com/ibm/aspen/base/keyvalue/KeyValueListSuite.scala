@@ -12,6 +12,10 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.keyvalue.SetMin
+import com.ibm.aspen.core.objects.keyvalue.SetMax
+import com.ibm.aspen.core.objects.keyvalue.SetRight
 
 
 
@@ -20,6 +24,12 @@ class KeyValueListSuite extends TestSystemSuite {
   
   def alloc(min: Option[Key], max: Option[Key], right: Option[KeyValueObjectPointer]): Future[KeyValueObjectPointer] = {
     implicit val tx = sys.newTransaction()
+    
+    var ops = List[KeyValueOperation]()
+    
+    min.foreach { m => ops = SetMin(m) :: ops }
+    max.foreach { m => ops = SetMax(m) :: ops }
+    right.foreach { m => ops = SetRight(m.toArray) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)
@@ -33,8 +43,8 @@ class KeyValueListSuite extends TestSystemSuite {
             BootstrapStoragePoolUUID, 
             None,
             TestSystem.DefaultIDA, 
-            Map(), 
-            min, max, None, right.map(_.toArray), None)
+            ops, 
+            None)
             
       done <- tx.commit()
     } yield kvp

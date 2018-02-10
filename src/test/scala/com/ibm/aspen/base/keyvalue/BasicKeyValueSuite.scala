@@ -19,6 +19,10 @@ import com.ibm.aspen.base.TestSystemSuite
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.SetMin
+import com.ibm.aspen.core.objects.keyvalue.SetMax
+import com.ibm.aspen.core.objects.keyvalue.SetLeft
+import com.ibm.aspen.core.objects.keyvalue.SetRight
 
 class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
@@ -34,8 +38,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k2 = List[Byte](2).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2) )
 
     implicit val tx = sys.newTransaction()
     
@@ -51,8 +53,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil, 
+          None)
           
       done <- tx.commit()
       
@@ -90,8 +92,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k2 = List[Byte](2).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1) )
 
     val tx1 = sys.newTransaction()
     
@@ -107,8 +107,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)(tx1, executionContext)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Nil, 
+          None)(tx1, executionContext)
           
       done <- tx1.commit()
       
@@ -152,8 +152,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k2 = List[Byte](2).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2) )
 
     implicit val tx = sys.newTransaction()
     
@@ -169,8 +167,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          None)
           
       done <- tx.commit()
       
@@ -203,8 +201,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k3 = List[Byte](8).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2) )
 
     implicit val tx = sys.newTransaction()
     
@@ -220,8 +216,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          None)
           
       done <- tx.commit()
       
@@ -252,8 +248,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k3 = List[Byte](8).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2) )
 
     implicit val tx = sys.newTransaction()
     
@@ -269,8 +263,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          None)
           
       done <- tx.commit()
       
@@ -298,8 +292,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k3 = List[Byte](8).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2), (k3->k3) )
 
     implicit val tx = sys.newTransaction()
     
@@ -315,8 +307,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Nil,
+          None)
           
       done <- tx.commit()
       
@@ -350,8 +342,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k3 = List[Byte](8).toArray
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2), (k3->k3) )
 
     implicit val tx = sys.newTransaction()
     
@@ -367,8 +357,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Nil, 
+          None)
           
       done <- tx.commit()
       
@@ -408,8 +398,9 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val kpost2  = Key(List[Byte](15).toArray)
     
     val t = HLCTimestamp(5)
-    
-    val m = Map[Array[Byte],Array[Byte]]( (k1->k1), (k2->k2), (k3->k3), (k4->k4) )
+
+    val ops = SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: 
+              Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Insert(k4,k4,t) :: Nil
 
     implicit val tx = sys.newTransaction()
     
@@ -425,8 +416,8 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          m, 
-          Some(minimum), Some(maximum), Some(left), Some(right), None)
+          ops, 
+          None)
           
       done <- tx.commit()
       

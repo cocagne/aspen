@@ -19,3 +19,5 @@ case class StoreAllocationError(
     objectSize: Option[Int],
     objectIDA: IDA,
     storeErrors: Map[Byte, AllocationErrors.Value]) extends AllocationError
+    
+case class ObjectSizeExceeded(maximumSize: Int, requestedSize: Int) extends AllocationError

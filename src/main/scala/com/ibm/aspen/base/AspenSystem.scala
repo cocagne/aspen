@@ -18,6 +18,7 @@ import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
 trait AspenSystem extends ObjectReader {
   
@@ -42,11 +43,7 @@ trait AspenSystem extends ObjectReader {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Key],
-      maximum: Option[Key],
-      left: Option[Array[Byte]],
-      right: Option[Array[Byte]],
+      initialContent: List[KeyValueOperation],
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]

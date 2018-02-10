@@ -58,6 +58,9 @@ import com.ibm.aspen.core.read.SingleKey
 import com.ibm.aspen.core.read.LargestKeyLessThan
 import com.ibm.aspen.core.read.KeyRange
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.base.ObjectSizeExceeded
 
 
 object BasicAspenSystem {
@@ -245,11 +248,21 @@ class BasicAspenSystem(
       objectIDA: IDA,
       initialContent: DataBuffer,
       afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
+    
+    val encoded = objectIDA.encode(initialContent)
+    
+    try {
+      
+      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw new ObjectSizeExceeded(maxSize, encoded(0).size))
+    
+    } catch {
+      case err: ObjectSizeExceeded => return Future.failed(err)
+    }
 
     for {
       pool <- getStoragePool(poolUUID)
       
-      result <- allocManager.allocateDataObject(net.allocationHandler, t, pool, objectSize, objectIDA, initialContent, afterTimestamp, ObjectRefcount(0,1), 
+      result <- allocManager.allocateDataObject(net.allocationHandler, t, pool, objectSize, objectIDA, encoded, afterTimestamp, ObjectRefcount(0,1), 
                                                 allocatingObject, allocatingObjectRevision)
     } yield {
       result match {
@@ -265,17 +278,24 @@ class BasicAspenSystem(
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Key],
-      maximum: Option[Key],
-      left: Option[Array[Byte]],
-      right: Option[Array[Byte]],
+      initialContent: List[KeyValueOperation],
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
+    
+    val encoded = KeyValueObjectCodec.encodeUpdate(objectIDA, initialContent)
+    
+    try {
+      
+      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw new ObjectSizeExceeded(maxSize, encoded(0).size))
+    
+    } catch {
+      case err: ObjectSizeExceeded => return Future.failed(err)
+    }
+    
     for {
       pool <- getStoragePool(poolUUID)
       
       result <- allocManager.allocateKeyValueObject(net.allocationHandler, t, pool, objectSize, objectIDA, afterTimestamp, ObjectRefcount(0,1),
-                                                    allocatingObject, allocatingObjectRevision, initialContent, minimum, maximum, left, right)
+                                                    allocatingObject, allocatingObjectRevision, encoded)
     } yield {
       result match {
         case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)

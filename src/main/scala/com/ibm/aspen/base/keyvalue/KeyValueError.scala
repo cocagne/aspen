@@ -9,3 +9,6 @@ class BelowMinimumError(minimum: Key, attempted: Key) extends KeyValueError
 class OutOfRange extends KeyValueError
 
 class CorruptedLinkedList extends KeyValueError
+
+/** Thrown when a single split is insufficient to insert all requested content */
+class NodeSizeExceeded extends KeyValueError

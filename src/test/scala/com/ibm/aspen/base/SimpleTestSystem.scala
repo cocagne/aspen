@@ -93,11 +93,7 @@ class SimpleTestSystem extends AspenSystem {
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Key],
-      maximum: Option[Key],
-      left: Option[Array[Byte]],
-      right: Option[Array[Byte]],
+      initialContent: List[KeyValueOperation],
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     Future.failed(new Exception("Not supported"))
   }

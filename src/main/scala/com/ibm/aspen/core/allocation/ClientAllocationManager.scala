@@ -83,21 +83,20 @@ class ClientAllocationManager(
       pool: StoragePool,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer,
+      encodedContent: Array[DataBuffer],
       afterTimestamp: Option[HLCTimestamp],
       initialRefcount: ObjectRefcount,
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision): Future[Either[Map[Byte,AllocationErrors.Value], DataObjectPointer]] = {
-    
-    val encoded = objectIDA.encode(initialContent)
-    
+
     val timestamp = afterTimestamp match {
       case None => HLCTimestamp.now
       case Some(ts) => HLCTimestamp.happensAfter(ts)
     }
+    
     val options = new DataAllocationOptions
     
-    allocate(messenger, transaction, pool, objectSize, objectIDA, encoded, timestamp, options, 
+    allocate(messenger, transaction, pool, objectSize, objectIDA, encodedContent, timestamp, options, 
         initialRefcount, allocatingObject, allocatingObjectRevision)
   }
   
@@ -111,32 +110,16 @@ class ClientAllocationManager(
       initialRefcount: ObjectRefcount,
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
-      initialContent: Map[Array[Byte], Array[Byte]],
-      minimum: Option[Key],
-      maximum: Option[Key],
-      left: Option[Array[Byte]],
-      right: Option[Array[Byte]]): Future[Either[Map[Byte,AllocationErrors.Value], KeyValueObjectPointer]] = {
+      encodedContent: Array[DataBuffer]): Future[Either[Map[Byte,AllocationErrors.Value], KeyValueObjectPointer]] = {
     
     val timestamp = afterTimestamp match {
       case None => HLCTimestamp.now
       case Some(ts) => HLCTimestamp.happensAfter(ts)
     }
     
-    var ops: List[KeyValueOperation] = Nil
-    
-    minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-    maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-    left.foreach( arr => ops = new SetLeft(arr) :: ops )
-    right.foreach( arr => ops = new SetRight(arr) :: ops )
-    
-    initialContent.foreach { t =>
-      ops = new Insert(t._1, t._2, timestamp) :: ops
-    }
-    
-    val encoded = KeyValueObjectCodec.encodeUpdate(objectIDA, ops)
     val options = new KeyValueAllocationOptions
-    
-    allocate(messenger, transaction, pool, objectSize, objectIDA, encoded, timestamp, options, 
+
+    allocate(messenger, transaction, pool, objectSize, objectIDA, encodedContent, timestamp, options, 
         initialRefcount, allocatingObject, allocatingObjectRevision)
   }
 }

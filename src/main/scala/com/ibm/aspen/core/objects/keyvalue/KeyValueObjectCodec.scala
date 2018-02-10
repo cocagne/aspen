@@ -138,8 +138,9 @@ object KeyValueObjectCodec {
    *
    * Data contained within the objects is a series of top-level "update blocks" which
    * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
-   * generate a incremental update to the state of an object and should be used in a
-   * transaction that appends the update block to the store state.
+   * generate a incremental update to the state of an object. Overwrite transactions
+   * may use this method as well to generate a single update containing the full
+   * content of the object.
    */
   def encodeUpdate(ida: IDA, ops: List[KeyValueOperation]): Array[DataBuffer] = {
     
