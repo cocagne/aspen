@@ -8,4 +8,6 @@ final case class Key(bytes: Array[Byte]) {
   }
   
   override def hashCode: Int = java.util.Arrays.hashCode(bytes)
+  
+  override def toString(): String = s"Key(${com.ibm.aspen.util.arr2string(bytes)})"
 }
