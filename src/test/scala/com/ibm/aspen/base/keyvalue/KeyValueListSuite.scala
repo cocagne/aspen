@@ -227,4 +227,76 @@ class KeyValueListSuite extends TestSystemSuite {
     }
   }
  
+  test("Split middle node") {
+  
+    val key0 = Key(Array[Byte](0))
+    val key1 = Key(Array[Byte](1))
+    val key2 = Key(Array[Byte](2))
+    val key3 = Key(Array[Byte](3))
+    val key4 = Key(Array[Byte](4))
+    val max0 = Key(Array[Byte](5))
+    val value = new Array[Byte](50)
+    
+    var split: KeyValueObjectPointer = null
+    var join: KeyValueObjectPointer = null
+    
+    implicit val tx = sys.newTransaction()
+    
+    for {
+      l1 <- alloc(Some(max0), None, None)
+      l0 <- alloc(None, Some(max0), Some(l1))
+      
+      kvos0 <- sys.readObject(l0)
+      
+      nodeSizeLimit = 300
+      
+      inserts = List((key0,value),(key1,value),(key2,value),(key3,value),(key4,value))
+      deletes = Nil
+      requirements = Nil
+      comparison = ByteArrayKeyOrdering
+      reader = sys
+      allocater = new SinglePoolObjectAllocater(sys,BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
+      onSplit = (n: KeyValueObjectPointer) => split = n
+      onJoin = (n: KeyValueObjectPointer) => join = n
+      
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      
+      done <- tx.commit()
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos1 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key0)
+      kvos2 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key4)
+     
+    } yield {
+      kvos1.pointer should be (l0)
+      kvos1.contents.size should be (2)
+      kvos1.contents.get(key0) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      kvos1.contents.get(key1) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      kvos1.maximum should be (Some(key2))
+      split shouldNot be (null)
+      kvos2.pointer shouldNot be (l0)
+      kvos2.contents.size should be (3)
+      kvos2.contents.get(key2) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      kvos2.contents.get(key3) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      kvos2.contents.get(key4) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      kvos2.maximum should be (Some(max0))
+    }
+  }
+ 
 }
