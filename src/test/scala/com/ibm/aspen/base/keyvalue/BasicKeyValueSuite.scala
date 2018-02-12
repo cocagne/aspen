@@ -23,6 +23,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetMin
 import com.ibm.aspen.core.objects.keyvalue.SetMax
 import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
@@ -61,6 +62,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
       kvos <- sys.readObject(kvp)
       
     } yield {
+      kvos.refcount should be (ObjectRefcount(0,1))
       kvos.minimum.isDefined should be (true)
       kvos.minimum.get should be (minimum)
       kvos.maximum.isDefined should be (true)

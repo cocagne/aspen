@@ -175,7 +175,7 @@ class BaseReadDriver(
   
   def getMetadata = {
     // The current refcount is the one with the highest updateSerial
-    val refcount = storeStates.foldLeft(ObjectRefcount(0,0))((ref, t) => if (t._2.refcount.updateSerial > ref.updateSerial) t._2.refcount else ref)
+    val refcount = storeStates.foldLeft(ObjectRefcount(-1,0))((ref, t) => if (t._2.refcount.updateSerial > ref.updateSerial) t._2.refcount else ref)
     val revision = storeStates.head._2.revision
     val timestamp = storeStates.head._2.timestamp
     val locks = if (!retrieveLockedTransaction) None else {
@@ -207,7 +207,7 @@ class BaseReadDriver(
   
   private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {
     val (revision, refcount, timestamp, locks) = getMetadata
-    
+
     val sizeOnStore = storeStates.head._2.sizeOnStore
     
     def decodePartialRead(): ObjectState = {

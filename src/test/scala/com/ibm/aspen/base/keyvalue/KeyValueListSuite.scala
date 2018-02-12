@@ -25,7 +25,7 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 class KeyValueListSuite extends TestSystemSuite {
   import Bootstrap._
   
-  def alloc(min: Option[Key], max: Option[Key], right: Option[KeyValueObjectPointer]): Future[KeyValueObjectPointer] = {
+  def alloc(min: Option[Key], max: Option[Key], right: Option[KeyValueObjectPointer], contents: List[Insert] = Nil): Future[KeyValueObjectPointer] = {
     implicit val tx = sys.newTransaction()
     
     var ops = List[KeyValueOperation]()
@@ -33,6 +33,8 @@ class KeyValueListSuite extends TestSystemSuite {
     min.foreach { m => ops = SetMin(m) :: ops }
     max.foreach { m => ops = SetMax(m) :: ops }
     right.foreach { m => ops = SetRight(m.toArray) :: ops }
+    
+    contents.foreach { i => ops = i :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)
@@ -167,6 +169,66 @@ class KeyValueListSuite extends TestSystemSuite {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
       }
+    }
+  }
+  
+  test("Test join node") {
+  
+    val max0 = Key(Array[Byte](5))
+    val max1 = Key(Array[Byte](10))
+    val target = Key(Array[Byte](5))
+    val key0 = Key(Array[Byte](1))
+    val key1 = Key(Array[Byte](2))
+    val key2 = Key(Array[Byte](7))
+    val value = new Array[Byte](1)
+    
+    var split: KeyValueObjectPointer = null
+    var join: KeyValueObjectPointer = null
+    
+    implicit val tx = sys.newTransaction()
+    val ts = tx.timestamp()
+    
+    for {
+      l2 <- alloc(Some(max1), None, None)
+      l1 <- alloc(Some(max0), Some(max1), Some(l2), List(Insert(key2,value,ts)))
+      l0 <- alloc(None, Some(max0), Some(l1), List(Insert(key0,value,ts), Insert(key1,value,ts)))
+      
+      kvos0 <- sys.readObject(l0)
+
+      nodeSizeLimit = 220
+      
+      inserts = Nil
+      deletes = List(key0, key1)
+      requirements = Nil
+      comparison = ByteArrayKeyOrdering
+      reader = sys
+      allocater = new SinglePoolObjectAllocater(sys,BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
+      onSplit = (n: KeyValueObjectPointer) => split = n
+      onJoin = (n: KeyValueObjectPointer) => join = n
+      
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      
+      done <- tx.commit()
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
+     
+    } yield {
+      kvos.pointer should be (l0)
+      kvos.contents.size should be (1)
+      kvos.minimum should be (None)
+      kvos.maximum should be (Some(max1))
+      kvos.right match {
+        case None => fail("missing pointer")
+        case Some(arr) => arr should be (l2.toArray)
+      }
+      kvos.contents.get(key2) match {
+        case None => fail("missing key")
+        case Some(v) => v.value should be (value)
+      }
+      split should be (null)
+      join should be (l1)
     }
   }
   
