@@ -1,4 +1,4 @@
-package com.ibm.aspen.base.keyvalue
+package com.ibm.aspen.base.tieredlist
 
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.Key

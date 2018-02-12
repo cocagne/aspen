@@ -1,4 +1,4 @@
-package com.ibm.aspen.base.keyvalue
+package com.ibm.aspen.base.tieredlist
 
 import scala.concurrent._
 import scala.concurrent.duration._
