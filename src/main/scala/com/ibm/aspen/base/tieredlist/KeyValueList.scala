@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.HLCTimestamp
+import java.util.UUID
 
 
 object KeyValueList {
@@ -32,7 +33,14 @@ object KeyValueList {
       objectReader: ObjectReader, 
       listPointer: KeyValueListPointer, 
       ordering: KeyOrdering,
-      key: Key)(implicit ec: ExecutionContext) : Future[KeyValueObjectState] = {
+      key: Key)(implicit ec: ExecutionContext) : Future[KeyValueObjectState] = fetchContainingNodeWithBlacklist(objectReader, listPointer, ordering, key, Set())
+        
+  def fetchContainingNodeWithBlacklist(
+      objectReader: ObjectReader, 
+      listPointer: KeyValueListPointer, 
+      ordering: KeyOrdering,
+      key: Key,
+      blacklist: Set[UUID])(implicit ec: ExecutionContext) : Future[KeyValueObjectState] = {
     
     // exit immediately if the requested key is below the minimum range
     if (ordering.compare(key, listPointer.minimum) < 0)
@@ -49,7 +57,11 @@ object KeyValueList {
           kvos.right match {
             case None => p.failure(new CorruptedLinkedList)
             case Some(arr) => try {
-              scanToContainingNode( ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer] )
+              val next = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+              if (blacklist.contains(next.uuid))
+                p.success(kvos)
+              else
+                scanToContainingNode( next )
             } catch {
               case err: Throwable => p.failure(new CorruptedLinkedList)
             }
@@ -58,6 +70,76 @@ object KeyValueList {
     }
    
     scanToContainingNode(listPointer.pointer)
+   
+    p.future
+  }
+  
+  
+  def scanToContainingNode(
+      objectReader: ObjectReader, 
+      initialKvos: KeyValueObjectState, 
+      ordering: KeyOrdering,
+      key: Key,
+      blacklist: Set[UUID])(implicit ec: ExecutionContext) : Future[Option[KeyValueObjectState]] = {
+    
+    if (initialKvos.keyInRange(key, ordering)) {
+      if (blacklist.contains(initialKvos.pointer.uuid))
+        return Future.successful(None)
+      else
+        return Future.successful(Some(initialKvos))
+    }
+       
+    val p = Promise[Option[KeyValueObjectState]]()
+   
+    def scanRight(node: KeyValueObjectState): Unit = node.right match {
+      case None => p.success(Some(node))
+      
+      case Some(arr) => 
+        val rightPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+        
+        if (node.keyInRange(key, ordering) || blacklist.contains(rightPointer.uuid))
+          p.success(Some(node))
+        else {
+          objectReader.readObject(rightPointer) onComplete {
+            case Failure(err) => p.failure(err)
+            case Success(node) => scanRight(node)
+          }
+        }
+    }
+   
+    scanRight(initialKvos)
+   
+    p.future
+  }
+  
+  def scanToContainingNode(
+      objectReader: ObjectReader, 
+      initialKvos: KeyValueObjectState, 
+      ordering: KeyOrdering,
+      key: Key)(implicit ec: ExecutionContext) : Future[KeyValueObjectState] = {
+    
+    if (initialKvos.keyInRange(key, ordering))
+        return Future.successful(initialKvos)
+       
+    val p = Promise[KeyValueObjectState]()
+   
+    def scanRight(node: KeyValueObjectState): Unit = node.right match {
+      case None => p.success(node)
+      
+      case Some(arr) => 
+        val rightPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+        
+        if (node.keyInRange(key, ordering))
+          p.success(node)
+        else {
+          objectReader.readObject(rightPointer) onComplete {
+            case Failure(err) => p.failure(err) 
+            case Success(node) => scanRight(node)
+          }
+        }
+    }
+   
+    scanRight(initialKvos)
    
     p.future
   }

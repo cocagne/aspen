@@ -1,126 +1,6 @@
-* Test find node with key equal to minimum (boundary conditions)
-
-* Impl insert
-   - May need a split manager interface that must be implemented by consumer
-   - work through how to calculate sizes
-   
-   - Calculate size to encode all attributes
-      * Works on a list of operations.
-      * if not append, apply to KVOS then encode the entire object
-      - if size < free space, append
-      - if size < total space, overwrite
-      - if size > total space, split
-          - if either size > total, error
-   
-* Perhaps its better to focus on desired operations
-   - Find containing node (key): KeyValueObjectState
-   - Get(key): Find + inspect state of KeyValueObjectState
-   - foreach(fn: (KeyValueObjectState) => Unit): iterate over each and call fn
-   - could even do map filter etc
-   - InsertIntoNode (key,value, KeyValueObjectState, onsplitCallback)
-      - Throws exception if state does not own the range
-      - does 
-      ********************************************************
-   *** This suggests KeyValueList wraps a KeyValueListPointer ***
-      - KeyValueList
-         - Immutable. Can use it to fetch the KeyValueObjectState and perform navigation
-      - Cannot reliably store the Next pointer as its mutable
-      - Mixin class could cache this & optimize various aspects
-      - We can rely on never having keys go backward
-      - May need to seek to where we need to get to but thats it
-      - From tree its okay since we should be exact or very close
-      - From list its fine. We'll never really use a raw list in the traditional sense
-      - We don't need the split handler outside the scope of the put function.
-      ------------------------------------------------------
-      THIS
-        -- We could usepass an allocNewNode or.. better, an allocater interface
-           Raw interface would alloc the object. For indexed list, we simply provide a wrapper iface
-           that adds a tree insert to the tx finalizers
-           
-   
-* Implement KeyValueLinkedList
-   * Make TestSystem solid so we can use it for reliably testing Lists & Trees
-   * Separate node interface and navigation from object model for testing?
-   -- how to handle transactions though?
-   * Need a NodePointer on client side only. In object it's key,value pair
-   * What if we put the logic into ListNode and TierNode instead of into object wrappers?
-      - each implements just what it needs to for navigation and points to a single node
-      - A ListNode isa list. Similar to Scala, we can ignore the "Node" concept entirely. It's up to the user to
-        track the head... though this is a MutableList Or is it? If we modify a list node, we could copy. It wouldn't
-        break Prev pointers but it would screw up navigation via the original list. But that could be desired in some
-        circumstances. Flags or subclasses (probably better left to subclasses) could augment the top-level logic to
-        do copies, update references in prev/next nodes. Etc.
-      - Similarly, a IndexedKeyValueList isa tree, just potentially a smaller one as we navigate down. Can also track its parent
-        node.
-      ** At the bottom, we could just have a List. The "Tree" concept could just extend to tiers 1+ and therefore
-         consist exclusively of List pointers. Perhaps better named ListIndex or TieredList
-      - We don't need "descriptors". It's up to the application level to figure out which allocater should be used.
-        IndexedKeyValueList pointers include a tier number. Constructor takes InexedKeyValueListRootNodeManager
-        provides fetch()/set(newRootNode, tierNumber)(implicit tx) methods.
-           -- Base implementation tracks the current root tier number. If the actual root is updated, it calls the
-              subclass methods. Otherwise it simply inserts into the tier's list
-           -- All tiers need to share the same implementation
-           -- Maybe this is the "IndexRoot"?
-               |-> To enforce a clean separation, it could have only a few methods. The primary of which is
-                   fetchTree(): Future[Tree]
-                     |-> Always reads the pointer and returns the tree (to avoid caching issues if other
-                         entities are updating the tree). Application can cache this for as long as it likes.
-           -- Should we use an explicit cache?
-               - Every node will have a pointer to the IndexRoot. We could fetch all nodes through this.
-               - Would allow mixin classes to add caching strategies
-      
-
-
-* Implement KeyValueTree
-    ** CACHING - never cache raw data content. only application-level objects that serve navigation purposes
-                 These can be library-level node representations as consumers should not care about the
-                 tree structure beyond tuning parameters. 
-
-* Read Separation of Concerns
-  - Kind of read: DataObject, KeyValueObject, Key, LargestKeyLessThan, KeyRange - Base Class
-  - Strategy for retransmissions - Mixin
-  - Strategy for selecting Data targets vs MetadataOnly - Mixin
-  - read(DataObjectPtr)
-  - read(KeyValueObjectPtr)
-  - read(KeyValueObjectPtr, Key) ... KeyRange(min, max), LargetsKeyLessThan(key)
-  - read[T](ReadDriver[T]): T
-  
-  * Maybe add a distinct read method for each read type
-     - Returns a future to the appropriate type.
-     - Other read() methods immediately fail with AlreadyCalled error
-     - Avoids modification of constructor arguments (which is a nice bonus)
-     - Top-level promise is promise: Promise[ObjectState]
-        - Different reads return different kinds of state
-     
-  * Reads are either Data or Update-based. 
-     - KeyValue reads EITHER return the update set explicitly OR return the full data (from which the updates can be derived)
-     - Which makes KeyValue reads just plan "reads"
-     - Key-specific reads throw an exception if the object pointer is not a KeyValueObjectPointer
-     - Non-Data key-value reads just need a separate set of cases for how to decode the data once a consistent threshold is
-       achieved. Won't even need separate subclasses, just a ReadType enum put into the read request
-     - KeyValue Data for ReadType
-        - FullObject - (null, Raw Data) *** This works for DataObjects as well
-        - ByteRange - (min,max) *** DUDE!
-        - Key - (updateSet, metadata + ida-encoded value | null)
-        - LargetsKeyLessThan (updateSet, key + metadata + ida-encoded value | null)
-        - KeyRange (updateSet, [key + metadat + ida-encoded value] | null)
-        
-
-
-Use separate KeyValueTransactionSuite
-  - Ensure key-val locks block revision changes
-  - Ensure non-conflicting updates
-
-** Add Transaction methods for KeyValue object operations & transaction requirements
-
-* Implement new KeyValueLinkedList & KeyValueTree in base.keyvalue
-
-*** KeyValue Optimizations
-  * Read List[Keys]
-  * Read KeyRange
-
-* Audit the Requirements Check, Lock, Commit, & Release logic
-
+* Create MutableTieredKeyValueIndex
+   * findNode(key): MutableKeyValueIndexNode
+      prepareUpdateTransaction()
 ----------------------------------
 * def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]
   def getStorageNode(nodeUUID: UUID): Future[StorageNode]
@@ -360,6 +240,10 @@ Simple Error Handling:
 BackLog
 
 Error Handling:
+   * Add retry logic for scanning right through a linked list
+      - ThresholdErrors when scanning right should only be possible if a race condition is hit during a Join operation
+      - Otherwise the object model is corrupted due to data loss
+
    * Allocation - Need an AllocationResolutionStrategy mixin. Currently BaseAllocationManager is best-effort only and leaks storage on failed
                   allocations while the store is offline (only uses TxResolved/TxFinalized) messages.
                   

@@ -11,3 +11,7 @@ final case class Key(bytes: Array[Byte]) {
   
   override def toString(): String = s"Key(${com.ibm.aspen.util.arr2string(bytes)})"
 }
+
+object Key {
+  val AbsoluteMinimum = Key(new Array[Byte](0))
+}
