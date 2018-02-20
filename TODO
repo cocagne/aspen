@@ -1,21 +1,13 @@
-** DETOUR
 
-* Need externally defined AllocationGroups
-  ** Identified by UUID
-  ** System supports looking these up similar to Pools
-  ** Serialization is to/from Array[Byte]
-     * may want separate object for update purposes
-     
-  ** First 16 bytes is the groupType UUID
-  ** Use a registry of groupTypes for factory-based construction of object with AllocationGroup trait
-
-* Finish TieredKeyValueListSplitFA
-* Finish SimpleMutableTieredKeyValueList
-*  |--> Potentially restructure mutable to derive from non-mutable
-
-* Create MutableTieredKeyValueIndex
-   * findNode(key): MutableKeyValueIndexNode
-      prepareUpdateTransaction()
+* Unit test the SimpleMutableTieredList
+   
+* Redo Bootstrap in terms of TieredList & keyvalue objects
+   ** implement the object allocater tree
+   
+* ObjectAllocaterRegistry
+   - Remove hardcoded limitation
+   - first 16 bytes is the type UUID
+   
 ----------------------------------
 
 * In order to support tries with tiers on dedicated pools, we're going to have to have a standard way

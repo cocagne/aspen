@@ -53,8 +53,7 @@ trait AspenSystem extends ObjectReader {
   def getTaskGroup(groupUUID: UUID): Future[TaskGroup]
   def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor]
   
-  // TODO: ObjectAllocater tree + save/restore
-  //def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
+  def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

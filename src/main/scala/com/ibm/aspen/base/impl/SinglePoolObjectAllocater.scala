@@ -13,12 +13,22 @@ import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import java.nio.ByteBuffer
 
 class SinglePoolObjectAllocater(
     val system: BasicAspenSystem,
+    val allocaterUUID: UUID,
     val poolUUID: UUID,
     val maxObjectSize: Option[Int],
     val objectIDA: IDA) extends ObjectAllocater {
+  
+  def serialize(): Array[Byte] = {
+    val arr = new Array[Byte](16)
+    val bb = ByteBuffer.wrap(arr)
+    bb.putLong(poolUUID.getMostSignificantBits)
+    bb.putLong(poolUUID.getLeastSignificantBits)
+    arr
+  }
  
   override def allocateDataObject(
       allocatingObject: ObjectPointer,

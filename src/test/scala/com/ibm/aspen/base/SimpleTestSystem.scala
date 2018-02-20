@@ -36,6 +36,8 @@ class SimpleTestSystem extends AspenSystem {
   
   def shutdown(): Unit = ()
   
+  def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
+  
   def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))

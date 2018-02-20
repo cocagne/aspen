@@ -74,7 +74,8 @@ table AllocationFinalizationActionContent {
 table TieredKeyValueListSplitFA {
   treeIdentifierKey: [byte];
   containingObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
-  containingObjectTieredListDepth: int;
+  containingTreeRoot: [byte];
+  keyComparison: com.ibm.aspen.core.network.protocol.KeyComparison;
   targetTier: int;
   newNodeMinimum: [byte];
   newNodePointer: com.ibm.aspen.core.network.protocol.ObjectPointer;

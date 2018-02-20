@@ -109,7 +109,8 @@ class BasicAspenSystem(
     initializationRetryStrategy.shutdown()
   }
   
-  val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA)
+  val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapObjectAllocaterUUID, 
+      Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA)
   
   net.readHandler.setReceiver(readManager)
   net.transactionHandler.setReceiver(txManager)
@@ -388,4 +389,7 @@ class BasicAspenSystem(
     }
   }
 
+  // TODO: Implement in terms of tree, allocater type registry, & save/restore
+  def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.successful(new SinglePoolObjectAllocater(this, 
+      Bootstrap.BootstrapObjectAllocaterUUID, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA))
 }

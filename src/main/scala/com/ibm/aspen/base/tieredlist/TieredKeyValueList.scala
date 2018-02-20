@@ -89,29 +89,55 @@ trait TieredKeyValueList {
 
 object TieredKeyValueList {
   
-  class Root(val topTier: Int, val rootNode: KeyValueObjectPointer) {
+  class Root(val topTier: Int, val tierObjectAllocaters: Array[UUID], val tierNodeSizes: Array[Int], val rootNode: KeyValueObjectPointer) {
+    
+    def getTierNodeSize(tier: Int): Int = if (tier < tierNodeSizes.length) tierNodeSizes(tier) else tierNodeSizes.last
+    
+    def getTierNodeAllocaterUUID(tier: Int): UUID = if (tier < tierObjectAllocaters.length) tierObjectAllocaters(tier) else tierObjectAllocaters.last
+    
     def toArray(): Array[Byte] = {
-      val arr = new Array[Byte](2 + rootNode.encodedSize)
+      val arr = new Array[Byte](4 + tierObjectAllocaters.length * 16 + tierNodeSizes.length * 4 + rootNode.encodedSize)
       val bb = ByteBuffer.wrap(arr)
       bb.put(0.asInstanceOf[Byte]) // Placeholder for a version number
       bb.put(topTier.asInstanceOf[Byte])
+      bb.put(tierObjectAllocaters.length.asInstanceOf[Byte])
+      bb.put(tierNodeSizes.length.asInstanceOf[Byte])
+      tierObjectAllocaters.foreach { uuid =>
+        bb.putLong(uuid.getMostSignificantBits)
+        bb.putLong(uuid.getLeastSignificantBits)
+      }
+      tierNodeSizes.foreach { sz => bb.putInt(sz) }
+      
       rootNode.encodeInto(bb)
       arr
     }
   }
   
   object Root {
-    def apply(topTier: Int, rootNode: KeyValueObjectPointer): Root = {
-      new Root(topTier, rootNode)
+    def apply(topTier: Int, objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], rootNode: KeyValueObjectPointer): Root = {
+      new Root(topTier, objectAllocaters, tierNodeSizes, rootNode)
     }
     
-    def fromArray(arr: Array[Byte]): Root = {
-      val bb = ByteBuffer.wrap(arr)
+    def apply(bb: ByteBuffer): Root = {
       bb.get() // Placeholder for a version number
       val topTier = bb.get()
+      val numAllocaters = bb.get()
+      val numSizes = bb.get()
+      val objectAllocaters = new Array[UUID](numAllocaters)
+      for (i <- 0 until numAllocaters) {
+        val msb = bb.getLong()
+        val lsb = bb.getLong()
+        objectAllocaters(i) = new UUID(msb, lsb)
+      }
+      val tierNodeSizes = new Array[Int](numSizes)
+      for (i <- 0 until numSizes)
+        tierNodeSizes(i) = bb.getInt()
+        
       val rootNode = ObjectPointer.fromByteBuffer(bb).asInstanceOf[KeyValueObjectPointer]
-      Root(topTier, rootNode)
+      Root(topTier, objectAllocaters, tierNodeSizes, rootNode)
     }
+    
+    def apply(arr: Array[Byte]): Root = apply(ByteBuffer.wrap(arr))
   }
   
   def findPointerToNextTierDown(

@@ -31,7 +31,8 @@ object TieredListSuite {
   class TKVL(val sys: AspenSystem, depth: Int, root: KeyValueObjectPointer) extends TieredKeyValueList {
     val keyOrdering: KeyOrdering = ByteArrayKeyOrdering
     
-    override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, root))
+    override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, 
+        new Array[UUID](0), new Array[Int](0), root))
   
     override protected def getObjectReaderForTier(tier: Int): ObjectReader = sys
     

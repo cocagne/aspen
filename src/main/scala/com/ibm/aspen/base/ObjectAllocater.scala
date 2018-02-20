@@ -19,6 +19,10 @@ trait ObjectAllocater {
   val maxObjectSize: Option[Int]
   val objectIDA: IDA
   
+  val allocaterUUID: UUID
+  
+  def serialize(): Array[Byte]
+  
   def allocateDataObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,

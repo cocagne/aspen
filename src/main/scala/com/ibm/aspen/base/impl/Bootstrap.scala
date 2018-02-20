@@ -18,7 +18,8 @@ import com.ibm.aspen.core.data_store.DataStore
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
-  val SystemAllocationPolicyUUID      = ZeroedUUID
+  val BootstrapObjectAllocaterUUID    = ZeroedUUID
+  val SystemAllocationPolicyUUID      = ZeroedUUID // to be removed with KVTree
   val BootstrapStoragePoolUUID        = ZeroedUUID
   val BootstrapTransactionUUID        = ZeroedUUID
   val StoragePoolTreeUUID             = ZeroedUUID

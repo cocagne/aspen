@@ -8,27 +8,25 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.base.ObjectAllocater
+import com.ibm.aspen.base.AspenSystem
 
 trait MutableTieredKeyValueList extends TieredKeyValueList {
   
-  val nodeSizeLimit: Int
+  val system: AspenSystem
   
-  protected def getObjectAllocaterForTier(tier: Int): ObjectAllocater
+  protected val treeIdentifier: Key
+  protected val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root]
+  
+  protected def getObjectAllocaterForTier(tier: Int)(implicit ec: ExecutionContext): Future[ObjectAllocater]
   
   /** Future completes when the transactions is ready to commit */
-  protected[tieredlist] def prepreUpdateRootTransaction(newRootPointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
+  protected[tieredlist] def prepreUpdateRootTransaction(
+      newTier: Int,
+      newRootPointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   
-  protected[tieredlist] def refreshRootPointer(): Future[(Int, KeyValueObjectPointer)]
+  protected[tieredlist] def refreshRoot()(implicit ec: ExecutionContext): Future[(KeyValueObjectState, TieredKeyValueList.Root)]
   
-  
-  protected def onSplit(tier: Int)(newPointer: KeyValueObjectPointer): Unit = {
-    
-  }
-  
-  protected def onJoin(tier: Int)(newPointer: KeyValueObjectPointer): Unit = {
-    
-  }
   
   class MutableNode(val kvos: KeyValueObjectState) {
     def prepreUpdateTransaction(
@@ -36,11 +34,26 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
       deletes: List[Key],
       requirements: List[KeyValueUpdate.KVRequirement])(implicit tx: Transaction, ec: ExecutionContext): Future[MutableNode] = {
       
-      val reader = getObjectReaderForTier(0)
-      val allocater = getObjectAllocaterForTier(0)
+      val reader = getObjectReaderForTier(0) 
       
-      KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, 
-          keyOrdering, reader, allocater, onSplit(0), onJoin(0)).map(new MutableNode(_))
+      def onSplit(newMinimum: Key, newPointer: KeyValueObjectPointer): Unit = {
+        TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, KeyValueListPointer(newMinimum, newPointer))
+      }
+      
+      def onJoin(newPointer: KeyValueObjectPointer): Unit = {
+        
+      }
+      
+      val fallocater = getObjectAllocaterForTier(0)
+      
+      for {
+        allocater <- fallocater
+        root <- rootPointer()
+        updatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, root.getTierNodeSize(0), inserts, deletes, requirements, 
+                       keyOrdering, reader, allocater, onSplit, onJoin)
+      } yield {
+        new MutableNode(updatedKvos)
+      }
     }
   }
   
