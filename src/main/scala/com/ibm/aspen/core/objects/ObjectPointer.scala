@@ -26,6 +26,8 @@ sealed abstract class ObjectPointer(
   
   def encodedSize: Int = numBytesNeededToEncode(this)
   
+  def encodeInto(bb: ByteBuffer): Unit = ObjectPointer.encodeInto(bb, this)
+  
   final override def equals(other: Any): Boolean = other match {
     case rhs: ObjectPointer => uuid == rhs.uuid && poolUUID == rhs.poolUUID && size == rhs.size &&
      ida == rhs.ida && java.util.Arrays.equals(storePointers.asInstanceOf[Array[Object]], rhs.storePointers.asInstanceOf[Array[Object]])

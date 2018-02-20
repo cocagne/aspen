@@ -69,6 +69,18 @@ table AllocationFinalizationActionContent {
 }
 
 //---------------------------------------------------------------------------
+//- TieredKeyValueListSplitFA
+//---------------------------------------------------------------------------
+table TieredKeyValueListSplitFA {
+  treeIdentifierKey: [byte];
+  containingObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  containingObjectTieredListDepth: int;
+  targetTier: int;
+  newNodeMinimum: [byte];
+  newNodePointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+}
+
+//---------------------------------------------------------------------------
 //- RadicleContent
 //---------------------------------------------------------------------------
 table RadicleContent {

@@ -10,6 +10,10 @@ import java.util.UUID
 import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.base.tieredlist.KeyValueListPointer
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
 
 object BaseCodec {
   
@@ -106,6 +110,55 @@ object BaseCodec {
     FAContent(sp, np)
   }
   
+  //-------------------------------------------------------------------------------------------------------------------
+  // TieredKeyValueListSplitFA
+  //
+  def encodeTieredKeyValueListSplitFA(
+      treeIdentifier: Key, containingObject: KeyValueObjectPointer, containingObjectTieredListDepth: Int, 
+      targetTier: Int, newNode: KeyValueListPointer): Array[Byte] = {
+    val builder = new FlatBufferBuilder(1024)
+    
+    val treeIdentifierOffset = P.TieredKeyValueListSplitFA.createTreeIdentifierKeyVector(builder, treeIdentifier.bytes)
+    val containingObjectOffset = NetworkCodec.encode(builder, containingObject)
+    val newNodeMinimum = P.TieredKeyValueListSplitFA.createNewNodeMinimumVector(builder, newNode.minimum.bytes)
+    val newNodePointer = NetworkCodec.encode(builder, newNode.pointer)
+    
+    P.TieredKeyValueListSplitFA.startTieredKeyValueListSplitFA(builder)
+    P.TieredKeyValueListSplitFA.addTreeIdentifierKey(builder, treeIdentifierOffset)
+    P.TieredKeyValueListSplitFA.addContainingObject(builder, containingObjectOffset)
+    P.TieredKeyValueListSplitFA.addContainingObjectTieredListDepth(builder, containingObjectTieredListDepth)
+    P.TieredKeyValueListSplitFA.addTargetTier(builder, targetTier)
+    P.TieredKeyValueListSplitFA.addNewNodeMinimum(builder, newNodeMinimum)
+    P.TieredKeyValueListSplitFA.addNewNodePointer(builder, newNodePointer)
+    
+    val finalOffset = P.TieredKeyValueListSplitFA.endTieredKeyValueListSplitFA(builder)   
+ 
+    builder.finish(finalOffset)
+    
+    val db = builder.dataBuffer()
+    
+    val arr = new Array[Byte](db.limit - db.position)
+    db.get(arr)
+    
+    arr
+  }
+  def decodeTieredKeyValueListSplitFA(arr: Array[Byte]): TieredKeyValueListSplitFA.Content = {
+    val o = P.TieredKeyValueListSplitFA.getRootAsTieredKeyValueListSplitFA(ByteBuffer.wrap(arr))
+    
+    val karr = new Array[Byte](o.treeIdentifierKeyLength())
+    o.treeIdentifierKeyAsByteBuffer().get(karr)
+    val treeIdentifier = Key(karr)
+    
+    val marr = new Array[Byte](o.newNodeMinimumLength())
+    o.newNodeMinimumAsByteBuffer().get(marr)
+    val newNodeMinimum = Key(marr)
+    
+    val containingObject = NetworkCodec.decode(o.containingObject()).asInstanceOf[KeyValueObjectPointer]
+    val newNodePointer = NetworkCodec.decode(o.newNodePointer()).asInstanceOf[KeyValueObjectPointer]
+    
+    TieredKeyValueListSplitFA.Content(treeIdentifier, containingObject, o.containingObjectTieredListDepth(), o.targetTier(),
+        KeyValueListPointer(newNodeMinimum, newNodePointer))
+  }
   //-------------------------------------------------------------------------------------------------------------------
   // RadicleContent
   //

@@ -31,7 +31,7 @@ object TieredListSuite {
   class TKVL(val sys: AspenSystem, depth: Int, root: KeyValueObjectPointer) extends TieredKeyValueList {
     val keyOrdering: KeyOrdering = ByteArrayKeyOrdering
     
-    override protected def rootPointer(): Future[(Int, KeyValueObjectPointer)] = Future.successful((depth, root))
+    override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, root))
   
     override protected def getObjectReaderForTier(tier: Int): ObjectReader = sys
     
@@ -84,6 +84,7 @@ class TieredListSuite extends TestSystemSuite {
       tl = new TKVL(sys, 0, l0)
       
       kvos <- tl.find(target)
+    
     } yield {
       kvos.pointer should be (l0) 
     }
@@ -212,7 +213,7 @@ class TieredListSuite extends TestSystemSuite {
     }
   }
   
-  test("Test 3 layers broken pointers") {
+  test("Test 3 layers broken pointers, get(key)") {
   
     val max0 = Key(Array[Byte](5))
     val max1 = Key(Array[Byte](10))
@@ -225,7 +226,7 @@ class TieredListSuite extends TestSystemSuite {
     val badPointer =  KeyValueObjectPointer(new UUID(0,99), new UUID(0,0), None, new Replication(3,2), (sp0 :: sp1 :: sp2 :: Nil).toArray)
     
     for {
-      l1 <- alloc(Some(max0), None, None)
+      l1 <- alloc(Some(max0), None, None, List((target,kvalue)))
       l0 <- alloc(None, Some(max0), Some(l1))
       a1 <- alloc(Some(max0), None, None, List((max0,badPointer.toArray)))
       a0 <- alloc(None, Some(max0), Some(a1), List((Key.AbsoluteMinimum,l0.toArray)))
@@ -233,10 +234,13 @@ class TieredListSuite extends TestSystemSuite {
       
       tl = new TKVL(sys, 2, b0)
       
-      kvos <- tl.find(target)
+      ov <- tl.get(target)
      
     } yield {
-      kvos.pointer should be (l1) 
+      ov match {
+        case None => fail("failed to find target")
+        case Some(v) => v.value should be (kvalue)
+      }
     }
   }
 }

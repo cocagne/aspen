@@ -1,7 +1,37 @@
+** DETOUR
+
+* Need externally defined AllocationGroups
+  ** Identified by UUID
+  ** System supports looking these up similar to Pools
+  ** Serialization is to/from Array[Byte]
+     * may want separate object for update purposes
+     
+  ** First 16 bytes is the groupType UUID
+  ** Use a registry of groupTypes for factory-based construction of object with AllocationGroup trait
+
+* Finish TieredKeyValueListSplitFA
+* Finish SimpleMutableTieredKeyValueList
+*  |--> Potentially restructure mutable to derive from non-mutable
+
 * Create MutableTieredKeyValueIndex
    * findNode(key): MutableKeyValueIndexNode
       prepareUpdateTransaction()
 ----------------------------------
+
+* In order to support tries with tiers on dedicated pools, we're going to have to have a standard way
+  to define allocation pools such that stores can load them from FinalizationActions
+  
+* May have to go back to the idea of a TreeDescriptor
+    - Though we can keep the current model. The "Root" just contains more than the top tier number
+    - Removes the fundamental distinction between Read-Only & MutableTier lists
+    - We'll probably still want this from a code perspective though. Better to use immutable whenever
+      changes are not intended
+    
+* AllocationGroup
+  - GroupUUIDKey -> <groupType UUID><flatbuffer>
+  - groupType UUID -> Use this to fetch a registered group type. Can have a few by default
+
+
 * def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]
   def getStorageNode(nodeUUID: UUID): Future[StorageNode]
   

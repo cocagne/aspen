@@ -15,26 +15,23 @@ import scala.util.Failure
 import scala.util.Success
 import jdk.nashorn.internal.runtime.FindProperty
 import com.ibm.aspen.core.read.ThresholdError
+import com.ibm.aspen.core.objects.keyvalue.Value
+import java.nio.ByteBuffer
+
 
 trait TieredKeyValueList {
   
   import TieredKeyValueList._
   
   val keyOrdering: KeyOrdering
-  
-  //def refresh(): Future[Unit]
-  
-  /** Future completes when the transactions is ready to commit */
-  //def prepreUpdateRootTransaction(newRootPointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
-  
-  /** Returns the zero-based number of tiers in the tree. */
-  //def numberOfTiers: Int
-  
-  protected def rootPointer(): Future[(Int, KeyValueObjectPointer)]
+ 
+  protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root]
   
   protected def getObjectReaderForTier(tier: Int): ObjectReader
   
-  protected def fetchContainingNode(key: Key, targetTier: Int)(implicit ec: ExecutionContext): Future[KeyValueObjectState] = {
+  def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos => kvos.contents.get(key) }
+  
+  protected[tieredlist] def fetchContainingNode(key: Key, targetTier: Int)(implicit ec: ExecutionContext): Future[KeyValueObjectState] = {
     val p = Promise[KeyValueObjectState]()
     
     def navigateTier(tiers: List[(Int, KeyValueListPointer)], blacklist: Set[UUID]): Unit = {
@@ -83,7 +80,7 @@ trait TieredKeyValueList {
     
     rootPointer() onComplete {
       case Failure(cause) => p.failure(cause)
-      case Success((depth, ptr)) => navigateTier( (depth, KeyValueListPointer(Key.AbsoluteMinimum, ptr)) :: Nil, Set()) 
+      case Success(root) => navigateTier( (root.topTier, KeyValueListPointer(Key.AbsoluteMinimum, root.rootNode)) :: Nil, Set()) 
     }
     
     p.future
@@ -91,6 +88,31 @@ trait TieredKeyValueList {
 }
 
 object TieredKeyValueList {
+  
+  class Root(val topTier: Int, val rootNode: KeyValueObjectPointer) {
+    def toArray(): Array[Byte] = {
+      val arr = new Array[Byte](2 + rootNode.encodedSize)
+      val bb = ByteBuffer.wrap(arr)
+      bb.put(0.asInstanceOf[Byte]) // Placeholder for a version number
+      bb.put(topTier.asInstanceOf[Byte])
+      rootNode.encodeInto(bb)
+      arr
+    }
+  }
+  
+  object Root {
+    def apply(topTier: Int, rootNode: KeyValueObjectPointer): Root = {
+      new Root(topTier, rootNode)
+    }
+    
+    def fromArray(arr: Array[Byte]): Root = {
+      val bb = ByteBuffer.wrap(arr)
+      bb.get() // Placeholder for a version number
+      val topTier = bb.get()
+      val rootNode = ObjectPointer.fromByteBuffer(bb).asInstanceOf[KeyValueObjectPointer]
+      Root(topTier, rootNode)
+    }
+  }
   
   def findPointerToNextTierDown(
       objectReader: ObjectReader, 
