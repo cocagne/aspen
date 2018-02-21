@@ -3,6 +3,7 @@ package com.ibm.aspen.core.objects.keyvalue
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.util.Varint
+import java.util.UUID
 
 /** Represents the decoded object state from a single DataStore.
  */
@@ -39,9 +40,13 @@ object KeyValueObjectStoreState {
      
       val bb = db.asReadOnlyBuffer()
       
+      var updates: List[UUID] = Nil
+      
       while (bb.remaining() > 0) {
-        bb.getLong() // Update UUID mostSignificantBits
-        bb.getLong() // Update UUID leastSignificantBits
+        val a = bb.getLong() // Update UUID mostSignificantBits
+        val b = bb.getLong() // Update UUID leastSignificantBits
+        updates = new UUID(a,b) :: updates
+        
         val updateSize = Varint.getUnsignedInt(bb)
         
         val updateEndPosition = bb.position + updateSize
@@ -60,7 +65,6 @@ object KeyValueObjectStoreState {
         }
         
       }
-      
       new KeyValueObjectStoreState(idaEncodingIndex, minimum, maximum, left, right, contents)
     } catch {
       case t: Throwable => throw new KeyValueObjectEncodingError(t)

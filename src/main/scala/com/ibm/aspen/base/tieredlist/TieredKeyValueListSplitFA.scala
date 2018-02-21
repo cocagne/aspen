@@ -14,6 +14,7 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import scala.util.Failure
 import scala.util.Success
+import com.ibm.aspen.core.objects.keyvalue.Insert
 
 object TieredKeyValueListSplitFA {
   val FinalizationActionUUID = UUID.fromString("09d1c4a2-22a7-48b0-85f4-726afea02f2a")
@@ -31,9 +32,11 @@ object TieredKeyValueListSplitFA {
       treeIdentifier: Key, 
       treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root],
       keyOrdering: KeyOrdering,
-      targetTier: Int, newNode: KeyValueListPointer): Unit = {
+      targetTier: Int, 
+      left: KeyValueListPointer, 
+      right: KeyValueListPointer): Unit = {
     
-    val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, newNode)
+    val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, right)
         
     transaction.addFinalizationAction(FinalizationActionUUID, serializedContent)
   }
@@ -42,7 +45,8 @@ object TieredKeyValueListSplitFA {
       treeIdentifier: Key, 
       treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], 
       targetTier: Int, 
-      newNode: KeyValueListPointer,
+      left: KeyValueListPointer, 
+      right: KeyValueListPointer,
       keyOrdering: KeyOrdering) 
 }
 
@@ -68,36 +72,54 @@ class TieredKeyValueListSplitFA(
       implicit val tx = system.newTransaction()
       
       lst.refreshRoot() flatMap { t =>
-        val root = t._2
+        val (containerKvos, root) = t
         
         if (root.topTier < c.targetTier) {
+          // Create new tier
+          val iLeft  = Insert(c.left.minimum.bytes, c.left.pointer.toArray, tx.timestamp())
+          val iRight = Insert(c.right.minimum.bytes, c.right.pointer.toArray, tx.timestamp())
           
-          lst.prepreUpdateRootTransaction(c.targetTier, c.newNode.pointer).flatMap(_ => tx.commit())
-          
+          for {
+            allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
+            
+            newRootPointer <- allocater.allocateKeyValueObject(
+                allocatingObject = containerKvos.pointer, 
+                allocatingObjectRevision = containerKvos.revision, 
+                initialContent = List(iLeft, iRight))
+                
+            commitReady <- lst.prepreUpdateRootTransaction(c.targetTier, newRootPointer)
+            
+            done <- tx.commit()
+            
+          } yield ()
         } else {
           
-          def onSplit(newMinimum: Key, newPointer: KeyValueObjectPointer): Unit = {
-            addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, KeyValueListPointer(newMinimum, newPointer))
+          def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
+            addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, right)
           }
           
           def onJoin(removedPointer: KeyValueObjectPointer): Unit = {}
           
           for {
-            kvos <- lst.fetchContainingNode(c.newNode.minimum, c.targetTier) 
+            kvos <- lst.fetchContainingNode(c.right.minimum, c.targetTier) 
+            
             allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
             
             nodeSizeLimit = root.getTierNodeSize(c.targetTier)
-            inserts = List((c.newNode.minimum, c.newNode.pointer.toArray))
+            inserts = List((c.right.minimum, c.right.pointer.toArray))
             deletes = Nil
             requirements = Nil
             
+            test <- system.readObject(kvos.pointer)
+
             ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
-            done <- tx.commit()
             
+            done <- tx.commit()
+
           } yield ()
         }
-      } 
-    }
+      }
+    }    
   }
   
 }

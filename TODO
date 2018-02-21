@@ -1,5 +1,7 @@
 
-* Unit test the SimpleMutableTieredList
+* Add Join Finalizer
+
+* Unit test Join Finalizer
    
 * Redo Bootstrap in terms of TieredList & keyvalue objects
    ** implement the object allocater tree

@@ -303,7 +303,7 @@ class DataStoreFrontend(
       // Only load data if its needed by the transaction requirements
       val dataNeeded = requirements.foldLeft(Set[UUID]())((s, r) => r match {
         case _: DataUpdate => s + r.objectPointer.uuid
-        case kv: KeyValueUpdate => if (kv.requirements.isEmpty) s else s + r.objectPointer.uuid
+        case _: KeyValueUpdate => s + r.objectPointer.uuid
         case _ => s
       })
       
@@ -385,7 +385,7 @@ class DataStoreFrontend(
               }
               
               kv.updateType match {
-                case KeyValueUpdate.UpdateType.Overwrite => 
+                case KeyValueUpdate.UpdateType.Overwrite =>
                   cs.obj.data = data
                   kvobj.dropKeyValueContent() // Object content will need to be parsed from the new data
                   

@@ -36,8 +36,8 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
       
       val reader = getObjectReaderForTier(0) 
       
-      def onSplit(newMinimum: Key, newPointer: KeyValueObjectPointer): Unit = {
-        TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, KeyValueListPointer(newMinimum, newPointer))
+      def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
+        TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, right)
       }
       
       def onJoin(newPointer: KeyValueObjectPointer): Unit = {

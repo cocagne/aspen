@@ -152,7 +152,7 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (k: Key, n: KeyValueObjectPointer) => split = n
+      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
       onJoin = (n: KeyValueObjectPointer) => join = n
       
       kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
@@ -203,7 +203,7 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (k: Key, n: KeyValueObjectPointer) => split = n
+      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
       onJoin = (n: KeyValueObjectPointer) => join = n
       
       kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
@@ -260,7 +260,7 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (k: Key, n: KeyValueObjectPointer) => split = n
+      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
       onJoin = (n: KeyValueObjectPointer) => join = n
       
       kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
@@ -318,7 +318,7 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (k: Key, n: KeyValueObjectPointer) => split = n
+      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
       onJoin = (n: KeyValueObjectPointer) => join = n
       
       kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)

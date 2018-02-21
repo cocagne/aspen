@@ -153,7 +153,7 @@ object KeyValueList {
       ordering: KeyOrdering,
       reader: ObjectReader,
       allocater: ObjectAllocater,
-      onSplit: (Key, KeyValueObjectPointer) => Unit,
+      onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit,
       onJoin: (KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
     
     if (inserts.exists(t => !kvos.keyInRange(t._1, ordering)) || deletes.exists(key => !kvos.keyInRange(key, ordering)))
@@ -171,6 +171,7 @@ object KeyValueList {
     val sizeAfterAppend = kvos.sizeOnStore + KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, appendOps) 
     
     if (sizeAfterAppend <= maxSize) {
+      
       val newKvos = updateState(kvos, appendOps, sizeAfterAppend, kvos.maximum, kvos.right)
       
       if (newKvos.contents.isEmpty)
@@ -236,7 +237,7 @@ object KeyValueList {
       maxSize: Int,
       ordering: KeyOrdering,
       allocater: ObjectAllocater,
-      onSplit: (Key, KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
     
     val contents = inserts.foldLeft(kvos.contents.filter(t => !deleteSet.contains(t._1))){ (m, t) =>
       m + (t._1 -> Value(t._1, t._2, timestamp))
@@ -274,7 +275,10 @@ object KeyValueList {
       
       tx.overwrite(kvos.pointer, kvos.revision, requirements, leftOps)
       
-      onSplit(rightMin, rightNodePointer)
+      val left = KeyValueListPointer(kvos.minimum.getOrElse(KeyValueListPointer.AbsoluteMinimum), kvos.pointer)
+      val right = KeyValueListPointer(rightMin, rightNodePointer)
+      
+      onSplit(left, right)
       
       new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, newSizeOnStore, 
         kvos.minimum, Some(rightMin), kvos.left, Some(rnpArr), contents)

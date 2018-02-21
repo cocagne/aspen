@@ -52,7 +52,7 @@ object TestSystem {
   
   val DefaultSystemTreeNodeSize = 2048
   
-  val NoRetry = new com.ibm.aspen.base.NoRetry
+  val NoRetry = new AssertOnRetry //new com.ibm.aspen.base.NoRetry
 }
 
 /** Provides a fully-functional AspenSystem for testing application-level operations

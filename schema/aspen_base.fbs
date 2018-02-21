@@ -77,8 +77,10 @@ table TieredKeyValueListSplitFA {
   containingTreeRoot: [byte];
   keyComparison: com.ibm.aspen.core.network.protocol.KeyComparison;
   targetTier: int;
-  newNodeMinimum: [byte];
-  newNodePointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  leftMinimum: [byte];
+  leftPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
+  rightMinimum: [byte];
+  rightPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
 }
 
 //---------------------------------------------------------------------------

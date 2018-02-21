@@ -117,7 +117,7 @@ object BaseCodec {
   //
   def encodeTieredKeyValueListSplitFA(
       treeIdentifier: Key, treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], keyOrdering: KeyOrdering,
-      targetTier: Int, newNode: KeyValueListPointer): Array[Byte] = {
+      targetTier: Int, left: KeyValueListPointer, right: KeyValueListPointer): Array[Byte] = {
     val builder = new FlatBufferBuilder(1024)
     
     val treeIdentifierOffset = P.TieredKeyValueListSplitFA.createTreeIdentifierKeyVector(builder, treeIdentifier.bytes)
@@ -125,8 +125,11 @@ object BaseCodec {
       case Left(pointer) => (NetworkCodec.encode(builder, pointer), -1)
       case Right(root) => (-1, P.TieredKeyValueListSplitFA.createContainingTreeRootVector(builder, root.toArray()))
     }
-    val newNodeMinimum = P.TieredKeyValueListSplitFA.createNewNodeMinimumVector(builder, newNode.minimum.bytes)
-    val newNodePointer = NetworkCodec.encode(builder, newNode.pointer)
+    
+    val leftMinimum = P.TieredKeyValueListSplitFA.createRightMinimumVector(builder, left.minimum.bytes)
+    val leftPointer = NetworkCodec.encode(builder, left.pointer)
+    val rightMinimum = P.TieredKeyValueListSplitFA.createRightMinimumVector(builder, right.minimum.bytes)
+    val rightPointer = NetworkCodec.encode(builder, right.pointer)
     
     P.TieredKeyValueListSplitFA.startTieredKeyValueListSplitFA(builder)
     P.TieredKeyValueListSplitFA.addTreeIdentifierKey(builder, treeIdentifierOffset)
@@ -139,8 +142,11 @@ object BaseCodec {
     P.TieredKeyValueListSplitFA.addKeyComparison(builder, NetworkCodec.encodeKeyComparison(keyOrdering))
     
     P.TieredKeyValueListSplitFA.addTargetTier(builder, targetTier)
-    P.TieredKeyValueListSplitFA.addNewNodeMinimum(builder, newNodeMinimum)
-    P.TieredKeyValueListSplitFA.addNewNodePointer(builder, newNodePointer)
+    
+    P.TieredKeyValueListSplitFA.addLeftMinimum(builder, leftMinimum)
+    P.TieredKeyValueListSplitFA.addLeftPointer(builder, leftPointer)
+    P.TieredKeyValueListSplitFA.addRightMinimum(builder, rightMinimum)
+    P.TieredKeyValueListSplitFA.addRightPointer(builder, rightPointer)
     
     val finalOffset = P.TieredKeyValueListSplitFA.endTieredKeyValueListSplitFA(builder)   
  
@@ -160,11 +166,17 @@ object BaseCodec {
     o.treeIdentifierKeyAsByteBuffer().get(karr)
     val treeIdentifier = Key(karr)
     
-    val marr = new Array[Byte](o.newNodeMinimumLength())
-    o.newNodeMinimumAsByteBuffer().get(marr)
-    val newNodeMinimum = Key(marr)
+    val larr = new Array[Byte](o.leftMinimumLength())
+    o.leftMinimumAsByteBuffer().get(larr)
+    val leftMinimum = Key(larr)
     
-    val newNodePointer = NetworkCodec.decode(o.newNodePointer()).asInstanceOf[KeyValueObjectPointer]
+    val leftPointer = NetworkCodec.decode(o.leftPointer()).asInstanceOf[KeyValueObjectPointer]
+    
+    val rarr = new Array[Byte](o.rightMinimumLength())
+    o.rightMinimumAsByteBuffer().get(rarr)
+    val rightMinimum = Key(rarr)
+    
+    val rightPointer = NetworkCodec.decode(o.rightPointer()).asInstanceOf[KeyValueObjectPointer]
     
     val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root] = if (o.containingTreeRootLength() > 0)
         Right(TieredKeyValueList.Root(o.containingTreeRootAsByteBuffer()))
@@ -174,7 +186,7 @@ object BaseCodec {
     val keyOrdering = NetworkCodec.decodeKeyComparison(o.keyComparison())
     
     TieredKeyValueListSplitFA.Content(treeIdentifier, treeContainer, o.targetTier(),
-        KeyValueListPointer(newNodeMinimum, newNodePointer), keyOrdering)
+        KeyValueListPointer(leftMinimum, leftPointer), KeyValueListPointer(rightMinimum, rightPointer), keyOrdering)
   }
   //-------------------------------------------------------------------------------------------------------------------
   // RadicleContent

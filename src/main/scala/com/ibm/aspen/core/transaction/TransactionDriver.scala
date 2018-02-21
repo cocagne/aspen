@@ -162,6 +162,7 @@ abstract class TransactionDriver(
   protected def onFinalized(committed: Boolean) = synchronized {
     if (!finalized) {
       finalized = true
+      
       onComplete(txd.transactionUUID)
       
       txd.originatingClient.foreach(client => {

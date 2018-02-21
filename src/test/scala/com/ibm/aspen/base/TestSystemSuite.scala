@@ -29,8 +29,8 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
       count += 1
       Thread.sleep(5)
     }
-
-    if (count > 100)
+    
+    if (count >= 100) 
       throw new Exception("Finalization Actions Timed Out")
   }
   
