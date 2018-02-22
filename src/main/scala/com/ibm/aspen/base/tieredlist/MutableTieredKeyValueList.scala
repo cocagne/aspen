@@ -40,8 +40,8 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
         TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, right)
       }
       
-      def onJoin(newPointer: KeyValueObjectPointer): Unit = {
-        
+      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
+        TieredKeyValueListJoinFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, removed)
       }
       
       val fallocater = getObjectAllocaterForTier(0)

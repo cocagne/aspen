@@ -10,6 +10,7 @@ import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
 import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
 import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListJoinFA
 
 object BaseFinalizationActionHandlerRegistry {
   def apply(
@@ -21,7 +22,8 @@ object BaseFinalizationActionHandlerRegistry {
         new KVTreeFinalizationActionHandler(kvTreeFactory, retryStrategy, system),
         new AllocationFinalizationAction(retryStrategy, system),
         new TaskCreationFinalizationAction(retryStrategy, system),
-        new TieredKeyValueListSplitFA(retryStrategy, system)
+        new TieredKeyValueListSplitFA(retryStrategy, system),
+        new TieredKeyValueListJoinFA(retryStrategy, system)
     )
     
     new BaseFinalizationActionHandlerRegistry(handlers)

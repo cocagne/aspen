@@ -5,6 +5,7 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.util.Varint
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer) {
   
@@ -24,6 +25,10 @@ final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer)
 
 object KeyValueListPointer {
   val AbsoluteMinimum = Key(new Array[Byte](0))
+  
+  def apply(objectState: KeyValueObjectState): KeyValueListPointer = {
+    new KeyValueListPointer(objectState.minimum.getOrElse(AbsoluteMinimum), objectState.pointer)
+  }
   
   def encodeToByteArray(p: KeyValueListPointer): Array[Byte] = {
     val arr = new Array[Byte](p.encodedSize)

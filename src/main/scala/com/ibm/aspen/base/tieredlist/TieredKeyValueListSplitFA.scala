@@ -98,7 +98,7 @@ class TieredKeyValueListSplitFA(
             addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, right)
           }
           
-          def onJoin(removedPointer: KeyValueObjectPointer): Unit = {}
+          def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
           
           for {
             kvos <- lst.fetchContainingNode(c.right.minimum, c.targetTier) 
@@ -109,8 +109,6 @@ class TieredKeyValueListSplitFA(
             inserts = List((c.right.minimum, c.right.pointer.toArray))
             deletes = Nil
             requirements = Nil
-            
-            test <- system.readObject(kvos.pointer)
 
             ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
             

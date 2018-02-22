@@ -164,8 +164,6 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
       
       rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray)))
-      
-      tst <- sys.readObject(rootPtr)
        
       nodeSizeLimit = 250
       
@@ -214,5 +212,64 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     }
   }
   
+  test("Test join two-tier tree") {
+  
+    val treeId = Key(Array[Byte](0,0,0))
+    val target = Key(Array[Byte](10))
+    val value = Array[Byte](2,3,4)
+    val key0 = Key(Array[Byte](0))
+    
+    implicit val tx = sys.newTransaction()
+    
+    for {
+      l1 <- alloc(Some(target), None, None, List((target -> value)))
+      l0 <- alloc(None, Some(target), Some(l1), List((key0 -> value)))
+      
+      rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
+       
+      nodeSizeLimit = 250
+      
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), rootPtr)
+      
+      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
+      
+      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      
+      node0 <- smt.fetchMutableNode(key0)
+      
+      inserts = Nil
+      deletes = List(key0)
+      requirements = Nil
+      
+      txPrepped <- node0.prepreUpdateTransaction(inserts, deletes, requirements)
+      txDone <- tx.commit()
+      
+      finalizersDone <- waitForTransactionsComplete()
+      
+      (newKvos, newRoot) <- smt.refreshRoot()
+      
+      ovalue0 <- smt.get(key0)
+      
+      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      
+      ovalue1 <- smt2.get(key0)
+      
+      newRootKvos <- sys.readObject(newRoot.rootNode)
+      l0kvos <- sys.readObject(l0)
+
+    } yield {
+      newRoot.topTier should be (1)
+      newRoot.rootNode should be (rootPtr)
+      
+      newRootKvos.contents.size should be (1)
+      
+      l0kvos.maximum.isDefined should be (false)
+      l0kvos.right.isDefined should be (false)
+      
+      ovalue0.isDefined should be (false)
+      ovalue1.isDefined should be (false)
+      
+    }
+  }
   
 }

@@ -154,7 +154,7 @@ object KeyValueList {
       reader: ObjectReader,
       allocater: ObjectAllocater,
       onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit,
-      onJoin: (KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
     
     if (inserts.exists(t => !kvos.keyInRange(t._1, ordering)) || deletes.exists(key => !kvos.keyInRange(key, ordering)))
        return Future.failed(new OutOfRange)
@@ -292,7 +292,7 @@ object KeyValueList {
       maxSize: Int,
       ordering: KeyOrdering,
       reader: ObjectReader,
-      onJoin: (KeyValueObjectPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
     
     val opsReady = emptyKvos.right match {
       case None => Future.successful(None)
@@ -323,7 +323,7 @@ object KeyValueList {
           tx.overwrite(rkvos.pointer, rkvos.revision, requirements, List())
           tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
           
-          onJoin(rkvos.pointer)
+          onJoin(KeyValueListPointer(emptyKvos), KeyValueListPointer(rkvos))
           
           new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, newSizeOnStore, 
             emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, Map())

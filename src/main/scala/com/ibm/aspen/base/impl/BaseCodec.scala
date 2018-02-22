@@ -16,6 +16,7 @@ import com.ibm.aspen.base.tieredlist.KeyValueListPointer
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListJoinFA
 
 object BaseCodec {
   
@@ -110,6 +111,21 @@ object BaseCodec {
     val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer()).asInstanceOf[DataObjectPointer]
     val np = NetworkCodec.decode(n.newObjectPointer())
     FAContent(sp, np)
+  }
+  
+  //-------------------------------------------------------------------------------------------------------------------
+  // TieredKeyValueListJoinFA
+  //
+  // NOTE: The structure of this message is identical to Split. So this method is implemented in terms of Split
+  //
+  def encodeTieredKeyValueListJoinFA(
+      treeIdentifier: Key, treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], keyOrdering: KeyOrdering,
+      targetTier: Int, left: KeyValueListPointer, right: KeyValueListPointer): Array[Byte] = {
+    encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, right)
+  }
+  def decodeTieredKeyValueListJoinFA(arr: Array[Byte]): TieredKeyValueListJoinFA.Content = {
+    val c = decodeTieredKeyValueListSplitFA(arr)
+    TieredKeyValueListJoinFA.Content(c.treeIdentifier, c.treeContainer, c.targetTier, c.left, c.right, c.keyOrdering)
   }
   
   //-------------------------------------------------------------------------------------------------------------------
