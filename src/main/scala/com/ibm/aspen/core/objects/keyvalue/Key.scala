@@ -1,5 +1,8 @@
 package com.ibm.aspen.core.objects.keyvalue
 
+import java.util.UUID
+import java.nio.ByteBuffer
+
 final case class Key(bytes: Array[Byte]) {
   
   override def equals(other: Any): Boolean = other match {
@@ -14,4 +17,14 @@ final case class Key(bytes: Array[Byte]) {
 
 object Key {
   val AbsoluteMinimum = Key(new Array[Byte](0))
+  
+  import scala.language.implicitConversions
+  
+  implicit def apply(uuid: UUID): Key = {
+    val arr = new Array[Byte](16)
+    val bb = ByteBuffer.wrap(arr)
+    bb.putLong(uuid.getMostSignificantBits)
+    bb.putLong(uuid.getLeastSignificantBits)
+    Key(arr)
+  }
 }
