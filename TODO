@@ -1,3 +1,7 @@
+
+* Oh man. Bootstrapping gets hella easy
+   * Allocate the root node for each required tree w/ whatever value content is needed
+   * Then allocate the Radicle object as a KeyValue object w/ pointers to all the TieredLists
    
 * Redo Bootstrap in terms of TieredList & keyvalue objects
    ** implement the object allocater tree
