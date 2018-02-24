@@ -211,6 +211,8 @@ class DataObjectPointer(
 }
 
 object DataObjectPointer {
+  def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+  
   def apply(
       uuid: UUID,
       poolUUID: UUID,
@@ -230,6 +232,9 @@ class KeyValueObjectPointer(
 }
 
 object KeyValueObjectPointer {
+  
+  def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+  
   def apply(
       uuid: UUID,
       poolUUID: UUID,

@@ -6,14 +6,15 @@ import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 
 trait StoragePool {
   val uuid: UUID
   
-  val poolDefinitionPointer: DataObjectPointer
+  val poolDefinitionPointer: KeyValueObjectPointer
   
-  def getAllocationTreeDefinitionPointer(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[DataObjectPointer]
+  def getAllocationTree(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList]
   
   /** The entries of this array describe which storage node is currently hosting the store with the corresponding index */
   def hostingStorageNodes: Array[StorageNodeID]
@@ -26,5 +27,4 @@ trait StoragePool {
   def selectStoresForAllocation(ida: IDA): Array[Int]
   
   def refresh()(implicit ec: ExecutionContext): Future[StoragePool]
-  
 }

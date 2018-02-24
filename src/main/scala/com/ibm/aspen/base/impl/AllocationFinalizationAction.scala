@@ -16,13 +16,14 @@ import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 object AllocationFinalizationAction {
   val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
   
-  case class FAContent(storagePoolDefinitionPointer:DataObjectPointer, newNodePointer:ObjectPointer)
+  case class FAContent(storagePoolDefinitionPointer:KeyValueObjectPointer, newNodePointer:ObjectPointer)
   
-  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:DataObjectPointer, newNodePointer:ObjectPointer): Unit = {
+  def addToAllocationTree(transaction: Transaction, storagePoolDefinitionPointer:KeyValueObjectPointer, newNodePointer:ObjectPointer): Unit = {
     val serializedContent = BaseCodec.encode(FAContent(storagePoolDefinitionPointer, newNodePointer))
     transaction.addFinalizationAction(AddToAllocationTreeUUID, serializedContent)
     
@@ -40,7 +41,7 @@ class AllocationFinalizationAction(
   val finalizationActionUUID: UUID = AddToAllocationTreeUUID
   
   class AddToAllocationTree(
-      val storagePoolDefinitionPointer:DataObjectPointer, 
+      val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer) extends FinalizationAction {
     
     def execute()(implicit ec: ExecutionContext): Future[Unit] = retryStrategy.retryUntilSuccessful {
@@ -48,20 +49,14 @@ class AllocationFinalizationAction(
       // TODO: getStoragePool will forever fail if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
       //
-      system.getStoragePool(storagePoolDefinitionPointer) flatMap {
-        pool =>
-          implicit val tx = system.newTransaction()
-          
-          // TODO: Need an intelligent KVTreeFactory here
-          val treeFactory = new KVTreeSimpleFactory(system, new UUID(0,0), pool.uuid, pool.poolDefinitionPointer.ida, 
-                                                    64*1024, new KVTreeNodeCache {}, KVTree.KeyComparison.Raw)
-          for {
-            treeDefPointer <- pool.getAllocationTreeDefinitionPointer(retryStrategy)
-            tree <- treeFactory.createTree(treeDefPointer)
-            commitReady <- tree.put(com.ibm.aspen.util.uuid2byte(newNodePointer.uuid), NetworkCodec.objectPointerToByteArray(newNodePointer))
-            result <- tx.commit()
-          } yield ()
-      } 
+      implicit val tx = system.newTransaction()
+      
+      for {
+        pool <- system.getStoragePool(storagePoolDefinitionPointer)
+        tree <- pool.getAllocationTree(retryStrategy)
+        commitReady <- tree.put(newNodePointer.uuid, newNodePointer.toArray)
+        result <- tx.commit()
+      } yield ()
     }
   
     def completionDetected(): Unit = ()

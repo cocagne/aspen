@@ -38,6 +38,7 @@ import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -85,7 +86,7 @@ class TestSystem(
       store: DataStore, 
       crl: CrashRecoveryLog,
       net: TestNetwork,
-      radiclePointer: DataObjectPointer): (BasicAspenSystem, StorageNode) = {
+      radiclePointer: KeyValueObjectPointer): (BasicAspenSystem, StorageNode) = {
     
     val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
     

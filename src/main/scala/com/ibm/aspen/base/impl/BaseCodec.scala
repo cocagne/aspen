@@ -108,7 +108,7 @@ object BaseCodec {
   def decodeFinalizationActionContent(arr: Array[Byte]): FAContent = decode(P.AllocationFinalizationActionContent.getRootAsAllocationFinalizationActionContent(ByteBuffer.wrap(arr))) 
   
   def decode(n: P.AllocationFinalizationActionContent): FAContent = {
-    val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer()).asInstanceOf[DataObjectPointer]
+    val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer()).asInstanceOf[KeyValueObjectPointer]
     val np = NetworkCodec.decode(n.newObjectPointer())
     FAContent(sp, np)
   }
@@ -204,33 +204,7 @@ object BaseCodec {
     TieredKeyValueListSplitFA.Content(treeIdentifier, treeContainer, o.targetTier(),
         KeyValueListPointer(leftMinimum, leftPointer), KeyValueListPointer(rightMinimum, rightPointer), keyOrdering)
   }
-  //-------------------------------------------------------------------------------------------------------------------
-  // RadicleContent
-  //
-  def encode(radicle: Radicle): Array[Byte] = {
-     
-    val builder = new FlatBufferBuilder(1024)
-    
-    val systemTreeDefinitionPointerOffset = NetworkCodec.encode(builder, radicle.systemTreeDefinitionPointer)
-    
-    P.RadicleContent.startRadicleContent(builder)
-    P.RadicleContent.addSystemTreeDefinitionPointer(builder, systemTreeDefinitionPointerOffset)
-
-    val finalOffset = P.RadicleContent.endRadicleContent(builder)
-    
-    builder.finish(finalOffset)
-    
-    NetworkCodec.byteBufferToArray(builder.dataBuffer())
-  }
   
-  def decodeRadicle(buf: DataBuffer): Radicle = decode(P.RadicleContent.getRootAsRadicleContent(buf.asReadOnlyBuffer()))
-  
-  def decode(n: P.RadicleContent): Radicle = {
-    NetworkCodec.decode(n.systemTreeDefinitionPointer()) match {
-      case sp: DataObjectPointer => Radicle(sp)
-      case _ => throw new Exception("Unsupported Object Type")
-    }
-  }
   
   
 }

@@ -37,6 +37,10 @@ import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.crl.MemoryOnlyCRL
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.base.TestSystemSuite
+import com.ibm.aspen.base.tieredlist.KeyValueListPointer
+import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 
 class BasicIntegrationSuite extends TestSystemSuite { 
@@ -46,28 +50,16 @@ class BasicIntegrationSuite extends TestSystemSuite {
 
     var allocTreeEntryCount = 0
     
-    def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
+    def visitEntry(value: Value): Unit = synchronized {
       allocTreeEntryCount += 1
     }
     
     for {
-     
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
       
-      spAllocTreeDef <-sp.getAllocationTreeDefinitionPointer(TestSystem.NoRetry)
+      atree <- sp.getAllocationTree(TestSystem.NoRetry)
     
-      kvTreeFactory = new KVTreeSimpleFactory(
-          system = sys, 
-          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
-          storagePoolUUID = BootstrapStoragePoolUUID, 
-          nodeIDA = TestSystem.DefaultIDA,
-          nodeSize = TestSystem.DefaultSystemTreeNodeSize, 
-          nodeCache = TestSystem.noTreeNodeCacheFactory(sys), 
-          keyComparisonStrategy = KVTree.KeyComparison.Raw)
-    
-      atree <- kvTreeFactory.createTree(spAllocTreeDef)
-    
-      _ <- atree.visitRange(new Array[Byte](0), None, visitEntry)
+      _ <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
       
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount)
@@ -78,17 +70,17 @@ class BasicIntegrationSuite extends TestSystemSuite {
     
     var allocCount = 0
     
-    def allocObj(r: Radicle): Future[ObjectPointer] = {
+    def allocObj(r: KeyValueObjectState): Future[ObjectPointer] = {
       implicit val tx = sys.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys.lowLevelAllocateDataObject(r.systemTreeDefinitionPointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+      val ffp = sys.lowLevelAllocateDataObject(r.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
                                     None, TestSystem.DefaultIDA, d)
       allocCount += 1
       
       for {
         fp <- ffp
         // Need to give the transaction something to do. Modify refcount instead of data so we don't accidentally corrupt anything
-        y = tx.setRefcount(r.systemTreeDefinitionPointer, ObjectRefcount(0,allocCount), ObjectRefcount(0,allocCount + 1))
+        y = tx.setRefcount(r.pointer, ObjectRefcount(0,allocCount), ObjectRefcount(0,allocCount + 1))
         committed <- tx.commit()
       } yield {
         fp 
@@ -97,7 +89,7 @@ class BasicIntegrationSuite extends TestSystemSuite {
 
     var allocTreeEntryCount = 0
     
-    def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
+    def visitEntry(value: Value): Unit = synchronized {
       allocTreeEntryCount += 1
     }
     
@@ -109,20 +101,9 @@ class BasicIntegrationSuite extends TestSystemSuite {
       faComplete2 <- waitForTransactionsComplete()
       
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
+      atree <- sp.getAllocationTree(TestSystem.NoRetry)
       
-      spAllocTreeDef <-sp.getAllocationTreeDefinitionPointer(TestSystem.NoRetry)
-    
-      kvTreeFactory = new KVTreeSimpleFactory(
-          system = sys, 
-          treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
-          storagePoolUUID = BootstrapStoragePoolUUID, 
-          nodeIDA = TestSystem.DefaultIDA,
-          nodeSize = TestSystem.DefaultSystemTreeNodeSize, 
-          nodeCache = TestSystem.noTreeNodeCacheFactory(sys), 
-          keyComparisonStrategy = KVTree.KeyComparison.Raw)
-
-      atree <- kvTreeFactory.createTree(spAllocTreeDef)
-      visitComplete <- atree.visitRange(new Array[Byte](0), None, visitEntry)
+      visitComplete <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
     }

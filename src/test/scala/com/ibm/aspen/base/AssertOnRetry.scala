@@ -12,7 +12,7 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     attempt onComplete {
       case Success(r) => p.success(r)
       case Failure(cause) => 
-        println("********************* RetryUntilSuccess Operation FAILED *********************")
+        println(s"********************* RetryUntilSuccess Operation FAILED: $cause")
         assert(false)
         //p.failure(cause)
     }

@@ -19,19 +19,29 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.util
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
-  val BootstrapObjectAllocaterUUID    = ZeroedUUID
+  
   val SystemAllocationPolicyUUID      = ZeroedUUID // to be removed with KVTree
+ 
+  val BootstrapObjectAllocaterUUID    = ZeroedUUID
+  val SystemTreeKey                   = Key(Array[Byte](0))
+  
+  val StoragePoolTreeUUID             = new UUID(0, 1)
+  val TaskGroupTreeUUID               = new UUID(0, 2)
+  val ObjectAllocaterTreeUUID         = new UUID(0, 3)
+  
   val BootstrapStoragePoolUUID        = ZeroedUUID
-  val BootstrapTransactionUUID        = ZeroedUUID
-  val StoragePoolTreeUUID             = ZeroedUUID
-  val TaskGroupTreeUUID               = new UUID(0, 1)
+  
   val SystemTreeNodeSizeLimit         = 64 * 1024
   val SystemTreeKeyComparisonStrategy = KVTree.KeyComparison.Raw
   
-  val BootstrapAllocatedObjectCount   = 8
+  val BootstrapAllocatedObjectCount   = 6
+  
+  
   
   import com.ibm.aspen.util.uuid2byte
   
@@ -49,71 +59,6 @@ object Bootstrap {
    *            
    *        - Task Group TL
    */
-  def XXinitializeNewSystem(
-      bootstrapStores: List[DataStore],
-      bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[DataObjectPointer] = {
-    
-    require( bootstrapPoolIDA.width >= bootstrapStores.length)
-
-    val timestamp = HLCTimestamp.now
-    val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
-    val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
-    
-    val objectSize = bootstrapStores.foldLeft(None:Option[Int])((ox,y) => (ox, y.maximumAllowedObjectSize) match {
-      case (None, None) => None
-      case (Some(maxSize), None) => Some(maxSize)
-      case (None, Some(maxSize)) => Some(maxSize)
-      case (Some(cur), Some(nxt)) => if (cur <= nxt) Some(cur) else Some(nxt)
-    })
-    
-    def allocateDataObject(initialContent: DataBuffer): Future[DataObjectPointer] = {
-      val objectUUID = UUID.randomUUID()
-      val enc = bootstrapPoolIDA.encode(initialContent)
-      val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
-      val falloc = hosts.map { t => {
-        val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
-      }}
-      
-      Future.sequence(falloc) map { _ => 
-          new DataObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
-      }
-    }
-    
-    def allocateKeyValueObject(initialContent: List[(Key, Array[Byte])]): Future[KeyValueObjectPointer] = {
-      val objectUUID = UUID.randomUUID()
-      val inserts = initialContent.map(t => new Insert(t._1.bytes, t._2, timestamp))
-      val enc = KeyValueObjectCodec.encodeUpdate(bootstrapPoolIDA, inserts)
-      val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
-      val falloc = hosts.map { t => {
-        val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
-      }}
-      
-      Future.sequence(falloc) map { _ => 
-          new KeyValueObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
-      }
-    }
-    
-    def overwrite(pointer: KeyValueObjectPointer, initialContent: List[(Key, Array[Byte])]): Future[Unit] = {
-      val inserts = initialContent.map(t => new Insert(t._1.bytes, t._2, timestamp))
-      val enc = KeyValueObjectCodec.encodeUpdate(bootstrapPoolIDA, inserts)
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, enc(t._2), timestamp))).map(_=>())
-    }
-    
-   /*    * System TieredList which contains
-   *        - Storage Pool TL which contains
-   *            - Bootstrap Pool Definition
-   *                - Points to Allocation Tree
-   *                
-   *        - Object Allocater TL
-   *            - Bootstrap Pool Allocater
-   *            
-   *        - Task Group TL
-   */
-    Future.failed(new Exception("TODO"))
-  }
-  
   
   /** Creates the Radicle object and the minimal set of supporting data structures. Returns a Future to the Radicle ObjectPointer
    * Add StoragePoolTreeDef + tier0
@@ -137,7 +82,7 @@ object Bootstrap {
    */
   def initializeNewSystem(
       bootstrapStores: List[DataStore],
-      bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[DataObjectPointer] = {
+      bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     
     require( bootstrapPoolIDA.width >= bootstrapStores.length)
 
@@ -152,20 +97,6 @@ object Bootstrap {
       case (None, Some(maxSize)) => Some(maxSize)
       case (Some(cur), Some(nxt)) => if (cur <= nxt) Some(cur) else Some(nxt)
     })
-    
-    def allocate(initialContent: DataBuffer): Future[DataObjectPointer] = {
-      val objectUUID = UUID.randomUUID()
-      val enc = bootstrapPoolIDA.encode(initialContent)
-      val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
-      val falloc = hosts.map { t => {
-        val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
-      }}
-      
-      Future.sequence(falloc) map { _ => 
-          new DataObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
-      }
-    }
     
     def allocateKV(initialContent: List[(Key, Array[Byte])]): Future[KeyValueObjectPointer] = {
       val objectUUID = UUID.randomUUID()
@@ -188,43 +119,44 @@ object Bootstrap {
       Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, enc(t._2), timestamp))).map(_=>())
     }
     
-    def overwriteDataObject(objectPointer: DataObjectPointer, newContent: Array[Byte]): Future[Unit] = {
-      val encodedContent = bootstrapPoolIDA.encode(DataBuffer(newContent))
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(objectPointer, encodedContent(t._2), timestamp))).map(_=>())
+    def updateAllocationTree(allocTreeRoot: KeyValueObjectPointer, pointers: List[KeyValueObjectPointer]) : Future[Unit] = {
+      overwriteKeyValueObject(allocTreeRoot, pointers.map(p => (Key(p.uuid), p.toArray)) )
     }
     
-    def ins(p: DataObjectPointer): (Array[Byte], Array[Byte]) = (uuid2byte(p.uuid), NetworkCodec.objectPointerToByteArray(p))
-    
-    def treeNode(key: UUID, ptr: DataObjectPointer) = {
-      val inserts = (uuid2byte(key) -> NetworkCodec.objectPointerToByteArray(ptr))::Nil
-      ByteBuffer.wrap(KVListCodec.encodeNewListContent(inserts))
+    def treeRoot(rootNode: KeyValueObjectPointer): Array[Byte] = {
+      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), rootNode).toArray
     }
     
-    def treeDef(tier0Pointer: DataObjectPointer) = ByteBuffer.wrap(KVTree.defineNewTreeWithInitialTier0Node(
-                                                               SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy, tier0Pointer))
-                                                               
-    // Gets a little tiresome to constantly type out ByteBuffer -> DataBuffer conversions
-    import scala.language.implicitConversions                                                        
-    implicit def bb2db(bb: ByteBuffer): DataBuffer = DataBuffer(bb)
-                                                               
     for {
-      allocTreeTier0Ptr <- allocate(ByteBuffer.allocate(0))
-      allocTreeDefnPtr <- allocate(treeDef(allocTreeTier0Ptr))
+      allocPtr <- allocateKV(Nil)
       
-      bootstrapPoolDefnPtr <- allocate(BaseCodec.encodeStoragePoolDefinition(BootstrapStoragePoolUUID, hostingStorageNodes, Some(allocTreeDefnPtr)))
-                                                     
-      storagePoolTreeTier0Ptr <- allocate(treeNode(BootstrapStoragePoolUUID, bootstrapPoolDefnPtr))
-      storagePoolTreeDefnPtr <- allocate(treeDef(storagePoolTreeTier0Ptr))
-                                                         
-      systemTreeTier0Ptr <- allocate(treeNode(StoragePoolTreeUUID, storagePoolTreeDefnPtr))
-      systemTreeDefnPtr <- allocate(treeDef(systemTreeTier0Ptr))
+      bootstrapPoolPtr <- allocateKV(List(
+          (BaseStoragePool.PoolUUIDKey,            uuid2byte(BootstrapStoragePoolUUID)), 
+          (BaseStoragePool.HostingStorageNodesKey, BaseStoragePool.encodeStorageNodeIDs(hostingStorageNodes)),
+          (BaseStoragePool.AllocationTreeKey,      treeRoot(allocPtr))
+      ))
+
+      storagePoolTreePtr <- allocateKV(List( (Key(BootstrapStoragePoolUUID), bootstrapPoolPtr.toArray) ))
+
+      taskGroupTreePtr <- allocateKV(Nil)
       
-      radiclePtr <- allocate(ByteBuffer.wrap(BaseCodec.encode(Radicle(systemTreeDefnPtr))))
+      systemTreePtr <- allocateKV(List( 
+          (Key(StoragePoolTreeUUID), treeRoot(storagePoolTreePtr)) ,
+          (Key(TaskGroupTreeUUID), treeRoot(taskGroupTreePtr))
+      ))
       
-      allocContent = List(allocTreeTier0Ptr, allocTreeDefnPtr, bootstrapPoolDefnPtr, storagePoolTreeTier0Ptr, storagePoolTreeDefnPtr,
-                          systemTreeTier0Ptr, systemTreeDefnPtr, radiclePtr) map (ins)
+      radiclePtr <- allocateKV(List( 
+          (SystemTreeKey, treeRoot(systemTreePtr)) 
+      ))
       
-      overwriteComplete <- overwriteDataObject(allocTreeTier0Ptr, KVListCodec.encodeNewListContent(allocContent))
+      complete <- updateAllocationTree(allocPtr, List(
+          allocPtr,
+          bootstrapPoolPtr,
+          storagePoolTreePtr,
+          taskGroupTreePtr,
+          systemTreePtr,
+          radiclePtr
+      ))
     } 
     yield radiclePtr
   }

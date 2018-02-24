@@ -50,7 +50,7 @@ class SimpleTestSystem extends AspenSystem {
   var allocCount = 0
   
   def getStoragePool(poolUUID: UUID): Future[StoragePool] = Future.failed(new NotImplementedError)
-  def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool] = Future.failed(new NotImplementedError)
+  def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool] = Future.failed(new NotImplementedError)
   
   def clientId: ClientID = ClientID(poolUUID)
   

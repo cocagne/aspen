@@ -20,7 +20,6 @@ import com.ibm.aspen.core.allocation.ClientAllocationManager
 import com.ibm.aspen.core.allocation.AllocationDriver
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StorageNodeID
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.core.network.NetworkCodec
@@ -61,6 +60,10 @@ import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.base.ObjectSizeExceeded
+import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 
 
 object BasicAspenSystem {
@@ -87,7 +90,7 @@ class BasicAspenSystem(
     val storagePoolFactory: StoragePoolFactory,
     val bootstrapPoolIDA: IDA,
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
-    val radiclePointer: DataObjectPointer,
+    val radiclePointer: KeyValueObjectPointer,
     val initializationRetryStrategy: RetryStrategy,
     userTaskTypeRegistry: Option[TaskTypeRegistry] = None,
     userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None,
@@ -139,59 +142,33 @@ class BasicAspenSystem(
     }
   }
   
-  lazy val radicle: Future[Radicle] = initializationRetryStrategy.retryUntilSuccessful {
-    readObject(radiclePointer) map { osd => BaseCodec.decodeRadicle(osd.data) }
+  lazy val radicle: Future[KeyValueObjectState] = initializationRetryStrategy.retryUntilSuccessful {
+    readObject(radiclePointer) 
   }
   
-  lazy val systemTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
-    radicle.flatMap(r => systemTreeFactory.createTree(r.systemTreeDefinitionPointer))
+  lazy val systemTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
+    radicle.map(kvos => new SimpleMutableTieredKeyValueList(this, Left(kvos.pointer), Bootstrap.SystemTreeKey, ByteArrayKeyOrdering))
   }
   
-  lazy val storagePoolTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val storagePoolTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
     for {
       sysTree <- systemTree
-      oenc <- sysTree.get(StoragePoolTreeUUID)
-      if oenc.isDefined
-      poolTree <- systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(oenc.get).asInstanceOf[DataObjectPointer])
+      sysTreeRoot <- sysTree.fetchRoot()
+      v <- sysTree.get(StoragePoolTreeUUID)
+      root = TieredKeyValueList.Root(v.get.value)
     } yield {
-      poolTree
+      new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.StoragePoolTreeUUID, ByteArrayKeyOrdering)
     }
   }
   
-  lazy val taskGroupTree: Future[KVTree] = initializationRetryStrategy.retryUntilSuccessful {
-    systemTree.flatMap { stree =>
-      stree.get(TaskGroupTreeUUID).flatMap { oval =>
-        oval match {
-          case Some(enc) => systemTreeFactory.createTree(NetworkCodec.byteArrayToObjectPointer(enc).asInstanceOf[DataObjectPointer])
-          
-          case None =>
-            val tdef = KVTree.defineNewTree(SystemAllocationPolicyUUID, SystemTreeKeyComparisonStrategy)
-            implicit val tx = newTransaction()
-            
-            var treePointer: Option[DataObjectPointer] = None
-            
-            def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
-              bootstrapPoolAllocater.allocateDataObject(allocatingObject, allocatingObjectRevision, tdef) map {
-                ptr =>
-                  treePointer = Some(ptr)
-                  NetworkCodec.objectPointerToByteArray(ptr)
-              }
-            }
-            
-            
-            stree.putGeneratedValueIntoTreeNode(TaskGroupTreeUUID, createValue) onComplete {
-              case Failure(reason) => tx.invalidateTransaction(reason)
-              case Success(_) => tx.commit()
-            }
-            
-            tx.result.flatMap { _ => 
-              treePointer match {
-                case Some(ptr) => systemTreeFactory.createTree(ptr)
-                case None => Future.failed(new Exception("Tree Not Created"))
-              }
-            }
-        }
-      }
+  lazy val taskGroupTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
+    for {
+      sysTree <- systemTree
+      sysTreeRoot <- sysTree.fetchRoot()
+      v <- sysTree.get(TaskGroupTreeUUID)
+      root = TieredKeyValueList.Root(v.get.value)
+    } yield {
+      new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.TaskGroupTreeUUID, ByteArrayKeyOrdering)
     }
   }
   
@@ -305,23 +282,16 @@ class BasicAspenSystem(
     }
   }
   
-  def getStoragePool(poolUUID: UUID): Future[StoragePool] = for {
-    spTree <- storagePoolTree
-    encPtr <- spTree.get(poolUUID)
-    if (encPtr.isDefined)
-    poolPtr = NetworkCodec.byteArrayToObjectPointer(encPtr.get).asInstanceOf[DataObjectPointer]
-    pool <- getStoragePool(poolPtr)
-  } yield pool
-  
-  def getStoragePoolAllocationTree(poolUUID: UUID, retryStrategy: RetryStrategy): Future[KVTree] = for {
-    pool <- getStoragePool(poolUUID)
-    allocTreePtr <- pool.getAllocationTreeDefinitionPointer(retryStrategy)
-    allocTree <- systemTreeFactory.createTree(allocTreePtr)
-  } yield {
-    allocTree
+  def getStoragePool(poolUUID: UUID): Future[StoragePool] = {
+    for {
+      spTree <- storagePoolTree
+      v <- spTree.get(poolUUID)
+      if (v.isDefined)
+      pool <- getStoragePool(KeyValueObjectPointer(v.get.value))
+    } yield pool
   }
   
-  def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool] = { 
+  def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool] = { 
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
   }
   
@@ -337,9 +307,13 @@ class BasicAspenSystem(
       }
     }
     
+    val key = Key(groupUUID)
+    
     for {
       tgTree <- taskGroupTree
-      readyToCommit <- tgTree.putGeneratedValueIntoTreeNode(groupUUID, createValue)
+      node <- tgTree.fetchMutableNode(key)
+      value <- createValue(node.kvos.pointer, node.kvos.revision)
+      readyToCommit <- node.prepreUpdateTransaction(List((key -> value)), Nil, Nil)
       complete <- tx.commit()
       tg <- getTaskGroup(groupUUID)
     } yield {
@@ -362,7 +336,7 @@ class BasicAspenSystem(
     for {
       tgTree <- taskGroupTree
       ovalue <- tgTree.get(groupUUID)
-      tg <- createGroup(ovalue.get)
+      tg <- createGroup(ovalue.get.value)
     } yield {
       tg
     }
@@ -383,7 +357,7 @@ class BasicAspenSystem(
     for {
       tgTree <- taskGroupTree
       ovalue <- tgTree.get(groupUUID)
-      tg <- createGroup(ovalue.get)
+      tg <- createGroup(ovalue.get.value)
     } yield {
       tg
     }

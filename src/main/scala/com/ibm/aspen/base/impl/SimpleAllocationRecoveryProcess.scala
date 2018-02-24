@@ -17,6 +17,7 @@ import java.util.UUID
 import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.util.uuid2byte
+import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 
 /** Implements the Allocation Recovery Process.
  * 
@@ -123,15 +124,16 @@ class SimpleAllocationRecoveryProcess(
     
     queryTask.cancel()
     
-    def resolveObject(objectUUID: UUID, allocTree: KVTree): Future[(UUID, Boolean)] = for {
-      entry <- allocTree.uncachedGet( uuid2byte(objectUUID) )
+    def resolveObject(objectUUID: UUID, allocTree: TieredKeyValueList): Future[(UUID, Boolean)] = for {
+      entry <- allocTree.get( objectUUID )
     } yield {
       (objectUUID, entry.isDefined)
     }
     
     retryStrategy.retryUntilSuccessful {
       for {
-        allocTree <- system.getStoragePoolAllocationTree(store.storeId.poolUUID, retryStrategy)
+        pool <- system.getStoragePool(store.storeId.poolUUID)
+        allocTree <- pool.getAllocationTree(retryStrategy)
         results <- Future.sequence(ars.newObjects.map( no => resolveObject(no.newObjectUUID, allocTree) ))
         complete <- store.allocationRecoveryComplete(ars, results.toMap)
       } yield {

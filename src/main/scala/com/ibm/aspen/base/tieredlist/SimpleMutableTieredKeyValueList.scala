@@ -83,7 +83,7 @@ class SimpleMutableTieredKeyValueList(
     }
     
     fkvos.map { kvos => kvos.contents.get(treeIdentifier) match {
-        case None => throw new Exception("Broken Tree Container")
+        case None => throw new Exception(s"Broken Tree Container. No tree with ID: ${treeIdentifier}")
         case Some(v) => 
           val rt = TieredKeyValueList.Root(v.value)
           synchronized {

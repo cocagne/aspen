@@ -27,6 +27,7 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
   
   protected[tieredlist] def refreshRoot()(implicit ec: ExecutionContext): Future[(KeyValueObjectState, TieredKeyValueList.Root)]
   
+  def fetchRoot()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = refreshRoot().map(t => t._2)
   
   class MutableNode(val kvos: KeyValueObjectState) {
     def prepreUpdateTransaction(
@@ -58,4 +59,10 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
   }
   
   def fetchMutableNode(key: Key)(implicit ec: ExecutionContext): Future[MutableNode] = fetchContainingNode(key, 0).map(new MutableNode(_))
+  
+  def put(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+    node <- fetchMutableNode(key) 
+    prep <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
+  } yield ()
+  
 }

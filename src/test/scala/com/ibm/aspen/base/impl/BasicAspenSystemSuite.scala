@@ -14,6 +14,10 @@ import com.ibm.aspen.base.TestSystemSuite
 import com.ibm.aspen.base.TestSystem
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.base.tieredlist.KeyValueListPointer
+import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 class BasicAspenSystemSuite extends TestSystemSuite {
   import Bootstrap._
@@ -24,16 +28,16 @@ class BasicAspenSystemSuite extends TestSystemSuite {
     
     val noRetry = new NoRetry
     
-    def allocObj(r: Radicle): Future[ObjectPointer] = {
+    def allocObj(radicle: KeyValueObjectState): Future[ObjectPointer] = {
       implicit val tx = sys.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys.lowLevelAllocateDataObject(r.systemTreeDefinitionPointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+      val ffp = sys.lowLevelAllocateDataObject(radicle.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
                                     None, TestSystem.DefaultIDA, d)
       
       for {
         fp <- ffp
         // Need to give the transaction something to do. Modify refcount instead of data so we don't accidentally corrupt anything
-        y = tx.setRefcount(r.systemTreeDefinitionPointer, ObjectRefcount(0,1), ObjectRefcount(0,1))
+        y = tx.setRefcount(radicle.pointer, ObjectRefcount(0,1), ObjectRefcount(0,1))
         committed <- tx.commit()
       } yield {
         fp 
@@ -42,7 +46,7 @@ class BasicAspenSystemSuite extends TestSystemSuite {
     
     var allocTreeEntryCount = 0
     
-    def visitEntry(key: Array[Byte], value: Array[Byte]): Unit = synchronized {
+    def visitEntry(value: Value): Unit = synchronized {
       allocTreeEntryCount += 1
     }
     
@@ -53,9 +57,9 @@ class BasicAspenSystemSuite extends TestSystemSuite {
       fp2 <- allocObj(r)
       faComplete2 <- waitForTransactionsComplete()
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
-      spAllocTreeDef <- sp.getAllocationTreeDefinitionPointer(noRetry)
-      atree <- sys.systemTreeFactory.createTree(spAllocTreeDef)
-      visitComplete <- atree.visitRange(new Array[Byte](0), None, visitEntry)
+      atree <- sp.getAllocationTree(TestSystem.NoRetry)
+      
+      visitComplete <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
     }

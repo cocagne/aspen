@@ -47,7 +47,7 @@ trait AspenSystem extends ObjectReader {
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
-  def getStoragePool(storagePoolDefinitionPointer: DataObjectPointer): Future[StoragePool]
+  def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
   def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup]
   def getTaskGroup(groupUUID: UUID): Future[TaskGroup]

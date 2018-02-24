@@ -31,6 +31,56 @@ trait TieredKeyValueList {
   
   def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos => kvos.contents.get(key) }
   
+  def visitRange(
+      startKey: Key, 
+      stopKey: Option[Key], 
+      visitor: (Value) => Unit)(implicit ec: ExecutionContext): Future[Unit] = {
+    
+    val p = Promise[Unit]()
+    
+    fetchContainingNode(startKey, targetTier=0) onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(root) => 
+        def visit(kvos: KeyValueObjectState): Unit = {
+          
+          val reader = getObjectReaderForTier(0)
+          
+          kvos.contents.valuesIterator.toArray.sortBy(v => v.key)(keyOrdering).foreach { v =>
+            stopKey match {
+              case None => visitor(v)
+              case Some(stop) => if (keyOrdering.compare(v.key, stop) <= 0) visitor(v)
+            }
+          }
+          
+          val nextNode = kvos.right match {
+            case None => None
+            case Some(arr) =>
+              val rp = KeyValueObjectPointer(arr)
+              stopKey match {
+                case None => Some(rp)
+                case Some(stop) =>
+                  kvos.maximum match {
+                    case None => None
+                    case Some(max) => if (keyOrdering.compare(stop, max) >= 0) Some(rp) else None
+                  }
+                  
+              }
+          }
+              
+          nextNode match {
+            case None => p.success(())
+            case Some(nextPointer) => reader.readObject(nextPointer) onComplete {
+              case Failure(cause) => p.failure(cause)
+              case Success(kvos) => visit(kvos)
+            }
+          }
+        }
+        
+        visit(root)
+    }
+    p.future
+  }
+  
   protected[tieredlist] def fetchContainingNode(key: Key, targetTier: Int)(implicit ec: ExecutionContext): Future[KeyValueObjectState] = {
     val p = Promise[KeyValueObjectState]()
     
