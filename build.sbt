@@ -30,8 +30,10 @@ lazy val root = (project in file(".")).
       "com.github.blemale"  %% "scaffeine"      % "2.3.0" % "compile",
       "org.zeromq"          %  "jeromq"         % "0.4.2",
       "org.rocksdb"         %  "rocksdbjni"     % "5.5.1",
-      "com.typesafe.play"   %% "play-json"      % "2.6.7",
-      "org.xerial.snappy"   %  "snappy-java"    % "1.1.7.1"
+      "org.json4s"          %% "json4s-native"  % "3.6.0-M2",
+      "org.json4s"          %% "json4s-jackson" % "3.6.0-M2",
+      "org.xerial.snappy"   %  "snappy-java"    % "1.1.7.1",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % "2.9.2",
     )
   )
 
