@@ -29,7 +29,7 @@ class KVTreeFinalizationActionHandler(
   
   import KVTreeFinalizationActionHandler._
   
-  val finalizationActionUUID: UUID = InsertIntoUpperTierUUID
+  val typeUUID: UUID = InsertIntoUpperTierUUID
   
   
   class InsertIntoUpperTierFA(

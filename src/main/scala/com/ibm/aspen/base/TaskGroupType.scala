@@ -6,8 +6,8 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.DataObjectPointer
 
-trait TaskGroupType {
-  val groupTypeUUID: UUID
+trait TaskGroupType extends TypeFactory {
+  val typeUUID: UUID
   
   def createTaskGroup(
       system: AspenSystem,
@@ -18,7 +18,7 @@ trait TaskGroupType {
       system: AspenSystem,
       taskGroupInstanceUUID: UUID,
       taskGroupDefinitionPointer: DataObjectPointer,
-      taskRegistry: TaskTypeRegistry,
+      taskRegistry: TypeRegistry[TaskType],
       retryStrategy: RetryStrategy,
       taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext): Future[TaskGroupExecutor]
 }

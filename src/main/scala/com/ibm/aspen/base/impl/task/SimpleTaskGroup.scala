@@ -20,7 +20,6 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.Task
 import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.base.TaskGroupType
-import com.ibm.aspen.base.TaskTypeRegistry
 import com.ibm.aspen.core.objects.DataObjectPointer
 
 
@@ -29,7 +28,7 @@ class SimpleTaskGroup(
     val taskGroupInstanceUUID: UUID,
     val taskGroupDefinitionPointer: DataObjectPointer)(implicit ec: ExecutionContext) extends TaskGroup {
   
-  val groupTypeUUID: UUID  = SimpleTaskGroupType.groupTypeUUID
+  val groupTypeUUID: UUID  = SimpleTaskGroupType.typeUUID
   val taskGroupType: TaskGroupType = SimpleTaskGroupType
   
   case class PendingCreate(taskTypeUUID:UUID, taskUUID: UUID, 

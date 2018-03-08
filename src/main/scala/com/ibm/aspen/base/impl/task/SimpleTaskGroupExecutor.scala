@@ -3,7 +3,6 @@ package com.ibm.aspen.base.impl.task
 import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.base.RetryStrategy
-import com.ibm.aspen.base.TaskTypeRegistry
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 import com.ibm.aspen.base.AspenSystem
@@ -19,6 +18,8 @@ import com.ibm.aspen.base.impl.BackgroundTask
 import com.ibm.aspen.base.TaskGroupType
 import scala.concurrent.Promise
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.base.TypeRegistry
+import com.ibm.aspen.base.TaskType
 
 object SimpleTaskGroupExecutor {
   val PollingPeriod = Duration(30, SECONDS)
@@ -40,7 +41,7 @@ class SimpleTaskGroupExecutor(
     val system: AspenSystem, 
     val taskGroupInstanceUUID: UUID, 
     val taskGroupDefinitionPointer: DataObjectPointer, 
-    val taskRegistry: TaskTypeRegistry, 
+    val taskRegistry: TypeRegistry[TaskType], 
     val retryStrategy: RetryStrategy, 
     val taskObjectAllocater: ObjectAllocater)(implicit ec: ExecutionContext) extends TaskGroupExecutor {
   
@@ -119,7 +120,7 @@ class SimpleTaskGroupExecutor(
   // Must be called from within a synchronized block
   private[this] def startTask(td: TaskDefinition): Unit = {
     
-    taskRegistry.getTaskType(td.taskTypeUUID) foreach { tt => 
+    taskRegistry.getTypeFactory(td.taskTypeUUID) foreach { tt => 
   
       val ftask = tt.createTaskExecutor(system, td.taskUUID, td.taskObject)
       

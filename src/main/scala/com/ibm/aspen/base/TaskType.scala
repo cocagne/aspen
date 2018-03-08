@@ -10,9 +10,9 @@ import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
 
-trait TaskType {
+trait TaskType extends TypeFactory {
   
-  val taskTypeUUID: UUID
+  val typeUUID: UUID
   
   protected def createTaskObject(
       group: TaskGroup,

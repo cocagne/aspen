@@ -38,7 +38,7 @@ class AllocationFinalizationAction(
   
   import AllocationFinalizationAction._
   
-  val finalizationActionUUID: UUID = AddToAllocationTreeUUID
+  val typeUUID: UUID = AddToAllocationTreeUUID
   
   class AddToAllocationTree(
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 

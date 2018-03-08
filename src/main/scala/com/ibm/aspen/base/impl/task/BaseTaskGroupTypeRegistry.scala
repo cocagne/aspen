@@ -1,14 +1,14 @@
 package com.ibm.aspen.base.impl.task
 
-import com.ibm.aspen.base.TaskGroupTypeRegistry
 import java.util.UUID
 import com.ibm.aspen.base.TaskGroupType
+import com.ibm.aspen.base.TypeRegistry
 
-object BaseTaskGroupTypeRegistry extends TaskGroupTypeRegistry {
+object BaseTaskGroupTypeRegistry extends TypeRegistry[TaskGroupType] {
   
   val groups = Map( 
-      (SimpleTaskGroupType.groupTypeUUID -> SimpleTaskGroupType) 
+      (SimpleTaskGroupType.typeUUID -> SimpleTaskGroupType) 
   )
   
-  def getTaskGroupType(typeUUID: UUID): Option[TaskGroupType] = groups.get(typeUUID)
+  def getTypeFactory(typeUUID: UUID): Option[TaskGroupType] = groups.get(typeUUID)
 }

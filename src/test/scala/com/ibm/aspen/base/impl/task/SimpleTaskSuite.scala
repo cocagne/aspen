@@ -21,10 +21,10 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.TaskTypeRegistry
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.base.TypeRegistry
 
 class SimpleTaskSuite extends AsyncFunSuite with Matchers {
 
@@ -42,8 +42,8 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
   
   test("Test Tasks") {
     
-    object TestTask extends TaskType with TaskTypeRegistry {
-      val taskTypeUUID: UUID = new UUID(0,100)
+    object TestTask extends TaskType with TypeRegistry[TaskType] {
+      val typeUUID: UUID = new UUID(0,100)
       
       private var executed = Map[UUID, Int]()
       
@@ -79,8 +79,8 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
         Future.successful(new TestTask(system, taskUUID, taskStatePointer, taskState))
       }
       
-      override def getTaskType(taskTypeUUID: UUID): Option[TaskType] = {
-        if (taskTypeUUID == this.taskTypeUUID) Some(this) else None
+      override def getTypeFactory(taskTypeUUID: UUID): Option[TaskType] = {
+        if (taskTypeUUID == this.typeUUID) Some(this) else None
       }
     }
     
@@ -120,7 +120,7 @@ class SimpleTaskSuite extends AsyncFunSuite with Matchers {
     
     val fresult = for {
       r <- sys.radicle
-      stg <- sys.createTaskGroup(groupUUID, SimpleTaskGroupType.groupTypeUUID, SimpleTaskGroupType.createNewTaskGroup())
+      stg <- sys.createTaskGroup(groupUUID, SimpleTaskGroupType.typeUUID, SimpleTaskGroupType.createNewTaskGroup())
       
       tx0 = sys.newTransaction()
       tx0Ready <- TestTask.createTask(stg, sys.bootstrapPoolAllocater, task0, num0)(tx0)

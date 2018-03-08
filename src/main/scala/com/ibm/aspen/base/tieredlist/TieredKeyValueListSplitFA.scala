@@ -56,7 +56,7 @@ class TieredKeyValueListSplitFA(
   
   import TieredKeyValueListSplitFA._
   
-  val finalizationActionUUID: UUID = FinalizationActionUUID
+  val typeUUID: UUID = FinalizationActionUUID
   
   def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
     new InsertIntoUpperTier( BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData) )

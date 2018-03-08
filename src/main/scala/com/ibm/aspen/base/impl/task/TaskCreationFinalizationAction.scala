@@ -33,7 +33,7 @@ class TaskCreationFinalizationAction(
   
   import TaskCreationFinalizationAction._
   
-  val finalizationActionUUID: UUID = TaskCreationFinalizationActionUUID 
+  val typeUUID: UUID = TaskCreationFinalizationActionUUID 
   
   class AddToGroup(val fa: TaskCreationFinalizationAction.FAContent) extends FinalizationAction {
     

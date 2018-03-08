@@ -34,16 +34,10 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.base.ObjectAllocater
 import scala.util.Failure
 import scala.util.Success
-import com.ibm.aspen.base.TaskTypeRegistry
-import com.ibm.aspen.base.TaskGroupTypeRegistry
-import com.ibm.aspen.base.AggregateTaskGroupTypeRegistry
 import com.ibm.aspen.base.impl.task.BaseTaskGroupTypeRegistry
-import com.ibm.aspen.base.AggregateTaskTypeRegistry
 import com.ibm.aspen.base.TaskGroup
 import com.ibm.aspen.base.impl.task.TaskCodec
 import com.ibm.aspen.base.TaskGroupExecutor
-import com.ibm.aspen.base.FinalizationActionHandlerRegistry
-import com.ibm.aspen.base.AggregateFinalizationActionHandlerRegistry
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
@@ -64,6 +58,11 @@ import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.base.AggregateTypeRegistry
+import com.ibm.aspen.base.TaskType
+import com.ibm.aspen.base.TypeRegistry
+import com.ibm.aspen.base.FinalizationActionHandler
+import com.ibm.aspen.base.TaskGroupType
 
 
 object BasicAspenSystem {
@@ -92,9 +91,9 @@ class BasicAspenSystem(
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
     val radiclePointer: KeyValueObjectPointer,
     val initializationRetryStrategy: RetryStrategy,
-    userTaskTypeRegistry: Option[TaskTypeRegistry] = None,
-    userTaskGroupTypeRegistry: Option[TaskGroupTypeRegistry] = None,
-    userFinalizationActionHandlerRegistry: Option[FinalizationActionHandlerRegistry] = None,
+    userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None,
+    userTaskGroupTypeRegistry: Option[TypeRegistry[TaskGroupType]] = None,
+    userFinalizationActionHandlerRegistry: Option[TypeRegistry[FinalizationActionHandler]] = None,
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -126,19 +125,19 @@ class BasicAspenSystem(
                                                   SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
   
   protected val taskTypeRegistry = userTaskTypeRegistry match {
-    case None => new AggregateTaskTypeRegistry( Nil )
-    case Some(registry) => new AggregateTaskTypeRegistry( registry :: Nil )
+    case None => new AggregateTypeRegistry[TaskType]( Nil )
+    case Some(registry) => new AggregateTypeRegistry[TaskType]( registry :: Nil )
   }
   protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
     case None => BaseTaskGroupTypeRegistry
-    case Some(registry) => new AggregateTaskGroupTypeRegistry( registry :: BaseTaskGroupTypeRegistry :: Nil )
+    case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: BaseTaskGroupTypeRegistry :: Nil )
   }
   protected val finalizationActionHandlerRegistry = {
     val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this, systemTreeFactory)
     
     userFinalizationActionHandlerRegistry match {
       case None => baseRegistry
-      case Some(registry) => new AggregateFinalizationActionHandlerRegistry( registry :: baseRegistry :: Nil)
+      case Some(registry) => new AggregateTypeRegistry[FinalizationActionHandler]( registry :: baseRegistry :: Nil)
     }
   }
   
@@ -326,7 +325,7 @@ class BasicAspenSystem(
     def createGroup(entry: Array[Byte]): Future[TaskGroup] = {
       val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
       
-      taskGroupTypeRegistry.getTaskGroupType(groupTypeUUID) match {
+      taskGroupTypeRegistry.getTypeFactory(groupTypeUUID) match {
         case None => Future.failed(new Exception("Missing Task Group Type!"))
         
         case Some(tgt) => tgt.createTaskGroup(this, groupUUID, groupDefinitionPointer)
@@ -346,7 +345,7 @@ class BasicAspenSystem(
     def createGroup(entry: Array[Byte]): Future[TaskGroupExecutor] = {
       val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
       
-      taskGroupTypeRegistry.getTaskGroupType(groupTypeUUID) match {
+      taskGroupTypeRegistry.getTypeFactory(groupTypeUUID) match {
         case None => Future.failed(new Exception("Missing Task Group Type!"))
         
         case Some(tgt) =>  

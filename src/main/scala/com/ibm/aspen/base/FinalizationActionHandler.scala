@@ -3,9 +3,9 @@ package com.ibm.aspen.base
 import java.util.UUID
 
 
-trait FinalizationActionHandler {
+trait FinalizationActionHandler extends TypeFactory {
   
-  val finalizationActionUUID: UUID
-
+  val typeUUID: UUID
+  
   def createAction(serializedActionData: Array[Byte]): FinalizationAction
 }

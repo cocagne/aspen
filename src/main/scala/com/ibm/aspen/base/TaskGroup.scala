@@ -39,7 +39,7 @@ trait TaskGroup {
       taskUUID: UUID, 
       taskDefinitionObject: DataObjectPointer, 
       taskDefinitionRevision: ObjectRevision)(implicit t: Transaction): Unit = {
-    TaskCreationFinalizationAction.addToTaskGroup(t, taskGroupInstanceUUID, taskType.taskTypeUUID, 
+    TaskCreationFinalizationAction.addToTaskGroup(t, taskGroupInstanceUUID, taskType.typeUUID, 
         taskUUID, taskDefinitionObject, taskDefinitionRevision)
   }
 }

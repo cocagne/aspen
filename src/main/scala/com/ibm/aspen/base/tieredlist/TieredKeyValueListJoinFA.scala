@@ -66,7 +66,7 @@ class TieredKeyValueListJoinFA(
   
   import TieredKeyValueListJoinFA._
   
-  val finalizationActionUUID: UUID = FinalizationActionUUID
+  val typeUUID: UUID = FinalizationActionUUID
   
   def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
     new RemoveFromUpperTier( BaseCodec.decodeTieredKeyValueListJoinFA(serializedActionData) )

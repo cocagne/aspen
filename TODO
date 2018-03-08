@@ -1,4 +1,20 @@
-   
+Generic FactoryRegistry
+  - getFactory(uuid: UUID): BaseFactory 
+  - BaseFactory simply has a UUID
+    - dynamic cast to required type
+  - AggregateRegistry
+    - Replaces current aggregates 
+  
+  
+Pre-allocated Object Pool -- Probably replaced by LocalTaskGroup
+  - Returns a Future to a pointer or list of pointers
+  - Hides the actual number of available objects
+  - Allocates into the Pool if insufficient objects are already available
+  - Major benefit is to decouple allocation success from Tx context
+     - Allows retrying logical action without invalidating the allocated object
+     - Useful for actions with decent probability of contention   
+
+
 * ObjectAllocaterRegistry
    - Remove hardcoded limitation
    - first 16 bytes is the type UUID
@@ -9,6 +25,11 @@
 
 ** Remove StoragePoolDefinition from BaseCode/schema
 ** Remove Radicle from BaseCodec/schema
+   
+* CompactingAppend
+   - KeyValue Append operation that also causes each store to discard all but the most-recent KV pair
+   - Uses revision check & updates revision
+   - Appends to the newly-compacted object
    
 ----------------------------------
 

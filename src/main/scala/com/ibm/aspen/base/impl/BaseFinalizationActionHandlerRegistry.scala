@@ -8,9 +8,9 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.kvtree.KVTreeFactory
 import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
 import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
-import com.ibm.aspen.base.FinalizationActionHandlerRegistry
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListJoinFA
+import com.ibm.aspen.base.TypeRegistry
 
 object BaseFinalizationActionHandlerRegistry {
   def apply(
@@ -30,9 +30,9 @@ object BaseFinalizationActionHandlerRegistry {
   }
 }
 
-class BaseFinalizationActionHandlerRegistry private (handlers: List[FinalizationActionHandler]) extends FinalizationActionHandlerRegistry {
+class BaseFinalizationActionHandlerRegistry private (handlers: List[FinalizationActionHandler]) extends TypeRegistry[FinalizationActionHandler] {
   
-  val handlerMap = handlers.map(h => (h.finalizationActionUUID -> h)).toMap
+  val handlerMap = handlers.map(h => (h.typeUUID -> h)).toMap
   
-  def getFinalizationActionHandler(finalizationActionUUID: UUID): Option[FinalizationActionHandler] = handlerMap.get(finalizationActionUUID)
+  def getTypeFactory(typeUUID: UUID): Option[FinalizationActionHandler] = handlerMap.get(typeUUID)
 }

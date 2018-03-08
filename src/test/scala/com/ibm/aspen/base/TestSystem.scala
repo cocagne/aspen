@@ -65,7 +65,7 @@ class TestSystem(
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
     val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache = TestSystem.noTreeNodeCacheFactory,
-    val userTaskTypeRegistry: Option[TaskTypeRegistry] = None) {
+    val userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None) {
   
   import scala.language.postfixOps
   import Bootstrap._
