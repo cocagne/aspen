@@ -7,7 +7,6 @@ import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.kvtree.KVTreeFactory
 import com.ibm.aspen.base.kvtree.KVTreeFinalizationActionHandler
-import com.ibm.aspen.base.impl.task.TaskCreationFinalizationAction
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListJoinFA
 import com.ibm.aspen.base.TypeRegistry
@@ -21,7 +20,6 @@ object BaseFinalizationActionHandlerRegistry {
     val handlers = List(
         new KVTreeFinalizationActionHandler(kvTreeFactory, retryStrategy, system),
         new AllocationFinalizationAction(retryStrategy, system),
-        new TaskCreationFinalizationAction(retryStrategy, system),
         new TieredKeyValueListSplitFA(retryStrategy, system),
         new TieredKeyValueListJoinFA(retryStrategy, system)
     )

@@ -38,10 +38,6 @@ class SimpleTestSystem extends AspenSystem {
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
   
-  def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
-  def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
-  def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = Future.failed(new Exception("NOT SUPPORTED IN SIMPLE TEST SYSTEM"))
-  
   def mkptr(objectNum:Int) = DataObjectPointer(new UUID(0,objectNum), poolUUID, None, Replication(3,2), new Array[StorePointer](0)) 
  
   class Obj(var rev: ObjectRevision, var ref: ObjectRefcount, var data: DataBuffer, var timestamp: HLCTimestamp)

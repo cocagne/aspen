@@ -49,10 +49,6 @@ trait AspenSystem extends ObjectReader {
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
-  def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup]
-  def getTaskGroup(groupUUID: UUID): Future[TaskGroup]
-  def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor]
-  
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
   /** Immediately cancels all future activity scheduled for execution */

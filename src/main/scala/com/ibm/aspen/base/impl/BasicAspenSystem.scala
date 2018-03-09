@@ -34,9 +34,6 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.base.ObjectAllocater
 import scala.util.Failure
 import scala.util.Success
-import com.ibm.aspen.base.impl.task.BaseTaskGroupTypeRegistry
-import com.ibm.aspen.base.TaskGroup
-import com.ibm.aspen.base.impl.task.TaskCodec
 import com.ibm.aspen.base.TaskGroupExecutor
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
@@ -129,8 +126,8 @@ class BasicAspenSystem(
     case Some(registry) => new AggregateTypeRegistry[TaskType]( registry :: Nil )
   }
   protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
-    case None => BaseTaskGroupTypeRegistry
-    case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: BaseTaskGroupTypeRegistry :: Nil )
+    case None => new AggregateTypeRegistry[TaskGroupType]( Nil )
+    case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: Nil )
   }
   protected val finalizationActionHandlerRegistry = {
     val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this, systemTreeFactory)
@@ -294,74 +291,7 @@ class BasicAspenSystem(
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
   }
   
-  def createTaskGroup(groupUUID: UUID, taskGroupType: UUID, groupDefinitionContent: DataBuffer): Future[TaskGroup] = {
-    implicit val tx = newTransaction()
-    
-    // TODO: Fail on group already exists
-    
-    // The supplied object pointer and revision are to the KVTree node the allocated object will be written into
-    def createValue(allocatingObject: ObjectPointer, allocatingObjectRevision: ObjectRevision): Future[Array[Byte]] = {
-      bootstrapPoolAllocater.allocateDataObject(allocatingObject, allocatingObjectRevision, groupDefinitionContent) map {
-        ptr => TaskCodec.encodeTaskGroupTreeEntry(taskGroupType, ptr)
-      }
-    }
-    
-    val key = Key(groupUUID)
-    
-    for {
-      tgTree <- taskGroupTree
-      node <- tgTree.fetchMutableNode(key)
-      value <- createValue(node.kvos.pointer, node.kvos.revision)
-      readyToCommit <- node.prepreUpdateTransaction(List((key -> value)), Nil, Nil)
-      complete <- tx.commit()
-      tg <- getTaskGroup(groupUUID)
-    } yield {
-      tg
-    }
-  }
   
-  def getTaskGroup(groupUUID: UUID): Future[TaskGroup] = {
-    
-    def createGroup(entry: Array[Byte]): Future[TaskGroup] = {
-      val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
-      
-      taskGroupTypeRegistry.getTypeFactory(groupTypeUUID) match {
-        case None => Future.failed(new Exception("Missing Task Group Type!"))
-        
-        case Some(tgt) => tgt.createTaskGroup(this, groupUUID, groupDefinitionPointer)
-      }
-    }
-    
-    for {
-      tgTree <- taskGroupTree
-      ovalue <- tgTree.get(groupUUID)
-      tg <- createGroup(ovalue.get.value)
-    } yield {
-      tg
-    }
-  }
-  
-  def createTaskGroupExecutor(groupUUID: UUID): Future[TaskGroupExecutor] = {
-    def createGroup(entry: Array[Byte]): Future[TaskGroupExecutor] = {
-      val (groupTypeUUID, groupDefinitionPointer) = TaskCodec.decodeTaskGroupTreeEntry(entry)
-      
-      taskGroupTypeRegistry.getTypeFactory(groupTypeUUID) match {
-        case None => Future.failed(new Exception("Missing Task Group Type!"))
-        
-        case Some(tgt) =>  
-          tgt.createTaskGroupExecutor(this, groupUUID, groupDefinitionPointer, taskTypeRegistry, initializationRetryStrategy, bootstrapPoolAllocater)
-      }
-    }
-    
-    for {
-      tgTree <- taskGroupTree
-      ovalue <- tgTree.get(groupUUID)
-      tg <- createGroup(ovalue.get.value)
-    } yield {
-      tg
-    }
-  }
-
   // TODO: Implement in terms of tree, allocater type registry, & save/restore
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.successful(new SinglePoolObjectAllocater(this, 
       Bootstrap.BootstrapObjectAllocaterUUID, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA))
