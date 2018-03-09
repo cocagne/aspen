@@ -20,8 +20,6 @@ import com.ibm.aspen.core.allocation.ClientAllocationManager
 import com.ibm.aspen.core.allocation.AllocationDriver
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StorageNodeID
-import com.ibm.aspen.base.kvtree.KVTreeNodeCache
-import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.UnsupportedIDA
 import com.ibm.aspen.core.objects.ObjectRefcount
@@ -85,7 +83,6 @@ class BasicAspenSystem(
     val transactionFactory: BasicAspenSystem.TransactionFactory,
     val storagePoolFactory: StoragePoolFactory,
     val bootstrapPoolIDA: IDA,
-    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache,
     val radiclePointer: KeyValueObjectPointer,
     val initializationRetryStrategy: RetryStrategy,
     userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None,
@@ -117,10 +114,6 @@ class BasicAspenSystem(
   
   def clientId = net.clientId
   
-  val systemTreeNodeCache = systemTreeNodeCacheFactory(this)
-  val systemTreeFactory = new KVTreeSimpleFactory(this, SystemAllocationPolicyUUID, BootstrapStoragePoolUUID, bootstrapPoolIDA,
-                                                  SystemTreeNodeSizeLimit, systemTreeNodeCache, SystemTreeKeyComparisonStrategy)
-  
   protected val taskTypeRegistry = userTaskTypeRegistry match {
     case None => new AggregateTypeRegistry[TaskType]( Nil )
     case Some(registry) => new AggregateTypeRegistry[TaskType]( registry :: Nil )
@@ -130,7 +123,7 @@ class BasicAspenSystem(
     case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: Nil )
   }
   protected val finalizationActionHandlerRegistry = {
-    val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this, systemTreeFactory)
+    val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this)
     
     userFinalizationActionHandlerRegistry match {
       case None => baseRegistry

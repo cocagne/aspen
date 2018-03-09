@@ -18,11 +18,8 @@ import java.util.UUID
 import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.allocation.BaseAllocationDriver
-import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.allocation.AllocationRecoveryState

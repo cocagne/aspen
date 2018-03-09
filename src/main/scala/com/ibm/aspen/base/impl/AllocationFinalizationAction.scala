@@ -11,9 +11,6 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
-import com.ibm.aspen.base.kvtree.KVTreeNodeCache
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer

@@ -65,34 +65,8 @@ sourceGenerators in Compile += Def.task {
     val stdout:Int = s"flatc --java -o $base schema/aspen_base.fbs".!
     println(s"Result: $stdout")  
   }
-  
-  // KVTree
-  val kvt_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "kvtree" / "encoding"
 
-  val kvt_schema = file("schema") / "kvtree.fbs"
-
-  val kvt_generate = !kvt_out_dir.exists() || kvt_out_dir.listFiles().exists( f => kvt_schema.lastModified() > f.lastModified() )
-
-  if (kvt_generate) {
-    println(s"Generating KVTree Serialization Source Files")
-    val stdout:Int = s"flatc --java -o $base schema/kvtree.fbs".!
-    println(s"Result: $stdout")  
-  }
-  
-  // KVList
-  val kvl_out_dir = (sourceManaged in Compile).value / "com" / "ibm" / "aspen" / "base" / "kvlist"
-
-  val kvl_schema = file("schema") / "kvlist.fbs"
-
-  val kvl_generate = !kvl_out_dir.exists() || kvl_out_dir.listFiles().exists( f => kvl_schema.lastModified() > f.lastModified() )
-
-  if (kvl_generate) {
-    println(s"Generating KVList Serialization Source Files")
-    val stdout:Int = s"flatc --java -o $base schema/kvlist.fbs".!
-    println(s"Result: $stdout")  
-  }
-  
-  net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq ++ kvt_out_dir.listFiles().toSeq ++ kvl_out_dir.listFiles().toSeq 
+  net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq 
 }.taskValue
 
 

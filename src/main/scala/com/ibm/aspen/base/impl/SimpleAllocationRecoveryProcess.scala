@@ -14,7 +14,6 @@ import scala.concurrent.Future
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import java.util.UUID
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.util.uuid2byte
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList

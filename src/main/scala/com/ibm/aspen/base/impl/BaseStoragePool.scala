@@ -14,7 +14,6 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.UnsupportedIDA
 import com.ibm.aspen.base.RetryStrategy
 import java.nio.ByteBuffer
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.Key

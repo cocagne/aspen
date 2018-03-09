@@ -5,7 +5,6 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.crl.MemoryOnlyCRL
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.ibm.aspen.base.kvtree.KVTreeNodeCache
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.base.impl.StorageNode
@@ -27,12 +26,10 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.base.kvtree.KVTreeSimpleFactory
 import com.ibm.aspen.base.impl.BaseFinalizationActionHandlerRegistry
 import com.ibm.aspen.base.impl.BaseTransactionFinalizer
 import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
-import com.ibm.aspen.base.kvtree.KVTree
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.objects.DataObjectPointer
@@ -46,9 +43,7 @@ object TestSystem {
       new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
     (ds, new MemoryOnlyCRL)
   }
-  
-  def noTreeNodeCacheFactory(sys: AspenSystem): KVTreeNodeCache = new KVTreeNodeCache {}
-  
+
   val DefaultIDA = new Replication(3,2)
   
   val DefaultSystemTreeNodeSize = 2048
@@ -64,7 +59,6 @@ class TestSystem(
     val noRetry: RetryStrategy = TestSystem.NoRetry,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
-    val systemTreeNodeCacheFactory: (AspenSystem) => KVTreeNodeCache = TestSystem.noTreeNodeCacheFactory,
     val userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None) {
   
   import scala.language.postfixOps
@@ -100,7 +94,6 @@ class TestSystem(
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
-        systemTreeNodeCacheFactory = systemTreeNodeCacheFactory,
         radiclePointer = radiclePointer,
         initializationRetryStrategy = noRetry,
         userTaskTypeRegistry = userTaskTypeRegistry
@@ -139,16 +132,8 @@ class TestSystem(
   Await.result(sys2.radicle, 1000 milliseconds)
   
   def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
-    val kvTreeFactory = new KVTreeSimpleFactory(
-        system = sys, 
-        treeAllocationPolicyUUID = SystemAllocationPolicyUUID, 
-        storagePoolUUID = BootstrapStoragePoolUUID, 
-        nodeIDA = bootstrapPoolIDA,
-        nodeSize = systemTreeNodeSize, 
-        nodeCache = systemTreeNodeCacheFactory(sys), 
-        keyComparisonStrategy = KVTree.KeyComparison.Raw)
     
-    val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys, kvTreeFactory)
+    val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys)
     
     val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
      
