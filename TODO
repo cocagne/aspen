@@ -1,26 +1,4 @@
-* Lets go ahead and break the existing Task code
-   - Need to completely redo it anyway
-   - TaskGroup
-   	    - shouldn't have generic add
-   	    - shouldn't accept a ObjectAllocater argument
-   	        - This will depend on group configuration
-   - Drop TaskGroup as type (just make it an empty trait)
-   - Drop TaskGroupExecutor as type
-   - Implement PhasedTask
 
-* Use ValueClass for TaskPointer ?
-
-* Need Task base class
-  - Takes KeyValue object. Key 0 is type UUID. Missing Key is "IDLE/Complete" task
-  - Provides completion promise/future
-  - Provides protected updateState method
-  
-* Need PhasedTask
-  - Tracks phases (0, 1, 2, etc)
-  - Automates advancement & completion
-  
-* TaskDefinition is Map[Key, Array[Byte]]
-  - key 0 is required
   
 * Need LocalTaskGroup
   - Intended for use by only the local process

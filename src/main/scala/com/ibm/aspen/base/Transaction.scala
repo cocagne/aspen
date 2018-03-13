@@ -36,7 +36,7 @@ trait Transaction {
       requiredRevision: ObjectRevision,
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit
-  
+      
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
   
   /** Increments the overwrite count on the object revision by 1 but leaves the object data untouched */

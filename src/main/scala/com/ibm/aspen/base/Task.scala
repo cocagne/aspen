@@ -2,15 +2,21 @@ package com.ibm.aspen.base
 
 import java.util.UUID
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.keyvalue.Key
+
+object Task {
+  val TaskTypeKey = Key(Array[Byte](0)) // Corresponds to TaskType UUID
+  
+  val IdleTaskType = new UUID(0,0)
+}
 
 trait Task {
-  val taskType: TaskType
-
-  val taskUUID: UUID
   
-  def complete: Future[Unit]
+  val taskPointer: TaskPointer
+  
+  def completed: Future[Unit]
   
   def resume(): Unit
   
-  def pause(): Unit
+  def suspend(): Unit
 }
