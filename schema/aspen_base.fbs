@@ -52,15 +52,6 @@ table CRLEntry {
 }
 
 //---------------------------------------------------------------------------
-//- StoragePoolDefinition
-//---------------------------------------------------------------------------
-table StoragePoolDefinition {
-    poolUUID: com.ibm.aspen.core.network.protocol.UUID;
-    storeHosts: [com.ibm.aspen.core.network.protocol.UUID];
-    allocationTreeDefinition: com.ibm.aspen.core.network.protocol.ObjectPointer; 
-}
-
-//---------------------------------------------------------------------------
 //- AllocationFinalizationActionContent
 //---------------------------------------------------------------------------
 table AllocationFinalizationActionContent {
@@ -83,9 +74,3 @@ table TieredKeyValueListSplitFA {
   rightPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
 }
 
-//---------------------------------------------------------------------------
-//- RadicleContent
-//---------------------------------------------------------------------------
-table RadicleContent {
-    systemTreeDefinitionPointer: com.ibm.aspen.core.network.protocol.ObjectPointer;
-}
