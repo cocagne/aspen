@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.util
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -120,7 +121,7 @@ object Bootstrap {
     }
     
     def treeRoot(rootNode: KeyValueObjectPointer): Array[Byte] = {
-      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), rootNode).toArray
+      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), ByteArrayKeyOrdering, rootNode).toArray
     }
     
     for {

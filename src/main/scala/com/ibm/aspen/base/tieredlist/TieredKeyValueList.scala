@@ -17,6 +17,10 @@ import jdk.nashorn.internal.runtime.FindProperty
 import com.ibm.aspen.core.read.ThresholdError
 import com.ibm.aspen.core.objects.keyvalue.Value
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.network.protocol.KeyComparison
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
+import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 
 
 trait TieredKeyValueList {
@@ -141,17 +145,23 @@ trait TieredKeyValueList {
 
 object TieredKeyValueList {
   
-  class Root(val topTier: Int, val tierObjectAllocaters: Array[UUID], val tierNodeSizes: Array[Int], val rootNode: KeyValueObjectPointer) {
+  class Root(val topTier: Int, val tierObjectAllocaters: Array[UUID], val tierNodeSizes: Array[Int], val keyOrdering: KeyOrdering, val rootNode: KeyValueObjectPointer) {
     
     def getTierNodeSize(tier: Int): Int = if (tier < tierNodeSizes.length) tierNodeSizes(tier) else tierNodeSizes.last
     
     def getTierNodeAllocaterUUID(tier: Int): UUID = if (tier < tierObjectAllocaters.length) tierObjectAllocaters(tier) else tierObjectAllocaters.last
     
     def toArray(): Array[Byte] = {
-      val arr = new Array[Byte](4 + tierObjectAllocaters.length * 16 + tierNodeSizes.length * 4 + rootNode.encodedSize)
+      val orderCode = keyOrdering match {
+        case ByteArrayKeyOrdering => 0
+        case IntegerKeyOrdering   => 1
+        case LexicalKeyOrdering   => 2
+      }
+      val arr = new Array[Byte](5 + tierObjectAllocaters.length * 16 + tierNodeSizes.length * 4 + rootNode.encodedSize)
       val bb = ByteBuffer.wrap(arr)
       bb.put(0.asInstanceOf[Byte]) // Placeholder for a version number
       bb.put(topTier.asInstanceOf[Byte])
+      bb.put(orderCode.asInstanceOf[Byte])
       bb.put(tierObjectAllocaters.length.asInstanceOf[Byte])
       bb.put(tierNodeSizes.length.asInstanceOf[Byte])
       tierObjectAllocaters.foreach { uuid =>
@@ -166,13 +176,14 @@ object TieredKeyValueList {
   }
   
   object Root {
-    def apply(topTier: Int, objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], rootNode: KeyValueObjectPointer): Root = {
-      new Root(topTier, objectAllocaters, tierNodeSizes, rootNode)
+    def apply(topTier: Int, objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], keyOrdering: KeyOrdering, rootNode: KeyValueObjectPointer): Root = {
+      new Root(topTier, objectAllocaters, tierNodeSizes, keyOrdering, rootNode)
     }
     
     def apply(bb: ByteBuffer): Root = {
       bb.get() // Placeholder for a version number
       val topTier = bb.get()
+      val orderCode = bb.get()
       val numAllocaters = bb.get()
       val numSizes = bb.get()
       val objectAllocaters = new Array[UUID](numAllocaters)
@@ -186,7 +197,14 @@ object TieredKeyValueList {
         tierNodeSizes(i) = bb.getInt()
         
       val rootNode = ObjectPointer.fromByteBuffer(bb).asInstanceOf[KeyValueObjectPointer]
-      Root(topTier, objectAllocaters, tierNodeSizes, rootNode)
+      
+      val keyOrdering = orderCode match {
+        case 0 => ByteArrayKeyOrdering
+        case 1 => IntegerKeyOrdering
+        case 2 =>LexicalKeyOrdering
+      }
+      
+      Root(topTier, objectAllocaters, tierNodeSizes, keyOrdering, rootNode)
     }
     
     def apply(arr: Array[Byte]): Root = apply(ByteBuffer.wrap(arr))

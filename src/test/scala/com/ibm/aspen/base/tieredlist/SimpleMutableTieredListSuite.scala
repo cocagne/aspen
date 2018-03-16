@@ -65,7 +65,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       nodeSizeLimit = 300
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -100,7 +100,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       nodeSizeLimit = 250
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -167,7 +167,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
        
       nodeSizeLimit = 250
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -229,7 +229,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
        
       nodeSizeLimit = 250
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       

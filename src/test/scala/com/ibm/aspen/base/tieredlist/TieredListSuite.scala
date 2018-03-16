@@ -32,7 +32,7 @@ object TieredListSuite {
     val keyOrdering: KeyOrdering = ByteArrayKeyOrdering
     
     override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, 
-        new Array[UUID](0), new Array[Int](0), root))
+        new Array[UUID](0), new Array[Int](0), ByteArrayKeyOrdering, root))
   
     override protected def getObjectReaderForTier(tier: Int): ObjectReader = sys
     

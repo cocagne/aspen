@@ -44,7 +44,7 @@ class SimpleMutableTieredKeyValueList(
     kvos.left.foreach( arr => ops = new SetLeft(arr) :: ops )
     kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
     
-    val newRoot = TieredKeyValueList.Root(newTier, root.tierObjectAllocaters, root.tierNodeSizes, newRootPointer)
+    val newRoot = TieredKeyValueList.Root(newTier, root.tierObjectAllocaters, root.tierNodeSizes, keyOrdering, newRootPointer)
     
     val updatedContent = kvos.contents + (treeIdentifier -> Value(treeIdentifier, newRoot.toArray(), tx.timestamp()))
     

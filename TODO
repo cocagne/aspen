@@ -1,4 +1,3 @@
-** Put the KeyComparisonStrategy into the TieredList Root Object
 
 * Really need to know WHY transactions fail
   - Allows differentiation between recoverable and unrecoverable failures
