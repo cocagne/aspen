@@ -29,14 +29,14 @@ object LocalTaskGroup extends TaskGroupType {
   val TaskListNodeSize = 16 * 1024 // TODO: Make this configurable?
   
   val typeUUID = UUID.fromString("f3051f22-9052-4c71-a469-22047b9edd8b")
-  
+  /*
   def encodeInt(i: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
     ByteBuffer.wrap(arr).putInt(i)
     arr
   }
   def decodeInt(arr: Array[Byte]): Int = ByteBuffer.wrap(arr).getInt()
-  
+  */
   sealed abstract class ReusableTask {
     val taskNumber: Int
     val taskPointer: DurableTaskPointer
@@ -80,7 +80,7 @@ object LocalTaskGroup extends TaskGroupType {
     var loadingTasks: List[Future[ReusableTask]] = Nil
     
     def taskVisitor(v: Value): Unit = {
-      val taskNumber = decodeInt(v.key.bytes)
+      val taskNumber = v.key.intValue
       val pointer = KeyValueObjectPointer(v.value)
       val ftask = system.readObject(pointer) map { taskState =>
         

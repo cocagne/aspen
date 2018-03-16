@@ -25,6 +25,9 @@ final case class Key(bytes: Array[Byte]) {
     else
       s"Key(${com.ibm.aspen.util.arr2string(bytes)})"
   }
+  
+  def intValue: Int = new BigInteger(bytes).intValue()
+  def longValue: Long = new BigInteger(bytes).longValue()
 }
 
 object Key {
