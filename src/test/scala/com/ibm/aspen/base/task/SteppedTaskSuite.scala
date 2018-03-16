@@ -52,7 +52,7 @@ class SteppedTaskSuite  extends TestSystemSuite {
     val tkey = Key(Array[Byte](2))
     
     class TS(target: KeyValueObjectPointer, initialState: KeyValueObjectState) 
-       extends SteppedDurableTask(new DurableTaskPointer(initialState.pointer), sys, initialState) {
+       extends SteppedDurableTask(new DurableTaskPointer(initialState.pointer), sys, initialState.revision, initialState.contents) {
       
       var steps: List[Int] = Nil
       

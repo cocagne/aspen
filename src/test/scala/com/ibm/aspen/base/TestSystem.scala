@@ -59,11 +59,18 @@ class TestSystem(
     val storeFactory: (DataStoreID) => (DataStore, CrashRecoveryLog) = TestSystem.memoryStoreFactory,
     val noRetry: RetryStrategy = TestSystem.NoRetry,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
-    val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
-    val userTaskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None) {
+    val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize) {
   
   import scala.language.postfixOps
   import Bootstrap._
+  
+  var taskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None
+  
+  class ForwardTaskRegistry extends TypeRegistry[DurableTaskType] {
+    def getTypeFactory(typeUUID: UUID): Option[DurableTaskType] = taskTypeRegistry flatMap { r => r.getTypeFactory(typeUUID) }
+  }
+  
+  val userTaskTypeRegistry = new ForwardTaskRegistry
   
   def waitForTransactionsComplete(): Future[Unit] = Future {
     
@@ -97,7 +104,7 @@ class TestSystem(
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = noRetry,
-        userTaskTypeRegistry = userTaskTypeRegistry
+        userTaskTypeRegistry = Some(userTaskTypeRegistry)
         )
     
     val storageNode = new StorageNode(crl, new net.SNet)

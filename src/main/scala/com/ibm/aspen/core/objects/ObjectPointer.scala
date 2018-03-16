@@ -5,6 +5,7 @@ import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.util.Varint
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 /** 
  * 
@@ -234,6 +235,8 @@ class KeyValueObjectPointer(
 object KeyValueObjectPointer {
   
   def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+  
+  def apply(value: Value): KeyValueObjectPointer = ObjectPointer.fromArray(value.value).asInstanceOf[KeyValueObjectPointer]
   
   def apply(
       uuid: UUID,

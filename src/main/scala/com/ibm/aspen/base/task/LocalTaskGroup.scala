@@ -45,11 +45,14 @@ object LocalTaskGroup extends TaskGroupType {
   case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask
   case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask
   
+  
   def initializeNewGroup(
       system: AspenSystem,
       groupPointer: TaskGroupPointer, 
       revision: ObjectRevision, 
-      objectAllocaterUUID: UUID)(implicit tx: Transaction, ec: ExecutionContext): Future[LocalTaskGroup] = {
+      objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
+    
+    implicit val tx = system.newTransaction()
     
     val ts = tx.timestamp()
     
@@ -61,7 +64,7 @@ object LocalTaskGroup extends TaskGroupType {
       tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), taskListRoot)
       fullContent = Insert(TaskListKey, tlroot.toArray, ts) :: content
       _ = tx.overwrite(groupPointer.kvPointer, revision, Nil, fullContent)
-      done <- tx.result
+      done <- tx.commit()
     } yield {
       new LocalTaskGroup(system, groupPointer, allocater, 
           new SimpleMutableTieredKeyValueList(system, Left(groupPointer.kvPointer), TaskListKey, IntegerKeyOrdering), 

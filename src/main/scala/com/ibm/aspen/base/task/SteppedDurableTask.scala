@@ -10,6 +10,7 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.base.ObjectReader
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 object SteppedDurableTask {
   val StepKey = Key(1)
@@ -33,14 +34,15 @@ object SteppedDurableTask {
 abstract class SteppedDurableTask(
     val taskPointer: DurableTaskPointer,
     val reader: ObjectReader,
-    initialState: KeyValueObjectState)(implicit ec: ExecutionContext) extends DurableTask {
+    initialRevision: ObjectRevision, 
+    initialState: Map[Key, Value])(implicit ec: ExecutionContext) extends DurableTask {
   
   import SteppedDurableTask._
   
   private val taskPromise = Promise[ObjectRevision]()
-  private var currentRevision = initialState.revision
-  private var currentState = initialState.contents.map(t => (t._1 -> t._2.value))
-  private var currentStep: Int = initialState.contents.get(StepKey) match {
+  private var currentRevision = initialRevision
+  private var currentState = initialState.map(t => (t._1 -> t._2.value))
+  private var currentStep: Int = initialState.get(StepKey) match {
     case None => 0
     case Some(v) => decodeStep(v.value)
   }
@@ -58,7 +60,7 @@ abstract class SteppedDurableTask(
   def refreshTaskState(): Future[Unit] = reader.readObject(taskPointer.kvPointer) map { kvos => synchronized {
     currentState = kvos.contents.map(t => (t._1 -> t._2.value))
     currentRevision = kvos.revision
-    currentStep = initialState.contents.get(StepKey) match {
+    currentStep = initialState.get(StepKey) match {
       case None => 0
       case Some(v) => v.value(0)
     }
