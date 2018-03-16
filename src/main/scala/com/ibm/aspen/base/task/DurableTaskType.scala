@@ -10,14 +10,14 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.Value
 
-trait TaskType extends TypeFactory {
+trait DurableTaskType extends TypeFactory {
   
   val typeUUID: UUID
  
   def createTask(
       system: AspenSystem, 
-      pointer: TaskPointer, 
+      pointer: DurableTaskPointer, 
       revision: ObjectRevision, 
-      state: Map[Key, Value])(implicit ec: ExecutionContext): Task
+      state: Map[Key, Value])(implicit ec: ExecutionContext): DurableTask
   
 }

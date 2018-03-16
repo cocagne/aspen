@@ -36,7 +36,7 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base.task.TaskType
+import com.ibm.aspen.base.task.DurableTaskType
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -60,7 +60,7 @@ class TestSystem(
     val noRetry: RetryStrategy = TestSystem.NoRetry,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize,
-    val userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None) {
+    val userTaskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None) {
   
   import scala.language.postfixOps
   import Bootstrap._

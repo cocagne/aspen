@@ -11,7 +11,7 @@ import com.ibm.aspen.base.ObjectReader
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 
-object SteppedTask {
+object SteppedDurableTask {
   val StepKey = Key(1)
   
   def encodeStep(step: Int): Array[Byte] = {
@@ -30,12 +30,12 @@ object SteppedTask {
  *  All updates to the task object should be done through step transitions. 
  * 
  */
-abstract class SteppedTask(
-    val taskPointer: TaskPointer,
+abstract class SteppedDurableTask(
+    val taskPointer: DurableTaskPointer,
     val reader: ObjectReader,
-    initialState: KeyValueObjectState)(implicit ec: ExecutionContext) extends Task {
+    initialState: KeyValueObjectState)(implicit ec: ExecutionContext) extends DurableTask {
   
-  import SteppedTask._
+  import SteppedDurableTask._
   
   private val taskPromise = Promise[ObjectRevision]()
   private var currentRevision = initialState.revision
@@ -82,7 +82,7 @@ abstract class SteppedTask(
   
   def completeTask(tx: Transaction): Unit = synchronized {
     val idleTask = new Array[Byte](16) // Zeroed Type UUID
-    tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(Task.TaskTypeKey, idleTask, tx.timestamp())))
+    tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(DurableTask.TaskTypeKey, idleTask, tx.timestamp())))
     
     tx.result foreach { _ => synchronized { 
       taskPromise.success(tx.txRevision)

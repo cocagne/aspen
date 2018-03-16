@@ -39,11 +39,11 @@ object LocalTaskGroup extends TaskGroupType {
   
   sealed abstract class ReusableTask {
     val taskNumber: Int
-    val taskPointer: TaskPointer
+    val taskPointer: DurableTaskPointer
   }
   
-  case class IdleTask(taskNumber: Int, taskPointer: TaskPointer, revision: ObjectRevision) extends ReusableTask
-  case class ActiveTask(taskNumber: Int, taskPointer: TaskPointer, task: Task) extends ReusableTask
+  case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask
+  case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask
   
   def initializeNewGroup(
       system: AspenSystem,
@@ -81,19 +81,19 @@ object LocalTaskGroup extends TaskGroupType {
       val pointer = KeyValueObjectPointer(v.value)
       val ftask = system.readObject(pointer) map { taskState =>
         
-        val taskType = taskState.contents.get(Task.TaskTypeKey) match {
-          case None => Task.IdleTaskType
+        val taskType = taskState.contents.get(DurableTask.TaskTypeKey) match {
+          case None => DurableTask.IdleTaskType
           case Some(v) => byte2uuid(v.value)
         }
         
-        if (taskType == Task.IdleTaskType)
-          IdleTask(taskNumber, TaskPointer(pointer), taskState.revision)
+        if (taskType == DurableTask.IdleTaskType)
+          IdleTask(taskNumber, DurableTaskPointer(pointer), taskState.revision)
         else {
           system.getTaskType(taskType) match {
             case None => throw new Exception("Unknown Task Type") // TODO need a better error handling strategy here
             case Some(ttype) => 
-              val task = ttype.createTask(system, TaskPointer(taskState.pointer), taskState.revision, taskState.contents) 
-              ActiveTask(taskNumber, TaskPointer(taskState.pointer), task) 
+              val task = ttype.createTask(system, DurableTaskPointer(taskState.pointer), taskState.revision, taskState.contents) 
+              ActiveTask(taskNumber, DurableTaskPointer(taskState.pointer), task) 
           }
         }
       }
@@ -168,7 +168,7 @@ class LocalTaskGroup(
       }
       
       f.foreach { t => synchronized { 
-        promise.success(new IdleTask(taskNumber, TaskPointer(t._1), t._2))
+        promise.success(new IdleTask(taskNumber, DurableTaskPointer(t._1), t._2))
         allocating = false
         if (!pending.isEmpty)
           allocateNext()
@@ -201,10 +201,10 @@ class LocalTaskGroup(
   
   /** Outer future completes when the transaction is ready to be committed. Inner Future completes when the task completes 
    */
-  def prepareTask(taskType: TaskType, initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Unit]] = synchronized {
+  def prepareTask(taskType: DurableTaskType, initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Unit]] = synchronized {
     val ts = tx.timestamp()
     val taskTypeArr = uuid2byte(taskType.typeUUID)
-    val content = Insert(Task.TaskTypeKey, taskTypeArr, ts) :: initialState.map(t => new Insert(t._1, t._2, ts))
+    val content = Insert(DurableTask.TaskTypeKey, taskTypeArr, ts) :: initialState.map(t => new Insert(t._1, t._2, ts))
 
     def allocateIdleTask(): Future[IdleTask] = {
       if (idleTasks.isEmpty) {
@@ -230,7 +230,7 @@ class LocalTaskGroup(
           }
           
         case Success(_) => synchronized {
-          val imap: Map[Key,Value] = Map((Task.TaskTypeKey -> Value(Task.TaskTypeKey, taskTypeArr, ts)))
+          val imap: Map[Key,Value] = Map((DurableTask.TaskTypeKey -> Value(DurableTask.TaskTypeKey, taskTypeArr, ts)))
           val contents = initialState.foldLeft(imap)((m, t) => m + (t._1 -> Value(t._1, t._2, ts)))
           
           val task = taskType.createTask(system, it.taskPointer, tx.txRevision, contents)

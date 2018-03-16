@@ -5,15 +5,15 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.ObjectRevision
 
-object Task {
+object DurableTask {
   val TaskTypeKey = Key(0) // Corresponds to TaskType UUID
   
   val IdleTaskType = new UUID(0,0)
 }
 
-trait Task {
+trait DurableTask {
   
-  val taskPointer: TaskPointer
+  val taskPointer: DurableTaskPointer
   
   /** Future is to the revision of the object when the task completes. 
    *  

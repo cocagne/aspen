@@ -23,7 +23,7 @@ class SteppedTaskSuite  extends TestSystemSuite {
 
     var ops = List[KeyValueOperation]()
     
-    taskType.foreach { uuid => ops = Insert(Task.TaskTypeKey, uuid2byte(uuid), tx.timestamp()) :: ops }
+    taskType.foreach { uuid => ops = Insert(DurableTask.TaskTypeKey, uuid2byte(uuid), tx.timestamp()) :: ops }
     
     contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
     
@@ -52,7 +52,7 @@ class SteppedTaskSuite  extends TestSystemSuite {
     val tkey = Key(Array[Byte](2))
     
     class TS(target: KeyValueObjectPointer, initialState: KeyValueObjectState) 
-       extends SteppedTask(new TaskPointer(initialState.pointer), sys, initialState) {
+       extends SteppedDurableTask(new DurableTaskPointer(initialState.pointer), sys, initialState) {
       
       var steps: List[Int] = Nil
       
@@ -75,7 +75,7 @@ class SteppedTaskSuite  extends TestSystemSuite {
           for {
             o <- sys.readObject(target)
             _ = tx.bumpVersion(target, o.revision)
-            _ = completeStep(tx, List((tkey ->SteppedTask.encodeStep(step+1))))
+            _ = completeStep(tx, List((tkey ->SteppedDurableTask.encodeStep(step+1))))
             done <- tx.commit()
           } yield ()
         }
@@ -97,7 +97,7 @@ class SteppedTaskSuite  extends TestSystemSuite {
       
       // --- Test Mid-Process Resumed Task ---
       
-      taskPtr2 <- alloc(Some(TType), List((SteppedTask.StepKey -> SteppedTask.encodeStep(2))))
+      taskPtr2 <- alloc(Some(TType), List((SteppedDurableTask.StepKey -> SteppedDurableTask.encodeStep(2))))
       initialState2 <- sys.readObject(taskPtr2)
       
       ts2 = new TS(target, initialState2)

@@ -19,7 +19,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.base.task.TaskType
+import com.ibm.aspen.base.task.DurableTaskType
 
 trait AspenSystem extends ObjectReader {
   
@@ -54,7 +54,7 @@ trait AspenSystem extends ObjectReader {
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
-  def getTaskType(taskTypeUUID: UUID): Option[TaskType]
+  def getTaskType(taskTypeUUID: UUID): Option[DurableTaskType]
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

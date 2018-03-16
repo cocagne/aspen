@@ -54,7 +54,7 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.base.AggregateTypeRegistry
-import com.ibm.aspen.base.task.TaskType
+import com.ibm.aspen.base.task.DurableTaskType
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.FinalizationActionHandler
 import com.ibm.aspen.base.task.TaskGroupType
@@ -85,7 +85,7 @@ class BasicAspenSystem(
     val bootstrapPoolIDA: IDA,
     val radiclePointer: KeyValueObjectPointer,
     val retryStrategy: RetryStrategy,
-    userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None,
+    userTaskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None,
     userTaskGroupTypeRegistry: Option[TypeRegistry[TaskGroupType]] = None,
     userFinalizationActionHandlerRegistry: Option[TypeRegistry[FinalizationActionHandler]] = None,
     )(implicit ec: ExecutionContext) extends AspenSystem {
@@ -115,8 +115,8 @@ class BasicAspenSystem(
   def clientId = net.clientId
   
   protected val taskTypeRegistry = userTaskTypeRegistry match {
-    case None => new AggregateTypeRegistry[TaskType]( Nil )
-    case Some(registry) => new AggregateTypeRegistry[TaskType]( registry :: Nil )
+    case None => new AggregateTypeRegistry[DurableTaskType]( Nil )
+    case Some(registry) => new AggregateTypeRegistry[DurableTaskType]( registry :: Nil )
   }
   protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
     case None => new AggregateTypeRegistry[TaskGroupType]( Nil )
@@ -161,7 +161,7 @@ class BasicAspenSystem(
     }
   }
   
-  override def getTaskType(taskTypeUUID: UUID): Option[TaskType] = taskTypeRegistry.getTypeFactory(taskTypeUUID)
+  override def getTaskType(taskTypeUUID: UUID): Option[DurableTaskType] = taskTypeRegistry.getTypeFactory(taskTypeUUID)
   
   def readObject(
       objectPointer:DataObjectPointer, 
