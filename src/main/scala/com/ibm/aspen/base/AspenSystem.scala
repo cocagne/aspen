@@ -19,10 +19,13 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.base.task.TaskType
 
 trait AspenSystem extends ObjectReader {
   
   def clientId: ClientID
+  
+  val retryStrategy: RetryStrategy
   
   def newTransaction(): Transaction
   
@@ -50,6 +53,8 @@ trait AspenSystem extends ObjectReader {
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
+  
+  def getTaskType(taskTypeUUID: UUID): Option[TaskType]
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

@@ -1,6 +1,5 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.task
 
-import java.util.UUID
 import scala.concurrent.Future
 
 /** Server-side TaskGroup that executes the tasks contained within the group */

@@ -1,27 +1,7 @@
 
-  
-* Need LocalTaskGroup
-  - Intended for use by only the local process
-  - No mechanism for inserting tasks into the group by external agents
-  - Implemented in terms of base Task interface only
-  
-  
-* Need TaskGroup
-  - Should we completely ignore HOW addition is done? Could leave this 100% to base class; similar to TypeFactory
-  
-  - addTaskIfTransactionSuccessful(taskPointer, taskRevision, targetTx)
-     - versionBumpped on addition into the group
-     
-  - addTaskIfTransactionSuccessful(taskDefn, targetTx)
-      - Can be done directly via additional Tx operations
-      - Can be done via FA
-      
-      
-TaskAddFA. RetryTillSuccess:
-      for {
-        taskGroup <- system.getTaskGroup(fa.taskGroupUUID) 
-        addComplete <- taskGroup.addTask(fa.taskTypeUUID, fa.taskUUID, fa.taskObject, fa.taskRevision) 
-      }
+* Rename Task to DurableTask
+
+* Unit Test LocalTaskGroup
 
 * Really need to know WHY transactions fail
   - Allows differentiation between recoverable and unrecoverable failures

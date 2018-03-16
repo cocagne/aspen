@@ -2,6 +2,7 @@ package com.ibm.aspen.core.objects.keyvalue
 
 import java.util.UUID
 import java.nio.ByteBuffer
+import java.math.BigInteger
 
 final case class Key(bytes: Array[Byte]) {
   
@@ -38,4 +39,6 @@ object Key {
     bb.putLong(uuid.getLeastSignificantBits)
     Key(arr)
   }
+  
+  implicit def apply(number: Long): Key = Key(BigInteger.valueOf(number).toByteArray())
 }

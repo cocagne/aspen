@@ -36,6 +36,7 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.base.task.TaskType
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -95,7 +96,7 @@ class TestSystem(
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
-        initializationRetryStrategy = noRetry,
+        retryStrategy = noRetry,
         userTaskTypeRegistry = userTaskTypeRegistry
         )
     

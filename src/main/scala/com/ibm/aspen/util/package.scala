@@ -16,6 +16,13 @@ package object util {
     bb.array()
   }
   
+  def byte2uuid(arr: Array[Byte]): UUID = {
+    val bb = ByteBuffer.wrap(arr)
+    val msb = bb.getLong()
+    val lsb = bb.getLong()
+    new UUID(msb, lsb)
+  }
+  
   def printStack(): Unit = {
     val e = new Exception("printing stack")
     val sw = new StringWriter()

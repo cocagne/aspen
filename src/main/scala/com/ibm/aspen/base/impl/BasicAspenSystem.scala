@@ -32,7 +32,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.base.ObjectAllocater
 import scala.util.Failure
 import scala.util.Success
-import com.ibm.aspen.base.TaskGroupExecutor
+import com.ibm.aspen.base.task.TaskGroupExecutor
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
@@ -54,10 +54,10 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.base.AggregateTypeRegistry
-import com.ibm.aspen.base.TaskType
+import com.ibm.aspen.base.task.TaskType
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.FinalizationActionHandler
-import com.ibm.aspen.base.TaskGroupType
+import com.ibm.aspen.base.task.TaskGroupType
 
 
 object BasicAspenSystem {
@@ -84,7 +84,7 @@ class BasicAspenSystem(
     val storagePoolFactory: StoragePoolFactory,
     val bootstrapPoolIDA: IDA,
     val radiclePointer: KeyValueObjectPointer,
-    val initializationRetryStrategy: RetryStrategy,
+    val retryStrategy: RetryStrategy,
     userTaskTypeRegistry: Option[TypeRegistry[TaskType]] = None,
     userTaskGroupTypeRegistry: Option[TypeRegistry[TaskGroupType]] = None,
     userFinalizationActionHandlerRegistry: Option[TypeRegistry[FinalizationActionHandler]] = None,
@@ -102,7 +102,7 @@ class BasicAspenSystem(
     readManager.shutdown()
     txManager.shutdown()
     allocManager.shutdown()
-    initializationRetryStrategy.shutdown()
+    retryStrategy.shutdown()
   }
   
   val bootstrapPoolAllocater = new SinglePoolObjectAllocater(this, Bootstrap.BootstrapObjectAllocaterUUID, 
@@ -123,7 +123,7 @@ class BasicAspenSystem(
     case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: Nil )
   }
   protected val finalizationActionHandlerRegistry = {
-    val baseRegistry = BaseFinalizationActionHandlerRegistry(initializationRetryStrategy, this)
+    val baseRegistry = BaseFinalizationActionHandlerRegistry(retryStrategy, this)
     
     userFinalizationActionHandlerRegistry match {
       case None => baseRegistry
@@ -131,15 +131,15 @@ class BasicAspenSystem(
     }
   }
   
-  lazy val radicle: Future[KeyValueObjectState] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val radicle: Future[KeyValueObjectState] = retryStrategy.retryUntilSuccessful {
     readObject(radiclePointer) 
   }
   
-  lazy val systemTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val systemTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
     radicle.map(kvos => new SimpleMutableTieredKeyValueList(this, Left(kvos.pointer), Bootstrap.SystemTreeKey, ByteArrayKeyOrdering))
   }
   
-  lazy val storagePoolTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val storagePoolTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
     for {
       sysTree <- systemTree
       sysTreeRoot <- sysTree.fetchRoot()
@@ -150,7 +150,7 @@ class BasicAspenSystem(
     }
   }
   
-  lazy val taskGroupTree: Future[MutableTieredKeyValueList] = initializationRetryStrategy.retryUntilSuccessful {
+  lazy val taskGroupTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
     for {
       sysTree <- systemTree
       sysTreeRoot <- sysTree.fetchRoot()
@@ -160,6 +160,8 @@ class BasicAspenSystem(
       new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.TaskGroupTreeUUID, ByteArrayKeyOrdering)
     }
   }
+  
+  override def getTaskType(taskTypeUUID: UUID): Option[TaskType] = taskTypeRegistry.getTypeFactory(taskTypeUUID)
   
   def readObject(
       objectPointer:DataObjectPointer, 

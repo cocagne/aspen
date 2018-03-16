@@ -1,4 +1,4 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.task
 
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import scala.concurrent.Promise
@@ -6,12 +6,13 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.keyvalue.Key
 import scala.concurrent.Future
 import java.nio.ByteBuffer
-import scala.util.Failure
-import scala.util.Success
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.base.ObjectReader
+import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.core.objects.ObjectRevision
 
 object SteppedTask {
-  val StepKey = Key(Array[Byte](1))
+  val StepKey = Key(1)
   
   def encodeStep(step: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
@@ -36,7 +37,7 @@ abstract class SteppedTask(
   
   import SteppedTask._
   
-  private val taskPromise = Promise[Unit]()
+  private val taskPromise = Promise[ObjectRevision]()
   private var currentRevision = initialState.revision
   private var currentState = initialState.contents.map(t => (t._1 -> t._2.value))
   private var currentStep: Int = initialState.contents.get(StepKey) match {
@@ -48,7 +49,7 @@ abstract class SteppedTask(
   
   def step: Int = synchronized { currentStep }
   
-  def completed: Future[Unit] = taskPromise.future
+  def completed: Future[ObjectRevision] = taskPromise.future
   
   def beginStep(): Unit
   
@@ -84,7 +85,7 @@ abstract class SteppedTask(
     tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(Task.TaskTypeKey, idleTask, tx.timestamp())))
     
     tx.result foreach { _ => synchronized { 
-      taskPromise.success(())
+      taskPromise.success(tx.txRevision)
     }}
   }
 }

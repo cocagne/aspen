@@ -31,6 +31,8 @@ trait TieredKeyValueList {
   
   def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos => kvos.contents.get(key) }
   
+  def visitAll(visitor: (Value) => Unit)(implicit ec: ExecutionContext): Future[Unit] = visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitor)
+  
   def visitRange(
       startKey: Key, 
       stopKey: Option[Key], 

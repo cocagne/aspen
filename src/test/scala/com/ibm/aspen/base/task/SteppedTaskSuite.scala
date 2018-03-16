@@ -1,22 +1,18 @@
-package com.ibm.aspen.base
+package com.ibm.aspen.base.task
 
-import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.base.tieredlist.KeyValueListPointer
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import scala.concurrent.Future
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.DataBuffer
-import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
 import java.util.UUID
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.util.uuid2byte
-import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.base.TestSystem
+import com.ibm.aspen.base.TestSystemSuite
+import org.scalactic.source.Position.apply
+import com.ibm.aspen.base.impl.Bootstrap
 
 class SteppedTaskSuite  extends TestSystemSuite { 
   import Bootstrap._
