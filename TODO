@@ -1,3 +1,19 @@
+CumuloFS
+
+Bootstrapping a FS will require alloc of the FS container node, The first leaf of the inode tree, & the root directory (inode 0)
+
+Create File Task impl (zero data. open must succeed before data can be written)
+   - must have target directory. start with root
+
+File & Directory classes
+  |=> File class only applies to an Open file for read/write
+      it Has A inode
+  |=> Dir class is similar but we modify it without first opening it...
+      so we may want a cache of Directory instances? 
+      Create on demand and discard after last operation completes?
+
+
+----------------------------------
 
 * Really need to know WHY transactions fail
   - Allows differentiation between recoverable and unrecoverable failures

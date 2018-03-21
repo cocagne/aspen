@@ -110,6 +110,10 @@ object KeyValueOperation {
     
     case unknownOpCode => throw new KeyValueObjectEncodingError(new Exception("Unknown KeyValue opcode $unknownOpCode"))
   }
+  
+  def insertOperations(content: List[(Key, Array[Byte])], ts: HLCTimestamp): List[Insert] = {
+    content.map(t => Insert(t._1, t._2, ts))
+  }
 }
 
 sealed abstract class SingleReplicatedValue(val value: Array[Byte]) extends KeyValueOperation {
