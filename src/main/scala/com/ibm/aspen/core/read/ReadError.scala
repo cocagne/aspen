@@ -29,9 +29,6 @@ object ReadError extends Enumeration {
   /** IDA failed to restore data */
   val IDARestoreError = Value("IDARestoreError")
   
-  /** No responses received from the Data Store */
-  val NoResponse = Value("NoResponse")
-  
   /** Invalid object encoding */
   val InvalidObjectEncoding = Value("InvalidObjectEncoding")
   

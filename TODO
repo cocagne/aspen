@@ -18,7 +18,6 @@ Read Failures:
        
    errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold
    
-   
 
 CumuloFS
 

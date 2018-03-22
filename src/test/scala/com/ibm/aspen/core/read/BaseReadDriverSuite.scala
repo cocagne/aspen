@@ -87,14 +87,14 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Left(ReadError.NoResponse)))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Left(ReadError.CorruptedObject)))
     
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
     o should be (Left(ThresholdError(Map(
         (ds1 -> ReadError.InvalidLocalPointer),
-        (ds2 -> ReadError.NoResponse)))))
+        (ds2 -> ReadError.CorruptedObject)))))
   }
   
   test("Succeed with errors") {
