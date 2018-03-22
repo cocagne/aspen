@@ -24,7 +24,6 @@ import com.ibm.aspen.core.data_store.Lock
 import com.ibm.aspen.core.data_store.ObjectMetadata
 import com.ibm.aspen.core.read.FullObject
 import com.ibm.aspen.core.read.ByteRange
-import com.ibm.aspen.core.data_store.InvalidByteRange
 import com.ibm.aspen.core.read.SingleKey
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.read.LargestKeyLessThan
@@ -56,7 +55,6 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case e: InvalidLocalPointer => ReadError.InvalidLocalPointer
         case e: ObjectMismatch => ReadError.ObjectMismatch
         case e: CorruptedObject => ReadError.CorruptedObject
-        case e: InvalidByteRange => ReadError.InvalidByteRange
       }
       messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(e)))
     }
@@ -84,8 +82,10 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Right((metadata, data, locks)) => 
           if (rt.offset + rt.length <= data.size)
             respond(metadata, Set(), data.size, Some(data.slice(rt.offset, rt.length)), locks)
+          else if (rt.offset < data.size)
+            respond(metadata, Set(), data.size, Some(data.slice(rt.offset)), locks)
           else
-            sendErrorResponse(new InvalidByteRange)
+            respond(metadata, Set(), data.size, Some(DataBuffer.Empty), locks)
       }}
       
       case rt: SingleKey => store.getObject(message.objectPointer) foreach { result => result match {

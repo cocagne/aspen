@@ -7,14 +7,18 @@ Read Failures:
        - Object Mismatch
        - Invalid Local Pointer
        - StoreSideSliceCorruption
-       - Invalid Byte Range - Is this an error or should we simply return a zero-length array? It'd simplify things if this weren't an error condition.
-       - ObjectContentEncodingError (corrupted key-value object). Does DataStore verify correctness to prevent this?
+       - ObjectContentEncodingError (corrupted key-value object. Effectively the same as an IDA restore error).
+          |-> Move to CorruptedObject
+             - could be due to server side corruption
+             - could be due to bugs/client-side corruption
        
-   When reading, we always expect to have to retrieve responses from a threshold number of stores
+   When reading, we always expect to have to retrieve responses from a threshold number of stores. Go ahead and
+   get a full set even if we can detect a fatal condition early. Then analyze the respones to pick the best
+   execption to pass to the user
        
    errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold
-
-InvalidByteRange can remain a Transaction error but remove it as a read error.
+   
+   
 
 CumuloFS
 

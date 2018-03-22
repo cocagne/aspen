@@ -4,7 +4,6 @@ object UpdateError extends Enumeration {
   val MissingUpdateData        = Value("MissingUpdateData") 
   val ObjectMismatch           = Value("ObjectMismatch")
   val InvalidLocalPointer      = Value("InvalidLocalPointer")
-  val InvalidByteRange         = Value("InvalidByteRange")
   val RevisionMismatch         = Value("RevisionMismatch")
   val RefcountMismatch         = Value("RefcountMismatch")
   val Collision                = Value("Collision")

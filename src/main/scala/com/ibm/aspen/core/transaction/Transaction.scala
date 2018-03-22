@@ -30,7 +30,6 @@ import com.ibm.aspen.core.data_store.MissingUpdateContent
 import com.ibm.aspen.core.data_store.InsufficientFreeSpace
 import com.ibm.aspen.core.data_store.InvalidObjectType
 import com.ibm.aspen.core.data_store.KeyValueRequirementError
-import com.ibm.aspen.core.data_store.InvalidByteRange
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -252,7 +251,6 @@ object Transaction {
       case r: InvalidLocalPointer    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
       case r: ObjectMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
       case r: CorruptedObject        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
-      case r: InvalidByteRange       => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidByteRange, None, None, None)
     }                                
     case e: RevisionMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
     case e: RefcountMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)

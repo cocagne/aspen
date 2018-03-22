@@ -71,7 +71,6 @@ enum UpdateError:byte
     MissingUpdateData, 
     ObjectMismatch,    
     InvalidLocalPointer,
-    InvalidByteRange,
     RevisionMismatch,
     RefcountMismatch,
     Collision,
@@ -243,8 +242,7 @@ enum ReadError:byte
 { 
     ObjectMismatch,    
     InvalidLocalPointer,
-    CorruptedObject,
-    InvalidByteRange
+    CorruptedObject
 }
 
 enum LockType:byte

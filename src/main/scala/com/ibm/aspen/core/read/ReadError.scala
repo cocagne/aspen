@@ -35,13 +35,9 @@ object ReadError extends Enumeration {
   /** Invalid object encoding */
   val InvalidObjectEncoding = Value("InvalidObjectEncoding")
   
-  /** Requested ByteRange exceeds current object size */
-  val InvalidByteRange = Value("InvalidByteRange")
-  
   def apply(objectReadError: data_store.ObjectReadError): Value = objectReadError match {
     case _: data_store.InvalidLocalPointer => InvalidLocalPointer
     case _: data_store.ObjectMismatch => ObjectMismatch
     case _: data_store.CorruptedObject => CorruptedObject
-    case _: data_store.InvalidByteRange => InvalidByteRange
   }
 }

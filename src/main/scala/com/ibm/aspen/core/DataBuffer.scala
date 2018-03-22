@@ -42,6 +42,12 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
     DataBuffer(bb)
   }
   
+  def slice(offset: Int): DataBuffer = {
+    val bb = buf.asReadOnlyBuffer()
+    bb.position( bb.position + offset )
+    DataBuffer(bb)
+  }
+  
 }
 
 object DataBuffer {

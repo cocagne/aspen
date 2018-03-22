@@ -274,7 +274,6 @@ object NetworkCodec {
     case UpdateError.MissingUpdateData        => P.UpdateError.MissingUpdateData
     case UpdateError.ObjectMismatch           => P.UpdateError.ObjectMismatch
     case UpdateError.InvalidLocalPointer      => P.UpdateError.InvalidLocalPointer
-    case UpdateError.InvalidByteRange         => P.UpdateError.InvalidByteRange
     case UpdateError.RevisionMismatch         => P.UpdateError.RevisionMismatch
     case UpdateError.RefcountMismatch         => P.UpdateError.RefcountMismatch
     case UpdateError.Collision                => P.UpdateError.Collision
@@ -287,7 +286,6 @@ object NetworkCodec {
     case P.UpdateError.MissingUpdateData        => UpdateError.MissingUpdateData
     case P.UpdateError.ObjectMismatch           => UpdateError.ObjectMismatch
     case P.UpdateError.InvalidLocalPointer      => UpdateError.InvalidLocalPointer
-    case P.UpdateError.InvalidByteRange         => UpdateError.InvalidByteRange
     case P.UpdateError.RevisionMismatch         => UpdateError.RevisionMismatch
     case P.UpdateError.RefcountMismatch         => UpdateError.RefcountMismatch
     case P.UpdateError.Collision                => UpdateError.Collision
@@ -1053,13 +1051,11 @@ object NetworkCodec {
     case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
     case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
     case ReadError.CorruptedObject => P.ReadError.CorruptedObject
-    case ReadError.InvalidByteRange => P.ReadError.InvalidByteRange
   }
   def decodeReadError(err: Byte): ReadError.Value = err match {
     case P.ReadError.ObjectMismatch => ReadError.ObjectMismatch
     case P.ReadError.InvalidLocalPointer => ReadError.InvalidLocalPointer
     case P.ReadError.CorruptedObject => ReadError.CorruptedObject
-    case P.ReadError.InvalidByteRange => ReadError.InvalidByteRange
   }
   
   def getLockType(lock: Lock): Byte = lock match {
