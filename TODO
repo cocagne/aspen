@@ -1,6 +1,14 @@
 CumuloFS
 
-Bootstrapping a FS will require alloc of the FS container node, The first leaf of the inode tree, & the root directory (inode 0)
+Directory:
+  - Probably ought to embed pointer w/ InodeNumber
+     - Only makes relocating a file Inode a bit harder
+     - Delete orig inode should be sufficient. Read will error predictably and lookup on inode table resolves
+  - open() call can provide arbitrary path (no intermediate dir open)
+  - thus we'll probably need a cache of directory entries
+  - Simpler to have a Directory & a scaffiene based DirCache
+     Directory maintains a list of inodes it knows are directories
+     try lookup in DirCache. Read & create dir if not present
 
 Create File Task impl (zero data. open must succeed before data can be written)
    - must have target directory. start with root
@@ -12,6 +20,12 @@ File & Directory classes
       so we may want a cache of Directory instances? 
       Create on demand and discard after last operation completes?
 
+caching
+  write-through: (aka DirectIO) Data -> cache -> device then return
+  write-around: Data -> device then return
+  write-back: Data -> mem. Return. Background -> device
+  
+  * Even with write-back, files can be opened w/ DirectIO
 
 ----------------------------------
 

@@ -3,7 +3,7 @@ package com.ibm.aspen
 import java.nio.ByteBuffer
 
 package object cumulofs {
-  
+    
   def int2arr(i: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
     val bb = ByteBuffer.wrap(arr)

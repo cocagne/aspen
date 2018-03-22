@@ -8,12 +8,15 @@ import com.ibm.aspen.core.HLCTimestamp
 
 object Inode {
   
+  // --------- Required ---------
   val ModeKey        = Key(0)  // Int
   val UIDKey         = Key(1)  // Int
   val GIDKey         = Key(2)  // Int
   val CtimeKey       = Key(3)  // Timespec(seconds: Long, nanoseconds: Long)
-  val MtimeKey       = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) or missing
-  val AtimeKey       = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) or missing
+  
+  // --------- Optional ---------
+  val MtimeKey       = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
+  val AtimeKey       = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
   val SizeKey        = Key(6)  // Long
   val EmbeddedXAttrs = Key(7)  // List <varint-key-len><varint-value-len><key><value>
   val ExternalXAttrs = Key(8)  // TieredList of key-value pairs
