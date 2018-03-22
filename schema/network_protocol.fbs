@@ -244,8 +244,7 @@ enum ReadError:byte
     ObjectMismatch,    
     InvalidLocalPointer,
     CorruptedObject,
-    InvalidByteRange,
-    UnexpectedInternalError
+    InvalidByteRange
 }
 
 enum LockType:byte

@@ -9,8 +9,6 @@ class ReadIDAError(msg:String) extends ReadError(msg)
 
 case class ThresholdError(errors: Map[DataStoreID, ReadError.Value]) extends ReadError("ThresholdError")
 
-case class DataRetrievalFailed() extends ReadError("DataRetrievalFailed")
-
 case class InvalidObject() extends ReadError("InvalidObject")
 
 case class EncodingError() extends ReadError("EncodingError")
@@ -27,9 +25,6 @@ object ReadError extends Enumeration {
   
   /** Failed checksum of object content */
   val CorruptedObject = Value("CorruptedObject")
-  
-  /** Unexpected Internal error. Should only be used if bugs are encountered like receiving a RevisionMismatch error when trying to simply read an object */
-  val UnexpectedInternalError = Value("UnexpectedInternalError")
   
   /** IDA failed to restore data */
   val IDARestoreError = Value("IDARestoreError")

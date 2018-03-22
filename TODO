@@ -1,3 +1,21 @@
+* Error handling
+
+Read Failures:
+   - Retry until Success, Fatal Error, or Read Timeout (only done when explicitly requested)
+       - Threshold error is NOT an error. It just means we retry
+   - Fatal Error
+       - Object Mismatch
+       - Invalid Local Pointer
+       - StoreSideSliceCorruption
+       - Invalid Byte Range - Is this an error or should we simply return a zero-length array? It'd simplify things if this weren't an error condition.
+       - ObjectContentEncodingError (corrupted key-value object). Does DataStore verify correctness to prevent this?
+       
+   When reading, we always expect to have to retrieve responses from a threshold number of stores
+       
+   errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold
+
+InvalidByteRange can remain a Transaction error but remove it as a read error.
+
 CumuloFS
 
 Directory:

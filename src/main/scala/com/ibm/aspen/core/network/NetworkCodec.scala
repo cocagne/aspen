@@ -1054,14 +1054,12 @@ object NetworkCodec {
     case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
     case ReadError.CorruptedObject => P.ReadError.CorruptedObject
     case ReadError.InvalidByteRange => P.ReadError.InvalidByteRange
-    case ReadError.UnexpectedInternalError => P.ReadError.UnexpectedInternalError
   }
   def decodeReadError(err: Byte): ReadError.Value = err match {
     case P.ReadError.ObjectMismatch => ReadError.ObjectMismatch
     case P.ReadError.InvalidLocalPointer => ReadError.InvalidLocalPointer
     case P.ReadError.CorruptedObject => ReadError.CorruptedObject
     case P.ReadError.InvalidByteRange => ReadError.InvalidByteRange
-    case P.ReadError.UnexpectedInternalError => ReadError.UnexpectedInternalError
   }
   
   def getLockType(lock: Lock): Byte = lock match {

@@ -10,7 +10,6 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.Future
 import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.core.read.ReadDriver
-import com.ibm.aspen.core.read.DataRetrievalFailed
 import com.ibm.aspen.base.Transaction
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.ObjectRevision
