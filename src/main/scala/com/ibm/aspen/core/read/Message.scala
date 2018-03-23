@@ -11,6 +11,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.Lock
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 sealed abstract class Message
 
@@ -25,7 +26,7 @@ final case class Read(
 final case class ReadResponse(
     fromStore: DataStoreID,
     readUUID: UUID,
-    result: Either[ReadError.Value, ReadResponse.CurrentState]) extends Message
+    result: Either[ObjectReadError.Value, ReadResponse.CurrentState]) extends Message
     
 object ReadResponse {
   case class CurrentState(

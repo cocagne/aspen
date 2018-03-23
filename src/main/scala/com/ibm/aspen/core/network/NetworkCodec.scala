@@ -72,6 +72,7 @@ import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 
 
@@ -1047,15 +1048,15 @@ object NetworkCodec {
     Read(toStore, ClientID(fromClient), readUUID, objectPointer, readType, returnLockedTransaction)
   }
   
-  def encodeReadError(err: ReadError.Value): Byte = err match {
-    case ReadError.ObjectMismatch => P.ReadError.ObjectMismatch
-    case ReadError.InvalidLocalPointer => P.ReadError.InvalidLocalPointer
-    case ReadError.CorruptedObject => P.ReadError.CorruptedObject
+  def encodeReadError(err: ObjectReadError.Value): Byte = err match {
+    case ObjectReadError.ObjectMismatch => P.ObjectReadError.ObjectMismatch
+    case ObjectReadError.InvalidLocalPointer => P.ObjectReadError.InvalidLocalPointer
+    case ObjectReadError.CorruptedObject => P.ObjectReadError.CorruptedObject
   }
-  def decodeReadError(err: Byte): ReadError.Value = err match {
-    case P.ReadError.ObjectMismatch => ReadError.ObjectMismatch
-    case P.ReadError.InvalidLocalPointer => ReadError.InvalidLocalPointer
-    case P.ReadError.CorruptedObject => ReadError.CorruptedObject
+  def decodeReadError(err: Byte): ObjectReadError.Value = err match {
+    case P.ObjectReadError.ObjectMismatch => ObjectReadError.ObjectMismatch
+    case P.ObjectReadError.InvalidLocalPointer => ObjectReadError.InvalidLocalPointer
+    case P.ObjectReadError.CorruptedObject => ObjectReadError.CorruptedObject
   }
   
   def getLockType(lock: Lock): Byte = lock match {

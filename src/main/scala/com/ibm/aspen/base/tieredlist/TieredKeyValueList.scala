@@ -14,13 +14,13 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import scala.util.Failure
 import scala.util.Success
 import jdk.nashorn.internal.runtime.FindProperty
-import com.ibm.aspen.core.read.ThresholdError
 import com.ibm.aspen.core.objects.keyvalue.Value
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.protocol.KeyComparison
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
+import com.ibm.aspen.core.read.FatalReadError
 
 
 trait TieredKeyValueList {
@@ -111,7 +111,7 @@ trait TieredKeyValueList {
         // attempting to read a node deleted by a join operation. If so, blacklist the node and resume the search from the parent tier
         objectReader.readObject(tierPointer.pointer) onComplete {
           case Failure(cause) => cause match {
-            case t: ThresholdError => navigateTier(tiers.tail, blacklist + tierPointer.pointer.uuid)
+            case t: FatalReadError => navigateTier(tiers.tail, blacklist + tierPointer.pointer.uuid)
             case _ => p.failure(cause)
           }
           
@@ -222,7 +222,7 @@ object TieredKeyValueList {
     // This read is the most likely failure point. We could attempt to read a node that has been deleted via a join operation
     objectReader.readObject(listPointer.pointer) onComplete {
       case Failure(cause) => cause match {
-        case t: ThresholdError => p.success(Left(blacklist + listPointer.pointer.uuid))
+        case t: FatalReadError => p.success(Left(blacklist + listPointer.pointer.uuid))
         case _ => p.failure(cause)
       }
       

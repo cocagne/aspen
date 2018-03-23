@@ -21,6 +21,7 @@ import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.allocation.AllocationObjectStatus
 import com.ibm.aspen.core.read.ReadError
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 object StorageNodeAllocationManager {
   case class Key(storeId: DataStoreID, transactionUUID: UUID)
@@ -115,7 +116,7 @@ class StorageNodeAllocationManager(
   def receive(message: AllocationStatusRequest, txStatus: Option[TransactionStatus.Value]): Unit = getStore(message.to) foreach { store =>
     store.getObjectMetadata(message.primaryObject) foreach { os => 
       val state = os match {
-        case Left(err) => Left(ReadError(err))
+        case Left(err) => Left(ObjectReadError(err))
         case Right((md, locks)) => Right(AllocationObjectStatus.State(md.revision, md.refcount, locks))
       }
       allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, txStatus, 

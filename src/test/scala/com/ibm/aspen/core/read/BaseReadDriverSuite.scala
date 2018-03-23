@@ -25,6 +25,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.MetadataObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -75,7 +76,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
                retrieveLockedTransaction: Boolean = true,
                readUUID:UUID = readUUID) = new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
   
-  test("Fail with too many errors") {
+  test("Fail with invalid object") {
     val m = new TMessenger
     val r = mkReader(m)
     val nrev = ObjectRevision(new UUID(0,1))
@@ -85,16 +86,40 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     
     r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ObjectReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Left(ReadError.CorruptedObject)))
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Left(ObjectReadError.ObjectMismatch)))
     
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Left(ThresholdError(Map(
-        (ds1 -> ReadError.InvalidLocalPointer),
-        (ds2 -> ReadError.CorruptedObject)))))
+    o match {
+      case Left(err: InvalidObject) => err.pointer should be (ptr)
+      case _ => fail("bah")
+    }
+  }
+  
+  test("Fail with corrupted object") {
+    val m = new TMessenger
+    val r = mkReader(m)
+    val nrev = ObjectRevision(new UUID(0,1))
+    val nrev2 = ObjectRevision(new UUID(0,2))
+    
+    val ts = HLCTimestamp.now
+    
+    r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
+    r.readResult.isCompleted should be (false)
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ObjectReadError.CorruptedObject)))
+    r.readResult.isCompleted should be (false)
+    r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Left(ObjectReadError.CorruptedObject)))
+    
+    r.readResult.isCompleted should be (true)
+    val o = Await.result(r.readResult, awaitDuration)
+    
+    o match {
+      case Left(err: CorruptedObject) => err.pointer should be (ptr)
+      case _ => fail("bah")
+    }
   }
   
   test("Succeed with errors") {
@@ -106,7 +131,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     
     r.receiveReadResponse(read.ReadResponse(ds0, readUUID, Right(read.ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)
-    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ReadError.InvalidLocalPointer)))
+    r.receiveReadResponse(read.ReadResponse(ds1, readUUID, Left(ObjectReadError.InvalidLocalPointer)))
     r.readResult.isCompleted should be (false)
     r.receiveReadResponse(read.ReadResponse(ds2, readUUID, Right(read.ReadResponse.CurrentState(nrev2, Set[UUID](), ref, ts, 5, Some(odata), Nil))))
     r.readResult.isCompleted should be (false)

@@ -2,39 +2,32 @@ package com.ibm.aspen.core.read
 
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store
+import com.ibm.aspen.core.objects.ObjectPointer
 
-sealed abstract class ReadError(msg: String) extends Exception(msg)
-
-class ReadIDAError(msg:String) extends ReadError(msg)
-
-case class ThresholdError(errors: Map[DataStoreID, ReadError.Value]) extends ReadError("ThresholdError")
-
-case class InvalidObject() extends ReadError("InvalidObject")
-
-case class EncodingError() extends ReadError("EncodingError")
-
-case class UnexpectedError() extends ReadError("UnexpectedError")
-
-object ReadError extends Enumeration {
-  
-  /** UUID for the stored object does not match the UUID in the ObjectPointer */
-  val ObjectMismatch = Value("ObjectMismatch")
-  
-  /** LocalPointer for this store is no longer valid for use */
-  val InvalidLocalPointer = Value("InvalidLocalPointer")
-  
-  /** Failed checksum of object content */
-  val CorruptedObject = Value("CorruptedObject")
-  
-  /** IDA failed to restore data */
-  val IDARestoreError = Value("IDARestoreError")
-  
-  /** Invalid object encoding */
-  val InvalidObjectEncoding = Value("InvalidObjectEncoding")
-  
-  def apply(objectReadError: data_store.ObjectReadError): Value = objectReadError match {
-    case _: data_store.InvalidLocalPointer => InvalidLocalPointer
-    case _: data_store.ObjectMismatch => ObjectMismatch
-    case _: data_store.CorruptedObject => CorruptedObject
-  }
+sealed abstract class ReadError(msg: String) extends Exception(msg) {
+  val pointer: ObjectPointer
 }
+
+
+sealed abstract class FatalReadError(msg: String) extends ReadError(msg)
+
+/** Thrown when the requested object is not found. */
+class InvalidObject(val pointer: ObjectPointer) extends FatalReadError("InvalidObject")
+
+/** Thrown when the object content becomes corrupted. */
+class CorruptedObject(val pointer: ObjectPointer) extends FatalReadError("CorruptedObject")
+
+/** Thrown when IDA decoding fails */
+class CorruptedIDA(pointer: ObjectPointer) extends CorruptedObject(pointer)
+
+/** Thrown when the content of a complex object such as a KeyValue object becomes corrupted
+ *  and cannot be decoded.
+ */
+class CorruptedContent(pointer: ObjectPointer) extends CorruptedObject(pointer)
+
+
+
+sealed abstract class TransientReadError(msg: String) extends ReadError(msg)
+
+class ReadTimeout(val pointer: ObjectPointer) extends TransientReadError("ReadTimeout")
+

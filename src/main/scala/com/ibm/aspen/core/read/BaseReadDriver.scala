@@ -23,6 +23,8 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.data_store.Lock
 import com.ibm.aspen.core.objects.MetadataObjectState
 import com.ibm.aspen.core.ida.IDAError
+import com.ibm.aspen.core.data_store
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -45,7 +47,7 @@ class BaseReadDriver(
   protected val promise = Promise[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]]
   
   protected var storeStates = Map[DataStoreID, StoreState]()
-  protected var errors = Map[DataStoreID, ReadError.Value]()
+  protected var errors = Map[DataStoreID, ObjectReadError.Value]()
   
   def readResult = promise.future
   
@@ -73,13 +75,16 @@ class BaseReadDriver(
   def receiveReadResponse(response:ReadResponse): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done
+      
+    def addError(err: ObjectReadError.Value): Unit = {
+      errors += (response.fromStore -> err)
+        
+      if (storeStates.contains(response.fromStore))
+        storeStates -= response.fromStore
+    }
     
     response.result match {
-      case Left(err) => 
-        errors += (response.fromStore -> err)
-        
-        if (storeStates.contains(response.fromStore))
-          storeStates -= response.fromStore
+      case Left(err) => addError(err)
           
       case Right(cs) => try {
         // KeyValue objects must take the set of update UUID into account as well as the current ObjectRevision when determining when a consistent
@@ -101,17 +106,24 @@ class BaseReadDriver(
           errors -= response.fromStore
           
       } catch {
-        case t: ObjectEncodingError =>
-          errors += (response.fromStore -> ReadError.InvalidObjectEncoding)
-          
-          if (storeStates.contains(response.fromStore))
-            storeStates -= response.fromStore
+        // Encoding errors here will most likely be due to application-level bugs that corrupt the state of key-value objects. The stores
+        // should guard against these kinds of errors but some insidious bug or another could cause this condition to be encountered.
+        // TODO - Log a critical error. 
+        case t: ObjectEncodingError => addError( ObjectReadError.CorruptedObject )
       }
     }
     
-    if ( errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold ) {
-      //println(s"ERRORS $errors")
-      promise.success(Left(new ThresholdError(errors)))
+    if (errors.size + storeStates.size >= objectPointer.ida.consistentRestoreThreshold && 
+        errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold) {
+      // We've received a consistentRestoreThreshold number of responses and enough of them are Fatal read errors that
+      // there is no chance of ever succeeding. 
+      val (invalidCount, corruptCount) = errors.values.foldLeft((0,0)) { (t, e) => e match {
+        case ObjectReadError.ObjectMismatch      => (t._1+1, t._2)
+        case ObjectReadError.InvalidLocalPointer => (t._1+1, t._2)
+        case ObjectReadError.CorruptedObject     => (t._1, t._2+1)
+      }}
+      val err = if (invalidCount >= corruptCount) new InvalidObject(objectPointer) else new CorruptedObject(objectPointer)
+      promise.success(Left(err))
     }
     else if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold)
       checkComplete()
@@ -163,12 +175,12 @@ class BaseReadDriver(
         promise.success(Right(objectState))
         
       } catch {
-        case e: IDAError => promise.success(Left(new ReadIDAError("IDA Restore Failed")))
-        case e: ObjectEncodingError => promise.success(Left(new EncodingError))
+        case e: IDAError => promise.success(Left(new CorruptedIDA(objectPointer)))
+        case e: ObjectEncodingError => promise.success(Left(new CorruptedContent(objectPointer)))
         case err: Throwable =>
           println(s"*** This should never happen. Unexpected Exception: $err")
           com.ibm.aspen.util.printStack()
-          promise.success(Left(new UnexpectedError))
+          promise.success(Left(new CorruptedObject(objectPointer)))
       }
     }
   }
@@ -238,6 +250,7 @@ class BaseReadDriver(
 }
 
 object BaseReadDriver {
+  
   case class StoreState(
       storeId: DataStoreID,
       revision: (ObjectRevision, Set[UUID]),

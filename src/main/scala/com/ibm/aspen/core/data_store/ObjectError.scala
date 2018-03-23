@@ -10,8 +10,18 @@ sealed abstract class ObjectError
 
 sealed abstract class ObjectReadError extends ObjectError
 
-sealed abstract class ObjectTransactionError extends ObjectError {
-  val objectPointer: ObjectPointer
+/** Enumerated values that correspond to Exceptions types. Used as error codes for network messages.
+ */
+object ObjectReadError extends Enumeration {
+  val InvalidLocalPointer = Value("InvalidLocalPointer")
+  val ObjectMismatch = Value("ObjectMismatch")
+  val CorruptedObject = Value("CorruptedObject")
+  
+  def apply(err: ObjectReadError): Value = err match {
+    case t: InvalidLocalPointer => InvalidLocalPointer
+    case t: ObjectMismatch => ObjectMismatch
+    case t: CorruptedObject => CorruptedObject
+  }
 }
   
 /** Supplied LocalPointer is not understood by this store or points to an invalid location */
@@ -29,6 +39,13 @@ case class ObjectMismatch() extends ObjectReadError
  *  This should be due to media errors 
  */
 case class CorruptedObject() extends ObjectReadError
+
+
+//--------------------------------------------------------------------
+
+sealed abstract class ObjectTransactionError extends ObjectError {
+  val objectPointer: ObjectPointer
+}
 
 /** Used to indicate an ObjectReadError occurred as part of a transaction
  * 

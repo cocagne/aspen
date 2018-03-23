@@ -1,23 +1,16 @@
 * Error handling
 
-Read Failures:
-   - Retry until Success, Fatal Error, or Read Timeout (only done when explicitly requested)
-       - Threshold error is NOT an error. It just means we retry
-   - Fatal Error
-       - Object Mismatch
-       - Invalid Local Pointer
-       - StoreSideSliceCorruption
-       - ObjectContentEncodingError (corrupted key-value object. Effectively the same as an IDA restore error).
-          |-> Move to CorruptedObject
-             - could be due to server side corruption
-             - could be due to bugs/client-side corruption
-       
-   When reading, we always expect to have to retrieve responses from a threshold number of stores. Go ahead and
-   get a full set even if we can detect a fatal condition early. Then analyze the respones to pick the best
-   execption to pass to the user
-       
-   errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold
-   
+Read failures will now only occur due to fatal errors: InvalidObject & CorruptedObject
+
+For Transaction failures
+   - Ideally we could analyze the transaction failure on a per-object basis
+   - May allow a component of a transaction to determine what it needs to do to repair the problem
+        - Say an index node had contention and this was the only problem that lead to Tx failure
+   - BUT this info will always be potentially incomplete
+        - Stores ultimately decide
+        - Information can be lost
+        - Is it better to ignore the reason because of this? 
+        - Always restart every piece from the "beginning"?
 
 CumuloFS
 

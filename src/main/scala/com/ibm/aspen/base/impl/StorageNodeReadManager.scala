@@ -51,12 +51,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     }
     
     def sendErrorResponse(err: ObjectReadError): Unit = {
-      val e = err match {
-        case e: InvalidLocalPointer => ReadError.InvalidLocalPointer
-        case e: ObjectMismatch => ReadError.ObjectMismatch
-        case e: CorruptedObject => ReadError.CorruptedObject
-      }
-      messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(e)))
+      messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, Left(ObjectReadError(err))))
     }
     
     def respond(md: ObjectMetadata, updates: Set[UUID], sizeOnStore: Int, odata: Option[DataBuffer], locks: List[Lock]): Unit = {

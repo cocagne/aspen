@@ -238,7 +238,7 @@ table TxHeartbeat {
 //---------------------------------------------------------------------------
 //- Read Messages
 //---------------------------------------------------------------------------
-enum ReadError:byte
+enum ObjectReadError:byte
 { 
     ObjectMismatch,    
     InvalidLocalPointer,
@@ -300,7 +300,7 @@ table ReadResponse {
   sizeOnStore: int;
   objectData: [byte];
   locks: [Lock];
-  readError: ReadError;
+  readError: ObjectReadError;
 }
 
 //---------------------------------------------------------------------------
@@ -358,7 +358,7 @@ table AllocationStatusReply {
 
 table AllocationObjectStatus {
   objectUUID: UUID;
-  readError: ReadError;
+  readError: ObjectReadError;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
   locks: [Lock];

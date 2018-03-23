@@ -23,6 +23,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.data_store.RevisionWriteLock
 import com.ibm.aspen.core.read.FullObject
+import com.ibm.aspen.core.data_store.ObjectReadError
 
 object CodecSuite {
   
@@ -62,7 +63,7 @@ class CodecSuite extends FunSuite with Matchers {
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
     
-    val rr = ReadResponse(storeId, readUUID, Left(ReadError.ObjectMismatch))
+    val rr = ReadResponse(storeId, readUUID, Left(ObjectReadError.ObjectMismatch))
     
     val builder = new FlatBufferBuilder(1024)
     
