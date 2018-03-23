@@ -74,7 +74,7 @@ class TieredKeyValueListSplitFA(
       lst.refreshRoot() flatMap { t =>
         val (containerKvos, root) = t
         
-        if (root.topTier < c.targetTier) {
+        val fcommit = if (root.topTier < c.targetTier) {
           // Create new tier
           val iLeft  = Insert(c.left.minimum.bytes, c.left.pointer.toArray, tx.timestamp())
           val iRight = Insert(c.right.minimum.bytes, c.right.pointer.toArray, tx.timestamp())
@@ -116,6 +116,10 @@ class TieredKeyValueListSplitFA(
 
           } yield ()
         }
+        
+        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
+        
+        fcommit
       }
     }    
   }

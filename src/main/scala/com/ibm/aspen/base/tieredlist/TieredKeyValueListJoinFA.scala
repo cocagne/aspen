@@ -91,7 +91,7 @@ class TieredKeyValueListJoinFA(
           addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, removed)
         }
         
-        for {
+        val fcommit = for {
           kvos <- lst.fetchContainingNode(c.removed.minimum, c.targetTier) 
           
           ovalue = kvos.contents.get(c.removed.minimum)
@@ -118,6 +118,10 @@ class TieredKeyValueListJoinFA(
           done <- tx.commit()
 
         } yield ()
+        
+        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
+        
+        fcommit
       }
       
     }    

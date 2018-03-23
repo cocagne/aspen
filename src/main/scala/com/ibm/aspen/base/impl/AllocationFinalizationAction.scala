@@ -48,12 +48,16 @@ class AllocationFinalizationAction(
       //
       implicit val tx = system.newTransaction()
       
-      for {
+      val fcommit = for {
         pool <- system.getStoragePool(storagePoolDefinitionPointer)
         tree <- pool.getAllocationTree(retryStrategy)
         commitReady <- tree.put(newNodePointer.uuid, newNodePointer.toArray)
         result <- tx.commit()
       } yield ()
+      
+      fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
+      
+      fcommit
     }
   
     def completionDetected(): Unit = ()

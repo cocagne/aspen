@@ -1,16 +1,3 @@
-* Error handling
-
-Read failures will now only occur due to fatal errors: InvalidObject & CorruptedObject
-
-For Transaction failures
-   - Ideally we could analyze the transaction failure on a per-object basis
-   - May allow a component of a transaction to determine what it needs to do to repair the problem
-        - Say an index node had contention and this was the only problem that lead to Tx failure
-   - BUT this info will always be potentially incomplete
-        - Stores ultimately decide
-        - Information can be lost
-        - Is it better to ignore the reason because of this? 
-        - Always restart every piece from the "beginning"?
 
 CumuloFS
 
@@ -43,10 +30,10 @@ caching
 
 ----------------------------------
 
-* Really need to know WHY transactions fail
-  - Allows differentiation between recoverable and unrecoverable failures
-  - Primary unrecoverable is InsufficientSpace
-     |-> Can punt this for now. Solve later
+* Transaction Failures are *intentionally* opaque
+   - We cannot reliably know why transactions fail
+   - For multi-object Tx it gets even more murky with timing issues
+   - Better to restart a transactional operation from the beginning. Refresh everything.
     
 * ObjectAllocaterRegistry
    - Remove hardcoded limitation

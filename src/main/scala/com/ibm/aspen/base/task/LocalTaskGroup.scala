@@ -148,19 +148,16 @@ class LocalTaskGroup(
       val f = system.retryStrategy.retryUntilSuccessful {
         implicit val tx = system.newTransaction()
         
-        val falloc = for {
+        val fcommit = for {
           mnode <- taskTree.fetchMutableNode(taskNumber)
           newObject <- allocater.allocateKeyValueObject(mnode.kvos.pointer, mnode.kvos.revision, Nil, None)
           txPrepped <- mnode.prepreUpdateTransaction(List((Key(taskNumber), newObject.toArray)), Nil, Nil)
           done <- tx.commit()
         } yield (newObject, tx.txRevision)
         
-        falloc.onComplete {
-          case Failure(reason) => tx.invalidateTransaction(reason)
-          case _ =>
-        }
+        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
         
-        falloc
+        fcommit
       }
       
       f.foreach { t => synchronized { 
