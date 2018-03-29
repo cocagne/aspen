@@ -4,22 +4,74 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.nio.ByteBuffer
 
-final class InodePointer(val kvPointer: KeyValueObjectPointer) extends AnyVal {
-  def toArray: Array[Byte] = kvPointer.toArray
+sealed abstract class InodePointer {
   
-  def encodedSize: Int = kvPointer.encodedSize
+  val number: Long
+  val pointer: KeyValueObjectPointer
+  val ftype: FileType.Value 
   
-  def encodeInto(bb: ByteBuffer): Unit = kvPointer.encodeInto(bb)
+  def encodedSize: Int = 8 + 1 + pointer.encodedSize
+  
+  def toArray: Array[Byte] = {
+    val arr = new Array[Byte](encodedSize)
+    encodeInto(ByteBuffer.wrap(arr))
+    arr
+  }
+  
+  def encodeInto(bb: ByteBuffer): Unit = {
+    bb.put(FileType.toByte(ftype))
+    bb.putLong(number)
+    pointer.encodeInto(bb)
+  }
+}
+                
+class FilePointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.File
+}
+
+class DirectoryPointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.Directory
+}
+
+class SymlinkPointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.Symlink
+}
+
+class UnixSocketPointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.UnixSocket
+}
+
+class CharacterDevicePointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.UnixSocket
+}
+
+class BlockDevicePointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.BlockDevice
+}
+
+class FIFOPointer(val number: Long, val pointer: KeyValueObjectPointer) extends InodePointer {
+  val ftype = FileType.FIFO
 }
 
 object InodePointer {
-  def apply(kvPointer: KeyValueObjectPointer): InodePointer = new InodePointer(kvPointer)
-  
-  def fromArray(arr: Array[Byte], endPosition: Option[Int]=None): InodePointer = {
-    new InodePointer(ObjectPointer.fromArray(arr, endPosition).asInstanceOf[KeyValueObjectPointer])
+  def apply(ftype: FileType.Value, number: Long, pointer: KeyValueObjectPointer): InodePointer = ftype match {
+    case FileType.File            => new FilePointer(number, pointer) 
+    case FileType.Directory       => new DirectoryPointer(number, pointer) 
+    case FileType.Symlink         => new SymlinkPointer(number, pointer) 
+    case FileType.UnixSocket      => new UnixSocketPointer(number, pointer) 
+    case FileType.CharacterDevice => new CharacterDevicePointer(number, pointer) 
+    case FileType.BlockDevice     => new BlockDevicePointer(number, pointer) 
+    case FileType.FIFO            => new FIFOPointer(number, pointer) 
   }
   
-  def fromByteBuffer(bb: ByteBuffer, endPosition: Option[Int]=None): InodePointer = {
-    new InodePointer(ObjectPointer.fromByteBuffer(bb, endPosition).asInstanceOf[KeyValueObjectPointer])
+  def apply(arr: Array[Byte]): InodePointer = apply(ByteBuffer.wrap(arr), None)
+  
+  def apply(arr: Array[Byte], endPosition: Option[Int]): InodePointer = apply(ByteBuffer.wrap(arr), endPosition)
+  
+  def apply(bb: ByteBuffer, endPosition: Option[Int]=None): InodePointer = {
+    val ftype = FileType.fromByte(bb.get())
+    val number = bb.getLong()
+    val pointer = KeyValueObjectPointer(bb, endPosition)
+    apply(ftype, number, pointer)
   }
 }

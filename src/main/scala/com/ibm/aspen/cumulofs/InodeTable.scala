@@ -3,12 +3,13 @@ package com.ibm.aspen.cumulofs
 import com.ibm.aspen.base.Transaction
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 trait InodeTable {
   
   /** Future completes when the transaction is ready for commit */
-  def prepareAllocation(inode: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodeNumber]
+  def prepareInodeAllocation(ftype: FileType.Value, pointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer]
   
-  def lookup(inodeNumber: InodeNumber)(implicit ec: ExecutionContext): Future[Option[InodePointer]]
+  def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]]
   
 }

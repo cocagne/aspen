@@ -5,6 +5,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.HLCTimestamp
+import java.nio.charset.StandardCharsets
 
 object Inode {
   
@@ -14,28 +15,37 @@ object Inode {
   val GIDKey         = Key(2)  // Int
   val CtimeKey       = Key(3)  // Timespec(seconds: Long, nanoseconds: Long)
   
-  // --------- Optional ---------
-  val MtimeKey       = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val AtimeKey       = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val SizeKey        = Key(6)  // Long
-  val EmbeddedXAttrs = Key(7)  // List <varint-key-len><varint-value-len><key><value>
-  val ExternalXAttrs = Key(8)  // TieredList of key-value pairs
-  val DeviceType     = Key(9)  // Device major/minor types
-  val EmbeddedData   = Key(10) // Array[Byte]
-  val ExternalData   = Key(11) // TieredList
+  val RequiredKeys = Set(ModeKey, UIDKey, GIDKey, CtimeKey)
   
-  def getInitialInodeContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
-    require(FileType.fromMode(mode) != FileType.Unknown)
-    
-    val content = List(
-        (ModeKey,  int2arr(mode)),
-        (UIDKey,   int2arr(uid)),
-        (GIDKey,   int2arr(gid)),
-        (CtimeKey, Timespec.now.toArray))
+  // --------- Optional ---------
+  val MtimeKey          = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
+  val AtimeKey          = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
+  val SizeKey           = Key(6)  // Long
+  
+  val EmbeddedXAttrsKey = Key(7)  // List <varint-key-len><varint-value-len><key><value>
+  val ExternalXAttrsKey = Key(8)  // TieredList of key-value pairs
+  
+  // --------- Type-Specific ---------
+  
+  trait EmbeddedData {
+    val EmbeddedDataKey  = Key(9)  // Array[Byte]
+    val ExternalDataKey  = Key(10) // TieredList
+  }
+  
+  trait Device {
+    val DeviceTypeKey = Key(11)  // Device major/minor types
+  }
+  
+  def getInitialContent(mode: Int, uid: Int, gid: Int, content:List[(Key, Array[Byte])]): (List[KeyValueOperation], Map[Key,Value]) = {
+    val icontent = 
+        (ModeKey,  int2arr(mode)) ::
+        (UIDKey,   int2arr(uid)) ::
+        (GIDKey,   int2arr(gid)) ::
+        (CtimeKey, Timespec.now.toArray) :: content
     
     val ts = HLCTimestamp.now
-    val opsList = KeyValueOperation.insertOperations(content, ts)
-    val kvmap = content.foldLeft(Map[Key,Value]())((m, t) => m + (t._1 -> Value(t._1, t._2, ts)))
+    val opsList = KeyValueOperation.insertOperations(icontent, ts)
+    val kvmap = icontent.foldLeft(Map[Key,Value]())((m, t) => m + (t._1 -> Value(t._1, t._2, ts)))
     
     (opsList, kvmap)
   }
@@ -43,18 +53,31 @@ object Inode {
   def apply(
       pointer: InodePointer, 
       revision: ObjectRevision, 
-      content: Map[Key, Value]): Inode = new Inode(pointer, revision, content)
+      content: Map[Key, Value]): Inode = pointer match {
+    case p: FilePointer            => new FileInode(p, revision, content)
+    case p: DirectoryPointer       => new DirectoryInode(p, revision, content)
+    case p: SymlinkPointer         => new SymlinkInode(p, revision, content)
+    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, content)
+    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, content)
+    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, content)
+    case p: FIFOPointer            => new FIFOInode(p, revision, content)
+  }
 }
 
-class Inode(
-    val pointer: InodePointer,
-    val revision: ObjectRevision,
-    val content: Map[Key, Value]) {
+sealed abstract class Inode {
+    
+  val pointer: InodePointer
+  val revision: ObjectRevision
+  val content: Map[Key, Value] 
+  
+  val RequiredKeys: Set[Key]
   
   import Inode._
   
-  def fileType: FileType.Value = FileType.fromMode(mode)
-  def mode: Int = arr2int(content(ModeKey).value)
+  if (!RequiredKeys.subsetOf(content.keySet))
+    throw CorruptedInode(pointer, content)
+  
+  def mode: Int = (arr2int(content(ModeKey).value) & ~FileMode.S_IFMT) & FileType.toMode(pointer.ftype)
   def uid: Int = arr2int(content(UIDKey).value)
   def gid: Int = arr2int(content(GIDKey).value)
   def ctime: Timespec = Timespec(content(CtimeKey).value)
@@ -71,3 +94,142 @@ class Inode(
     case Some(v) => arr2long(v.value)
   }
 }
+
+
+object DirectoryInode extends Inode.EmbeddedData {
+  val ParentDirectoryInodeKey = Key(20)
+  
+  def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInode: Long): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFDIR 
+    Inode.getInitialContent(m, uid, gid, (ParentDirectoryInodeKey -> long2arr(parentDirectoryInode)) :: Nil)
+  }
+}
+
+class DirectoryInode(
+    val pointer: DirectoryPointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends Inode {
+ 
+  import DirectoryInode._
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(ParentDirectoryInodeKey)
+  
+  def parentDirectoryInode: Long = arr2long(content(ParentDirectoryInodeKey).value)
+}
+
+
+object FileInode extends Inode.EmbeddedData {
+  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFREG
+    Inode.getInitialContent(m, uid, gid, Nil)
+  } 
+}
+
+class FileInode(
+    val pointer: FilePointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends Inode {
+ 
+  import FileInode._
+ 
+  val RequiredKeys = Inode.RequiredKeys
+}
+
+object SymlinkInode {
+  val LinkKey = Key(20)
+  
+  def getInitialContent(mode: Int, uid: Int, gid: Int, link: String): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFLNK
+    Inode.getInitialContent(m, uid, gid, (LinkKey -> link.getBytes(StandardCharsets.UTF_8)) :: Nil)
+  }
+}
+
+class SymlinkInode(
+    val pointer: SymlinkPointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends Inode {
+ 
+  import SymlinkInode._
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(LinkKey)
+}
+
+object UnixSocketInode {
+  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFSOCK
+    Inode.getInitialContent(m, uid, gid, Nil)
+  }
+}
+
+class UnixSocketInode(
+    val pointer: UnixSocketPointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends Inode {
+ 
+  import UnixSocketInode._
+ 
+  val RequiredKeys = Inode.RequiredKeys
+}
+
+
+object FIFOInode {
+  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFFIFO
+    Inode.getInitialContent(m, uid, gid, Nil)
+  }
+}
+
+class FIFOInode(
+    val pointer: FIFOPointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends Inode {
+ 
+  import FIFOInode._
+  
+  val RequiredKeys = Inode.RequiredKeys
+}
+
+object DeviceInode extends Inode.Device {
+  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    Inode.getInitialContent(mode, uid, gid, (DeviceTypeKey -> int2arr(rdev)) :: Nil)
+  }
+}
+
+sealed abstract class DeviceInode extends Inode {}
+
+object CharacterDeviceInode {
+  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFCHR
+    DeviceInode.getInitialContent(m, uid, gid, rdev)
+  }
+}
+
+class CharacterDeviceInode(
+    val pointer: CharacterDevicePointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends DeviceInode {
+ 
+  import CharacterDeviceInode._
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
+}
+
+object BlockDeviceInode {
+  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
+    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFBLK
+    DeviceInode.getInitialContent(m, uid, gid, rdev)
+  }
+}
+
+class BlockDeviceInode(
+    val pointer: BlockDevicePointer, 
+    val revision: ObjectRevision, 
+    val content: Map[Key, Value]) extends DeviceInode {
+ 
+  import BlockDeviceInode._
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
+}
+
+
+

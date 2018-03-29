@@ -212,7 +212,9 @@ class DataObjectPointer(
 }
 
 object DataObjectPointer {
-  def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+  def apply(arr: Array[Byte]): DataObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[DataObjectPointer]
+  
+  def apply(bb: ByteBuffer, endPosition: Option[Int]=None): DataObjectPointer = ObjectPointer.fromByteBuffer(bb, endPosition).asInstanceOf[DataObjectPointer]
   
   def apply(
       uuid: UUID,
@@ -237,6 +239,8 @@ object KeyValueObjectPointer {
   def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
   
   def apply(value: Value): KeyValueObjectPointer = ObjectPointer.fromArray(value.value).asInstanceOf[KeyValueObjectPointer]
+  
+  def apply(bb: ByteBuffer, endPosition: Option[Int]=None): KeyValueObjectPointer = ObjectPointer.fromByteBuffer(bb, endPosition).asInstanceOf[KeyValueObjectPointer]
   
   def apply(
       uuid: UUID,

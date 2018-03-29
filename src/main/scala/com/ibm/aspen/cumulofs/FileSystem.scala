@@ -17,8 +17,6 @@ import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 trait FileSystem {
   val system: AspenSystem
   
-  val directoryLoader: DirectoryLoader
-  
   val inodeTable: InodeTable
 }
 
@@ -42,9 +40,9 @@ object FileSystem {
     
     import FileMode._
     
-    val rootDirMode = S_IFDIR | S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH  
+    val rootDirMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH  
     
-    val (rootOps, rootContent) = Inode.getInitialInodeContent(rootDirMode, 0, 0)
+    val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, 0)
     
     for {
       rootDirPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
