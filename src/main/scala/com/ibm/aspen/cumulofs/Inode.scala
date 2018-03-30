@@ -18,23 +18,15 @@ object Inode {
   val RequiredKeys = Set(ModeKey, UIDKey, GIDKey, CtimeKey)
   
   // --------- Optional ---------
-  val MtimeKey          = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val AtimeKey          = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val SizeKey           = Key(6)  // Long
+  val MtimeKey            = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
+  val AtimeKey            = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
+  val SizeKey             = Key(6)  // Long
   
-  val EmbeddedXAttrsKey = Key(7)  // List <varint-key-len><varint-value-len><key><value>
-  val ExternalXAttrsKey = Key(8)  // TieredList of key-value pairs
+  val XAttrsKey           = Key(7)  // List of <varint key-len><varint value-len><key><value>
+  val XAttrsTieredListKey = Key(8)  // TieredList of key-value pairs
   
-  // --------- Type-Specific ---------
+  val KeysReserved        = 100     // Keys Reserved for future use
   
-  trait EmbeddedData {
-    val EmbeddedDataKey  = Key(9)  // Array[Byte]
-    val ExternalDataKey  = Key(10) // TieredList
-  }
-  
-  trait Device {
-    val DeviceTypeKey = Key(11)  // Device major/minor types
-  }
   
   def getInitialContent(mode: Int, uid: Int, gid: Int, content:List[(Key, Array[Byte])]): (List[KeyValueOperation], Map[Key,Value]) = {
     val icontent = 
@@ -95,9 +87,11 @@ sealed abstract class Inode {
   }
 }
 
+// ----- Directory -----
 
-object DirectoryInode extends Inode.EmbeddedData {
+object DirectoryInode {
   val ParentDirectoryInodeKey = Key(20)
+  val ContentTieredListKey    = Key(21) // TieredList of (filename -> EncodedInodePointer)
   
   def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInode: Long): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFDIR 
@@ -117,8 +111,12 @@ class DirectoryInode(
   def parentDirectoryInode: Long = arr2long(content(ParentDirectoryInodeKey).value)
 }
 
+// ----- File -----
 
-object FileInode extends Inode.EmbeddedData {
+object FileInode {
+  val InitialSegmentsKey  = Key(20) // Pointers to the first few data objects. List <varint-offset><varint-pointer-len><pointer>
+  val DataTieredListKey   = Key(21) // TieredList
+    
   def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFREG
     Inode.getInitialContent(m, uid, gid, Nil)
@@ -134,6 +132,8 @@ class FileInode(
  
   val RequiredKeys = Inode.RequiredKeys
 }
+
+// ----- Symlink -----
 
 object SymlinkInode {
   val LinkKey = Key(20)
@@ -154,6 +154,8 @@ class SymlinkInode(
   val RequiredKeys = Inode.RequiredKeys ++ Set(LinkKey)
 }
 
+// ----- Unix Socket -----
+
 object UnixSocketInode {
   def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFSOCK
@@ -171,6 +173,7 @@ class UnixSocketInode(
   val RequiredKeys = Inode.RequiredKeys
 }
 
+// ----- FIFO -----
 
 object FIFOInode {
   def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
@@ -189,7 +192,11 @@ class FIFOInode(
   val RequiredKeys = Inode.RequiredKeys
 }
 
-object DeviceInode extends Inode.Device {
+// ----- Devices -----
+
+object DeviceInode {
+  val DeviceTypeKey = Key(20)  // Device major/minor types
+  
   def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     Inode.getInitialContent(mode, uid, gid, (DeviceTypeKey -> int2arr(rdev)) :: Nil)
   }
