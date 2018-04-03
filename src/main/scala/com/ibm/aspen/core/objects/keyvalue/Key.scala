@@ -3,6 +3,7 @@ package com.ibm.aspen.core.objects.keyvalue
 import java.util.UUID
 import java.nio.ByteBuffer
 import java.math.BigInteger
+import java.nio.charset.StandardCharsets
 
 final case class Key(bytes: Array[Byte]) {
   
@@ -34,6 +35,8 @@ object Key {
   val AbsoluteMinimum = Key(new Array[Byte](0))
   
   import scala.language.implicitConversions
+  
+  implicit def apply(str: String): Key = Key(str.getBytes(StandardCharsets.UTF_8))
   
   implicit def apply(uuid: UUID): Key = {
     val arr = new Array[Byte](16)

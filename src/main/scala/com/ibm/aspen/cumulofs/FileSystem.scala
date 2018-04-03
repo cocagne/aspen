@@ -18,9 +18,21 @@ trait FileSystem {
   val system: AspenSystem
   
   val inodeTable: InodeTable
+  
+  val inodeLoader: InodeLoader
+  
+  val directoryLoader: DirectoryLoader
+  
+  def loadDirectory(pointer: DirectoryPointer): Directory = directoryLoader.loadDirectory(this, pointer)
 }
 
 object FileSystem {
+  
+  val InodeTableKey                    = Key(0)
+  val DirectoryTableAllocatersArrayKey = Key(1)
+  val DirectoryTableSizesKey           = Key(2)
+  val DataTableAllocatersArrayKey      = Key(3)
+  val DataTableSizesKey                = Key(4)
   
   /** Creates a new CumuloFS file system as part of the supplied Transaction.
    *  
@@ -35,8 +47,13 @@ object FileSystem {
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       allocater: ObjectAllocater,
-      inodeTableAllocaters: Array[UUID],
-      inodeTableSizes: Array[Int])(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
+      inodeTableAllocaters: Array[UUID],     // For InodeTable Tiered List
+      inodeTableSizes: Array[Int],
+      directoryTableAllocaters: Array[UUID], // For Directory entry Tiered List
+      directoryTableSizes: Array[Int],
+      dataTableAllocaters: Array[UUID],      // For File Data Tiered List
+      dataTableSizes: Array[Int]
+      )(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     
     import FileMode._
     
@@ -45,7 +62,9 @@ object FileSystem {
     val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, 0)
     
     for {
-      rootDirPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
+      rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
+      
+      rootDirPtr = new DirectoryPointer(0, rootDirObj)
       
       inodeTblContent = KeyValueOperation.insertOperations(List((Key(0), rootDirPtr.toArray)), tx.timestamp())
       
@@ -53,9 +72,17 @@ object FileSystem {
       
       inodeTblRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, IntegerKeyOrdering, rootInodeTblPtr)
       
-      fsObjContent = KeyValueOperation.insertOperations(List((Key(0), inodeTblRoot.toArray)), tx.timestamp())
+      icontent = List(
+          (InodeTableKey,                    inodeTblRoot.toArray),
+          (DirectoryTableAllocatersArrayKey, encodeUUIDArray(directoryTableAllocaters)),
+          (DirectoryTableSizesKey,           encodeIntArray(directoryTableSizes)),
+          (DataTableAllocatersArrayKey,      encodeUUIDArray(dataTableAllocaters)),
+          (DataTableSizesKey,                encodeIntArray(dataTableSizes)))
+      
+      fsObjContent = KeyValueOperation.insertOperations(icontent, tx.timestamp())
       
       fsObjPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, fsObjContent)
+      
     } yield fsObjPtr
   }
 }

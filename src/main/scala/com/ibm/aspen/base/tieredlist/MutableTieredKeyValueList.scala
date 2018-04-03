@@ -65,4 +65,9 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
     prep <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
   } yield ()
   
+  def delete(key: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+    node <- fetchMutableNode(key) 
+    prep <- node.prepreUpdateTransaction(Nil, List(key), Nil)
+  } yield ()
+  
 }

@@ -6,6 +6,7 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.HLCTimestamp
 import java.nio.charset.StandardCharsets
+import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 
 object Inode {
   
@@ -62,11 +63,11 @@ sealed abstract class Inode {
   val revision: ObjectRevision
   val content: Map[Key, Value] 
   
-  val RequiredKeys: Set[Key]
-  
   import Inode._
   
-  if (!RequiredKeys.subsetOf(content.keySet))
+  def requiredKeys: Set[Key] = Inode.RequiredKeys
+
+  if (!requiredKeys.subsetOf(content.keySet))
     throw CorruptedInode(pointer, content)
   
   def mode: Int = (arr2int(content(ModeKey).value) & ~FileMode.S_IFMT) & FileType.toMode(pointer.ftype)
@@ -90,8 +91,10 @@ sealed abstract class Inode {
 // ----- Directory -----
 
 object DirectoryInode {
-  val ParentDirectoryInodeKey = Key(20)
+  val ParentDirectoryInodeKey = Key(20) // EncodedInodePointer
   val ContentTieredListKey    = Key(21) // TieredList of (filename -> EncodedInodePointer)
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(ParentDirectoryInodeKey)
   
   def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInode: Long): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFDIR 
@@ -106,9 +109,15 @@ class DirectoryInode(
  
   import DirectoryInode._
   
-  val RequiredKeys = Inode.RequiredKeys ++ Set(ParentDirectoryInodeKey)
+  override def requiredKeys = RequiredKeys
   
   def parentDirectoryInode: Long = arr2long(content(ParentDirectoryInodeKey).value)
+  
+  def hasContentTree: Boolean = content.contains(ContentTieredListKey)
+  
+  def contentTree: Option[TieredKeyValueList.Root] = content.get(ContentTieredListKey) map { value =>
+    TieredKeyValueList.Root(value.value)
+  }
 }
 
 // ----- File -----
@@ -129,14 +138,14 @@ class FileInode(
     val content: Map[Key, Value]) extends Inode {
  
   import FileInode._
- 
-  val RequiredKeys = Inode.RequiredKeys
 }
 
 // ----- Symlink -----
 
 object SymlinkInode {
   val LinkKey = Key(20)
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(LinkKey)
   
   def getInitialContent(mode: Int, uid: Int, gid: Int, link: String): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFLNK
@@ -151,7 +160,7 @@ class SymlinkInode(
  
   import SymlinkInode._
   
-  val RequiredKeys = Inode.RequiredKeys ++ Set(LinkKey)
+  override def requiredKeys = RequiredKeys
 }
 
 // ----- Unix Socket -----
@@ -169,8 +178,6 @@ class UnixSocketInode(
     val content: Map[Key, Value]) extends Inode {
  
   import UnixSocketInode._
- 
-  val RequiredKeys = Inode.RequiredKeys
 }
 
 // ----- FIFO -----
@@ -188,14 +195,14 @@ class FIFOInode(
     val content: Map[Key, Value]) extends Inode {
  
   import FIFOInode._
-  
-  val RequiredKeys = Inode.RequiredKeys
 }
 
 // ----- Devices -----
 
 object DeviceInode {
   val DeviceTypeKey = Key(20)  // Device major/minor types
+  
+  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
   
   def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     Inode.getInitialContent(mode, uid, gid, (DeviceTypeKey -> int2arr(rdev)) :: Nil)
@@ -218,7 +225,7 @@ class CharacterDeviceInode(
  
   import CharacterDeviceInode._
   
-  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
+  override def requiredKeys = DeviceInode.RequiredKeys
 }
 
 object BlockDeviceInode {
@@ -235,7 +242,7 @@ class BlockDeviceInode(
  
   import BlockDeviceInode._
   
-  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
+  override def requiredKeys = DeviceInode.RequiredKeys
 }
 
 

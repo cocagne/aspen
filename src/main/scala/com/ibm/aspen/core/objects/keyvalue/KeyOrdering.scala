@@ -1,5 +1,7 @@
 package com.ibm.aspen.core.objects.keyvalue
 
+import java.nio.charset.StandardCharsets
+
 sealed abstract class KeyOrdering extends Ordering[Key] {
   def compare(a: Key, b: Key): Int
   def compare(a: Key, b: Array[Byte]): Int = compare(a, Key(b))
@@ -41,8 +43,8 @@ object IntegerKeyOrdering extends KeyOrdering {
 
 object LexicalKeyOrdering extends KeyOrdering {
   override def compare(a: Key, b: Key): Int = {
-    val sa = new String(a.bytes, "UTF-8")
-    val sb = new String(b.bytes, "UTF-8")
+    val sa = new String(a.bytes, StandardCharsets.UTF_8)
+    val sb = new String(b.bytes, StandardCharsets.UTF_8)
     sa.compareTo(sb)
   }
 }

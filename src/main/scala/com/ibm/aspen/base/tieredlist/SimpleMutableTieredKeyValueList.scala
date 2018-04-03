@@ -25,11 +25,12 @@ class SimpleMutableTieredKeyValueList(
     val system: AspenSystem,
     val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root],
     val treeIdentifier: Key,
-    val keyOrdering: KeyOrdering) extends MutableTieredKeyValueList {
+    val keyOrdering: KeyOrdering,
+    initialRoot: Option[TieredKeyValueList.Root] = None) extends MutableTieredKeyValueList {
   
   val objectReader: ObjectReader = system
   
-  private[this] var root: Option[TieredKeyValueList.Root] = None
+  private[this] var root: Option[TieredKeyValueList.Root] = initialRoot
   private[this] var allocaters: Map[Int, Future[ObjectAllocater]] = Map()
   
   override protected[tieredlist] def prepreUpdateRootTransaction(

@@ -1,58 +1,27 @@
 
 CumuloFS
 
-* Inode Re-Use
-   - Assume file deleted then immediately re-created w/ same Inode
-   - Reads of old pointer will fail with InvalidObject
-   - if we fall back to the InodeTable, it'll succeed due to the new pointer stored there w/ correct type
+READS
+	* We'll not use read timeouts so only CorruptedObject/Inode are issues
+	* Leave this to the Loader for inodes
 
-* Treat InodePointer as authoritative source of Inode type.
-   - Set at allocation time
-   - Never modified
-* Update Inode to force the mode to contain the correct time in mode accesser method
+* Directory operations could be completely handled by caching the Content trees
+   - caffeine cache of Inode -> ContentTieredList
+   - add/remove/rename/link/etc are all impl irrespective of the Inode object (just content)
+   - Could use object methods to impl actions outside of Directory-specific class instances
+   
+   ** Will likely want TieredList w/ caching of upper tiers for faster repeated directory access
 
-* Create an Inode hierarchy
-   DirectoryInode & FileInode have differing Keys
-   Constructor asserts on Inode pointer type... Should we have a hierarchy of these too?
-
-** Need to store parent directory inode in directory inodes
-  allows lookup of ".." from a directory
-  hardlinks are not allowed for dirs anyway
-
-* must be able to lookup parent node ids
-* When looking up a directory _entry_, we're given the parent directory inode
-* FUSE_CREATE is used to create missing files/dirs unless it returns ENOSYS. Then mknod + open are used
-  mknod
-   name of the file trails the header
-   the rdev param is a dev_t and is set only if the mode indicates a device file
-     |-> From the filesystem layer, we should be able to ignore the format of the content. Just store 
-         and send back when asked
-
-** Throw out the idea of relocating Inodes. Should be easy to impl later if really needed. 
-  - Use the table when we have only an inode
-  - Direct readObject when we have the pointer
-
-** For now read entire directory in a single shot - Do this in OpenDirectory
-  - should work fine for fuse
-  - can impl the more complex logic later
-  - Directory just holds an array of DirEntry
-  
-** First file impl should read all file pointers as well.
-  - Maybe make the management of file pointers a Mixin trait for OpenDirectory/OpenFile?
-
-What does a directory need to do?
-  * Provide basic attributes (supplied by Inode)
-  * Provide access to Name -> (Inode,Pointer) content
-  * Provide Transaction method to insert Name -> (Inode,Pointer)
-    - Main func should take a MutableNode (allows caching impl on frontend)
-     - If Name already exists,
-         * Tx requirement for exact mactch on timestamp
-         * Decref object as part of insertion
-         * incref inode object
-     - If Name does not exist
-         * Tx requiement for not exist
-         * Incref inode object
-
+Directory:
+   - getContents(): Future[(name, InodePointer)]
+       - Single-shot read and return everything
+       - No seek support (leave for v2)
+       - Update InodePointer cache
+   - lookup(name)
+      * returns name. Should also update InodePointer cache
+      * '.' returns inode of dir, '..' returns parent inode
+   - insert(name,pointer)(tx)
+   - delete(name)(tx)
 
 * Implement ls -l on root directory
    * load directory instance
@@ -61,59 +30,17 @@ What does a directory need to do?
       - internal fileHandle (incr by 1 for each entry read & maintain copy of last key to resume from)
       - if read request on open dir does not resume from previous file descriptor location,
         drop cached location. Count entries from beginning and resume from that location.
+        
+* FUSE_CREATE is used to create missing files/dirs unless it returns ENOSYS. Then mknod + open are used
+  mknod
+   name of the file trails the header
+   the rdev param is a dev_t and is set only if the mode indicates a device file
+     |-> From the filesystem layer, we should be able to ignore the format of the content. Just store 
+         and send back when asked
 
-Skipping all caching would certainly make things simpler.
-Probably the right way to go for the first-pass impl
-Always reading from the backend ensures consistency
-Calls to CumuloFS essentially mean the Kernel NEEDS to query the backend anyway
-   |-> can leave caching to the kernel
-Open Files/Dirs cache only Immutable data and pointers. Revision checks are used
-to ensure out-of-date pointers are used safely
-
-*** Should we have a separate OpenFile OpenDirectory set of classes?
-    - Each references a File/Directory
-    - Holds file handle and implements what little handle-specific stuff there is
-    - Leaves the rest to the File/Directory
-       - which can use synchronized methods to prevent race conditions
-
-*** For multiple reads, can capture the read initiation time in a closure. When the result
-    becomes available, check the cached version. If it's newer, update the cached copy and
-    return the read version. If the cached copy is newer (race condition, return that instead)
-
-DirectoryLoader -> FSEntryLoader
-  - Loads an FSEntity (File, Directory, Symlink, etc)
-      - Hasa Inode as private var attribute
-      - Provides synchronized methods to:
-         - get current Inode
-         - refreshInode (multiple calls return same future)
-      - How do we keep this up to date?
-         - Essentially we cannot cache mutable inode content :(
-         - No way to know the order of delta application
-         - External entity could change it at any time
-      - We CAN cache things like data and xattr tree roots though (e.g. Pointers)
-         - perf suffers if another peer does updates but we can periodically re-read the
-           inode if an access occurs after root has been cached for X num seconds
-         - Open file handle can cache tier-1 end node during write
-            - With fixed-size blocks, we could use key-doesnt-exist requiements
-            - Might be better to always use version requirements 
-      - When FSEntity is obtained from InodeLoader, do not refreshInode to respond to queries
-      - if pulled from cache, DO refreshInode content before responding
-          |--- Then what's the point of having a cache at all?
-
-InodeLoader
-   - Synchronized Object that loads (inodePointer) -> Future[Inode]
-   - First access creates future. Subsequent calls return same future.
-   - On complete, future is removed from loading map (this isn't a cache)
-
-Create File Task impl (zero data. open must succeed before data can be written)
-   - must have target directory. start with root
-
-File & Directory classes
-  |=> File class only applies to an Open file for read/write
-      it Has A inode
-  |=> Dir class is similar but we modify it without first opening it...
-      so we may want a cache of Directory instances? 
-      Create on demand and discard after last operation completes?
+  
+** First file impl should read all file pointers as well.
+  - Maybe make the management of file pointers a Mixin trait for OpenDirectory/OpenFile?
 
 caching
   write-through: (aka DirectIO) Data -> cache -> device then return

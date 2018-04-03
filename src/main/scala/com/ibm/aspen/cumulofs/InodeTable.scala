@@ -11,5 +11,5 @@ trait InodeTable {
   def prepareInodeAllocation(ftype: FileType.Value, pointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer]
   
   def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]]
-  
+
 }
