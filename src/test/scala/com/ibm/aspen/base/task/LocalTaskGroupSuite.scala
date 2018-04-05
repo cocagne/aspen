@@ -57,6 +57,10 @@ class LocalTaskGroupSuite extends TestSystemSuite {
     
     var steps: List[Int] = Nil
     
+    case class Result(num: Int)
+    
+    val result = Result(123)
+    
     class TS(pointer: DurableTaskPointer, rev: ObjectRevision, state: Map[Key, Value]) 
        extends SteppedDurableTask(pointer, sys, rev, state) {
       
@@ -74,7 +78,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
           for {
             o <- sys.readObject(target)
             _ = tx.bumpVersion(target, o.revision)
-            _ = completeTask(tx)
+            _ = completeTask(tx, Some(result))
             done <- tx.commit()
           } yield ()
         } else {
@@ -117,14 +121,17 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       tx = sys.newTransaction()
       _ = tx.append(target, None, Nil, List(Insert(itgtKey, Array[Byte](1), tx.timestamp())))
       
-      ftaskDone <- taskGroup.prepareTask(registry, List((tkey, target.toArray)))(tx)
+      ftaskResult <- taskGroup.prepareTask(registry, List((tkey, target.toArray)))(tx)
       
       taskCreated <- tx.commit()
       
-      taskDone <- ftaskDone
+      taskResult <- ftaskResult
       tgtkvos <- sys.readObject(target) 
     } yield {
       steps.reverse should be (List(0, 1, 2, 3))
+      
+      taskResult should be (Some(result))
+      
       tgtkvos.contents.contains(itgtKey) should be (true)
       tgtkvos.contents.contains(nextStepKey) should be (true)
       

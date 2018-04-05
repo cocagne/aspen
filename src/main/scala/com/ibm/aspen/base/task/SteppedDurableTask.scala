@@ -39,7 +39,7 @@ abstract class SteppedDurableTask(
   
   import SteppedDurableTask._
   
-  private val taskPromise = Promise[ObjectRevision]()
+  private val taskPromise = Promise[(ObjectRevision, Option[AnyRef])]()
   private var currentRevision = initialRevision
   private var currentState = initialState.map(t => (t._1 -> t._2.value))
   private var currentStep: Int = initialState.get(StepKey) match {
@@ -51,7 +51,7 @@ abstract class SteppedDurableTask(
   
   def step: Int = synchronized { currentStep }
   
-  def completed: Future[ObjectRevision] = taskPromise.future
+  def completed: Future[(ObjectRevision, Option[AnyRef])] = taskPromise.future
   
   def beginStep(): Unit
   
@@ -82,12 +82,12 @@ abstract class SteppedDurableTask(
     }}
   }
   
-  def completeTask(tx: Transaction): Unit = synchronized {
+  def completeTask(tx: Transaction, result: Option[AnyRef]=None): Unit = synchronized {
     val idleTask = new Array[Byte](16) // Zeroed Type UUID
     tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(DurableTask.TaskTypeKey, idleTask, tx.timestamp())))
     
     tx.result foreach { _ => synchronized { 
-      taskPromise.success(tx.txRevision)
+      taskPromise.success((tx.txRevision, result))
     }}
   }
 }

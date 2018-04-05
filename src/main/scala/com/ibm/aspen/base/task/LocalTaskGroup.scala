@@ -182,9 +182,9 @@ class LocalTaskGroup(
   protected def executeTask(at: ActiveTask): Unit = {
     activeTasks += (at.taskNumber -> at)
     at.task.resume()
-    at.task.completed foreach { objectRevision => synchronized {
+    at.task.completed foreach { t => synchronized {
       activeTasks -= at.taskNumber
-      idleTasks = IdleTask(at.taskNumber, at.taskPointer, objectRevision) :: idleTasks
+      idleTasks = IdleTask(at.taskNumber, at.taskPointer, t._1) :: idleTasks
     }}
   }
   
@@ -194,7 +194,7 @@ class LocalTaskGroup(
   
   /** Outer future completes when the transaction is ready to be committed. Inner Future completes when the task completes 
    */
-  def prepareTask(taskType: DurableTaskType, initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Unit]] = synchronized {
+  def prepareTask(taskType: DurableTaskType, initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Option[AnyRef]]] = synchronized {
     val ts = tx.timestamp()
     val taskTypeArr = uuid2byte(taskType.typeUUID)
     val content = Insert(DurableTask.TaskTypeKey, taskTypeArr, ts) :: initialState.map(t => new Insert(t._1, t._2, ts))
@@ -210,7 +210,7 @@ class LocalTaskGroup(
       }
     }
     
-    def addTaskAllocationToTransaction(it: IdleTask, taskPromise: Promise[Unit]): Unit = {
+    def addTaskAllocationToTransaction(it: IdleTask, taskPromise: Promise[Option[AnyRef]]): Unit = {
       tx.overwrite(it.taskPointer.kvPointer, it.revision, Nil, content)
       
       tx.result.onComplete {
@@ -230,13 +230,13 @@ class LocalTaskGroup(
 
           executeTask(ActiveTask(it.taskNumber, it.taskPointer, task))
           
-          taskPromise completeWith task.completed.map(_ => ())
+          taskPromise completeWith task.completed.map(t => t._2)
         }
       }
     }
       
     allocateIdleTask() map { it =>
-      val taskPromise = Promise[Unit]()
+      val taskPromise = Promise[Option[AnyRef]]()
       addTaskAllocationToTransaction(it, taskPromise) 
       taskPromise.future
     } 

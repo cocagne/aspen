@@ -20,7 +20,7 @@ trait DurableTask {
    *  This is intended to facilitate re-use of existing Task objects by allowing the TaskGroupExecutor
    *  to learn the revision of the completed task without having to first read the state of the object
    */
-  def completed: Future[ObjectRevision]
+  def completed: Future[(ObjectRevision, Option[AnyRef])]
   
   def resume(): Unit
   
