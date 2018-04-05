@@ -32,6 +32,8 @@ class ClientTransactionManager(
       transactions += (txd.transactionUUID -> td)
     }
     
+    td.begin()
+    
     td.result
   }
   

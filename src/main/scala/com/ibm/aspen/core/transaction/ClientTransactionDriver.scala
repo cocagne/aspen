@@ -27,8 +27,7 @@ class ClientTransactionDriver(
   
   def result: Future[Boolean] = promise.future
   
-  // Send initial set of messages
-  sendPrepareMessages()
+  def begin(): Unit = sendPrepareMessages()
   
   def shutdown(): Unit = {}
   
