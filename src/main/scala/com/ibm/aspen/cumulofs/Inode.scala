@@ -91,14 +91,16 @@ sealed abstract class Inode {
 // ----- Directory -----
 
 object DirectoryInode {
-  val ParentDirectoryInodeKey = Key(20) // EncodedInodePointer
-  val ContentTieredListKey    = Key(21) // TieredList of (filename -> EncodedInodePointer)
-  
-  val RequiredKeys = Inode.RequiredKeys ++ Set(ParentDirectoryInodeKey)
-  
-  def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInode: Long): (List[KeyValueOperation], Map[Key,Value]) = {
+  val ParentDirectoryInodePointerKey = Key(20) // EncodedInodePointer
+  val ContentTieredListKey           = Key(21) // TieredList of (filename -> EncodedInodePointer)
+
+  def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInodePointer: Option[DirectoryPointer]): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFDIR 
-    Inode.getInitialContent(m, uid, gid, (ParentDirectoryInodeKey -> long2arr(parentDirectoryInode)) :: Nil)
+    val icontent = parentDirectoryInodePointer match {
+      case Some(p) => (ParentDirectoryInodePointerKey -> p.toArray) :: Nil
+      case None => Nil
+    }
+    Inode.getInitialContent(m, uid, gid, icontent)
   }
 }
 
@@ -109,9 +111,9 @@ class DirectoryInode(
  
   import DirectoryInode._
   
-  override def requiredKeys = RequiredKeys
-  
-  def parentDirectoryInode: Long = arr2long(content(ParentDirectoryInodeKey).value)
+  def parentDirectoryPointer: Option[DirectoryPointer] = content.get(ParentDirectoryInodePointerKey).map { v =>
+    InodePointer(v.value).asInstanceOf[DirectoryPointer]
+  }
   
   def hasContentTree: Boolean = content.contains(ContentTieredListKey)
   

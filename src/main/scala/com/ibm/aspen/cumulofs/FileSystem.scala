@@ -59,7 +59,7 @@ object FileSystem {
     
     val rootDirMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH  
     
-    val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, 0)
+    val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, None)
     
     for {
       rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)

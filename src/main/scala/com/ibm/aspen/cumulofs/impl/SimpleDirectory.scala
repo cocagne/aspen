@@ -86,8 +86,8 @@ class SimpleDirectory(
     tree flatMap { tl => tl.visitAll(visitor) } map { _ => contents }
   }
   
-  def lookup(name: String)(implicit ec: ExecutionContext): Future[Option[DirectoryEntry]] = {
-    tree flatMap { tl => tl.get(name) } map { o => o.map(v => DirectoryEntry(v)) }
+  def getEntry(name: String)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = {
+    tree flatMap { tl => tl.get(name) } map { o => o.map(v => DirectoryEntry(v).pointer) }
   }
   
   def insert(name: String, pointer: InodePointer)(implicit ec: ExecutionContext): Future[Unit] = {
@@ -107,7 +107,7 @@ class SimpleDirectory(
   }
   
   def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
-    def del(tl: MutableTieredKeyValueList, oentry: Option[DirectoryEntry]): Future[Unit] = oentry match {
+    def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
       case None => Future.unit
       case Some(de) =>
         implicit val tx = fs.system.newTransaction()

@@ -1,27 +1,34 @@
 
 CumuloFS
 
-READS
-	* We'll not use read timeouts so only CorruptedObject/Inode are issues
-	* Leave this to the Loader for inodes
+* Modify DurableTask to be parameterized on result type
+   - complete returned from task group is Future[Future[T]]
+   - return type from task is (ObjectRevision, Option[T]) ?
+   - Loaded from object, return type isn't used (no where to send) but if live it 's returned
 
-* Directory operations could be completely handled by caching the Content trees
-   - caffeine cache of Inode -> ContentTieredList
-   - add/remove/rename/link/etc are all impl irrespective of the Inode object (just content)
-   - Could use object methods to impl actions outside of Directory-specific class instances
-   
-   ** Will likely want TieredList w/ caching of upper tiers for faster repeated directory access
 
-Directory:
-   - getContents(): Future[(name, InodePointer)]
-       - Single-shot read and return everything
-       - No seek support (leave for v2)
-       - Update InodePointer cache
-   - lookup(name)
-      * returns name. Should also update InodePointer cache
-      * '.' returns inode of dir, '..' returns parent inode
-   - insert(name,pointer)(tx)
-   - delete(name)(tx)
+Caching:
+   - DirectoryLoader & FileLoader can cache Directory & File instances
+      - These hold cached Futures to the content TieredLists
+      - Inodes are always re-read on demand
+   - For refreshing TieredList
+      - Update every 30 seconds?
+      - Track update count and refresh root when > threshold?
+      - Better would be to add a callback to TieredList
+         - Even better would be to build refresh-needed detection into TieredList
+             - Mixin trait?
+         
+
+Creating File/Directories:
+   * Directory instance makes for an ideal interface
+      - create/mknod is given the parent directory inode
+      - All we need to do is:
+          - create the hosting inode instance w/ appropriate content
+          - Insert get InodeNumer/InsertIntoInodeTable
+          - Insert into Directory tree
+      - This can be a SteppedTask
+          - 
+          
 
 * Implement ls -l on root directory
    * load directory instance
