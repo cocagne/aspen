@@ -36,6 +36,8 @@ lazy val root = (project in file(".")).
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % "2.9.2",
     )
   )
+  
+testOptions  in Test += Tests.Argument(TestFrameworks.ScalaTest, "-W", "10", "5")
 
 sourceGenerators in Compile += Def.task {
   val base = (sourceManaged in Compile).value
