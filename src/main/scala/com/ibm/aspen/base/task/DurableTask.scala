@@ -8,6 +8,8 @@ import com.ibm.aspen.core.objects.ObjectRevision
 object DurableTask {
   val TaskTypeKey = Key(0) // Corresponds to TaskType UUID
   
+  val ReservedToKeyId = 5
+  
   val IdleTaskType = new UUID(0,0)
 }
 

@@ -114,6 +114,22 @@ object KeyValueOperation {
   def insertOperations(content: List[(Key, Array[Byte])], ts: HLCTimestamp): List[Insert] = {
     content.map(t => Insert(t._1, t._2, ts))
   }
+  
+  def opsToArray(ops: List[KeyValueOperation]): Array[Byte] = {
+    val ida = Replication(1,1)
+    val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
+    val arr = new Array[Byte](encodedSize)
+    val bb = ByteBuffer.wrap(arr)
+    ops.foreach(op => op.encodeReplicated(bb))
+    arr
+  }
+  def arrayToOps(arr: Array[Byte]): List[KeyValueOperation] = {
+    val bb = ByteBuffer.wrap(arr)
+    var ops = List[KeyValueOperation]()
+    while (bb.remaining() != 0)
+      ops = decode(bb) :: ops
+    ops
+  }
 }
 
 sealed abstract class SingleReplicatedValue(val value: Array[Byte]) extends KeyValueOperation {

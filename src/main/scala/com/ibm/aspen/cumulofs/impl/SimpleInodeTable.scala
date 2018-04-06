@@ -13,8 +13,16 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.cumulofs.FileType
+import com.ibm.aspen.base.AspenSystem
+import java.util.UUID
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
-class SimpleInodeTable(val table: SimpleMutableTieredKeyValueList) extends InodeTable {
+class SimpleInodeTable(
+    val system: AspenSystem,
+    val inodeAllocaterUUID: UUID,
+    val table: SimpleMutableTieredKeyValueList) extends InodeTable {
+  
+  val fallocater = system.getObjectAllocater(inodeAllocaterUUID)
   
   protected val rnd = new java.util.Random
   
@@ -28,18 +36,23 @@ class SimpleInodeTable(val table: SimpleMutableTieredKeyValueList) extends Inode
   
   protected def selectNewInodeAllocationPosition() = synchronized { nextInodeNumber = rnd.nextLong() }
   
-  def prepareInodeAllocation(ftype: FileType.Value, pointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
+  def prepareInodeAllocation(
+      ftype: FileType.Value, 
+      inodeOps: List[KeyValueOperation])(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
+    
+    // Jump to new location if the transaction fails for any reason
+    tx.result.failed.foreach( _ => selectNewInodeAllocationPosition() )
+    
     val inodeNumber = allocateInode()
+    val key = Key(inodeNumber)
+    val requirements = KeyValueUpdate.KVRequirement(key, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
     
-    tx.result onComplete {
-      case Failure(_) => selectNewInodeAllocationPosition() // Jump to new location in case failure was due to an inode collision
-      case Success(_) =>
-    }
-    
-    table.fetchMutableNode(inodeNumber) map { node =>
-      val key = Key(inodeNumber)
-      val requirements = KeyValueUpdate.KVRequirement(key, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
-      val iptr = InodePointer(ftype, inodeNumber, pointer)
+    for {
+      allocater <- fallocater
+      node <- table.fetchMutableNode(inodeNumber)
+      ptr <- allocater.allocateKeyValueObject(node.kvos.pointer, node.kvos.revision, inodeOps)
+    } yield {
+      val iptr = InodePointer(ftype, inodeNumber, ptr)
       node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
       iptr
     }

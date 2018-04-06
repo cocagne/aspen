@@ -1,6 +1,28 @@
 
 CumuloFS
 
+* Need "CreateTree" method that allocates whatever is needed and returns a Root
+* Refactor TypeRegistry yet again. Drop parameters on type
+   - AspenSystem exports a single 'val typeRegistry'
+   - typeRegistry.getFactory[MyType](uuid): Option[MyType]
+       - type cast is done internally
+* Add TieredList type to Root instance
+* Use TieredListFactory for loading trees
+* Add TaskGroupLoader - use this for loading taskGroups
+
+** Everything should be created via factory
+
+* Tasks can only be resumed via FileSystem being created
+   - Therefore can have a FileSystem UUID registry
+   - Task can reliably fetch from there (task can't be started unless the FS is already loaded in mem)
+
+
+* InodeTable allocates the inode
+   - use FileSystem allocater
+   - Allocation & Inode assignment are simultaneous
+   - create file task ties success of that transaction into task creation
+
+
 * Modify DurableTask to be parameterized on result type
    - complete returned from task group is Future[Future[T]]
    - return type from task is (ObjectRevision, Option[T]) ?

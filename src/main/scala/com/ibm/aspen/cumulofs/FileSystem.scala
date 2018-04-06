@@ -13,8 +13,16 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.base.task.LocalTaskGroup
+import com.ibm.aspen.util._
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 
 trait FileSystem {
+  /** UUID of the FileSystem's root KeyValue object */
+  val uuid: UUID 
+  
   val system: AspenSystem
   
   val inodeTable: InodeTable
@@ -22,6 +30,12 @@ trait FileSystem {
   val inodeLoader: InodeLoader
   
   val directoryLoader: DirectoryLoader
+  
+  val localTaskGroup: LocalTaskGroup //Option[LocalTaskGroup]
+  
+  //val taskGroupTree: MutableTieredKeyValueList
+  
+  //def readOnly: Boolean = localTaskGroup.isEmpty
   
   def loadDirectory(pointer: DirectoryPointer): Directory = directoryLoader.loadDirectory(this, pointer)
 }
@@ -33,6 +47,22 @@ object FileSystem {
   val DirectoryTableSizesKey           = Key(2)
   val DataTableAllocatersArrayKey      = Key(3)
   val DataTableSizesKey                = Key(4)
+  val InodeAllocaterKey                = Key(5)
+  val LocalTaskGroupsTreeKey           = Key(6)
+  
+  private[this] var loadedFileSystems = Map[UUID, FileSystem]()
+  
+  def register(fs: FileSystem): Unit = synchronized {
+    loadedFileSystems += (fs.uuid -> fs)
+  }
+  
+  def getRegisteredFileSystem(uuid: UUID): Option[FileSystem] = synchronized {
+    loadedFileSystems.get(uuid)
+  }
+  
+  def getLocalTaskGroupTree(rootKvos: KeyValueObjectState): TieredKeyValueList.Root = {
+    TieredKeyValueList.Root(rootKvos.contents(LocalTaskGroupsTreeKey).value)
+  }
   
   /** Creates a new CumuloFS file system as part of the supplied Transaction.
    *  
@@ -47,6 +77,7 @@ object FileSystem {
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       allocater: ObjectAllocater,
+      inodeAllocater: UUID,
       inodeTableAllocaters: Array[UUID],     // For InodeTable Tiered List
       inodeTableSizes: Array[Int],
       directoryTableAllocaters: Array[UUID], // For Directory entry Tiered List
@@ -72,12 +103,17 @@ object FileSystem {
       
       inodeTblRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, IntegerKeyOrdering, rootInodeTblPtr)
       
+      lgtgTier0 <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, Nil)
+      lgtgRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, ByteArrayKeyOrdering, lgtgTier0)
+      
       icontent = List(
           (InodeTableKey,                    inodeTblRoot.toArray),
+          (InodeAllocaterKey,                uuid2byte(inodeAllocater)),
           (DirectoryTableAllocatersArrayKey, encodeUUIDArray(directoryTableAllocaters)),
           (DirectoryTableSizesKey,           encodeIntArray(directoryTableSizes)),
           (DataTableAllocatersArrayKey,      encodeUUIDArray(dataTableAllocaters)),
-          (DataTableSizesKey,                encodeIntArray(dataTableSizes)))
+          (DataTableSizesKey,                encodeIntArray(dataTableSizes)),
+          (LocalTaskGroupsTreeKey,           lgtgRoot.toArray))
       
       fsObjContent = KeyValueOperation.insertOperations(icontent, tx.timestamp())
       

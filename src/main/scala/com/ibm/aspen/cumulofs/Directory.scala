@@ -24,4 +24,11 @@ trait Directory {
   def insert(name: String, pointer: InodePointer)(implicit ec: ExecutionContext): Future[Unit]
   
   def delete(name: String)(implicit ec: ExecutionContext): Future[Unit]
+  /*
+  def createDirectory(mode: Int, uid: Int, gid: Int): Future[DirectoryPointer] = {
+    val (initialOps, initalContent) = DirectoryInode.getInitialContent(mode, uid, gid, Some(pointer))
+    
+  }
+  * 
+  */
 }

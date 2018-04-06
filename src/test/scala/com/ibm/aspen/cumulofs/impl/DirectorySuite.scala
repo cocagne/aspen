@@ -8,6 +8,8 @@ import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.cumulofs.FileSystem
 import org.scalactic.source.Position.apply
 import com.ibm.aspen.cumulofs.DirectoryPointer
+import com.ibm.aspen.base.task.LocalTaskGroup
+import com.ibm.aspen.base.task.TaskGroupPointer
 
 class DirectorySuite extends TestSystemSuite {
   
@@ -22,10 +24,16 @@ class DirectorySuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
-      ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, uarr, iarr, uarr, iarr, uarr, iarr)
+      ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, uarr, iarr, uarr, iarr)
       txdone <- tx.commit()
       kvos <- sys.readObject(ptr)
-    } yield new SimpleFileSystem(sys, kvos)
+      
+      groupPtr <- kvalloc()
+      groupKvos <- sys.readObject(groupPtr)
+      
+      taskGroup <- LocalTaskGroup.initializeNewGroup(sys, TaskGroupPointer(groupPtr), groupKvos.revision, Bootstrap.BootstrapObjectAllocaterUUID)
+      
+    } yield new SimpleFileSystem(sys, taskGroup, kvos)
   }
   
   test("CumuloFS Bootstrap") {

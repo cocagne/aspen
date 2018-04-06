@@ -2,9 +2,14 @@ package com.ibm.aspen
 
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.nio.charset.StandardCharsets
 
 package object cumulofs {
-    
+  
+  def string2arr(s: String): Array[Byte] = s.getBytes(StandardCharsets.UTF_8)
+  
+  def arr2string(arr: Array[Byte]): String = new String(arr, StandardCharsets.UTF_8)
+  
   def int2arr(i: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
     val bb = ByteBuffer.wrap(arr)

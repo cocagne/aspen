@@ -13,7 +13,10 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.Value
 
 object SteppedDurableTask {
-  val StepKey = Key(1)
+
+  val ReservedToKeyId = DurableTask.ReservedToKeyId + 5
+  
+  val StepKey = Key(ReservedToKeyId + 1)
   
   def encodeStep(step: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
