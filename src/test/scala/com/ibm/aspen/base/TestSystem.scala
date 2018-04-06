@@ -26,7 +26,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.base.impl.BaseFinalizationActionHandlerRegistry
+import com.ibm.aspen.base.impl.BaseImplTypeRegistry
 import com.ibm.aspen.base.impl.BaseTransactionFinalizer
 import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
@@ -37,6 +37,7 @@ import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.base.task.DurableTaskType
+import scala.annotation.tailrec
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -64,13 +65,9 @@ class TestSystem(
   import scala.language.postfixOps
   import Bootstrap._
   
-  var taskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None
+  var typeRegistries: List[TypeRegistry] = Nil
   
-  class ForwardTaskRegistry extends TypeRegistry[DurableTaskType] {
-    def getTypeFactory(typeUUID: UUID): Option[DurableTaskType] = taskTypeRegistry flatMap { r => r.getTypeFactory(typeUUID) }
-  }
-  
-  val userTaskTypeRegistry = new ForwardTaskRegistry
+  def getRegistries() = synchronized { typeRegistries }
   
   def waitForTransactionsComplete(): Future[Unit] = Future {
     
@@ -84,6 +81,22 @@ class TestSystem(
       throw new Exception("Finalization Actions Timed Out")
   }
   
+  object userTypeRegistry extends TypeRegistry {
+  
+    def getTypeFactory[T <: TypeFactory](factoryUUID: UUID): Option[T] = {
+      
+      @tailrec
+      def rfind(l: List[TypeRegistry]): Option[T] = if (l.isEmpty) None else {
+        l.head.getTypeFactory[T](factoryUUID) match {
+          case None => rfind(l.tail)
+          case Some(tgt) => Some(tgt)
+        }
+      }
+      
+      rfind(typeRegistries)
+    }
+  }
+
   def mkStorageNode(
       store: DataStore, 
       crl: CrashRecoveryLog,
@@ -104,7 +117,7 @@ class TestSystem(
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = noRetry,
-        userTaskTypeRegistry = Some(userTaskTypeRegistry)
+        userTypeRegistry = Some(userTypeRegistry)
         )
     
     val storageNode = new StorageNode(crl, new net.SNet)
@@ -141,9 +154,9 @@ class TestSystem(
   
   def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
     
-    val faRegistry = BaseFinalizationActionHandlerRegistry(noRetry, sys)
+    val faRegistry = BaseImplTypeRegistry(noRetry, sys)
     
-    val finalizerFactory = new BaseTransactionFinalizer(sys, faRegistry)
+    val finalizerFactory = new BaseTransactionFinalizer(sys)
      
     val txMgr = new StorageNodeTransactionManager(sn.crl, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
     val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)

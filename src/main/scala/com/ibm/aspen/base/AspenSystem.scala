@@ -27,6 +27,8 @@ trait AspenSystem extends ObjectReader {
   
   val retryStrategy: RetryStrategy
   
+  val typeRegistry: TypeRegistry
+  
   def newTransaction(): Transaction
   
   def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
@@ -53,8 +55,6 @@ trait AspenSystem extends ObjectReader {
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
-  
-  def getTaskType(taskTypeUUID: UUID): Option[DurableTaskType]
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

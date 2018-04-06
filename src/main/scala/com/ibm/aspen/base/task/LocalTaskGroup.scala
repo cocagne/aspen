@@ -85,7 +85,7 @@ object LocalTaskGroup extends TaskGroupType {
         if (taskType == DurableTask.IdleTaskType)
           IdleTask(taskNumber, DurableTaskPointer(pointer), taskState.revision)
         else {
-          system.getTaskType(taskType) match {
+          system.typeRegistry.getTypeFactory[DurableTaskType](taskType) match {
             case None => throw new Exception("Unknown Task Type") // TODO need a better error handling strategy here
             case Some(ttype) => 
               val task = ttype.createTask(system, DurableTaskPointer(taskState.pointer), taskState.revision, taskState.contents) 

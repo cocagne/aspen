@@ -11,9 +11,7 @@ import com.ibm.aspen.base.UpdateableFinalizationAction
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.FinalizationActionHandler
 
-class BaseTransactionFinalizer(
-    system: BasicAspenSystem,
-    registry: TypeRegistry[FinalizationActionHandler])(implicit ec: ExecutionContext) {
+class BaseTransactionFinalizer(system: BasicAspenSystem)(implicit ec: ExecutionContext) {
   
   object factory extends TransactionFinalizer.Factory{
     def create(
@@ -28,7 +26,7 @@ class BaseTransactionFinalizer(
       val messenger: StoreSideTransactionMessenger) extends TransactionFinalizer {
     
     val falist = txd.finalizationActions.foldLeft(List[FinalizationAction]()) { (l, sfa) => 
-      registry.getTypeFactory(sfa.typeUUID) match {
+      system.typeRegistry.getTypeFactory[FinalizationActionHandler](sfa.typeUUID) match {
         case None => 
           // Preceeding code should not allow this to occur
           assert(false, "Unknown Finalizers or deserialization problems must be caught before this point") 

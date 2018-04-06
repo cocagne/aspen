@@ -15,6 +15,22 @@ import com.ibm.aspen.base.task.LocalTaskGroup
 import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.util._
 import scala.concurrent.Future
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+
+object SimpleFileSystem {
+ /* def apply(system: AspenSystem, fileSystemRoot: KeyValueObjectPointer, clientUUID: Option[UUID]): Future[FileSystem] = {
+    def getLocalTaskGroup(t: SimpleMutableTieredKeyValueList): Future[Option[LocalTaskGroup]] = clientUUID match {
+      case None => Future.successful(None)
+      case Some(uuid) => t.get(uuid).map { v => 
+    }
+    for {
+      rootKvos <- system.readObject(fileSystemRoot)
+      tgtRoot = FileSystem.getLocalTaskGroupTree(rootKvos)
+      tgt = new SimpleMutableTieredKeyValueList(system, Left(fileSystemRoot), FileSystem.LocalTaskGroupsTreeKey, ByteArrayKeyOrdering, Some(tgtRoot))
+      
+    }
+  } */
+}
 
 class SimpleFileSystem(
     val system: AspenSystem,

@@ -84,9 +84,7 @@ class BasicAspenSystem(
     val bootstrapPoolIDA: IDA,
     val radiclePointer: KeyValueObjectPointer,
     val retryStrategy: RetryStrategy,
-    userTaskTypeRegistry: Option[TypeRegistry[DurableTaskType]] = None,
-    userTaskGroupTypeRegistry: Option[TypeRegistry[TaskGroupType]] = None,
-    userFinalizationActionHandlerRegistry: Option[TypeRegistry[FinalizationActionHandler]] = None,
+    userTypeRegistry: Option[TypeRegistry]
     )(implicit ec: ExecutionContext) extends AspenSystem {
   
   import BasicAspenSystem._
@@ -113,22 +111,11 @@ class BasicAspenSystem(
   
   def clientId = net.clientId
   
-  protected val taskTypeRegistry = userTaskTypeRegistry match {
-    case None => new AggregateTypeRegistry[DurableTaskType]( Nil )
-    case Some(registry) => new AggregateTypeRegistry[DurableTaskType]( registry :: Nil )
+  val typeRegistry: TypeRegistry = userTypeRegistry match {
+    case None => BaseImplTypeRegistry(retryStrategy, this)
+    case Some(utr) => new AggregateTypeRegistry( utr :: BaseImplTypeRegistry(retryStrategy, this) :: Nil )
   }
-  protected val taskGroupTypeRegistry = userTaskGroupTypeRegistry match {
-    case None => new AggregateTypeRegistry[TaskGroupType]( Nil )
-    case Some(registry) => new AggregateTypeRegistry[TaskGroupType]( registry :: Nil )
-  }
-  protected val finalizationActionHandlerRegistry = {
-    val baseRegistry = BaseFinalizationActionHandlerRegistry(retryStrategy, this)
-    
-    userFinalizationActionHandlerRegistry match {
-      case None => baseRegistry
-      case Some(registry) => new AggregateTypeRegistry[FinalizationActionHandler]( registry :: baseRegistry :: Nil)
-    }
-  }
+  
   
   lazy val radicle: Future[KeyValueObjectState] = retryStrategy.retryUntilSuccessful {
     readObject(radiclePointer) 
@@ -159,8 +146,6 @@ class BasicAspenSystem(
       new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.TaskGroupTreeUUID, ByteArrayKeyOrdering)
     }
   }
-  
-  override def getTaskType(taskTypeUUID: UUID): Option[DurableTaskType] = taskTypeRegistry.getTypeFactory(taskTypeUUID)
   
   def readObject(
       objectPointer:DataObjectPointer, 

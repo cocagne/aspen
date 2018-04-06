@@ -18,6 +18,7 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.Value
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Promise
+import com.ibm.aspen.base.TypeFactory
 
 class LocalTaskGroupSuite extends TestSystemSuite { 
   import Bootstrap._
@@ -92,9 +93,14 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       }
     }
     
-    class TRegistry extends TypeRegistry[DurableTaskType] with DurableTaskType {
+    class TRegistry extends TypeRegistry with DurableTaskType {
       
-      def getTypeFactory(typeUUID: UUID): Option[DurableTaskType] = Some(this)
+      def getTypeFactory[T <: TypeFactory](typeUUID: UUID): Option[T] = {
+        if (typeUUID == this.typeUUID)
+          Some(this.asInstanceOf[T])
+        else
+          None
+      }
       
       val typeUUID: UUID = new UUID(5,5)
  
@@ -107,7 +113,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
     
     val registry = new TRegistry
     
-    ts.taskTypeRegistry = Some(registry)
+    ts.typeRegistries = List(registry)
          
     val TType = new UUID(0,1)
 
@@ -189,9 +195,14 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       }
     }
     
-    class TRegistry extends TypeRegistry[DurableTaskType] with DurableTaskType {
+    class TRegistry extends TypeRegistry with DurableTaskType {
       
-      def getTypeFactory(typeUUID: UUID): Option[DurableTaskType] = Some(this)
+      def getTypeFactory[T <: TypeFactory](typeUUID: UUID): Option[T] = {
+        if (typeUUID == this.typeUUID)
+          Some(this.asInstanceOf[T])
+        else
+          None
+      }
       
       val typeUUID: UUID = new UUID(5,5)
  
@@ -204,7 +215,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
     
     val registry = new TRegistry
     
-    ts.taskTypeRegistry = Some(registry)
+    ts.typeRegistries = List(registry)
          
     val TType = new UUID(0,1)
 

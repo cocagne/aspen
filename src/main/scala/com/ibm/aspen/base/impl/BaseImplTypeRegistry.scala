@@ -8,11 +8,13 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListSplitFA
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListJoinFA
 import com.ibm.aspen.base.TypeRegistry
+import com.ibm.aspen.base.TypeFactory
 
-object BaseFinalizationActionHandlerRegistry {
+object BaseImplTypeRegistry {
+  
   def apply(
     retryStrategy: RetryStrategy,
-    system: BasicAspenSystem): BaseFinalizationActionHandlerRegistry = {
+    system: BasicAspenSystem): BaseImplTypeRegistry = {
     
     val handlers = List(
         new AllocationFinalizationAction(retryStrategy, system),
@@ -20,13 +22,13 @@ object BaseFinalizationActionHandlerRegistry {
         new TieredKeyValueListJoinFA(retryStrategy, system)
     )
     
-    new BaseFinalizationActionHandlerRegistry(handlers)
+    new BaseImplTypeRegistry(handlers)
   }
 }
 
-class BaseFinalizationActionHandlerRegistry private (handlers: List[FinalizationActionHandler]) extends TypeRegistry[FinalizationActionHandler] {
+class BaseImplTypeRegistry private (handlers: List[TypeFactory]) extends TypeRegistry {
   
   val handlerMap = handlers.map(h => (h.typeUUID -> h)).toMap
   
-  def getTypeFactory(typeUUID: UUID): Option[FinalizationActionHandler] = handlerMap.get(typeUUID)
+  override def getTypeFactory[T <: TypeFactory](typeUUID: UUID): Option[T] = handlerMap.get(typeUUID).map(tf => tf.asInstanceOf[T])
 }
