@@ -8,6 +8,11 @@ trait TaskGroupExecutor extends {
   
   val initialized: Future[Unit]
   
+  /** Resumes tasks
+   * 
+   */
+  def resume(): Unit
+  
   /** Pauses all active Tasks and stops all background activity. The TaskGroup should be prepared for
    *  garbage collection when the returned future completes 
    */

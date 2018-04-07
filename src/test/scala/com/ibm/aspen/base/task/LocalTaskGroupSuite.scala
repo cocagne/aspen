@@ -58,7 +58,10 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(sys, sys.radiclePointer, r.revision, BootstrapStoragePoolUUID)
       done <- tx.commit()
       group <- fgroup
-    } yield group
+    } yield {
+      group.resume()
+      group
+    }
   }
   
   test("Test LocalTask create and execute") { 
@@ -253,6 +256,8 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       //create new group
       groupState <- sys.readObject(taskGroup.pointer.kvPointer)
       taskGroup2 <- LocalTaskGroup.createExecutor(sys, groupState)
+      
+      _=taskGroup2.resume()
       
       // Await completion of resumed task
       allDone <- secondExecPromise.future

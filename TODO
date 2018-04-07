@@ -1,8 +1,7 @@
 
 CumuloFS
 
-* Switch LocalTaskGroup to resume only on explicit call
-   - otherwise resume will happen before FS is created and registered
+* Finish CreateFileTask
 
 * Tasks can only be resumed via FileSystem being created
    - Therefore can have a FileSystem UUID registry

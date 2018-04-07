@@ -93,4 +93,8 @@ class SimpleFileSystem private (
   val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes)
   
   FileSystem.register(this)
+  
+  // Ensure we resume the local task group after the file system is registered as many tasks will likely need
+  // access to this object
+  localTaskGroup.resume()
 }

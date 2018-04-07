@@ -163,6 +163,8 @@ class LocalTaskGroup(
   
   import LocalTaskGroup._
   
+  private var running = false
+  
   protected var maxTaskNum: Int = initialTasks.foldLeft(0)( (max, rt) => if (rt.taskNumber > max) rt.taskNumber else max )
   
   protected var idleTasks = List[IdleTask]()
@@ -174,8 +176,14 @@ class LocalTaskGroup(
     case t: ActiveTask => activeTasks += (t.taskNumber -> t)
   }}
   
-  // Resume all active tasks
-  activeTasks.foreach(t => executeTask(t._2))
+  def resume(): Unit = synchronized {
+    if (!running) {
+      running = true
+      
+      // Resume all active tasks
+      activeTasks.foreach(t => executeTask(t._2))
+    }
+  }
   
   protected class IdleTaskAllocater {
     private var pending = Queue[(Int, Promise[IdleTask])]()
