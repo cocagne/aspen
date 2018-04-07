@@ -18,6 +18,7 @@ import com.ibm.aspen.util._
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.base.task.TaskGroupInterface
 
 trait FileSystem {
   /** UUID of the FileSystem's root KeyValue object */
@@ -31,11 +32,7 @@ trait FileSystem {
   
   val directoryLoader: DirectoryLoader
   
-  val localTaskGroup: LocalTaskGroup //Option[LocalTaskGroup]
-  
-  //val taskGroupTree: MutableTieredKeyValueList
-  
-  //def readOnly: Boolean = localTaskGroup.isEmpty
+  val localTaskGroup: TaskGroupInterface
   
   def loadDirectory(pointer: DirectoryPointer): Directory = directoryLoader.loadDirectory(this, pointer)
 }
@@ -62,6 +59,10 @@ object FileSystem {
   
   def getLocalTaskGroupTree(rootKvos: KeyValueObjectState): TieredKeyValueList.Root = {
     TieredKeyValueList.Root(rootKvos.contents(LocalTaskGroupsTreeKey).value)
+  }
+  
+  def getInodeAllocater(rootKvos: KeyValueObjectState): UUID = {
+    byte2uuid(rootKvos.contents(LocalTaskGroupsTreeKey).value)
   }
   
   /** Creates a new CumuloFS file system as part of the supplied Transaction.

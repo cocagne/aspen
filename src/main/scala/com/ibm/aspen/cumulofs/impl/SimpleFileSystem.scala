@@ -16,23 +16,59 @@ import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.util._
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import scala.concurrent.ExecutionContext
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 object SimpleFileSystem {
- /* def apply(system: AspenSystem, fileSystemRoot: KeyValueObjectPointer, clientUUID: Option[UUID]): Future[FileSystem] = {
-    def getLocalTaskGroup(t: SimpleMutableTieredKeyValueList): Future[Option[LocalTaskGroup]] = clientUUID match {
-      case None => Future.successful(None)
-      case Some(uuid) => t.get(uuid).map { v => 
+  def load(
+      system: AspenSystem, 
+      fileSystemRoot: KeyValueObjectPointer, 
+      clientUUID: UUID)(implicit ec: ExecutionContext): Future[FileSystem] = {
+    
+    def getLocalTaskGroup(t: SimpleMutableTieredKeyValueList, allocaterUUID: UUID): Future[LocalTaskGroup] = {
+      val taskGroupKey = Key(clientUUID)
+      
+      system.retryStrategy.retryUntilSuccessful {
+        t.get(taskGroupKey).flatMap { o => o match {
+          case Some(v) => system.readObject(KeyValueObjectPointer(v.value)) flatMap { kvos => LocalTaskGroup.createExecutor(system, kvos) }
+          
+          case None =>
+            implicit val tx = system.newTransaction()
+            val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+            
+            val fcommit = for {
+              node <- t.fetchMutableNode(taskGroupKey)
+              
+              (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(system, node.kvos.pointer, node.kvos.revision, allocaterUUID)
+              
+              ready <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
+              
+              committed <- tx.commit()
+              
+              group <- fgroup
+            } yield group
+            
+            fcommit.failed.foreach( reason => tx.invalidateTransaction(reason) )
+            
+            fcommit
+        }}
+      }
     }
+      
     for {
       rootKvos <- system.readObject(fileSystemRoot)
       tgtRoot = FileSystem.getLocalTaskGroupTree(rootKvos)
       tgt = new SimpleMutableTieredKeyValueList(system, Left(fileSystemRoot), FileSystem.LocalTaskGroupsTreeKey, ByteArrayKeyOrdering, Some(tgtRoot))
-      
+      allocaterUUID = FileSystem.getInodeAllocater(rootKvos)
+      taskGroup <- getLocalTaskGroup(tgt, allocaterUUID)
+    } yield {
+      new SimpleFileSystem(system, taskGroup, rootKvos)
     }
-  } */
+  } 
 }
 
-class SimpleFileSystem(
+class SimpleFileSystem private (
     val system: AspenSystem,
     val localTaskGroup: LocalTaskGroup,
     rootKvos: KeyValueObjectState) extends FileSystem {

@@ -10,6 +10,7 @@ import org.scalactic.source.Position.apply
 import com.ibm.aspen.cumulofs.DirectoryPointer
 import com.ibm.aspen.base.task.LocalTaskGroup
 import com.ibm.aspen.base.task.TaskGroupPointer
+import java.util.UUID
 
 class DirectorySuite extends TestSystemSuite {
   
@@ -17,6 +18,7 @@ class DirectorySuite extends TestSystemSuite {
     implicit val tx = sys.newTransaction()
     val uarr = Array(Bootstrap.BootstrapObjectAllocaterUUID)
     val iarr = Array(8192)
+    val clientUUID = new UUID(0,1)
     for {
       r <- sys.readObject(sys.radiclePointer)
       
@@ -25,15 +27,12 @@ class DirectorySuite extends TestSystemSuite {
       
       alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, uarr, iarr, uarr, iarr)
+      
       txdone <- tx.commit()
-      kvos <- sys.readObject(ptr)
       
-      groupPtr <- kvalloc()
-      groupKvos <- sys.readObject(groupPtr)
+      fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
       
-      taskGroup <- LocalTaskGroup.initializeNewGroup(sys, TaskGroupPointer(groupPtr), groupKvos.revision, Bootstrap.BootstrapObjectAllocaterUUID)
-      
-    } yield new SimpleFileSystem(sys, taskGroup, kvos)
+    } yield fs 
   }
   
   test("CumuloFS Bootstrap") {

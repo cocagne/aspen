@@ -50,6 +50,17 @@ class LocalTaskGroupSuite extends TestSystemSuite {
     } yield kvp
   }
   
+  def allocGroup(): Future[LocalTaskGroup] = {
+    implicit val tx = sys.newTransaction()
+    for {
+      r <- sys.readObject(sys.radiclePointer)
+      _ = tx.bumpVersion(sys.radiclePointer, r.revision)
+      (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(sys, sys.radiclePointer, r.revision, BootstrapStoragePoolUUID)
+      done <- tx.commit()
+      group <- fgroup
+    } yield group
+  }
+  
   test("Test LocalTask create and execute") { 
     
     val tkey = Key(10)
@@ -116,13 +127,11 @@ class LocalTaskGroupSuite extends TestSystemSuite {
     ts.typeRegistries = List(registry)
          
     val TType = new UUID(0,1)
-
+    
     for {
       target <- alloc()
-      groupPtr <- alloc()
-      groupKvos <- sys.readObject(groupPtr)
       
-      taskGroup <- LocalTaskGroup.initializeNewGroup(sys, TaskGroupPointer(groupPtr), groupKvos.revision, Bootstrap.BootstrapObjectAllocaterUUID)
+      taskGroup <- allocGroup()
       
       tx = sys.newTransaction()
       _ = tx.append(target, None, Nil, List(Insert(itgtKey, Array[Byte](1), tx.timestamp())))
@@ -221,10 +230,8 @@ class LocalTaskGroupSuite extends TestSystemSuite {
 
     for {
       target <- alloc()
-      groupPtr <- alloc()
-      groupKvos <- sys.readObject(groupPtr)
       
-      taskGroup <- LocalTaskGroup.initializeNewGroup(sys, TaskGroupPointer(groupPtr), groupKvos.revision, Bootstrap.BootstrapObjectAllocaterUUID)
+      taskGroup <- allocGroup()
       
       tx = sys.newTransaction()
       _ = tx.append(target, None, Nil, List(Insert(itgtKey, Array[Byte](1), tx.timestamp())))
@@ -244,7 +251,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       done <- tx.commit()
       
       //create new group
-      groupState <- sys.readObject(groupPtr)
+      groupState <- sys.readObject(taskGroup.pointer.kvPointer)
       taskGroup2 <- LocalTaskGroup.createExecutor(sys, groupState)
       
       // Await completion of resumed task

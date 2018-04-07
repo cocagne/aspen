@@ -21,6 +21,7 @@ import scala.collection.immutable.Queue
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import scala.util.Failure
 import scala.util.Success
+import com.ibm.aspen.core.objects.ObjectPointer
 
 object LocalTaskGroup extends TaskGroupType {
   val AllocaterKey = Key(Array[Byte](1))
@@ -38,6 +39,42 @@ object LocalTaskGroup extends TaskGroupType {
   case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask
   case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask
   
+  /** Allocates a new task group within the context of a transaction. The outter Future completes when the transaction
+   *  is ready to be committed.
+   */
+  def prepareGroupAllocation(
+      system: AspenSystem,
+      allocatingObject: ObjectPointer, 
+      revision: ObjectRevision, 
+      objectAllocaterUUID: UUID)(implicit t: Transaction, ec: ExecutionContext): Future[(TaskGroupPointer, Future[LocalTaskGroup])] = {
+    
+    val ts = t.timestamp()
+    
+    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID), ts), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID), ts))
+    
+    val fcommit = for {
+      allocater <- system.getObjectAllocater(objectAllocaterUUID)
+      taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil, None)
+      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), IntegerKeyOrdering, taskListRoot)
+      fullContent = Insert(TaskListKey, tlroot.toArray, ts) :: content
+      groupPointer <- allocater.allocateKeyValueObject(allocatingObject, revision, fullContent)
+
+    } yield {
+      val ptr = TaskGroupPointer(groupPointer)
+      
+      val fgroup = t.result.map { _ =>
+        new LocalTaskGroup(system, ptr, allocater, 
+            new SimpleMutableTieredKeyValueList(system, Left(groupPointer), TaskListKey, IntegerKeyOrdering, Some(tlroot)), 
+            List())
+      }
+      
+      (ptr, fgroup)
+    }
+    
+    fcommit.failed.foreach( reason => t.invalidateTransaction(reason) )
+    
+    fcommit
+  }
   
   def initializeNewGroup(
       system: AspenSystem,
@@ -65,7 +102,7 @@ object LocalTaskGroup extends TaskGroupType {
     }
   }
   
-  def createInterface(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TaskGroupInterface] = {
+  def createInterface(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
     createExecutor(system, groupState)
   }
   
