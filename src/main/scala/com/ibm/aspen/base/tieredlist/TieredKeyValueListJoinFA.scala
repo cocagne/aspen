@@ -61,7 +61,6 @@ object TieredKeyValueListJoinFA {
 }
 
 class TieredKeyValueListJoinFA(
-    val retryStrategy: RetryStrategy,
     val system: AspenSystem) extends FinalizationActionHandler {
   
   import TieredKeyValueListJoinFA._
@@ -76,7 +75,7 @@ class TieredKeyValueListJoinFA(
     
     def completionDetected(): Unit = ()
     
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = retryStrategy.retryUntilSuccessful {
+    def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       

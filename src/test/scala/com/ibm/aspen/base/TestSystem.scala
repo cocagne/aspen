@@ -154,7 +154,7 @@ class TestSystem(
   
   def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
     
-    val faRegistry = BaseImplTypeRegistry(noRetry, sys)
+    val faRegistry = BaseImplTypeRegistry(sys)
     
     val finalizerFactory = new BaseTransactionFinalizer(sys)
      

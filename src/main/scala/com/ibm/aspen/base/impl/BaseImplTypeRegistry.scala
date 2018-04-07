@@ -14,18 +14,16 @@ import com.ibm.aspen.base.AggregateTypeRegistry
 
 object BaseImplTypeRegistry {
   
-  def apply(
-    retryStrategy: RetryStrategy,
-    system: BasicAspenSystem): TypeRegistry = {
+  def apply(system: BasicAspenSystem): TypeRegistry = {
     
     val subRegistries: List[TypeRegistry] = List(
       TaskGroupRegistry
     )
     
     val handlers = List(
-        new AllocationFinalizationAction(retryStrategy, system),
-        new TieredKeyValueListSplitFA(retryStrategy, system),
-        new TieredKeyValueListJoinFA(retryStrategy, system)
+        new AllocationFinalizationAction(system),
+        new TieredKeyValueListSplitFA(system),
+        new TieredKeyValueListJoinFA(system)
     )
     
     class DirectRegistry extends TypeRegistry {

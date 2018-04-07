@@ -30,7 +30,6 @@ object AllocationFinalizationAction {
 }
 
 class AllocationFinalizationAction(
-    val retryStrategy: RetryStrategy,
     val system: AspenSystem) extends FinalizationActionHandler {
   
   import AllocationFinalizationAction._
@@ -41,7 +40,7 @@ class AllocationFinalizationAction(
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer) extends FinalizationAction {
     
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = retryStrategy.retryUntilSuccessful {
+    def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       //
       // TODO: getStoragePool will forever fail if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
@@ -50,7 +49,7 @@ class AllocationFinalizationAction(
       
       val fcommit = for {
         pool <- system.getStoragePool(storagePoolDefinitionPointer)
-        tree <- pool.getAllocationTree(retryStrategy)
+        tree <- pool.getAllocationTree(system.retryStrategy)
         commitReady <- tree.put(newNodePointer.uuid, newNodePointer.toArray)
         result <- tx.commit()
       } yield ()

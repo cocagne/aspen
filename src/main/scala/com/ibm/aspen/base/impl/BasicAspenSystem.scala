@@ -112,8 +112,8 @@ class BasicAspenSystem(
   def clientId = net.clientId
   
   val typeRegistry: TypeRegistry = userTypeRegistry match {
-    case None => BaseImplTypeRegistry(retryStrategy, this)
-    case Some(utr) => new AggregateTypeRegistry( utr :: BaseImplTypeRegistry(retryStrategy, this) :: Nil )
+    case None => BaseImplTypeRegistry(this)
+    case Some(utr) => new AggregateTypeRegistry( utr :: BaseImplTypeRegistry(this) :: Nil )
   }
   
   
