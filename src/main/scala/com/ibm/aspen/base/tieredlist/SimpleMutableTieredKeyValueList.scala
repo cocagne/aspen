@@ -21,12 +21,33 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.keyvalue.Insert
 
+object SimpleMutableTieredKeyValueList {
+  
+  def load(
+      system: AspenSystem,
+      containerObject: KeyValueObjectPointer,
+      treeKey: Key)(implicit ec: ExecutionContext): Future[SimpleMutableTieredKeyValueList] = {
+    
+    system.readObject(containerObject) map { kvos =>
+      val root = TieredKeyValueList.Root(kvos.contents(treeKey).value)
+      new SimpleMutableTieredKeyValueList(system, Left(containerObject), treeKey, root.keyOrdering, Some(root))
+    }
+  }
+  
+}
+
 class SimpleMutableTieredKeyValueList(
     val system: AspenSystem,
     val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root],
     val treeIdentifier: Key,
     val keyOrdering: KeyOrdering,
     initialRoot: Option[TieredKeyValueList.Root] = None) extends MutableTieredKeyValueList {
+  
+  def this(
+      system: AspenSystem,
+      containerObject: KeyValueObjectPointer,
+      treeKey: Key,
+      root: TieredKeyValueList.Root) = this(system, Left(containerObject), treeKey, root.keyOrdering, Some(root))
   
   val objectReader: ObjectReader = system
   

@@ -1,13 +1,6 @@
 
 CumuloFS
 
-* Need "CreateTree" method that allocates whatever is needed and returns a Root
-* Refactor TypeRegistry yet again. Drop parameters on type
-   - AspenSystem exports a single 'val typeRegistry'
-   - typeRegistry.getFactory[MyType](uuid): Option[MyType]
-       - type cast is done internally
-* Add TieredList type to Root instance
-* Use TieredListFactory for loading trees
 * Add TaskGroupLoader - use this for loading taskGroups
 
 ** Everything should be created via factory
