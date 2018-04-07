@@ -16,11 +16,19 @@ object TaskGroupType {
 trait TaskGroupType extends TypeFactory {
   val typeUUID: UUID
   
-  def createGroup(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TaskGroupExecutor]
+  def createExecutor(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TaskGroupExecutor]
   
-  def createGroup(
+  def createInterface(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TaskGroupInterface]
+  
+  def createExecutor(
       system:AspenSystem, 
       groupStatePointer: KeyValueObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroupExecutor] = {
-    system.readObject(groupStatePointer).flatMap( kvos => createGroup(system, kvos) )
+    system.readObject(groupStatePointer).flatMap( kvos => createExecutor(system, kvos) )
+  }
+  
+  def createInterface(
+      system:AspenSystem, 
+      groupStatePointer: KeyValueObjectPointer)(implicit ec: ExecutionContext): Future[TaskGroupInterface] = {
+    system.readObject(groupStatePointer).flatMap( kvos => createInterface(system, kvos) )
   }
 }

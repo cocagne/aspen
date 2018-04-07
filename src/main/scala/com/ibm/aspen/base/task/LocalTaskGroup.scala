@@ -65,7 +65,11 @@ object LocalTaskGroup extends TaskGroupType {
     }
   }
   
-  def createGroup(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
+  def createInterface(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TaskGroupInterface] = {
+    createExecutor(system, groupState)
+  }
+  
+  def createExecutor(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
 
     val objectAllocaterUUID = byte2uuid(groupState.contents(AllocaterKey).value)
     val taskTree = new SimpleMutableTieredKeyValueList(system, Left(groupState.pointer), TaskListKey, IntegerKeyOrdering)
@@ -115,7 +119,8 @@ class LocalTaskGroup(
     val pointer: TaskGroupPointer,
     protected val allocater: ObjectAllocater,
     protected val taskTree: SimpleMutableTieredKeyValueList,
-    initialTasks: List[LocalTaskGroup.ReusableTask])(implicit ec: ExecutionContext) extends TaskGroupExecutor {
+    initialTasks: List[LocalTaskGroup.ReusableTask])
+    (implicit ec: ExecutionContext) extends TaskGroupExecutor with TaskGroupInterface {
     
   val taskGroupType = LocalTaskGroup
   
@@ -194,7 +199,10 @@ class LocalTaskGroup(
   
   /** Outer future completes when the transaction is ready to be committed. Inner Future completes when the task completes 
    */
-  def prepareTask(taskType: DurableTaskType, initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Option[AnyRef]]] = synchronized {
+  override def prepareTask(
+      taskType: DurableTaskType, 
+      initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Option[AnyRef]]] = synchronized {
+        
     val ts = tx.timestamp()
     val taskTypeArr = uuid2byte(taskType.typeUUID)
     val content = Insert(DurableTask.TaskTypeKey, taskTypeArr, ts) :: initialState.map(t => new Insert(t._1, t._2, ts))

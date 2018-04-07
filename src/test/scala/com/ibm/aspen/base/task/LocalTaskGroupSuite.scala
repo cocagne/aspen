@@ -245,7 +245,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       
       //create new group
       groupState <- sys.readObject(groupPtr)
-      taskGroup2 <- LocalTaskGroup.createGroup(sys, groupState)
+      taskGroup2 <- LocalTaskGroup.createExecutor(sys, groupState)
       
       // Await completion of resumed task
       allDone <- secondExecPromise.future
