@@ -41,6 +41,13 @@ class MutableKeyValueObject(
         Some(keyRevisionWriteLocks.head._2)
     }
   }
+  
+  override def getTransactionPreventingRevisionReadLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
+    super.getTransactionPreventingRevisionReadLock(ignoreTxd) match {
+      case Some(txd) => Some(txd)
+      case None => if (keyRevisionWriteLocks.isEmpty) None else Some(keyRevisionWriteLocks.head._2)
+    }
+  }
 
   /** This MUST be called before using any of the variables defined in this class */
   def parseKeyValueContent(): Unit = {

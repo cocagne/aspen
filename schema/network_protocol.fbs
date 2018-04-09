@@ -114,6 +114,11 @@ table VersionBump {
   required_revision: ObjectRevision;
 }
 
+table RevisionLock {
+  object_pointer: ObjectPointer;
+  required_revision: ObjectRevision;
+}
+
 table KVReq {
   tsRequirement: KeyValueTimestampRequirementEnum;
   timestamp: long;
@@ -132,6 +137,7 @@ table TransactionRequirement {
   data_update: DataUpdate;
   refcount_update: RefcountUpdate;
   version_bump: VersionBump;
+  revision_lock: RevisionLock;
   kv_update: KeyValueUpdate;
 }
 

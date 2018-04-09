@@ -31,6 +31,7 @@ import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.core.transaction.RevisionLock
 
 object DataStoreFrontend {
   
@@ -373,6 +374,8 @@ class DataStoreFrontend(
               cs.commitMetadata = true
             }
             
+            case _: RevisionLock => // Nothing to do
+            
             case kv: KeyValueUpdate => if ( getRequirementErrors(kv).isEmpty ) {
               val kvobj = cs.obj.asInstanceOf[MutableKeyValueObject]
               val data = dataUpdates(requirement.objectPointer.uuid)
@@ -429,6 +432,7 @@ class DataStoreFrontend(
           case du: DataUpdate     => obj.objectRevisionWriteLock = Some(txd)
           case ru: RefcountUpdate => obj.objectRefcountWriteLock = Some(txd)
           case vb: VersionBump    => obj.objectRevisionWriteLock = Some(txd)
+          case rl: RevisionLock   => obj.objectRevisionReadLocks += (txd.transactionUUID -> txd)
           case kv: KeyValueUpdate =>
             val kvobj = obj.asInstanceOf[MutableKeyValueObject]
             
@@ -459,6 +463,8 @@ class DataStoreFrontend(
             case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
             
             case vb: VersionBump    => obj.objectRevisionWriteLock = None
+            
+            case rl: RevisionLock => obj.objectRevisionReadLocks -= txd.transactionUUID
             
             case kv: KeyValueUpdate =>
               val kvobj = obj.asInstanceOf[MutableKeyValueObject]
@@ -527,6 +533,12 @@ class DataStoreFrontend(
             
             if (obj.revision != vb.requiredRevision)
               err(RevisionMismatch(obj, vb.requiredRevision, obj.revision))
+              
+          case rl: RevisionLock =>
+            obj.getTransactionPreventingRevisionReadLock(txd) foreach { lockedTxd => err(TransactionCollision(obj, lockedTxd)) }
+            
+            if (obj.revision != rl.requiredRevision)
+              err(RevisionMismatch(obj, rl.requiredRevision, obj.revision))
               
           case kv: KeyValueUpdate => 
             obj match {

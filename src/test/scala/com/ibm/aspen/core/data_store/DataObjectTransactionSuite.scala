@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.transaction.TransactionRequirement
+import com.ibm.aspen.core.transaction.RevisionLock
 
 object DataObjectTransactionSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -337,12 +338,64 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     errs.toSet should be (Set(RevisionMismatch(op0, badRev, irev)))
   }
   
+  test("Lock With RevisionLock Revision Error") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+
+    val badRev = ObjectRevision(new UUID(0,3))
+    
+    val txd = mktxd(RevisionLock(op0, badRev) :: Nil)
+         
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    errs.toSet should be (Set(RevisionMismatch(op0, badRev, irev)))
+  }
+  
+  test("Multiple RevisionLocks do not cause error") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    
+    val txd = mktxd(RevisionLock(op0, irev) :: Nil)
+         
+    val errs = Await.result(ds.lockTransaction(txd, None), awaitDuration)
+    
+    errs.toSet should be (Set())
+    
+    val txd2 = mktxd(RevisionLock(op0, irev) :: Nil)
+    
+    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    
+    errs2.toSet should be (Set())
+  }
+  
   test("Lock With Collisions") {
     val (ds, sp0, sp1) = initObjects()
     
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+                    
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    errs.isEmpty should be (true)
+    
+    val tx2UUID = new UUID(99,99)
+    
+    val txd2 = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil, tx2UUID)
+        
+    val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
+    
+    errs2.toSet should be (Set(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
+  }
+  
+  test("RevisionLock Causes Update Collisions") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(RevisionLock(op0, irev) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
                     
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
@@ -534,6 +587,29 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     errs should be (Nil)
     
     checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    
+    val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
+    
+    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    
+    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd), new TransactionCollision(op1, txd)))
+  }
+  
+  test("Fail lock on RevisionLock collision") {
+    val (ds, sp0, sp1) = initObjects()
+    
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val txd = mktxd(RevisionLock(op0, irev) :: VersionBump(op1, irev) :: Nil)
+              
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+    
+    val txdts = HLCTimestamp(txd.startTimestamp)
+    
+    errs should be (Nil)
+    
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionReadLock(txd)))
     checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
     
     val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))

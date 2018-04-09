@@ -23,6 +23,8 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.base.ConflictingRequirements
+import com.ibm.aspen.core.transaction.RevisionLock
 
 object TransactionBuilder {
   case class KVUpdate(
@@ -44,6 +46,7 @@ class TransactionBuilder(
   
   private [this] var refcountUpdates = Set[ObjectPointer]()
   private [this] var updatingObjects = Set[ObjectPointer]() // Tracks UUIDs of all objects being modified 
+  private [this] var revisionLocks = Set[ObjectPointer]() // UUIDs of all revision-locked objects
   private [this] var dataObjectUpdates = Map[ObjectPointer, DataBuffer]()
   private [this] var keyValueUpdates = Map[KeyValueObjectPointer, KVUpdate]()
   
@@ -101,6 +104,8 @@ class TransactionBuilder(
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
+    if (revisionLocks.contains(objectPointer))
+      throw ConflictingRequirements(objectPointer)
     
     updatingObjects += objectPointer
     dataObjectUpdates += (objectPointer -> data)
@@ -112,6 +117,8 @@ class TransactionBuilder(
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
+    if (revisionLocks.contains(objectPointer))
+      throw ConflictingRequirements(objectPointer)
     
     updatingObjects += objectPointer
     dataObjectUpdates += (objectPointer -> data)
@@ -128,6 +135,8 @@ class TransactionBuilder(
         
     if (updatingObjects.contains(pointer))
       throw MultipleDataUpdatesToObject(pointer)
+    if (revisionLocks.contains(pointer))
+      throw ConflictingRequirements(pointer)
     
     keyValueUpdates += (pointer -> KVUpdate(pointer, KeyValueUpdate.UpdateType.Append, requiredRevision, requirements, operations))
   }
@@ -140,6 +149,8 @@ class TransactionBuilder(
         
     if (updatingObjects.contains(pointer))
       throw MultipleDataUpdatesToObject(pointer)
+    if (revisionLocks.contains(pointer))
+      throw ConflictingRequirements(pointer)
     
     keyValueUpdates += (pointer -> KVUpdate(pointer, KeyValueUpdate.UpdateType.Overwrite, Some(requiredRevision), requirements, operations))
   }
@@ -157,12 +168,22 @@ class TransactionBuilder(
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized {
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
+    if (revisionLocks.contains(objectPointer))
+      throw ConflictingRequirements(objectPointer)
     
     updatingObjects += objectPointer
     requirements = VersionBump(objectPointer, requiredRevision) :: requirements
     
     ObjectRevision(transactionUUID)
   }
+  
+  def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit = synchronized {
+    if (updatingObjects.contains(objectPointer))
+      throw ConflictingRequirements(objectPointer)
+    
+    revisionLocks += objectPointer
+    requirements = RevisionLock(objectPointer, requiredRevision) :: requirements
+  } 
   
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {
     happensAfter match {

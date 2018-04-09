@@ -25,6 +25,10 @@ case class VersionBump(
     objectPointer: ObjectPointer, 
     requiredRevision: ObjectRevision) extends TransactionRequirement
     
+case class RevisionLock(
+    objectPointer: ObjectPointer, 
+    requiredRevision: ObjectRevision) extends TransactionRequirement
+    
 sealed abstract class KeyValueTransactionRequirement extends TransactionRequirement {
     override val objectPointer: KeyValueObjectPointer
 }

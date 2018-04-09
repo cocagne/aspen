@@ -91,6 +91,13 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
     }
   }
   
+  def getTransactionPreventingRevisionReadLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
+    objectRevisionWriteLock match {
+      case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
+      case None => None
+    } 
+  }
+  
   def getTransactionPreventingRefcountWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     val o = objectRefcountWriteLock match {
       case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)

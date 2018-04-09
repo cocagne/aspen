@@ -76,6 +76,11 @@ class BaseTransaction(
     case None => throw PostCommitTransactionModification()
   }
   
+  def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit = synchronized { builder } match {
+    case Some(bldr) => bldr.lockRevision(objectPointer, requiredRevision)
+    case None => throw PostCommitTransactionModification()
+  }
+  
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized { builder } match {
     case Some(bldr) => bldr.ensureHappensAfter(timestamp)
     case None => throw PostCommitTransactionModification()

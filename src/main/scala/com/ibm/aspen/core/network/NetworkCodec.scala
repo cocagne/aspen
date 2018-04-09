@@ -73,6 +73,7 @@ import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.transaction.RevisionLock
 
 
 
@@ -383,6 +384,22 @@ object NetworkCodec {
   }
   
   
+  def encode(builder:FlatBufferBuilder, o:RevisionLock): Int = {
+    val optr = encode(builder, o.objectPointer)
+    
+    P.RevisionLock.startRevisionLock(builder)
+    P.RevisionLock.addObjectPointer(builder,optr)
+    P.RevisionLock.addRequiredRevision(builder, encodeObjectRevision(builder, o.requiredRevision))
+    P.RevisionLock.endRevisionLock(builder)
+  }
+  def decode(n: P.RevisionLock): RevisionLock = {
+    val optr =  decode(n.objectPointer())
+    val rrev = decode(n.requiredRevision())
+    
+    RevisionLock(optr, rrev)
+  }
+  
+  
   def encode(builder:FlatBufferBuilder, o:KeyValueUpdate.KVRequirement): Int = {
     val key = P.KVReq.createKeyVector(builder, o.key.bytes)
     P.KVReq.startKVReq(builder)
@@ -432,6 +449,7 @@ object NetworkCodec {
       case du: DataUpdate => encode(builder, du)
       case ru: RefcountUpdate => encode(builder, ru)
       case vb: VersionBump => encode(builder, vb)
+      case rl: RevisionLock => encode(builder, rl)
       case kv: KeyValueUpdate => encode(builder, kv)
     }
     
@@ -440,6 +458,7 @@ object NetworkCodec {
       case _: DataUpdate => P.TransactionRequirement.addDataUpdate(builder, offset)
       case _: RefcountUpdate => P.TransactionRequirement.addRefcountUpdate(builder, offset)
       case _: VersionBump => P.TransactionRequirement.addVersionBump(builder, offset)
+      case _: RevisionLock => P.TransactionRequirement.addRevisionLock(builder, offset)
       case _: KeyValueUpdate => P.TransactionRequirement.addKvUpdate(builder, offset)
     }
     P.TransactionRequirement.endTransactionRequirement(builder)
@@ -451,6 +470,8 @@ object NetworkCodec {
       decode(n.refcountUpdate())
     else if (n.versionBump() != null)
       decode(n.versionBump())
+    else if (n.revisionLock() != null)
+      decode(n.revisionLock())
     else if (n.kvUpdate() != null)
       decode(n.kvUpdate())
     else

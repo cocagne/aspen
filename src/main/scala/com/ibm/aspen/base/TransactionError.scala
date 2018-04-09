@@ -10,6 +10,9 @@ abstract class TransactionCreationError extends TransactionError
 /** Used if multiple data modifications are attempted on the same object within a single transaction */
 final case class MultipleDataUpdatesToObject(objectPointer:ObjectPointer) extends TransactionCreationError
 
+/** Used if revision modifications and revision-locks are applied to the same object */
+final case class ConflictingRequirements(objectPointer:ObjectPointer) extends TransactionCreationError
+
 /** Used if multiple refcount modifications are attempted on the same object within a single transaction */
 final case class MultipleRefcountUpdatesToObject(objectPointer:ObjectPointer) extends TransactionCreationError
 

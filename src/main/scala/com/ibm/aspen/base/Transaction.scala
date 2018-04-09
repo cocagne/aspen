@@ -39,6 +39,11 @@ trait Transaction {
       
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount
   
+  /** Ensures the object revision matches the specified value and blocks other transactions attempting to modify the
+   *  revision while this transaction is being executed.
+   */
+  def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit
+  
   /** Increments the overwrite count on the object revision by 1 but leaves the object data untouched */
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision
   
