@@ -2,6 +2,7 @@ package com.ibm.aspen.cumulofs
 
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
+import com.ibm.aspen.base.Transaction
 
 trait Directory {
   val pointer: DirectoryPointer
@@ -21,14 +22,16 @@ trait Directory {
   
   def getEntry(name: String)(implicit ec: ExecutionContext): Future[Option[InodePointer]]
   
-  def insert(name: String, pointer: InodePointer)(implicit ec: ExecutionContext): Future[Unit]
+  def prepareInsert(name: String, pointer: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
-  def delete(name: String)(implicit ec: ExecutionContext): Future[Unit]
-  /*
-  def createDirectory(mode: Int, uid: Int, gid: Int): Future[DirectoryPointer] = {
+  def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
+  
+  
+  
+  def createDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[DirectoryPointer] = {
     val (initialOps, initalContent) = DirectoryInode.getInitialContent(mode, uid, gid, Some(pointer))
     
+    CreateFileTask.execute(fs, pointer, name, FileType.Directory, initialOps).map(_.asInstanceOf[DirectoryPointer])
   }
-  * 
-  */
+
 }

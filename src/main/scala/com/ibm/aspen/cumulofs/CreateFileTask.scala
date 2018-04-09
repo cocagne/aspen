@@ -14,14 +14,16 @@ import com.ibm.aspen.base.task.LocalTaskGroup
 import com.ibm.aspen.base.Transaction
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.util._
 
 object CreateFileTask extends {
   
   private val BaseKeyId = SteppedDurableTask.ReservedToKeyId
   
-  private val DirectoryKey    = Key(BaseKeyId + 1)
-  private val NameKey         = Key(BaseKeyId + 2)
-  private val InodePointerKey = Key(BaseKeyId + 3)
+  private val DirectoryKey      = Key(BaseKeyId + 1)
+  private val NameKey           = Key(BaseKeyId + 2)
+  private val InodePointerKey   = Key(BaseKeyId + 3)
+  private val FileSystemUUIDKey = Key(BaseKeyId + 4)
   
   /** Creates a file and inserts it into the specified directory
    *   
@@ -38,6 +40,8 @@ object CreateFileTask extends {
    *   contention on the Inode table, we simply retry until the operation is successful. Similarly, successful insertion into
    *   the direcotry tree is done atomically with deletion of the task. If the transaction performing this step fails, it is
    *   simply retried until it is successful.
+   *   
+   *   TODO: Handle "Out of Space" allocation errors
    */
   def execute(
       fs: FileSystem, 
@@ -48,6 +52,7 @@ object CreateFileTask extends {
     
     val encodedDir = directory.toArray
     val encodedName = string2arr(name)
+    val encodedFS = uuid2byte(fs.uuid)
 
     val ftaskPrepared = fs.system.retryStrategy.retryUntilSuccessful {
       
@@ -57,9 +62,10 @@ object CreateFileTask extends {
         newInode <- fs.inodeTable.prepareInodeAllocation(ftype, inodeOps)
         
         taskState = List(
-            (DirectoryKey,    encodedDir),
-            (NameKey,         encodedName),
-            (InodePointerKey, newInode.toArray))
+            (DirectoryKey,      encodedDir),
+            (NameKey,           encodedName),
+            (InodePointerKey,   newInode.toArray),
+            (FileSystemUUIDKey, encodedFS))
             
         taskPrepared <- fs.localTaskGroup.prepareTask(TaskType, taskState)
         
@@ -94,9 +100,37 @@ class CreateFileTask private (
     initialState: Map[Key, Value])(implicit ec: ExecutionContext)
        extends SteppedDurableTask(pointer, system, revision, initialState) {
   
+  import CreateFileTask._
   
   def suspend(): Unit = {}
   
-  
-  def beginStep(): Unit = ???
+  def beginStep(): Unit = {
+    val directoryPointer = InodePointer(state(DirectoryKey)).asInstanceOf[DirectoryPointer]
+    val name = arr2string(state(NameKey))
+    val newInode = InodePointer(state(InodePointerKey))
+    val fsUUID = byte2uuid(state(FileSystemUUIDKey))
+    
+    // The task group executor is created by the FileSystem class so its guaranteed to have already
+    // been registered.
+    val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
+    val dir = fs.loadDirectory(directoryPointer)
+    
+    fs.system.retryStrategy.retryUntilSuccessful {
+      implicit val tx = fs.system.newTransaction()
+      
+      val fcommitted = for {
+        
+        prep <- dir.prepareInsert(name, newInode)
+
+        _ = completeTask(tx)
+        
+        committed <- tx.commit()
+        
+      } yield ()
+      
+      fcommitted.failed.foreach(reason => tx.invalidateTransaction(reason))
+      
+      fcommitted
+    }
+  }
 }

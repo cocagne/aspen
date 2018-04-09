@@ -45,4 +45,23 @@ class DirectorySuite extends TestSystemSuite {
        rootInode.uid should be (0)
      }
   }
+  
+  test("Create Directory") {
+     for {
+       fs <- bootstrap()
+       oroot <- fs.inodeTable.lookup(0)
+       rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       initialContent <- rootDir.getContents()
+       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDir = new SimpleDirectory(newDirPointer, fs)
+       newInode <- newDir.getInode()
+       newContent <- rootDir.getContents()
+     } yield {
+       initialContent.length should be (0)
+       newInode.uid should be (1)
+       newInode.gid should be (2)
+       newContent.length should be (1)
+       newContent.head.name should be ("foo")
+     }
+  }
 }

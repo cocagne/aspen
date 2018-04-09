@@ -18,6 +18,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.base.Transaction
 
 class SimpleDirectory(
     val pointer: DirectoryPointer,
@@ -90,44 +91,39 @@ class SimpleDirectory(
     tree flatMap { tl => tl.get(name) } map { o => o.map(v => DirectoryEntry(v).pointer) }
   }
   
-  def insert(name: String, pointer: InodePointer)(implicit ec: ExecutionContext): Future[Unit] = {
-    fs.system.retryStrategy.retryUntilSuccessful {
-      implicit val tx = fs.system.newTransaction()
-      
-      val fkvos = fs.system.readObject(pointer.pointer)
-      
-      for {
-        tl <- tree
-        kvos <- fkvos
-        _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
-        prep <- tl.put(name, pointer.toArray)
-        done <- tx.commit()
-      } yield ()
-    }
+  def prepareInsert(name: String, pointer: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+
+    val fkvos = fs.system.readObject(pointer.pointer)
+    
+    for {
+      tl <- tree
+      kvos <- fkvos
+      _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
+      prep <- tl.put(name, pointer.toArray)
+    } yield ()
   }
   
-  def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
+  def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
-      case None => Future.unit
+      case None => Future.unit // Already done
+      
       case Some(de) =>
-        implicit val tx = fs.system.newTransaction()
+        
         for {
           kvos <- fs.system.readObject(pointer.pointer)
           _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.decrement())
           prep <- tl.delete(name)
-          done <- tx.commit()
         } yield ()
     }
+
+    val fentry = lookup(name)
     
-    fs.system.retryStrategy.retryUntilSuccessful {
+    for {
+      tl <- tree
+      oentry <- fentry
+      prepped <- del(tl, oentry)
+    } yield ()
   
-      val fentry = lookup(name)
-      
-      for {
-        tl <- tree
-        oentry <- fentry
-        done <- del(tl, oentry)
-      } yield ()
-    }
   }
 }
