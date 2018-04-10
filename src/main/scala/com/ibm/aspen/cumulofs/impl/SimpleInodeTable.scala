@@ -70,7 +70,6 @@ class SimpleInodeTable(
           if (ptr.pointer != pointer.pointer) {
             Future.unit // Inode has been re-allocated
           } else {
-            //implicit val tx = system.newTransaction()
             
             val requirements = KeyValueUpdate.KVRequirement(key, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
             
