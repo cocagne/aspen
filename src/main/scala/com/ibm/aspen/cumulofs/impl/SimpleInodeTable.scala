@@ -58,6 +58,28 @@ class SimpleInodeTable(
     }
   }
   
+  def delete(pointer: InodePointer)(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    val key = Key(pointer.number)
+    
+    table.fetchMutableNode(key) flatMap { node =>
+      node.kvos.contents.get(key) match {
+        case None => Future.unit // already done
+        
+        case Some(v) =>
+          val ptr = InodePointer(v.value)
+          if (ptr.pointer != pointer.pointer) {
+            Future.unit // Inode has been re-allocated
+          } else {
+            implicit val tx = system.newTransaction()
+            
+            val requirements = KeyValueUpdate.KVRequirement(key, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
+            
+            node.prepreUpdateTransaction(Nil, key :: Nil, requirements).flatMap(_ => tx.commit())
+          }
+      }
+    }
+  }
+  
   def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = {
     table.get(Key(inodeNumber)) map { o => o match { 
       case None => None

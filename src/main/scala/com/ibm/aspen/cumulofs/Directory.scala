@@ -26,7 +26,9 @@ trait Directory {
   
   def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
-  
+  /** Ensures the directory is empty and that all resources are cleaned up if the transaction successfully commits 
+   */
+  def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   def createDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[DirectoryPointer] = {
     val (initialOps, initalContent) = DirectoryInode.getInitialContent(mode, uid, gid, Some(pointer))

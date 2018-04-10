@@ -16,7 +16,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.util._
 
-object CreateFileTask extends {
+object CreateFileTask {
   
   private val BaseKeyId = SteppedDurableTask.ReservedToKeyId
   

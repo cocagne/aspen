@@ -7,7 +7,6 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.cumulofs.DirectoryEntry
 import com.ibm.aspen.cumulofs.InodePointer
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.cumulofs.DirectoryInode
 import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
@@ -19,6 +18,11 @@ import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.base.tieredlist.KeyValueListPointer
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.cumulofs.DirectoryNotEmpty
+import com.ibm.aspen.cumulofs.FilePointer
+import com.ibm.aspen.cumulofs.DeleteFileTask
 
 class SimpleDirectory(
     val pointer: DirectoryPointer,
@@ -106,14 +110,15 @@ class SimpleDirectory(
   def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
-      case None => Future.unit // Already done
+      case None => Future.unit // Directory entry not found. We're done!
       
-      case Some(de) =>
+      case Some(inodePtr) => 
+        val fdelEntryPrep = tl.delete(name)
+        val ftaskPrep     = DeleteFileTask.prepare(fs, inodePtr)
         
         for {
-          kvos <- fs.system.readObject(pointer.pointer)
-          _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.decrement())
-          prep <- tl.delete(name)
+          _ <- fdelEntryPrep
+          _ <- ftaskPrep
         } yield ()
     }
 
@@ -125,5 +130,23 @@ class SimpleDirectory(
       prepped <- del(tl, oentry)
     } yield ()
   
+  }
+  
+  def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    
+    def prep(rootNode: KeyValueObjectState): Future[Unit] = {
+      if (!rootNode.contents.isEmpty)
+        Future.failed(new DirectoryNotEmpty(pointer))
+      else {
+        tx.lockRevision(rootNode.pointer, rootNode.revision)
+        Future.unit
+      }
+    }
+    
+    for {
+      tl <- tree
+      node <- tl.fetchMutableNode(KeyValueListPointer.AbsoluteMinimum)
+      ready <- prep(node.kvos)
+    } yield ()
   }
 }

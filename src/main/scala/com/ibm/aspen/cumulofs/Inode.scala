@@ -7,6 +7,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.HLCTimestamp
 import java.nio.charset.StandardCharsets
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 object Inode {
   
@@ -45,15 +46,16 @@ object Inode {
   
   def apply(
       pointer: InodePointer, 
-      revision: ObjectRevision, 
+      revision: ObjectRevision,
+      refcount: ObjectRefcount,
       content: Map[Key, Value]): Inode = pointer match {
-    case p: FilePointer            => new FileInode(p, revision, content)
-    case p: DirectoryPointer       => new DirectoryInode(p, revision, content)
-    case p: SymlinkPointer         => new SymlinkInode(p, revision, content)
-    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, content)
-    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, content)
-    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, content)
-    case p: FIFOPointer            => new FIFOInode(p, revision, content)
+    case p: FilePointer            => new FileInode(p, revision, refcount, content)
+    case p: DirectoryPointer       => new DirectoryInode(p, revision, refcount, content)
+    case p: SymlinkPointer         => new SymlinkInode(p, revision, refcount, content)
+    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, refcount, content)
+    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, refcount, content)
+    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, refcount, content)
+    case p: FIFOPointer            => new FIFOInode(p, revision, refcount, content)
   }
 }
 
@@ -61,6 +63,7 @@ sealed abstract class Inode {
     
   val pointer: InodePointer
   val revision: ObjectRevision
+  val refcount: ObjectRefcount
   val content: Map[Key, Value] 
   
   import Inode._
@@ -106,7 +109,8 @@ object DirectoryInode {
 
 class DirectoryInode(
     val pointer: DirectoryPointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends Inode {
  
   import DirectoryInode._
@@ -136,7 +140,8 @@ object FileInode {
 
 class FileInode(
     val pointer: FilePointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends Inode {
  
   import FileInode._
@@ -157,7 +162,8 @@ object SymlinkInode {
 
 class SymlinkInode(
     val pointer: SymlinkPointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends Inode {
  
   import SymlinkInode._
@@ -176,7 +182,8 @@ object UnixSocketInode {
 
 class UnixSocketInode(
     val pointer: UnixSocketPointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends Inode {
  
   import UnixSocketInode._
@@ -193,7 +200,8 @@ object FIFOInode {
 
 class FIFOInode(
     val pointer: FIFOPointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends Inode {
  
   import FIFOInode._
@@ -222,7 +230,8 @@ object CharacterDeviceInode {
 
 class CharacterDeviceInode(
     val pointer: CharacterDevicePointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends DeviceInode {
  
   import CharacterDeviceInode._
@@ -239,7 +248,8 @@ object BlockDeviceInode {
 
 class BlockDeviceInode(
     val pointer: BlockDevicePointer, 
-    val revision: ObjectRevision, 
+    val revision: ObjectRevision,
+    val refcount: ObjectRefcount,
     val content: Map[Key, Value]) extends DeviceInode {
  
   import BlockDeviceInode._
