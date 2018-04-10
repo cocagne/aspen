@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.KeyValueUpdate.KVRequirement
 import com.ibm.aspen.core.transaction.KeyValueUpdate
+import scala.concurrent.Promise
 
 
 object TieredKeyValueListJoinFA {
@@ -79,10 +80,7 @@ class TieredKeyValueListJoinFA(
       
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
-      implicit val tx = system.newTransaction()
-      
-      lst.refreshRoot() flatMap { t =>
-        val (containerKvos, root) = t
+      def remove(root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
         
         def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {}
         
@@ -90,7 +88,7 @@ class TieredKeyValueListJoinFA(
           addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, removed)
         }
         
-        val fcommit = for {
+        for {
           kvos <- lst.fetchContainingNode(c.removed.minimum, c.targetTier) 
           
           ovalue = kvos.contents.get(c.removed.minimum)
@@ -117,12 +115,20 @@ class TieredKeyValueListJoinFA(
           done <- tx.commit()
 
         } yield ()
-        
-        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
-        
-        fcommit
       }
       
+      val p = Promise[Unit]()
+      
+      lst.refreshRoot() onComplete {
+        case Success((_, root)) => p.completeWith(remove(root))
+        
+        case Failure(_) =>
+          // Failures here must be either due to the containing object being corrupt/deleted or the root key
+          // being deleted. In either case there's nothing we can do to recover. Declare success.
+          p.success(())
+      }
+      
+      p.future
     }    
   }
 }

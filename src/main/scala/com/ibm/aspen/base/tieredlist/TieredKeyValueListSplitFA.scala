@@ -15,6 +15,8 @@ import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import scala.concurrent.Promise
 
 object TieredKeyValueListSplitFA {
   val FinalizationActionUUID = UUID.fromString("09d1c4a2-22a7-48b0-85f4-726afea02f2a")
@@ -68,59 +70,62 @@ class TieredKeyValueListSplitFA(
     def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
-      implicit val tx = system.newTransaction()
-      
-      lst.refreshRoot() flatMap { t =>
-        val (containerKvos, root) = t
+      def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
         
-        val fcommit = if (root.topTier < c.targetTier) {
-          // Create new tier
-          val iLeft  = Insert(c.left.minimum.bytes, c.left.pointer.toArray, tx.timestamp())
-          val iRight = Insert(c.right.minimum.bytes, c.right.pointer.toArray, tx.timestamp())
+        val iLeft  = Insert(c.left.minimum.bytes, c.left.pointer.toArray, tx.timestamp())
+        val iRight = Insert(c.right.minimum.bytes, c.right.pointer.toArray, tx.timestamp())
+        
+        for {
+          allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
           
-          for {
-            allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
-            
-            newRootPointer <- allocater.allocateKeyValueObject(
-                allocatingObject = containerKvos.pointer, 
-                allocatingObjectRevision = containerKvos.revision, 
-                initialContent = List(iLeft, iRight))
-                
-            commitReady <- lst.prepreUpdateRootTransaction(c.targetTier, newRootPointer)
-            
-            done <- tx.commit()
-            
-          } yield ()
-        } else {
-          
-          def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
-            addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, right)
-          }
-          
-          def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
-          
-          for {
-            kvos <- lst.fetchContainingNode(c.right.minimum, c.targetTier) 
-            
-            allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
-            
-            nodeSizeLimit = root.getTierNodeSize(c.targetTier)
-            inserts = List((c.right.minimum, c.right.pointer.toArray))
-            deletes = Nil
-            requirements = Nil
-
-            ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
-            
-            done <- tx.commit()
-
-          } yield ()
+          newRootPointer <- allocater.allocateKeyValueObject(
+              allocatingObject = containerKvos.pointer, 
+              allocatingObjectRevision = containerKvos.revision, 
+              initialContent = List(iLeft, iRight))
+              
+          commitReady <- lst.prepreUpdateRootTransaction(c.targetTier, newRootPointer)
+        } yield ()
+      }
+      
+      def insertIntoExistingTier(root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
+        
+        def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
+          addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, right)
         }
         
-        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
+        def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
         
-        fcommit
+        for {
+          kvos <- lst.fetchContainingNode(c.right.minimum, c.targetTier) 
+          
+          allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
+          
+          nodeSizeLimit = root.getTierNodeSize(c.targetTier)
+          inserts = List((c.right.minimum, c.right.pointer.toArray))
+          deletes = Nil
+          requirements = Nil
+
+          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+
+        } yield ()
       }
-    }    
+      
+      val p = Promise[Unit]()
+      
+      lst.refreshRoot() onComplete {
+        case Success((containerKvos, root)) =>
+          val fadd = if (root.topTier < c.targetTier) createNewTier(containerKvos, root) else insertIntoExistingTier(root)
+          
+          p.completeWith(fadd)
+        
+        case Failure(_) =>
+          // Failures here must be either due to the containing object being corrupt/deleted or the root key
+          // being deleted. In either case there's nothing we can do to recover. Declare success.
+          p.success(())
+      }
+      
+      p.future
+    }
   }
   
 }

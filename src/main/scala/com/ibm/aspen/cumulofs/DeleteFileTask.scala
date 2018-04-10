@@ -19,7 +19,7 @@ object DeleteFileTask {
   private val BaseKeyId = SteppedDurableTask.ReservedToKeyId
   
   private val FileSystemUUIDKey = Key(BaseKeyId + 1)
-  private val FileTypeKey       = Key(BaseKeyId + 2)
+  private val InodePointerKey   = Key(BaseKeyId + 2)
   private val DataRootKey       = Key(BaseKeyId + 3)
   
   /** Configures the transaction to delete the target inode and launch a file deletion task
@@ -37,7 +37,7 @@ object DeleteFileTask {
         
       val common = List(
               (FileSystemUUIDKey, uuid2byte(fs.uuid)),
-              (FileTypeKey,       Array(FileType.toByte(victim.ftype)))
+              (InodePointerKey,   victim.toArray)
              )
              
       val (fprep, taskState) = inode match {
@@ -91,11 +91,28 @@ class DeleteFileTask private (
     // been registered.
     val fs = FileSystem.getRegisteredFileSystem(byte2uuid(state(FileSystemUUIDKey))).get
     
-    val ftype = FileType.fromByte(state(FileTypeKey)(0))
+    val iptr = InodePointer(state(InodePointerKey))
     
+    val fremovedFromTable = fs.inodeTable.delete(iptr)
     
+    val fdataDeleted = iptr match {
+      case _: DirectoryPointer => deleteDirectoryData(fs)
+      case _: FilePointer => deleteFileData(fs)
+      case _ => Future.unit
+    }
     
-    
-    
+    for {
+      _ <- fremovedFromTable
+      _ <- fdataDeleted
+    } yield {
+      system.transactUntilSuccessful { tx =>
+        completeTask(tx)
+        Future.unit
+      }
+    }
   }
+  
+  def deleteDirectoryData(fs: FileSystem): Future[Unit] = Future.unit 
+  
+  def deleteFileData(fs: FileSystem): Future[Unit] = Future.unit
 }
