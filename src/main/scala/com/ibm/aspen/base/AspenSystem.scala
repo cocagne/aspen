@@ -56,6 +56,29 @@ trait AspenSystem extends ObjectReader {
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
   
+  def transact[T](prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
+    val tx = newTransaction()
+    
+    val fprep = try { prepare(tx) } catch {
+      case err: Throwable => Future.failed(err)
+    }
+    
+    val fresult = for {
+      prepResult <- fprep
+      _ <- tx.commit()
+    } yield prepResult
+    
+    fresult.failed.foreach(err => tx.invalidateTransaction(err))
+    
+    fresult
+  }
+  
+  def transactUntilSuccessful[T](prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
+    retryStrategy.retryUntilSuccessful {
+      transact(prepare)
+    }
+  }
+  
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit
 }

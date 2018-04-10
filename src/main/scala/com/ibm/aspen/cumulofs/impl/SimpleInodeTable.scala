@@ -70,11 +70,13 @@ class SimpleInodeTable(
           if (ptr.pointer != pointer.pointer) {
             Future.unit // Inode has been re-allocated
           } else {
-            implicit val tx = system.newTransaction()
+            //implicit val tx = system.newTransaction()
             
             val requirements = KeyValueUpdate.KVRequirement(key, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
             
-            node.prepreUpdateTransaction(Nil, key :: Nil, requirements).flatMap(_ => tx.commit())
+            system.transact { implicit tx =>
+              node.prepreUpdateTransaction(Nil, key :: Nil, requirements).map(_ => ())
+            }
           }
       }
     }

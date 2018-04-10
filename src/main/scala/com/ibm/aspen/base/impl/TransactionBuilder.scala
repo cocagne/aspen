@@ -55,6 +55,7 @@ class TransactionBuilder(
   private [this] var happensAfter: Option[HLCTimestamp] = None
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
+    
     val startTimestamp = happensAfter match {
       case Some(ts) => HLCTimestamp.happensAfter(ts)
       case None => HLCTimestamp.now
@@ -63,6 +64,9 @@ class TransactionBuilder(
     keyValueUpdates.valuesIterator.foreach { kvu =>
       requirements = KeyValueUpdate(kvu.pointer, kvu.updateType, kvu.requiredRevision, kvu.requirements, startTimestamp) :: requirements
     }
+    
+    // Ensure the transaction has at least one requirement
+    require(!requirements.isEmpty)
     
     val primaryObject = requirements.map(_.objectPointer).maxBy(ptr => ptr.ida)
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)

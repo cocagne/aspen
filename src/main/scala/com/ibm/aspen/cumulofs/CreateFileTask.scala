@@ -54,11 +54,9 @@ object CreateFileTask {
     val encodedName = string2arr(name)
     val encodedFS = uuid2byte(fs.uuid)
 
-    val ftaskPrepared = fs.system.retryStrategy.retryUntilSuccessful {
+    val ftaskPrepared = fs.system.transactUntilSuccessful { implicit tx =>
       
-      implicit val tx = fs.system.newTransaction()
-      
-      val fcommit = for {
+      for {
         newInode <- fs.inodeTable.prepareInodeAllocation(ftype, inodeOps)
         
         taskState = List(
@@ -72,10 +70,6 @@ object CreateFileTask {
         committed <- tx.commit()
         
       } yield taskPrepared.map(_ => newInode)
-      
-      fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
-      
-      fcommit
     }
     
     ftaskPrepared.flatMap( ftaskComplete => ftaskComplete )
@@ -114,23 +108,16 @@ class CreateFileTask private (
     // been registered.
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
     val dir = fs.loadDirectory(directoryPointer)
-    
-    fs.system.retryStrategy.retryUntilSuccessful {
-      implicit val tx = fs.system.newTransaction()
       
-      val fcommitted = for {
-        
+    fs.system.transactUntilSuccessful { implicit tx =>
+    
+      for {
         prep <- dir.prepareInsert(name, newInode)
-
+        
         _ = completeTask(tx)
         
-        committed <- tx.commit()
-        
       } yield ()
-      
-      fcommitted.failed.foreach(reason => tx.invalidateTransaction(reason))
-      
-      fcommitted
     }
+  
   }
 }

@@ -60,22 +60,19 @@ class SimpleDirectory(
       
       case None =>
         // Allocate the initial tree object and insert the tiered list root into the directory inode
-        implicit val tx = fs.system.newTransaction()
+
+        fs.system.transact { implicit tx =>
         
-        val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+          val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+          
+          for {
+            allocater <- fs.system.getObjectAllocater(fs.directoryLoader.dataTableAllocaters(0))
+            dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
+            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.dataTableAllocaters, fs.directoryLoader.dataTableSizes, LexicalKeyOrdering, dirContentPtr)
         
-        val fcommit = for {
-          allocater <- fs.system.getObjectAllocater(fs.directoryLoader.dataTableAllocaters(0))
-          dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-          dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.dataTableAllocaters, fs.directoryLoader.dataTableSizes, LexicalKeyOrdering, dirContentPtr)
-      
-          _ = tx.append(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray(), tx.timestamp()) :: Nil)
-          done <- tx.commit()
-        } yield dirTblRoot
-        
-        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
-        
-        fcommit
+            _ = tx.append(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray(), tx.timestamp()) :: Nil)
+          } yield dirTblRoot  
+        }
     }
     
   }

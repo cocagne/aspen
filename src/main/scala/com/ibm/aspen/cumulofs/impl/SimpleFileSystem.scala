@@ -33,25 +33,22 @@ object SimpleFileSystem {
         t.get(taskGroupKey).flatMap { o => o match {
           case Some(v) => system.readObject(KeyValueObjectPointer(v.value)) flatMap { kvos => LocalTaskGroup.createExecutor(system, kvos) }
           
-          case None =>
-            implicit val tx = system.newTransaction()
-            val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+          case None => 
+            val ffgroup = system.transact { implicit tx =>
             
-            val fcommit = for {
-              node <- t.fetchMutableNode(taskGroupKey)
+              val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
               
-              (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(system, node.kvos.pointer, node.kvos.revision, allocaterUUID)
-              
-              ready <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
-              
-              committed <- tx.commit()
-              
-              group <- fgroup
-            } yield group
+              for {
+                node <- t.fetchMutableNode(taskGroupKey)
+                
+                (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(system, node.kvos.pointer, node.kvos.revision, allocaterUUID)
+                
+                ready <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
+
+              } yield fgroup
+            }
             
-            fcommit.failed.foreach( reason => tx.invalidateTransaction(reason) )
-            
-            fcommit
+            ffgroup.flatMap( fgroup => fgroup )
         }}
       }
     }

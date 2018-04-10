@@ -52,7 +52,7 @@ object LocalTaskGroup extends TaskGroupType {
     
     val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID), ts), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID), ts))
     
-    val fcommit = for {
+    for {
       allocater <- system.getObjectAllocater(objectAllocaterUUID)
       taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil, None)
       tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), IntegerKeyOrdering, taskListRoot)
@@ -70,19 +70,13 @@ object LocalTaskGroup extends TaskGroupType {
       
       (ptr, fgroup)
     }
-    
-    fcommit.failed.foreach( reason => t.invalidateTransaction(reason) )
-    
-    fcommit
   }
   
   def initializeNewGroup(
       system: AspenSystem,
       groupPointer: TaskGroupPointer, 
       revision: ObjectRevision, 
-      objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
-    
-    implicit val tx = system.newTransaction()
+      objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = system.transact { implicit tx =>
     
     val ts = tx.timestamp()
     
@@ -94,7 +88,6 @@ object LocalTaskGroup extends TaskGroupType {
       tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), IntegerKeyOrdering, taskListRoot)
       fullContent = Insert(TaskListKey, tlroot.toArray, ts) :: content
       _ = tx.overwrite(groupPointer.kvPointer, revision, Nil, fullContent)
-      done <- tx.commit()
     } yield {
       new LocalTaskGroup(system, groupPointer, allocater, 
           new SimpleMutableTieredKeyValueList(system, Left(groupPointer.kvPointer), TaskListKey, IntegerKeyOrdering), 
@@ -195,19 +188,12 @@ class LocalTaskGroup(
      
       val key = Key(taskNumber)
       
-      val f = system.retryStrategy.retryUntilSuccessful {
-        implicit val tx = system.newTransaction()
-        
-        val fcommit = for {
+      val f = system.transactUntilSuccessful { implicit tx =>
+        for {
           mnode <- taskTree.fetchMutableNode(taskNumber)
           newObject <- allocater.allocateKeyValueObject(mnode.kvos.pointer, mnode.kvos.revision, Nil, None)
           txPrepped <- mnode.prepreUpdateTransaction(List((Key(taskNumber), newObject.toArray)), Nil, Nil)
-          done <- tx.commit()
-        } yield (newObject, tx.txRevision)
-        
-        fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
-        
-        fcommit
+        } yield (newObject, tx.txRevision)        
       }
       
       f.foreach { t => synchronized { 
@@ -269,7 +255,7 @@ class LocalTaskGroup(
       tx.result.onComplete {
         case Failure(reason) =>
           // Re-read the task revision to ensure we have the up-to-date version before putting it back into the idleTask list
-          system.retryStrategy.retryUntilSuccessful { system.readObject(it.taskPointer.kvPointer) } foreach { kvos =>
+          system.readObject(it.taskPointer.kvPointer) foreach { kvos =>
             synchronized {
               idleTasks = IdleTask(it.taskNumber, it.taskPointer, kvos.revision) :: idleTasks
             }
