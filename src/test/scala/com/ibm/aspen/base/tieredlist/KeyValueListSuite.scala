@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.base.impl.SinglePoolObjectAllocater
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 
 
@@ -361,4 +362,100 @@ class KeyValueListSuite extends TestSystemSuite {
     }
   }
  
+  test("Test destroy three-node list") {
+  
+    val max0 = Key(Array[Byte](5))
+    val max1 = Key(Array[Byte](10))
+    val target = Key(Array[Byte](9))
+    
+    var preps: List[KeyValueObjectPointer] = Nil
+    
+    def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
+      preps = kvos.pointer :: preps
+      Future.unit
+    }
+    
+    for {
+      l2 <- alloc(Some(max1), None, None)
+      l1 <- alloc(Some(max0), Some(max1), Some(l2))
+      l0 <- alloc(None, Some(max0), Some(l1))
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
+      
+      toast <- KeyValueList.destroy(sys, lptr, prepareForDeletion)
+      
+      f2 <- sys.readObject(l2).failed
+      f1 <- sys.readObject(l1).failed
+      f0 <- sys.readObject(l0).failed
+     
+    } yield {
+      kvos.pointer should be (l1)
+      preps should be (List(l2, l1, l0))
+    }
+  }
+  
+  test("Test destroy two-node list") {
+  
+    val max0 = Key(Array[Byte](5))
+    val max1 = Key(Array[Byte](10))
+    val target = Key(Array[Byte](9))
+    
+    var preps: List[KeyValueObjectPointer] = Nil
+    
+    def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
+      preps = kvos.pointer :: preps
+      Future.unit
+    }
+    
+    for {
+      l1 <- alloc(Some(max0), None, None)
+      l0 <- alloc(None, Some(max0), Some(l1))
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
+      
+      toast <- KeyValueList.destroy(sys, lptr, prepareForDeletion)
+      
+      f1 <- sys.readObject(l1).failed
+      f0 <- sys.readObject(l0).failed
+     
+    } yield {
+      kvos.pointer should be (l1)
+      preps should be (List(l1, l0))
+    }
+  }
+  
+  test("Test destroy one-node list") {
+  
+    val max0 = Key(Array[Byte](5))
+    val max1 = Key(Array[Byte](10))
+    val target = Key(Array[Byte](9))
+    
+    var preps: List[KeyValueObjectPointer] = Nil
+    
+    def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
+      preps = kvos.pointer :: preps
+      Future.unit
+    }
+    
+    for {
+      
+      l0 <- alloc(None, None, None)
+      
+      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      
+      kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
+      
+      toast <- KeyValueList.destroy(sys, lptr, prepareForDeletion)
+      
+      f0 <- sys.readObject(l0).failed
+     
+    } yield {
+      kvos.pointer should be (l0)
+      preps should be (List(l0))
+    }
+  }
 }
