@@ -18,6 +18,7 @@ import com.ibm.aspen.base.tieredlist.KeyValueListPointer
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 class BasicAspenSystemSuite extends TestSystemSuite {
   import Bootstrap._
@@ -59,7 +60,7 @@ class BasicAspenSystemSuite extends TestSystemSuite {
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
       atree <- sp.getAllocationTree(TestSystem.NoRetry)
       
-      visitComplete <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
+      visitComplete <- atree.visitRange(Key.AbsoluteMinimum, None, visitEntry)
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
     }

@@ -56,7 +56,7 @@ class BasicIntegrationSuite extends TestSystemSuite {
       
       atree <- sp.getAllocationTree(TestSystem.NoRetry)
     
-      _ <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
+      _ <- atree.visitRange(Key.AbsoluteMinimum, None, visitEntry)
       
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount)
@@ -100,7 +100,7 @@ class BasicIntegrationSuite extends TestSystemSuite {
       sp <- sys.getStoragePool(Bootstrap.BootstrapStoragePoolUUID)
       atree <- sp.getAllocationTree(TestSystem.NoRetry)
       
-      visitComplete <- atree.visitRange(KeyValueListPointer.AbsoluteMinimum, None, visitEntry)
+      visitComplete <- atree.visitRange(Key.AbsoluteMinimum, None, visitEntry)
     } yield {
       allocTreeEntryCount should be (BootstrapAllocatedObjectCount + 2)
     }

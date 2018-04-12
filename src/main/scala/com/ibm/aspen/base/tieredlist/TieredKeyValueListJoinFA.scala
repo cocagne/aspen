@@ -45,7 +45,7 @@ object TieredKeyValueListJoinFA {
     
     // TODO: Support removal of the root node. For now we'll skip join finalizers for all left-most nodes. Tree structure and depth is preserved
     //       we just loose the uncached lookup efficiency typically found in smaller trees.  
-    if ( removed.minimum != KeyValueListPointer.AbsoluteMinimum ) {
+    if ( removed.minimum != Key.AbsoluteMinimum ) {
       val serializedContent = BaseCodec.encodeTieredKeyValueListJoinFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, removed)
           
       transaction.addFinalizationAction(FinalizationActionUUID, serializedContent)

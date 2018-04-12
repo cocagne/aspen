@@ -63,7 +63,7 @@ class KeyValueListSuite extends TestSystemSuite {
     for {
       l0 <- alloc(None, None, None)
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
@@ -81,7 +81,7 @@ class KeyValueListSuite extends TestSystemSuite {
       l1 <- alloc(Some(max0), None, None)
       l0 <- alloc(None, Some(max0), Some(l1))
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
@@ -101,7 +101,7 @@ class KeyValueListSuite extends TestSystemSuite {
       l1 <- alloc(Some(max0), Some(max1), Some(l2))
       l0 <- alloc(None, Some(max0), Some(l1))
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
@@ -121,7 +121,7 @@ class KeyValueListSuite extends TestSystemSuite {
       l1 <- alloc(Some(max0), Some(max1), Some(l2))
       l0 <- alloc(None, Some(max0), Some(l1))
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
@@ -160,7 +160,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       done <- tx.commit()
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key)
      
@@ -211,7 +211,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       done <- tx.commit()
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
      
@@ -268,7 +268,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       done <- tx.commit()
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos1 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key0)
       kvos2 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key4)
@@ -326,7 +326,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       done <- tx.commit()
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos1 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key0)
       kvos2 <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, key4)
@@ -380,7 +380,7 @@ class KeyValueListSuite extends TestSystemSuite {
       l1 <- alloc(Some(max0), Some(max1), Some(l2))
       l0 <- alloc(None, Some(max0), Some(l1))
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
       
@@ -413,7 +413,7 @@ class KeyValueListSuite extends TestSystemSuite {
       l1 <- alloc(Some(max0), None, None)
       l0 <- alloc(None, Some(max0), Some(l1))
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
       
@@ -445,7 +445,7 @@ class KeyValueListSuite extends TestSystemSuite {
       
       l0 <- alloc(None, None, None)
       
-      lptr = KeyValueListPointer(KeyValueListPointer.AbsoluteMinimum, l0)
+      lptr = KeyValueListPointer(Key.AbsoluteMinimum, l0)
       
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
       

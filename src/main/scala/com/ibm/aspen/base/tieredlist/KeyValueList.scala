@@ -277,7 +277,7 @@ object KeyValueList {
       
       tx.overwrite(kvos.pointer, kvos.revision, requirements, leftOps)
       
-      val left = KeyValueListPointer(kvos.minimum.getOrElse(KeyValueListPointer.AbsoluteMinimum), kvos.pointer)
+      val left = KeyValueListPointer(kvos.minimum.getOrElse(Key.AbsoluteMinimum), kvos.pointer)
       val right = KeyValueListPointer(rightMin, rightNodePointer)
       
       onSplit(left, right)

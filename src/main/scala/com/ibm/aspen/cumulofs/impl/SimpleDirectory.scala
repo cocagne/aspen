@@ -23,6 +23,7 @@ import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.cumulofs.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.FilePointer
 import com.ibm.aspen.cumulofs.DeleteFileTask
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 class SimpleDirectory(
     val pointer: DirectoryPointer,
@@ -142,7 +143,7 @@ class SimpleDirectory(
     
     for {
       tl <- tree
-      node <- tl.fetchMutableNode(KeyValueListPointer.AbsoluteMinimum)
+      node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
       ready <- prep(node.kvos)
     } yield ()
   }

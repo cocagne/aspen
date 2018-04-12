@@ -165,7 +165,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     for {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
       
-      rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray)))
+      rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray)))
        
       nodeSizeLimit = 250
       
@@ -227,7 +227,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l1 <- alloc(Some(target), None, None, List((target -> value)))
       l0 <- alloc(None, Some(target), Some(l1), List((key0 -> value)))
       
-      rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
+      rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
       
@@ -294,7 +294,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l1 <- alloc(Some(target), None, None, List((target -> value)))
       l0 <- alloc(None, Some(target), Some(l1), List((key0 -> value)))
       
-      rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
+      rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
       
@@ -370,7 +370,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l1 <- alloc(Some(target), None, None, List((target -> value)))
       l0 <- alloc(None, Some(target), Some(l1), List((key0 -> value)))
       
-      rootPtr <- alloc(None, None, None, List((KeyValueListPointer.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
+      rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
       

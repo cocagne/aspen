@@ -1,15 +1,7 @@
 
-** Remove KeyValueListPointer.AbsoluteMinimum (replace with Key.AbsoluteMinimum)
-
-
 CumuloFS
 
-* Finish CreateFileTask
-
-* Tasks can only be resumed via FileSystem being created
-   - Therefore can have a FileSystem UUID registry
-   - Task can reliably fetch from there (task can't be started unless the FS is already loaded in mem)
-
+* Finish delete file
 
 * InodeTable allocates the inode
    - use FileSystem allocater
