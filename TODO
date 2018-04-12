@@ -1,4 +1,7 @@
 
+** Remove KeyValueListPointer.AbsoluteMinimum (replace with Key.AbsoluteMinimum)
+
+
 CumuloFS
 
 * Finish CreateFileTask

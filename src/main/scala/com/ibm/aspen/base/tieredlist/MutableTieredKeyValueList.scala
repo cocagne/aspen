@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 trait MutableTieredKeyValueList extends TieredKeyValueList {
   
@@ -28,6 +29,11 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
   protected[tieredlist] def refreshRoot()(implicit ec: ExecutionContext): Future[(KeyValueObjectState, TieredKeyValueList.Root)]
   
   def fetchRoot()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = refreshRoot().map(t => t._2)
+  
+  /** Delete's the tree. Prior to freeing each tier0 node in the tree the prepareForDeletion method will be invoked for
+   *  that node's content
+   */
+  def destroy(prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit]
   
   class MutableNode(val kvos: KeyValueObjectState) {
     def prepreUpdateTransaction(

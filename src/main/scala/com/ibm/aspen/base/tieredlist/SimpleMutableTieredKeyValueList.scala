@@ -20,6 +20,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 
 object SimpleMutableTieredKeyValueList {
   
@@ -53,6 +54,63 @@ class SimpleMutableTieredKeyValueList(
   
   private[this] var root: Option[TieredKeyValueList.Root] = initialRoot
   private[this] var allocaters: Map[Int, Future[ObjectAllocater]] = Map()
+  
+  override def destroy(prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit] = {
+    val p = Promise[Unit]
+    
+    def rdelete(tiers: List[(Int, KeyValueListPointer)]): Unit = {
+      if (tiers.isEmpty)
+        p.success(())
+      else {
+        val (tier, pointer) = tiers.head
+        
+        def prepTier0(kvos: KeyValueObjectState): Future[Unit] = prepareForDeletion(kvos.contents)
+        def prepRest(kvos: KeyValueObjectState): Future[Unit] = Future.unit
+        
+        val prepFunc = if (tier == 0) prepTier0 _ else prepRest _
+        
+        KeyValueList.destroy(system, pointer, prepFunc) foreach { _ => rdelete(tiers.tail) }
+      }
+    }
+    
+    getTierRootPointers onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(tiers) => rdelete(tiers)
+    }
+    
+    p.future
+  }
+  
+  def getTierRootPointers()(implicit ec: ExecutionContext): Future[List[(Int, KeyValueListPointer)]] = {
+    val p = Promise[List[(Int, KeyValueListPointer)]]()
+    
+    def rfind(ptr: KeyValueListPointer, tier: Int, tiers: List[(Int, KeyValueListPointer)]): Unit = {
+      
+      val thisTier = (tier, ptr) :: tiers
+      
+      if (tier == 0)
+        p.success(thisTier)
+      else {
+        TieredKeyValueList.findPointerToNextTierDown(system, ptr, ByteArrayKeyOrdering, Set(), Key.AbsoluteMinimum) onComplete {
+          case Failure(_) => p.success(thisTier) // This tier must already have been deleted
+          
+          case Success(e) => e match {
+            case Left(_) => p.success(thisTier) // Must be in-process of deleting this tier
+            
+            case Right(nextTierPointer) => rfind(nextTierPointer, tier - 1, thisTier)
+          }
+        }
+      }
+    }
+    
+    rootPointer() onComplete { 
+      case Failure(_) => p.success(Nil)
+      
+      case Success(root) => rfind(KeyValueListPointer(Key.AbsoluteMinimum, root.rootNode), root.topTier, Nil)
+    }
+    
+    p.future
+  }
   
   override protected[tieredlist] def prepreUpdateRootTransaction(
       newTier: Int,
