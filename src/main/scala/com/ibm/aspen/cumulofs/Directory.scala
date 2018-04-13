@@ -26,6 +26,10 @@ trait Directory {
   
   def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
+  def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
+    fs.system.transact { implicit tx => prepareDelete(name) }
+  }
+  
   /** Ensures the directory is empty and that all resources are cleaned up if the transaction successfully commits 
    */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]

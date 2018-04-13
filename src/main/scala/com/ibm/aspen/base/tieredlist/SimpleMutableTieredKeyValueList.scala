@@ -55,7 +55,8 @@ class SimpleMutableTieredKeyValueList(
   private[this] var root: Option[TieredKeyValueList.Root] = initialRoot
   private[this] var allocaters: Map[Int, Future[ObjectAllocater]] = Map()
   
-  override def destroy(prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit] = {
+  override def destroy(
+      prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
     val p = Promise[Unit]
     
     def rdelete(tiers: List[(Int, KeyValueListPointer)]): Unit = {

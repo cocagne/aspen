@@ -7,6 +7,7 @@ import scala.concurrent.Promise
 import scala.util.Success
 import scala.util.Failure
 import com.ibm.aspen.core.read.CorruptedObject
+import com.ibm.aspen.cumulofs.error.InvalidInode
 
 trait InodeLoader {
   val system: AspenSystem

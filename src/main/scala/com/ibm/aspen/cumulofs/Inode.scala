@@ -8,6 +8,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import java.nio.charset.StandardCharsets
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.cumulofs.error.CorruptedInode
 
 object Inode {
   

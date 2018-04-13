@@ -11,6 +11,8 @@ import com.ibm.aspen.cumulofs.DirectoryPointer
 import com.ibm.aspen.base.task.LocalTaskGroup
 import com.ibm.aspen.base.task.TaskGroupPointer
 import java.util.UUID
+import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
+import com.ibm.aspen.core.read.InvalidObject
 
 class DirectorySuite extends TestSystemSuite {
   
@@ -62,6 +64,57 @@ class DirectorySuite extends TestSystemSuite {
        newInode.gid should be (2)
        newContent.length should be (1)
        newContent.head.name should be ("foo")
+     }
+  }
+  
+  test("Delete non-empty Directory") {
+     for {
+       fs <- bootstrap()
+       oroot <- fs.inodeTable.lookup(0)
+       rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       initialContent <- rootDir.getContents()
+       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDir = new SimpleDirectory(newDirPointer, fs)
+       newInode <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
+       dc <- newDir.getContents()
+       if (dc.length == 1)
+       ruhRoh <- recoverToSucceededIf[DirectoryNotEmpty](rootDir.delete("foo"))
+     } yield {
+       initialContent.length should be (0)
+     }
+  }
+  
+  test("Delete empty Directory") {
+     for {
+       fs <- bootstrap()
+       oroot <- fs.inodeTable.lookup(0)
+       rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       initialContent <- rootDir.getContents()
+       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       _ <- rootDir.delete("foo")       
+       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
+     } yield {
+       initialContent.length should be (0)
+     }
+  }
+  
+  test("Delete Directory with data tiered list") {
+     for {
+       fs <- bootstrap()
+       oroot <- fs.inodeTable.lookup(0)
+       rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       initialContent <- rootDir.getContents()
+       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDir = new SimpleDirectory(newDirPointer, fs)
+       newInode <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
+       dc <- newDir.getContents()
+       if (dc.length == 1)
+       _ <- newDir.delete("bar")       
+       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newInode))
+       _ <- rootDir.delete("foo")       
+       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
+     } yield {
+       initialContent.length should be (0)
      }
   }
 }

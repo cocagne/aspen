@@ -1,5 +1,7 @@
 package com.ibm.aspen.cumulofs
 
+import com.ibm.aspen.cumulofs.error.InvalidPointer
+
 
 object FileType extends Enumeration {
   import FileMode._

@@ -20,7 +20,7 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.base.tieredlist.KeyValueListPointer
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.cumulofs.DirectoryNotEmpty
+import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.FilePointer
 import com.ibm.aspen.cumulofs.DeleteFileTask
 import com.ibm.aspen.core.objects.keyvalue.Key
@@ -130,13 +130,21 @@ class SimpleDirectory(
   
   }
   
+  /** This prevents entries from being added to the directory while the delete is in progress. The
+   *  directory must be empty so the tier0 list will contain only a single element. Deleting that
+   *  node is made part of the directory deletion transaction. Thus either the other writer will win
+   *  and the directory deletion will fail or we'll win and the other writer's directory insertion will
+   *  fail. 
+   */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     
     def prep(rootNode: KeyValueObjectState): Future[Unit] = {
-      if (!rootNode.contents.isEmpty)
+      
+      if (!rootNode.contents.isEmpty) 
         Future.failed(new DirectoryNotEmpty(pointer))
       else {
         tx.lockRevision(rootNode.pointer, rootNode.revision)
+        tx.setRefcount(rootNode.pointer, rootNode.refcount, rootNode.refcount.decrement())
         Future.unit
       }
     }
