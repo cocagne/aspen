@@ -10,8 +10,8 @@ import com.ibm.aspen.cumulofs.FileSystem
 import java.util.UUID
 
 class SimpleDirectoryLoader(
-    val dataTableAllocaters: Array[UUID],
-    val dataTableSizes: Array[Int]
+    val directoryTableAllocaters: Array[UUID],
+    val directoryTableSizes: Array[Int]
     ) extends DirectoryLoader {
  
   override def loadDirectory(fs: FileSystem, pointer: DirectoryPointer): Directory = {

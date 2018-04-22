@@ -23,12 +23,12 @@ object Varint {
     putUnsignedInt(bb, v)
     bb.position
   }
-  def getSignedLongEncodingLength(v: Int): Int = {
+  def getSignedLongEncodingLength(v: Long): Int = {
     val bb = ByteBuffer.allocate(12)
     putSignedLong(bb, v)
     bb.position
   }
-  def getUnsignedLongEncodingLength(v: Int): Int = {
+  def getUnsignedLongEncodingLength(v: Long): Int = {
     val bb = ByteBuffer.allocate(12)
     putUnsignedLong(bb, v)
     bb.position
@@ -55,6 +55,9 @@ object Varint {
     bb.put((x & 0x7F).toByte)
   }
 
+  def getSignedInt(arr: Array[Byte]): Int = getSignedInt(ByteBuffer.wrap(arr))
+  def getUnsignedInt(arr: Array[Byte]): Int = getUnsignedInt(ByteBuffer.wrap(arr))
+  
   def getSignedInt(bb: ByteBuffer): Int = {
     val unsigned = getUnsignedInt(bb)
     
@@ -76,6 +79,9 @@ object Varint {
     v
   }
 
+  def getSignedLong(arr: Array[Byte]): Long = getSignedLong(ByteBuffer.wrap(arr))
+  def getUnsignedLong(arr: Array[Byte]): Long = getUnsignedLong(ByteBuffer.wrap(arr))
+  
   def getSignedLong(bb: ByteBuffer): Long = {
     val unsigned = getUnsignedLong(bb)
     

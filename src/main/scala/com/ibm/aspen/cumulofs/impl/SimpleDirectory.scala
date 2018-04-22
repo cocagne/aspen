@@ -67,9 +67,9 @@ class SimpleDirectory(
           val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
           
           for {
-            allocater <- fs.system.getObjectAllocater(fs.directoryLoader.dataTableAllocaters(0))
+            allocater <- fs.system.getObjectAllocater(fs.directoryLoader.directoryTableAllocaters(0))
             dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.dataTableAllocaters, fs.directoryLoader.dataTableSizes, LexicalKeyOrdering, dirContentPtr)
+            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.directoryTableAllocaters, fs.directoryLoader.directoryTableSizes, LexicalKeyOrdering, dirContentPtr)
         
             _ = tx.append(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray(), tx.timestamp()) :: Nil)
           } yield dirTblRoot  

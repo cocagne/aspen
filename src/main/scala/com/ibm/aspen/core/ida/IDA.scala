@@ -88,6 +88,9 @@ sealed abstract class IDA extends Ordered[IDA] {
   /** Returns length of the DataBuffers that would be returned by calling encode() on the provided DataBuffer */ 
   def calculateEncodedSegmentLength(objectContent: DataBuffer): Int
   
+  /** Returns the size of the restored object given the size of the object segment on a data store */
+  def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int
+  
   /** Returns the number of bytes needed to serialize the IDA type. */
   def getSerializedIDATypeLength(): Int
   
@@ -126,6 +129,8 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
   
   def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = objectContent.size
   
+  def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int = objectSizeOnDataStore
+  
   def getSerializedIDATypeLength(): Int = 3 // <type><width><writeThreshold>
   
   def serializeIDAType(bb: ByteBuffer): Unit = {
@@ -145,6 +150,8 @@ case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int)
   def encode(objectContent: DataBuffer): Array[DataBuffer] = throw new IDANotSupportedError
   
   def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = throw new IDANotSupportedError
+  
+  def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int = throw new IDANotSupportedError
   
   def encodeInto(objectContent: DataBuffer, bbArray: Array[ByteBuffer]): Unit = throw new IDANotSupportedError
   

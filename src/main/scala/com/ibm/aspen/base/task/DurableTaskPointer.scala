@@ -15,11 +15,14 @@ final class DurableTaskPointer(val kvPointer: KeyValueObjectPointer) extends Any
 object DurableTaskPointer {
   def apply(kvPointer: KeyValueObjectPointer): DurableTaskPointer = new DurableTaskPointer(kvPointer)
   
-  def fromArray(arr: Array[Byte], endPosition: Option[Int]=None): DurableTaskPointer = {
-    new DurableTaskPointer(ObjectPointer.fromArray(arr, endPosition).asInstanceOf[KeyValueObjectPointer])
+  /** If size is None, the end of the array marks the end of the pointer */
+  def fromArray(arr: Array[Byte], size: Option[Int]=None): DurableTaskPointer = size match {
+    case None => new DurableTaskPointer(KeyValueObjectPointer(arr))
+    case Some(sz) => new DurableTaskPointer(KeyValueObjectPointer(arr, sz))
   }
   
-  def fromByteBuffer(bb: ByteBuffer, endPosition: Option[Int]=None): DurableTaskPointer = {
-    new DurableTaskPointer(ObjectPointer.fromByteBuffer(bb, endPosition).asInstanceOf[KeyValueObjectPointer])
+  /** If size is None, the limit of the byte buffer marks the end of the pointer */
+  def fromByteBuffer(bb: ByteBuffer, size: Option[Int]=None): DurableTaskPointer = {
+    new DurableTaskPointer(KeyValueObjectPointer(bb, size))
   }
 }

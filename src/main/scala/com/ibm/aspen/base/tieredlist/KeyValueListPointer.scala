@@ -51,9 +51,7 @@ object KeyValueListPointer {
     val ptrLen = Varint.getUnsignedInt(bb)
     val minimum = new Array[Byte](minLen)
     bb.get(minimum)
-    val endPosition = Some(bb.position + ptrLen)
-    val pointer = ObjectPointer.fromByteBuffer(bb, endPosition)
-    KeyValueListPointer(Key(minimum), pointer.asInstanceOf[KeyValueObjectPointer])
+    KeyValueListPointer(Key(minimum), KeyValueObjectPointer(bb, Some(ptrLen)))
   }
   
 }

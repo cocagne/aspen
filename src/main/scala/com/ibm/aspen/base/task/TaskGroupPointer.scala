@@ -15,11 +15,13 @@ final class TaskGroupPointer(val kvPointer: KeyValueObjectPointer) extends AnyVa
 object TaskGroupPointer {
   def apply(kvPointer: KeyValueObjectPointer): TaskGroupPointer = new TaskGroupPointer(kvPointer)
   
-  def fromArray(arr: Array[Byte], endPosition: Option[Int]=None): TaskGroupPointer = {
-    new TaskGroupPointer(ObjectPointer.fromArray(arr, endPosition).asInstanceOf[KeyValueObjectPointer])
+  /** If size is None, the end of the array marks the end of the pointer */
+  def fromArray(arr: Array[Byte], size: Option[Int]=None): TaskGroupPointer = size match {
+    case None => new TaskGroupPointer(KeyValueObjectPointer(arr))
+    case Some(size) => new TaskGroupPointer(KeyValueObjectPointer(arr, size))
   }
   
-  def fromByteBuffer(bb: ByteBuffer, endPosition: Option[Int]=None): TaskGroupPointer = {
-    new TaskGroupPointer(ObjectPointer.fromByteBuffer(bb, endPosition).asInstanceOf[KeyValueObjectPointer])
+  def fromByteBuffer(bb: ByteBuffer, size: Option[Int]=None): TaskGroupPointer = {
+    new TaskGroupPointer(KeyValueObjectPointer(bb, size))
   }
 }

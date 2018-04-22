@@ -4,8 +4,8 @@ import java.util.UUID
 
 trait DirectoryLoader {
   
-  def dataTableAllocaters: Array[UUID]
-  def dataTableSizes: Array[Int]
+  def directoryTableAllocaters: Array[UUID]
+  def directoryTableSizes: Array[Int]
   
   def loadDirectory(fs: FileSystem, pointer: DirectoryPointer): Directory
 }

@@ -1,19 +1,61 @@
 
 CumuloFS
 
-* Finish delete file
+File Inode has EITHER fileSize+FileIndexRoot OR WriteControl
+  - On open for write a client either creates the WriteControl or adds itself to the control's writer list
+  - But there really isn't that much data in the inode. Why not just always overwrite?
+      - metadata change would cause inode update failure but this should be _really_ rare
+      
 
-* InodeTable allocates the inode
-   - use FileSystem allocater
-   - Allocation & Inode assignment are simultaneous
-   - create file task ties success of that transaction into task creation
 
+FileHandle
+  - Uses FileIndex to navigate file content & impl read/write/seek
+  
+  - May be that every write operation should update the inode
+     - Ensures consistent mtime
+     - Ensures contention on 1 client truncate while another is writing
+     - Active writers?.... maybe not needed if update inode on every operation?
 
-* Modify DurableTask to be parameterized on result type
-   - complete returned from task group is Future[Future[T]]
-   - return type from task is (ObjectRevision, Option[T]) ?
-   - Loaded from object, return type isn't used (no where to send) but if live it 's returned
+FileIndex
+  - Root contains Tier0 first and last for each tier
+     - Allows instant find of up nodes for insertion
+     - Overwrites are relatively infrequent (every 250Mb w/ 4Mb segments and 4kb tier0)
+  - Default to 4Kb tier nodes
+  - Impl should be agnostic of tier sizes & data object sizes
+  - Operates in append-only manner
+  - Truncate operation uses Task for unlinking file data (maybe modified DeleteFile task)
+  - Dont worry about contention
+  - Can build in support for refresh root on update
+  - Use mutable data structure
+  - Use completely full tier0 nodes
 
+How to handle regular files?
+   * Most often it'll be linear read/write
+   * Random Access could just use a cache of Tier0+ nodes
+      * Where will we miss? Once allocated, the pointer to a byte range is fixed
+          - Relocation will result in an InvalidObject so we'll know to re-read the tier0 node for an up-to-date
+            data object pointer.
+      * The tail tier-0 node is the only place contention can occur. And *that* is only on attempts to append the next
+        object.
+      * A Balanced tree structure is also of no advantage for the file index. No need to split into equally balanced nodes
+         * better to have fully packed nodes.
+         
+         
+* Looks like we'll want a custom data structure for this. Should make cursor implementation easier too.
+  - Won't need FAs to manage the tree structure. We'll explicitly Not Care about contention on writes
+  - transactUntilSuccessful should be sufficient for inserting new tier0 node and into tier1 tree
+      - though that could bubble up
+         - does it matter? chance of failure is no higher
+         
+* With 4Mb data segments and 4Kb tier0 nodes and assuming an average pointer entry of 60 bytes each tier0 node
+  will index about 1GB of data
+  
+
+      
+* May need a special Cursor instance to handle this. Equivalent of FileHandle
+
+* RegularFile
+* RegularFileLoader
 
 Caching:
    - DirectoryLoader & FileLoader can cache Directory & File instances

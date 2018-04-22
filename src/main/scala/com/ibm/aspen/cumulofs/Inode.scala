@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.cumulofs.error.CorruptedInode
+import com.ibm.aspen.util.Varint
 
 object Inode {
   
@@ -130,8 +131,8 @@ class DirectoryInode(
 // ----- File -----
 
 object FileInode {
-  val InitialSegmentsKey  = Key(20) // Pointers to the first few data objects. List <varint-offset><varint-pointer-len><pointer>
-  val DataTieredListKey   = Key(21) // TieredList
+  val FileSizeKey        = Key(20) // Varint
+  val FileIndexRootKey   = Key(21) // Serialized pointer to root of the file index tree + tier level
     
   def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFREG
@@ -146,6 +147,16 @@ class FileInode(
     val content: Map[Key, Value]) extends Inode {
  
   import FileInode._
+  
+  def fileSize: Long = content.get(FileSizeKey) match {
+    case None => 0
+    case Some(varr) => Varint.getUnsignedLong(varr.value)
+  }
+  
+  def fileIndexRoot(): Option[Array[Byte]] = content.get(FileIndexRootKey) match {
+    case None => None
+    case Some(v) => Some(v.value)
+  }
 }
 
 // ----- Symlink -----

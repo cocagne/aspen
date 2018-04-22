@@ -53,6 +53,8 @@ class DataObjectState(
     val sizeOnStore: Int,
     val data: DataBuffer) extends ObjectState(pointer, revision, refcount, timestamp) {
   
+  def size: Int = pointer.ida.calculateRestoredObjectSize(sizeOnStore)
+  
   def canEqual(other: Any): Boolean = other.isInstanceOf[DataObjectState]
   
   override def equals(other: Any): Boolean = {
@@ -92,6 +94,8 @@ class KeyValueObjectState(
     ) extends ObjectState(pointer, revision, refcount, timestamp) {
   
   import KeyValueObjectState._
+  
+  def size: Int = pointer.ida.calculateRestoredObjectSize(sizeOnStore)
   
   def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {
     val minOk = minimum match {
