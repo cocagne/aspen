@@ -17,7 +17,6 @@ final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer)
     val ptrSize = pointer.encodedSize
     
     Varint.getUnsignedIntEncodingLength(minimum.bytes.length) + 
-    Varint.getUnsignedIntEncodingLength(ptrSize) +
     minimum.bytes.length +
     ptrSize
   }
@@ -38,7 +37,6 @@ object KeyValueListPointer {
   
   def encodeInto(bb: ByteBuffer, p: KeyValueListPointer): Unit = {
     Varint.putUnsignedInt(bb, p.minimum.bytes.length)
-    Varint.putUnsignedInt(bb, p.pointer.encodedSize)
     bb.put(p.minimum.bytes)
     ObjectPointer.encodeInto(bb, p.pointer)
   }
@@ -48,10 +46,9 @@ object KeyValueListPointer {
   
   def fromByteBuffer(bb: ByteBuffer): KeyValueListPointer = {
     val minLen = Varint.getUnsignedInt(bb)
-    val ptrLen = Varint.getUnsignedInt(bb)
     val minimum = new Array[Byte](minLen)
     bb.get(minimum)
-    KeyValueListPointer(Key(minimum), KeyValueObjectPointer(bb, Some(ptrLen)))
+    KeyValueListPointer(Key(minimum), KeyValueObjectPointer(bb))
   }
   
 }

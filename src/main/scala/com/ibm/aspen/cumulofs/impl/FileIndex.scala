@@ -51,13 +51,11 @@ object FileIndex {
     def encodedSize: Int = {
       val osize = Varint.getUnsignedLongEncodingLength(offset)
       val psize = pointer.encodedSize
-      val lsize = Varint.getUnsignedIntEncodingLength(psize)
-      1 + osize + psize + lsize
+      1 + osize + psize
     }
     def encodeInto(bb: ByteBuffer): Unit = {
       bb.put(typeCode)
       Varint.putUnsignedLong(bb, offset)
-      Varint.putUnsignedInt(bb, pointer.encodedSize)
       pointer.encodeInto(bb)
     }
     def toArray(): Array[Byte] = {
@@ -78,8 +76,7 @@ object FileIndex {
         val typeCode = bb.get
         
         val offset = Varint.getUnsignedLong(bb)
-        val psize = Varint.getUnsignedInt(bb)
-        val pointer = DataObjectPointer(bb, Some(bb.position + psize))
+        val pointer = DataObjectPointer(bb)
         
         typeCode match {
           case 0 => l = Some(new LeftPointer(offset, pointer))

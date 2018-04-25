@@ -92,10 +92,9 @@ object ObjectPointer {
       (numBits / 8) + 1
   }
   
-  def fromArray(arr: Array[Byte], osize: Option[Int]=None): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr), osize)
+  def fromArray(arr: Array[Byte]): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr))
   
-  def fromByteBuffer(bb: ByteBuffer, osize: Option[Int]=None): ObjectPointer = {
-    //val endPos = bb.position + osize.getOrElse( bb.limit - bb.position )
+  def fromByteBuffer(bb: ByteBuffer): ObjectPointer = {
     val baseSize = Varint.getUnsignedInt(bb)
     val endPos = bb.position + baseSize
     val typeCode = bb.get()
@@ -231,10 +230,12 @@ class DataObjectPointer(
 }
 
 object DataObjectPointer {
-  def apply(arr: Array[Byte], size: Int): DataObjectPointer = ObjectPointer.fromArray(arr, Some(size)).asInstanceOf[DataObjectPointer]
-  def apply(arr: Array[Byte]): DataObjectPointer = ObjectPointer.fromArray(arr, None).asInstanceOf[DataObjectPointer]
   
-  def apply(bb: ByteBuffer, size: Option[Int]=None): DataObjectPointer = ObjectPointer.fromByteBuffer(bb, size).asInstanceOf[DataObjectPointer]
+  def apply(arr: Array[Byte]): DataObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[DataObjectPointer]
+  
+  def apply(value: Value): DataObjectPointer = ObjectPointer.fromArray(value.value).asInstanceOf[DataObjectPointer]
+  
+  def apply(bb: ByteBuffer): DataObjectPointer = ObjectPointer.fromByteBuffer(bb).asInstanceOf[DataObjectPointer]
   
   def apply(
       uuid: UUID,
@@ -256,12 +257,11 @@ class KeyValueObjectPointer(
 
 object KeyValueObjectPointer {
   
-  def apply(arr: Array[Byte], size: Int): KeyValueObjectPointer = ObjectPointer.fromArray(arr, Some(size)).asInstanceOf[KeyValueObjectPointer]
-  def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr, None).asInstanceOf[KeyValueObjectPointer]
-  
+  def apply(arr: Array[Byte]): KeyValueObjectPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+
   def apply(value: Value): KeyValueObjectPointer = ObjectPointer.fromArray(value.value).asInstanceOf[KeyValueObjectPointer]
   
-  def apply(bb: ByteBuffer, size: Option[Int]=None): KeyValueObjectPointer = ObjectPointer.fromByteBuffer(bb, size).asInstanceOf[KeyValueObjectPointer]
+  def apply(bb: ByteBuffer): KeyValueObjectPointer = ObjectPointer.fromByteBuffer(bb).asInstanceOf[KeyValueObjectPointer]
   
   def apply(
       uuid: UUID,

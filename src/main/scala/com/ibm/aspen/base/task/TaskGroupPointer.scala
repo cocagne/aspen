@@ -16,12 +16,8 @@ object TaskGroupPointer {
   def apply(kvPointer: KeyValueObjectPointer): TaskGroupPointer = new TaskGroupPointer(kvPointer)
   
   /** If size is None, the end of the array marks the end of the pointer */
-  def fromArray(arr: Array[Byte], size: Option[Int]=None): TaskGroupPointer = size match {
-    case None => new TaskGroupPointer(KeyValueObjectPointer(arr))
-    case Some(size) => new TaskGroupPointer(KeyValueObjectPointer(arr, size))
-  }
+  def fromArray(arr: Array[Byte]): TaskGroupPointer = new TaskGroupPointer(KeyValueObjectPointer(arr))
+    
+  def fromByteBuffer(bb: ByteBuffer): TaskGroupPointer = new TaskGroupPointer(KeyValueObjectPointer(bb))
   
-  def fromByteBuffer(bb: ByteBuffer, size: Option[Int]=None): TaskGroupPointer = {
-    new TaskGroupPointer(KeyValueObjectPointer(bb, size))
-  }
 }

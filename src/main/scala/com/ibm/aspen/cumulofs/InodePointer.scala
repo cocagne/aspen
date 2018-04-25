@@ -64,16 +64,13 @@ object InodePointer {
     case FileType.FIFO            => new FIFOPointer(number, pointer) 
   }
   
-  def apply(arr: Array[Byte]): InodePointer = apply(ByteBuffer.wrap(arr), None)
-  
-  /** If size is None, the end of the array marks the end of the pointer */
-  def apply(arr: Array[Byte], size: Option[Int]): InodePointer = apply(ByteBuffer.wrap(arr), size)
+  def apply(arr: Array[Byte]): InodePointer = apply(ByteBuffer.wrap(arr))
   
   /** If size is None, the limit of the byte buffer marks the end of the pointer */
-  def apply(bb: ByteBuffer, size: Option[Int]=None): InodePointer = {
+  def apply(bb: ByteBuffer): InodePointer = {
     val ftype = FileType.fromByte(bb.get())
     val number = bb.getLong()
-    val pointer = KeyValueObjectPointer(bb, size)
+    val pointer = KeyValueObjectPointer(bb)
     apply(ftype, number, pointer)
   }
 }
