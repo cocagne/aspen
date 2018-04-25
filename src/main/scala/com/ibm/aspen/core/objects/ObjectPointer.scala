@@ -23,10 +23,19 @@ sealed abstract class ObjectPointer(
   // Require that storePointers is a sorted by pool index
   require(storePointers.zip(storePointers.sortBy(sp => sp.poolIndex)).forall(t => t._1 == t._2))
   
+  /** ObjectPointers are self-describing in terms of size. When given a buffer/array to decode a pointer from, they will consume
+   *  exactly the number of bytes necessary to decode one pointer. Separate size encodings are not required.
+   */
   def toArray: Array[Byte] = encodeToByteArray(this)
   
+  /** ObjectPointers are self-describing in terms of size. When given a buffer/array to decode a pointer from, they will consume
+   *  exactly the number of bytes necessary to decode one pointer. Separate size encodings are not required.
+   */
   def encodedSize: Int = numBytesNeededToEncode(this)
   
+  /** ObjectPointers are self-describing in terms of size. When given a buffer/array to decode a pointer from, they will consume
+   *  exactly the number of bytes necessary to decode one pointer. Separate size encodings are not required.
+   */
   def encodeInto(bb: ByteBuffer): Unit = ObjectPointer.encodeInto(bb, this)
   
   final override def equals(other: Any): Boolean = other match {
@@ -86,7 +95,9 @@ object ObjectPointer {
   def fromArray(arr: Array[Byte], osize: Option[Int]=None): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr), osize)
   
   def fromByteBuffer(bb: ByteBuffer, osize: Option[Int]=None): ObjectPointer = {
-    val endPos = bb.position + osize.getOrElse( bb.limit - bb.position )
+    //val endPos = bb.position + osize.getOrElse( bb.limit - bb.position )
+    val baseSize = Varint.getUnsignedInt(bb)
+    val endPos = bb.position + baseSize
     val typeCode = bb.get()
     
     def getUUID(): UUID = {
@@ -131,7 +142,7 @@ object ObjectPointer {
     }
   }
   
-  def numBytesNeededToEncode(o: ObjectPointer): Int = {
+  def baseNumBytesNeededToEncode(o: ObjectPointer): Int = {
     val sizeLen = Varint.getUnsignedIntEncodingLength(o.size.getOrElse(0))
     
     val idaLen = o.ida.getSerializedIDATypeLength()
@@ -142,7 +153,14 @@ object ObjectPointer {
       o.storePointers.foldLeft(0)( (accum, sp) => accum + Varint.getUnsignedIntEncodingLength(sp.data.length) + sp.data.length)
     }
     
-    1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen  
+    1 + 16*2 + sizeLen + idaLen + 1 + indexMaskLen + pointerDataLen
+  }
+  
+  def numBytesNeededToEncode(o: ObjectPointer): Int = {
+    
+    val baseLen = baseNumBytesNeededToEncode(o)
+    
+    Varint.getUnsignedIntEncodingLength(baseLen) + baseLen
   }
   
   /** Creates a new array containing the encoded representation of the object pointer.
@@ -163,7 +181,7 @@ object ObjectPointer {
   }
   
   def encodeInto(bb: ByteBuffer, o: ObjectPointer): Unit = {
-    
+    val baseSize = baseNumBytesNeededToEncode(o)
     val indexMaskLen = bytesNeededForBits(o.storePointers(o.storePointers.length-1).poolIndex)
     
     val indexMask = new Array[Byte](indexMaskLen)
@@ -183,6 +201,7 @@ object ObjectPointer {
       case _: KeyValueObjectPointer => KeyValueObjectPointerCode
     }
     
+    Varint.putUnsignedInt(bb, baseSize)
     bb.put(typeCode)
     bb.putLong(o.uuid.getMostSignificantBits)
     bb.putLong(o.uuid.getLeastSignificantBits)
