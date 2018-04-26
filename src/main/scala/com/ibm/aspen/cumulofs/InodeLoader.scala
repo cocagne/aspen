@@ -16,8 +16,26 @@ trait InodeLoader {
   
   val inodeCache: InodeCache
   
-  def loadDirectory(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[DirectoryInode] = {
-    load(pointer).map(i => i.asInstanceOf[DirectoryInode])
+  def load(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[DirectoryInode] = {
+    iload(pointer).map(i => i.asInstanceOf[DirectoryInode])
+  }
+  def load(pointer: FilePointer)(implicit ec: ExecutionContext): Future[FileInode] = {
+    iload(pointer).map(i => i.asInstanceOf[FileInode])
+  }
+  def load(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[SymlinkInode] = {
+    iload(pointer).map(i => i.asInstanceOf[SymlinkInode])
+  }
+  def load(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocketInode] = {
+    iload(pointer).map(i => i.asInstanceOf[UnixSocketInode])
+  }
+  def load(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFOInode] = {
+    iload(pointer).map(i => i.asInstanceOf[FIFOInode])
+  }
+  def load(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDeviceInode] = {
+    iload(pointer).map(i => i.asInstanceOf[CharacterDeviceInode])
+  }
+  def load(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDeviceInode] = {
+    iload(pointer).map(i => i.asInstanceOf[BlockDeviceInode])
   }
   
   def load(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Inode] = {
@@ -30,11 +48,11 @@ trait InodeLoader {
     
     opointer.flatMap { o => o match {
       case None => Future.failed(InvalidInode(inodeNumber))
-      case Some(iptr) => load(iptr) 
+      case Some(iptr) => iload(iptr) 
     }}
   }
   
-  def load(pointer: InodePointer)(implicit ec: ExecutionContext): Future[Inode] = {
+  def iload(pointer: InodePointer)(implicit ec: ExecutionContext): Future[Inode] = {
     val pload = Promise[Inode]()
       
     system.readObject(pointer.pointer) onComplete {

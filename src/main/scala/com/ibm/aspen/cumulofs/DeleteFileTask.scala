@@ -33,7 +33,7 @@ object DeleteFileTask {
       fs: FileSystem, 
       victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     
-    fs.inodeLoader.load(victim) flatMap { inode =>
+    fs.inodeLoader.iload(victim) flatMap { inode =>
       //
       // If refcount is greater than 2, more than one directory still references the file so
       // all we need to do is decrement the refcount. If it's exactly two, we need to create

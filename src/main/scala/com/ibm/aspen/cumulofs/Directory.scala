@@ -9,7 +9,7 @@ trait Directory {
   val fs: FileSystem
   
   def getInode()(implicit ec: ExecutionContext): Future[DirectoryInode] = {
-    fs.inodeLoader.loadDirectory(pointer)
+    fs.inodeLoader.load(pointer)
   }
   
   def lookup(name: String)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = name match {

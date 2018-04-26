@@ -1,11 +1,20 @@
 
 CumuloFS
 
-File Inode has EITHER fileSize+FileIndexRoot OR WriteControl
-  - On open for write a client either creates the WriteControl or adds itself to the control's writer list
-  - But there really isn't that much data in the inode. Why not just always overwrite?
-      - metadata change would cause inode update failure but this should be _really_ rare
-      
+FILE
+
+   All updates to a file involve updating the mtime. To minimize conflicts, we'll use a per-file singleton object that multiple
+   file handles can refer to. All modification options are serialized by the File interface (internally maintains a concurrent
+   linked list of requested operations). 
+    
+   File could maintain currentTx, nextTx, and nextTxReadyForCommit. If currentTx completes successfully and nextTxReadyForCommit is true,
+   immediately commit next Tx w/ successfully completed txUUID as the required revision. A simple opPrepCounter is used to identify each
+   "prepare" operation. If the completion of a prepare matches the current counter value nextTxReadyForCommit is flipped to true and the
+   pendingOps value is incremented. Next op placed in buffer, look at pendingOps. If above threshold, leave in queue. If below, incr prepCounter,
+   pendingOps, and set nextTxReadyForCommit to false. 
+   
+   On Tx failure, invalidate nextTx and move all current and pending ops back into the operations queue then re-start as if the ops were
+   freshly arrived.
 
 
 FileHandle

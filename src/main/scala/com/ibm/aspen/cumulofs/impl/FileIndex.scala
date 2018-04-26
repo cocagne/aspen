@@ -20,19 +20,34 @@ import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.core.HLCTimestamp
 
 /** FileIndex is similar to a TieredList in that it uses a hierarchy of singly-linked lists to build a distributed 
  *  index but this implementation is optimized specifically for indexing file data. Data is sequentially appended to
  *  files as they grow and the data offsets are fixed at time of allocation. Consequently, there is no advantage to
- *  the typical B-tree model of maintaining partially populated nodes and no need for supporting splits of anything
+ *  the typical B-tree model of maintaining partially populated nodes and no need for supporting efficient splits of anything
  *  but the right-most node in the list. Applications are also not typically written such that multiple processes
  *  attempt to simultaneously append to the same file so contention will generally not be a concern for transactions
  *  maintaining the tree structure. Whereas the TieredList implementation depends on FinalizationActions for maintaining
  *  the tree structure, this implementation performs those activities directly within the context of split/append
  *  transactions.
- * 
- *  Index could be a simple list of Entry until a size is exceeded. Then it could switch to a tier structure
  *  
+ *  For files with "holes" in them, mid-tree nodes may eventually need to be split to support writes to the "hole" space.
+ *  These will generally bubble up the tree structure to the root node and will result in a somewhat less efficient tree
+ *  structure but it will function correctly. 
+ *  
+ *  Future Notes:
+ *  
+ *     Embedded Inode Data
+ *        * Direct content embedding in root (for very small files)
+ *        * Direct tier0 embedding (up to 4 or 5 tier0 nodes for fairly small files)
+ *        
+ *     Multiple Writers
+ *        * Appends always overwrite the Inode (cause file size is changing too)
+ *        * For mid-file writers, maintain a separate object for the mtime and have an "active writers" array
+ *          embedded in the inode. Mid-file writes update the state for that writer only
+ *          - Readers of inode are then responsible for deducing the current mtime
+ *          
  *  TODO: Truncation - Single TX. Find all tiers at trunc point. Copy post-trunc Entries to newly-allocated nodes. Create
  *                     task to delete the tree of entries
  */
@@ -100,43 +115,14 @@ object FileIndex {
   
   
   
-  /* The only node who's size or revision we care about its the tails
-   * We may care about caching segments for search/replace
-   * Arrays are probably faster for iteration purposes.
-   * Every append to tier will also include an inode update in the transaction
-   * can map successful commit to updating tier tail pointers.
-   * 
-   * Following through, every index update involves an inode update. That also means there's no point in doing
-   * concurrent transactions. This probably ought to be serialized at the File level. Multiple handlers can refer
-   * to the same file. Requests are then serialized through an operation request queue.
-   *   * Allows file to buffer multiple writes till 4Mb limit is reached or fsync is called.
-   *   * Overwrite, Append, & Truncate are the only real operations we have
-   *   
-   * All changes involve changing the mtime so we'll need to serialize all operations to the file. Maintaining
-   * a buffer of outstanding operations should allow batching of operations. Prep for the next Tx can be done
-   * while the current one is underway.
-   * 
-   * File could maintain currentTx, nextTx, and nextTxReadyForCommit. If currentTx completes successfully and nextTxReadyForCommit is true,
-   * immediately commit next Tx w/ successfully completed txUUID as the required revision. A simple opPrepCounter is used to identify each
-   * "prepare" operation. If the completion of a prepare matches the current counter value nextTxReadyForCommit is flipped to true and the
-   * pendingOps value is incremented. Next op placed in buffer, look at pendingOps. If above threshold, leave in queue. If below, incr prepCounter,
-   * pendingOps, and set nextTxReadyForCommit to false. 
-   * 
-   * On Tx failure, invalidate nextTx and move all current and pending ops back into the operations queue then re-start as if the ops were
-   * freshly arrived.
-   * 
-   * So, FileIndex needs to be a self-contained mutable object. We'll only allow a single append call per Tx so we can correctly handle
-   * node splits
-   * 
-   * 
-   * Inode - Could just store FileIndex Root + Tier Depth
-   * File - getCachedIndexNode(uuid)
-   * 
-   * getTails(): Future[Array[Tail]] - build tails list via recursive function. 
-   * invalidateTails(): sets cached future to None subsequent getTails() re-builds the list. call on any tx failure
-   * 
-   */
-  class IndexNode(val tier: Int, val index: FileIndex, val nodePointer: DataObjectPointer, initialContent: DecodedNodeContent) {
+  class IndexNode(
+      val tier: Int, 
+      val index: FileIndex,
+      val nodePointer: DataObjectPointer, 
+      private[this] var revision: ObjectRevision,
+      private[this] var size: Int,
+      private[this] var timestamp: HLCTimestamp, 
+      initialContent: DecodedNodeContent) {
     
     private[this] var lptr = initialContent.leftPointer
     private[this] var rptr = initialContent.rightPointer
@@ -170,16 +156,27 @@ object FileIndex {
       ofrefresh match {
         case Some(f) => f
         case None =>
-          val f = index.fs.system.readObject(nodePointer) map { dos => synchronized {
-            val dnc = Entry.decodeNodeContent(dos.data)
-            lptr = dnc.leftPointer
-            rptr = dnc.rightPointer
-            segments.clear()
-            segments.addAll(dnc.segments)
+          val f = index.fs.system.readObject(nodePointer) map { dos => 
+            refresh(dos)
             this
-          }}
+          }
           ofrefresh = Some(f)
+          f.andThen { case _ => synchronized { ofrefresh = None } }
           f
+      }
+    }
+    
+    /** Refreshes the node state IFF the provided state is newer than the current state */
+    def refresh(currentState: DataObjectState): Unit = synchronized {
+      if (currentState.timestamp.compareTo(timestamp) > 0) {
+        val dnc = Entry.decodeNodeContent(currentState.data)
+        lptr = dnc.leftPointer
+        rptr = dnc.rightPointer
+        segments.clear()
+        segments.addAll(dnc.segments)
+        revision = currentState.revision
+        timestamp = currentState.timestamp
+        size = currentState.size
       }
     }
     
@@ -203,11 +200,23 @@ object FileIndex {
     
     def fetchLeft()(implicit ec: ExecutionContext): Future[Option[IndexNode]] = leftPointer match {
       case None => Future.successful(None)
-      case Some(lp) => index.loadIndexNode(tier, lp).map(Some(_))
+      case Some(lp) => index.loadIndexNode(tier, lp.pointer).map(Some(_))
     }
     def fetchRight()(implicit ec: ExecutionContext): Future[Option[IndexNode]] = rightPointer match {
       case None => Future.successful(None)
-      case Some(rp) => index.loadIndexNode(tier, rp).map(Some(_))
+      case Some(rp) => index.loadIndexNode(tier, rp.pointer).map(Some(_))
+    }
+    def fetchTier0Node(offset: Long)(implicit ec: ExecutionContext): Future[IndexNode] = {
+      if (tier == 0 && containsOffset(offset))
+        Future.successful(this)
+      else if (tier == 0)
+        seekTo(offset)
+      else 
+        seekTo(offset) flatMap { node => 
+          index.loadIndexNode(tier-1, getSegmentContainingOffset(offset).pointer) flatMap { lowerNode =>
+            lowerNode.fetchTier0Node(offset)
+          }
+        }
     }
     def seekTo(offset: Long)(implicit ec: ExecutionContext): Future[IndexNode] = {
       if (containsOffset(offset)) 
@@ -240,18 +249,26 @@ object FileIndex {
   
   trait IndexNodeCache {
     
-    def getNode(tier: Int, entry: Entry): Option[IndexNode]
+    def dropCache(): Unit = {}
     
-    def putNode(node: IndexNode): Unit
+    def getNode(tier: Int, pointer: DataObjectPointer): Option[IndexNode] = None
     
-    def dropCache(): Unit
-
+    protected def putNode(node: IndexNode): Unit = {}
+    
+    def refresh(tier: Int, index: FileIndex, dos: DataObjectState): IndexNode = synchronized {
+      getNode(tier, dos.pointer) match { 
+        case Some(node) => 
+          node.refresh(dos)
+          node
+          
+        case None =>
+          val node = new IndexNode(tier, index, dos.pointer, dos.revision, dos.size, dos.timestamp, Entry.decodeNodeContent(dos.data))
+          putNode(node)
+          node
+      }
+    }
   }
   
-  class Tail(
-      var node: IndexNode,
-      var revision: ObjectRevision,
-      var size: Int)
   
   /** Encoding of the index root is optimized for the two common operations of "read from the front" and "append data to the back".
    *  Even for very large files, the tree will be quite shallow so the tail node of each tier of the tree is maintained within the
@@ -262,82 +279,32 @@ object FileIndex {
    * 
    */
   case class Root(tier0head: DataObjectPointer, tails: Array[DataObjectPointer]) {
-    def toArray(): Array[Byte] = ???
-      /*
-    {
-      val lroot = rootPointer match {
-        case None => 0
-        case Some(rp) => rp.encodedSize
-      }
-      val lhead = tier0head.encodedSize
-      val ltail = tier0tail.encodedSize
-      
-      val szroot = Varint.getUnsignedIntEncodingLength(lroot)
-      val szhead = Varint.getUnsignedIntEncodingLength(lhead)
-      val sztail = Varint.getUnsignedIntEncodingLength(ltail)
-      
-      val arr = new Array[Byte](1 + 1 + szroot + szhead + sztail)
+    def toArray(): Array[Byte] = {
+      val nbytes = tails.foldLeft(tier0head.encodedSize)( (sz, p) => sz + p.encodedSize )
+      val arr = new Array[Byte](nbytes)
       val bb = ByteBuffer.wrap(arr)
-      
-      bb.put(0.asInstanceOf[Byte]) // encoding format
-      bb.put(tierLevel)
-      Varint.putUnsignedInt(bb, lroot)
-      Varint.putUnsignedInt(bb, lhead)
-      Varint.putUnsignedInt(bb, ltail)
-      rootPointer.foreach(_.encodeInto(bb))
       tier0head.encodeInto(bb)
-      tier0tail.encodeInto(bb)
-      
+      tails.foreach(_.encodeInto(bb))
       arr
-    } */
+    } 
   }
   object Root {
-    def apply(arr: Array[Byte]): Root = ???
-    /* {
+    def apply(arr: Array[Byte]): Root = {
       val bb = ByteBuffer.wrap(arr)
       
-      val encodingFormat = bb.get()
-      val tierLevel = bb.get()
-      val rootLen = Varint.getUnsignedInt(bb)
-      val headLen = Varint.getUnsignedInt(bb)
-      val tailLen = Varint.getUnsignedInt(bb)
+      val tier0head = DataObjectPointer(bb)
       
-      val rootPointer = if (rootLen == 0) None else Some(DataObjectPointer(bb, Some(rootLen)))
-      val tier0head = DataObjectPointer(bb, Some(headLen))
-      val tier0tail = DataObjectPointer(bb, Some(tailLen))
+      def rdecode(l: List[DataObjectPointer]): List[DataObjectPointer] = if (bb.remaining == 0) l else {
+        rdecode( DataObjectPointer(bb) :: l )
+      }
       
-      Root(tierLevel, rootPointer, tier0head, tier0tail)
-    } */
+      Root(tier0head, rdecode(Nil).reverse.toArray)
+    }
   }
 }
 
 /**
  * 
- * Could also add an entryType byte where entries are Either[Segment, LeftPointer, RightPointer]
- *    - Compatible with appends
- *    - Once a RightPointer is set, the node is closed
- *    - Makes navigation WAY easier
- *    - Prevents need to always have an up-to-date root
- *    - Allows independent impl of sequential cursor for forward/backward scan
- *       - upper tiers can be used for seek opz
- *    - Makes storing tier0 in inode attractive again
- *    - Same with tail. Only when a split occurs do we need to search up
- *        - This should be infrequent enough that we don't need to cache it. Do full search from root on each split
- *            - can opz later
- *        - This HUGELY simplifies the impl
- *        
- *        
- * Tree handling. 3 common use cases: 
- *    1. Get first byte for sequential read (HUGELY COMMON)
- *    2. Get tail for append
- *    3. Random Seek within file
- * 
- * 1 & 2 solved by embedding tier0 pointers in inode
- * 
- * There will be so few tiers... what if we just put all tier tails in the root pointer?
- *   The "root" is always the tail of the highest tier. Once it splits, the tail of the next tier up becomes the root.
- *       * SIMPLE! Yay!
- *   Root = tier0 head, [tier0tail, tier1tail]
  */
 class FileIndex(
     val fs: FileSystem,
@@ -348,39 +315,86 @@ class FileIndex(
   
   val filePointer = initialInodeState.pointer
   
-  private[this] var ofroot: Future[Option[Root]] = Future.successful(initialInodeState.fileIndexRoot().map(Root(_)))
-  private[this] var otail: Option[Tail] = None
+  private[this] var foRoot: Future[Option[Root]] = Future.successful(initialInodeState.fileIndexRoot().map(Root(_)))
+  private[this] var ofTails: Option[Future[Vector[IndexNode]]] = None
+  private[this] var loadingNodes = Map[UUID, Future[IndexNode]]()
   
-  def loadIndexNode(tier: Int, entry: Entry)(implicit ec: ExecutionContext): Future[IndexNode] = cache.getNode(tier, entry) match {
-    case Some(i) => Future.successful(i)
-    case None => fs.system.readObject(entry.pointer) map { dos => 
-      val node = new IndexNode(tier, this, entry.pointer, Entry.decodeNodeContent(dos.data))
-      cache.putNode(node)
-      node
+  def loadIndexNode(tier: Int, pointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[IndexNode] = synchronized {
+    cache.getNode(tier, pointer) match {  
+      case Some(i) => Future.successful(i)
+      
+      case None => loadingNodes.get(pointer.uuid) match {
+        case Some(f) => f
+        
+        case None =>
+          val fnode = fs.system.readObject(pointer) map ( dos => cache.refresh(tier, this, dos) )
+          loadingNodes += (pointer.uuid -> fnode)
+          fnode andThen { case _ => synchronized { loadingNodes -= pointer.uuid } }
+          fnode
+      }
     }
   }
-  /*
-  def refreshRoot()(implicit ec: ExecutionContext): Future[Option[Root]] = synchronized {
-    ofroot = fs.inodeLoader.load(filePointer) map ( _.asInstanceOf[FileInode] ) map { inode => synchronized {
-      inode.fileIndexRoot() match {
-        case None => 
-          otail = None
-          None
-          
-        case Some(arr) => 
-          val r = Root(arr)
-          otail.foreach { tail =>
-            if (r.tier0tail != tail)
-              otail = None
+  
+  def getIndexNodeForOffset(offset: Long)(implicit ec: ExecutionContext): Future[Option[IndexNode]] = synchronized {
+    foRoot.flatMap { oroot => oroot match { 
+      case None => Future.successful(None)
+      case Some(root) => 
+        if (offset == 0)
+          loadIndexNode(0, root.tier0head).map(Some(_))
+        else {
+          loadIndexNode(root.tails.length-1, root.tails(root.tails.length-1)) flatMap { indexRoot =>
+            indexRoot.fetchTier0Node(offset).map(Some(_))
           }
-          Some(r)
+        }
+    }}
+  }
+  
+  def refresh()(implicit ec: ExecutionContext): Future[Option[Root]] = synchronized {
+    ofTails = None
+    
+    foRoot = fs.inodeLoader.load(filePointer) map { inode => synchronized {
+      inode.fileIndexRoot() match {
+        case None => None
+        case Some(arr) => Some(Root(arr))
       }
     }}
 
-    ofroot
-  } */
+    foRoot
+  }
   
-  def prepareAppend(segments: Seq[Segment])(implicit t: Transaction, ec: ExecutionContext): Future[Root] = ???
+  def getTails()(implicit ec: ExecutionContext): Future[Vector[IndexNode]] = synchronized {
+    ofTails match {
+      case Some(f) => f
+      case None =>
+        val ftails = foRoot flatMap { oroot => oroot match {
+          case None => Future.successful(new Vector[IndexNode](2,1))
+          
+          case Some(root) => 
+      
+            val fstate = Future.sequence(root.tails.map(fs.system.readObject(_)).toList)
+              
+            fstate map { tailStates =>
+              val v = new Vector[IndexNode](root.tails.length+1, 1)
+              
+              tailStates.zipWithIndex.foreach { t =>
+                val (dos, tier) = t
+                
+                v.add( cache.refresh(tier, this, dos) )
+              }
+    
+              v
+            }
+        }}
+        
+        ofTails = Some(ftails)
+        ftails
+    }
+  }
+  
+  /** Returns future to transaction prepared for commit. Result is a tuple containing the new Root object and
+   *  the number of segments appended. The number of appended segments may be less than the total number provided.
+   */
+  def prepareAppend(segments: Seq[Segment])(implicit t: Transaction, ec: ExecutionContext): Future[(Root, Int)] = ???
   
   /** Returns a serialized copy of the current root structure */
   //def indexRoot(): Array[Byte]
