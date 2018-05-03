@@ -50,14 +50,15 @@ object Inode {
       pointer: InodePointer, 
       revision: ObjectRevision,
       refcount: ObjectRefcount,
+      timestamp: HLCTimestamp,
       content: Map[Key, Value]): Inode = pointer match {
-    case p: FilePointer            => new FileInode(p, revision, refcount, content)
-    case p: DirectoryPointer       => new DirectoryInode(p, revision, refcount, content)
-    case p: SymlinkPointer         => new SymlinkInode(p, revision, refcount, content)
-    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, refcount, content)
-    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, refcount, content)
-    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, refcount, content)
-    case p: FIFOPointer            => new FIFOInode(p, revision, refcount, content)
+    case p: FilePointer            => new FileInode(p, revision, refcount, timestamp, content)
+    case p: DirectoryPointer       => new DirectoryInode(p, revision, refcount, timestamp, content)
+    case p: SymlinkPointer         => new SymlinkInode(p, revision, refcount, timestamp, content)
+    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, refcount, timestamp, content)
+    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, refcount, timestamp, content)
+    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, refcount, timestamp, content)
+    case p: FIFOPointer            => new FIFOInode(p, revision, refcount, timestamp, content)
   }
 }
 
@@ -66,7 +67,8 @@ sealed abstract class Inode {
   val pointer: InodePointer
   val revision: ObjectRevision
   val refcount: ObjectRefcount
-  val content: Map[Key, Value] 
+  val content: Map[Key, Value]
+  val timestamp: HLCTimestamp
   
   import Inode._
   
@@ -113,6 +115,7 @@ class DirectoryInode(
     val pointer: DirectoryPointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends Inode {
  
   import DirectoryInode._
@@ -144,6 +147,7 @@ class FileInode(
     val pointer: FilePointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends Inode {
  
   import FileInode._
@@ -176,6 +180,7 @@ class SymlinkInode(
     val pointer: SymlinkPointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends Inode {
  
   import SymlinkInode._
@@ -196,6 +201,7 @@ class UnixSocketInode(
     val pointer: UnixSocketPointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends Inode {
  
   import UnixSocketInode._
@@ -214,6 +220,7 @@ class FIFOInode(
     val pointer: FIFOPointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends Inode {
  
   import FIFOInode._
@@ -244,6 +251,7 @@ class CharacterDeviceInode(
     val pointer: CharacterDevicePointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends DeviceInode {
  
   import CharacterDeviceInode._
@@ -262,6 +270,7 @@ class BlockDeviceInode(
     val pointer: BlockDevicePointer, 
     val revision: ObjectRevision,
     val refcount: ObjectRefcount,
+    val timestamp: HLCTimestamp,
     val content: Map[Key, Value]) extends DeviceInode {
  
   import BlockDeviceInode._

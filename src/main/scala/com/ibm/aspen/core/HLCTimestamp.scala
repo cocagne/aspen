@@ -28,10 +28,10 @@ object HLCTimestamp {
     val now = HLCTimestamp()
     
     if (ts.wallTime == now.wallTime) 
-      HLCTimestamp(now.wallTime & ts.logical + 1)
+      HLCTimestamp(((now.wallTime << 16) | ts.logical) + 1)
       
     else if (now.wallTime < ts.wallTime)
-      HLCTimestamp(ts.wallTime & ts.logical + 1)
+      HLCTimestamp(((ts.wallTime << 16) | ts.logical) + 1)
       
     else
       now

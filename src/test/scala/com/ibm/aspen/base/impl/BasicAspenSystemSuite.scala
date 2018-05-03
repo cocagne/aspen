@@ -25,6 +25,33 @@ class BasicAspenSystemSuite extends TestSystemSuite {
   
   override implicit val executionContext = ExecutionContext.Implicits.global
   
+  test("Test Update Object During Allocation") {
+    
+    val noRetry = new NoRetry
+    
+    val update = Array[Byte](1,2,3)
+
+    implicit val tx = sys.newTransaction()
+    
+    val d = DataBuffer(ByteBuffer.allocate(0))
+    val d2  = DataBuffer(ByteBuffer.wrap(update))
+    
+    for {
+      radicle <- sys.radicle
+      
+      fp <- sys.lowLevelAllocateDataObject(radicle.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+                                    None, TestSystem.DefaultIDA, d)
+      _=tx.overwrite(fp, tx.txRevision, d2)
+      
+      committed <- tx.commit()
+      
+      o <- sys.readObject(fp)
+    } yield {
+      o.data should not be (d)
+      o.data should be (d2)
+    }
+  }
+  
   test("Test Finalization Handler Logic") {
     
     val noRetry = new NoRetry

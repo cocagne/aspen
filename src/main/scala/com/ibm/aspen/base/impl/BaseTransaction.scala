@@ -37,68 +37,68 @@ class BaseTransaction(
   
   val uuid: UUID = UUID.randomUUID()
   private [this] val promise = Promise[Unit]
-  private [this] var builder: Option[TransactionBuilder] = Some(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
+  private [this] var state: Either[HLCTimestamp, TransactionBuilder] = Right(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   
-  def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
-    case Some(bldr) => bldr.append(objectPointer, requiredRevision, data)
-    case None => throw PostCommitTransactionModification()
+  def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { state } match {
+    case Right(bldr) => bldr.append(objectPointer, requiredRevision, data)
+    case Left(_) => throw PostCommitTransactionModification()
   }
-  def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { builder } match {
-    case Some(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
-    case None => throw PostCommitTransactionModification()
+  def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { state } match {
+    case Right(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
   def append(
       pointer: KeyValueObjectPointer, 
       requiredRevision: Option[ObjectRevision],
       requirements: List[KeyValueUpdate.KVRequirement],
-      operations: List[KeyValueOperation]): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.append(pointer, requiredRevision, requirements, operations)
-    case None => throw PostCommitTransactionModification()
+      operations: List[KeyValueOperation]): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.append(pointer, requiredRevision, requirements, operations)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
   def overwrite(
       pointer: KeyValueObjectPointer, 
       requiredRevision: ObjectRevision,
       requirements: List[KeyValueUpdate.KVRequirement],
-      operations: List[KeyValueOperation]): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.overwrite(pointer, requiredRevision, requirements, operations)
-    case None => throw PostCommitTransactionModification()
+      operations: List[KeyValueOperation]): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.overwrite(pointer, requiredRevision, requirements, operations)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized { builder } match {
-    case Some(bldr) => bldr.setRefcount(objectPointer, requiredRefcount, refcount)
-    case None => throw PostCommitTransactionModification()
+  def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized { state } match {
+    case Right(bldr) => bldr.setRefcount(objectPointer, requiredRefcount, refcount)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized { builder } match {
-    case Some(bldr) => bldr.bumpVersion(objectPointer, requiredRevision)
-    case None => throw PostCommitTransactionModification()
+  def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized { state } match {
+    case Right(bldr) => bldr.bumpVersion(objectPointer, requiredRevision)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.lockRevision(objectPointer, requiredRevision)
-    case None => throw PostCommitTransactionModification()
+  def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.lockRevision(objectPointer, requiredRevision)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.ensureHappensAfter(timestamp)
-    case None => throw PostCommitTransactionModification()
+  def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.ensureHappensAfter(timestamp)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def timestamp(): HLCTimestamp = synchronized { builder } match {
-    case Some(bldr) => bldr.timestamp()
-    case None => throw PostCommitTransactionModification()
+  def timestamp(): HLCTimestamp = synchronized { state } match {
+    case Right(bldr) => bldr.timestamp()
+    case Left(ts) => ts
   }
   
-  def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.addFinalizationAction(finalizationActionUUID, serializedContent)
-    case None => throw PostCommitTransactionModification()
+  def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.addFinalizationAction(finalizationActionUUID, serializedContent)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized { builder } match {
-    case Some(bldr) => bldr.addNotifyOnResolution(storesToNotify)
-    case None => throw PostCommitTransactionModification()
+  def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.addNotifyOnResolution(storesToNotify)
+    case Left(_) => throw PostCommitTransactionModification()
   }
   
   def invalidateTransaction(reason: Throwable): Unit = synchronized {
@@ -115,9 +115,9 @@ class BaseTransaction(
    */
   def commit()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
     if (!promise.isCompleted) {
-      builder.foreach { bldr =>
-        val (txd, encodedDataUpdates) = bldr.buildTranaction(uuid)
-        builder = None
+      state.foreach { bldr =>
+        val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
+        state = Left(timestamp)
         if (txd.requirements.isEmpty)
           promise.success(())
         else {

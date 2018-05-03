@@ -54,7 +54,7 @@ class TransactionBuilder(
   private [this] var notifyOnResolution = Set[DataStoreID]()
   private [this] var happensAfter: Option[HLCTimestamp] = None
   
-  def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) = synchronized {
+  def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]], HLCTimestamp) = synchronized {
     
     val startTimestamp = happensAfter match {
       case Some(ts) => HLCTimestamp.happensAfter(ts)
@@ -102,7 +102,7 @@ class TransactionBuilder(
       addUpdate(kvu.pointer, KeyValueObjectCodec.encodeUpdate(kvu.pointer.ida, kvu.operations)) 
     }
                                      
-    (txd, updates)
+    (txd, updates, startTimestamp)
   }
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {

@@ -1,4 +1,8 @@
 
+*** TEST OVERWITE/APPEND OBJECT BEING ALLOCATED
+      - This really needs to work
+      - Can require that the current revision matches the allocation transaction
+
 CumuloFS
 
 FILE

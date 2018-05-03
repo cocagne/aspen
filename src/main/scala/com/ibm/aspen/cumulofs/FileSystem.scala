@@ -35,6 +35,10 @@ trait FileSystem {
   val localTaskGroup: TaskGroupInterface
   
   def loadDirectory(pointer: DirectoryPointer): Directory = directoryLoader.loadDirectory(this, pointer)
+  
+  def getDataTableNodeSize(tierNumber: Int): Int
+  
+  def getDataTableNodeAllocater(tierNumber: Int): Future[ObjectAllocater]
 }
 
 object FileSystem {

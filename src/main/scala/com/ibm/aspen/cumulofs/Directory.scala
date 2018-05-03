@@ -39,5 +39,11 @@ trait Directory {
     
     CreateFileTask.execute(fs, pointer, name, FileType.Directory, initialOps).map(_.asInstanceOf[DirectoryPointer])
   }
+  
+  def createFile(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FilePointer] = {
+    val (initialOps, initalContent) = FileInode.getInitialContent(mode, uid, gid)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.File, initialOps).map(_.asInstanceOf[FilePointer])
+  }
 
 }

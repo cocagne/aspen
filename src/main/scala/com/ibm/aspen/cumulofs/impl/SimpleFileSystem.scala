@@ -89,6 +89,15 @@ class SimpleFileSystem private (
   
   val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes)
   
+  def getDataTableNodeSize(tierNumber: Int): Int = if (tierNumber < dataTableSizes.length) dataTableSizes(tierNumber) else {
+    dataTableSizes(dataTableSizes.length-1)
+  }
+  
+  def getDataTableNodeAllocater(tierNumber: Int): Future[ObjectAllocater] = {
+    val allocaterUUID = if (tierNumber < dataTableAllocaters.length) dataTableAllocaters(tierNumber) else dataTableAllocaters(dataTableAllocaters.length-1)
+    system.getObjectAllocater(allocaterUUID)
+  }
+  
   FileSystem.register(this)
   
   // Ensure we resume the local task group after the file system is registered as many tasks will likely need
