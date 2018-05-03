@@ -125,8 +125,7 @@ object FileIndex {
     
     val lstr=oleft.map(_.toString).getOrElse("none")
     val rstr=oright.map(_.toString).getOrElse("none")
-    println(s"Encoding: size $size left:${lstr} right:$rstr segs:${segments.map(_._1)}")
-    
+
     val arr = new Array[Byte](size)
     val bb = ByteBuffer.wrap(arr)
     oleft.foreach(_.encodeInto(bb))
@@ -208,11 +207,12 @@ object FileIndex {
         }
     }
     def seekTo(offset: Long)(implicit ec: ExecutionContext): Future[IndexNode] = {
-      if (containsOffset(offset)) 
+      if (containsOffset(offset))
         Future.successful(this) 
       else {
+        
         val p = Promise[IndexNode]()
-        def rsearch(node: IndexNode): Unit = if (node.containsOffset(offset)) p.success(this) else {
+        def rsearch(node: IndexNode): Unit = if (node.containsOffset(offset)) p.success(node) else {
           node.fetchRight() onComplete {
             case Failure(cause) => p.failure(cause)
             case Success(onode) => onode match {
@@ -221,7 +221,7 @@ object FileIndex {
             }
           }
         }
-        def lsearch(node: IndexNode): Unit = if (node.containsOffset(offset)) p.success(this) else {
+        def lsearch(node: IndexNode): Unit = if (node.containsOffset(offset)) p.success(node) else {
           node.fetchLeft() onComplete {
             case Failure(cause) => p.failure(cause)
             case Success(onode) => onode match {
@@ -324,7 +324,6 @@ class FileIndex(
         case None =>
           val fnode = fs.system.readObject(pointer) map { dos => 
             val dnc = Entry.decodeNodeContent(dos.data)
-            println(s"LoadingIndex Node. Tier:$tier Left:${dnc.leftPointer} Right:${dnc.rightPointer} Seg:${dnc.segments.toList}")
             val node = IndexNode(tier, this, pointer, dnc.leftPointer, dnc.segments, dnc.rightPointer, dos.revision, dos.size, dos.timestamp)
             cache.putNode(node)
             node
@@ -336,8 +335,14 @@ class FileIndex(
     }
   }
   
+  private[cumulofs] def getRootIndexNode()(implicit ec: ExecutionContext): Future[Option[IndexNode]] = synchronized {
+    foRoot.flatMap { oroot => oroot match { 
+      case None => Future.successful(None)
+      case Some(root) => loadIndexNode(root.tails.length-1, root.tails.last).map(Some(_))
+    }}
+  }
+  
   def getIndexNodeForOffset(offset: Long)(implicit ec: ExecutionContext): Future[Option[IndexNode]] = synchronized {
-    println(s"Getting index node for offset: $offset")
     foRoot.flatMap { oroot => oroot match { 
       case None => Future.successful(None)
       case Some(root) => 
@@ -452,7 +457,7 @@ class FileIndex(
     val bb = ByteBuffer.wrap(arr)
     
     entries.foreach(_.encodeInto(bb))
-    println(s"Overwriting split tail. Entries ${entries} remaining: ${leftover.map(_._1)}")
+    
     tx.overwrite(oldTail, oldRevision, DataBuffer(arr))
     
     leftover
@@ -472,7 +477,6 @@ class FileIndex(
     def rappend(
         allocater: ObjectAllocater,
         tail: DataObjectPointer, 
-        tailOffset: Long,
         tailRevision: ObjectRevision, 
         tailLeft: Option[LeftPointer],
         appendedNodes: List[(Segment, Int)],
@@ -481,7 +485,7 @@ class FileIndex(
       val size = encodedEntriesSize(tailLeft, segList, None)
       
       if (size <= maxNodeSize) {
-        println(s"tier $tier Overwrite Calculated size: $size. for ${segList.map(_._1)}")  
+        
         tx.overwrite(tail, tailRevision, encodeEntries(tailLeft, segList, None, Some(size)))
         
         val newTail = new IndexNode(tier, this, tail, tailLeft, segList.map(_._1).toArray, None, tx.txRevision, size, tx.timestamp)
@@ -490,16 +494,16 @@ class FileIndex(
       } else {
         allocater.allocateDataObject(allocatingObject, allocatingObjectRevision, DataBuffer.Empty) flatMap { newTailPointer =>
           val remainingSegments = overwriteSplitTail(maxNodeSize, tail, tailRevision, tailLeft, segList, newTailPointer)
-          val left = new LeftPointer(tailOffset, tail)
+          val left = new LeftPointer(segList.head._1.offset, tail)
           val tailSeg = new Segment(remainingSegments.head._1.offset, newTailPointer)
-          println(s"tier $tier Recursing! with total segments ${segList.length} remaining segments: ${remainingSegments.length}")
-          rappend(allocater, newTailPointer, segList.head._1.offset, tx.txRevision, Some(left), (tailSeg, tailSeg.encodedSize) :: appendedNodes, remainingSegments)
+          
+          rappend(allocater, newTailPointer, tx.txRevision, Some(left), (tailSeg, tailSeg.encodedSize) :: appendedNodes, remainingSegments)
         }
       }
     }
     
     fs.getDataTableNodeAllocater(tier) flatMap { allocater =>
-      rappend(allocater, startTail, segments.head._1.offset, startRevision, tails.get(tier).leftPointer, Nil, segments)
+      rappend(allocater, startTail, startRevision, tails.get(tier).leftPointer, Nil, segments)
     }
   }
   
@@ -514,7 +518,6 @@ class FileIndex(
     if (tier == tails.size) {
       val headSeg = new Segment(0,tails.lastElement().nodePointer) 
       val rootContent = (headSeg, headSeg.encodedSize) :: segments
-      println(s"Creating new root for teir $tier. Segments: ${rootContent.map(_._1)}")
       val encodedSegmentSize = encodedEntriesSize(None, rootContent, None)
       val newRootData = encodeEntries(None, rootContent, None, Some(encodedSegmentSize))
       
@@ -528,7 +531,6 @@ class FileIndex(
         newRootNode :: newTails
       }
     } else {
-      println(s"appendAndPropagate up for tier $tier")
       val startTail = tails.get(tier)
       val maxNodeSize = fs.getDataTableNodeSize(tier)
       val encodedSegmentSize = segments.foldLeft(0)( (sz, t) => t._2 + sz )

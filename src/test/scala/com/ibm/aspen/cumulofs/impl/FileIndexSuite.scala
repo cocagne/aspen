@@ -219,4 +219,87 @@ class FileIndexSuite extends TestSystemSuite  {
     }
   }
   
+  test("Test node navigation") {
+    implicit val tx = sys.newTransaction()
+    
+    for {
+      fs <- bootstrap(5)
+      oroot <- fs.inodeTable.lookup(0)
+      rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      initialContent <- rootDir.getContents()
+      newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+      origInode <- fs.inodeLoader.load(newFilePointer)
+      dop <- allocDataObject()
+      idx = new FileIndex(fs, FileIndex.NoCache, origInode)
+      segments = List((dop, 1), (dop,1), (dop,1), (dop,1), 
+                      (dop,1), (dop,1), (dop,1), (dop,1), 
+                      (dop,1), (dop,1), (dop,1), (dop,1))
+      (root, fupdated) <- idx.prepareAppend(newFilePointer.pointer, origInode.revision, origInode.timestamp, 0, segments)
+      done <- tx.commit()
+      stateUpdated <- fupdated
+      oroot <- idx.getRootIndexNode()
+      oheadNode <- idx.getIndexNodeForOffset(0)
+      otailNode <- idx.getIndexNodeForOffset(99999)
+      root = oroot.get
+      head = oheadNode.get
+      tail = otailNode.get
+      oheadRight <- head.fetchRight()
+      headRight = oheadRight.get
+      otailLeft <- tail.fetchLeft()
+      tailLeft = otailLeft.get
+      thead <- tail.seekTo(0)
+      trhead <- tail.seekTo(5)
+      htail <- head.seekTo(9999)
+      hltail <- head.seekTo(8)
+      hh <- head.seekTo(1)
+      omid <- idx.getIndexNodeForOffset(8)
+      mid = omid.get
+    } yield {
+      
+      root.tier should be (1)
+      root.segments.length should be (4)
+  
+      head.leftPointer.isEmpty should be (true)
+      head.rightPointer.isDefined should be (true)
+      head.segments.length should be (4)
+      head.revision should be (tx.txRevision)
+      head.timestamp.compareTo(origInode.timestamp) > 0 should be (true)
+      head.headOffset should be (0)
+      head.tailOffset should be (3)
+      head.rightPointer.get.offset should be (4)
+  
+      headRight.headOffset should be (4)
+      headRight.tailOffset should be (6)
+      headRight.segments.length should be (3)
+      headRight.leftPointer.get.offset should be (0)
+      headRight.rightPointer.get.offset should be (7)
+      
+      tailLeft.headOffset should be (7)
+      tailLeft.tailOffset should be (9)
+      tailLeft.segments.length should be (3)
+      tailLeft.leftPointer.get.offset should be (4)
+      tailLeft.rightPointer.get.offset should be (10)
+      
+      tail.leftPointer.isDefined should be (true)
+      tail.rightPointer.isEmpty should be (true)
+      tail.segments.length should be (2)
+      tail.revision should be (tx.txRevision)
+      tail.timestamp.compareTo(origInode.timestamp) > 0 should be (true)
+      tail.headOffset should be (10)
+      tail.tailOffset should be (11)
+      tail.leftPointer.get.offset should be (7)
+      
+      thead.headOffset should be (0)
+      thead.nodePointer should be (head.nodePointer)
+      trhead.nodePointer should be (headRight.nodePointer)
+      
+      htail.headOffset should be (10)
+      hltail.headOffset should be (7)
+      
+      hh.headOffset should be (0)
+      
+      mid.headOffset should be (7)
+    }
+  }
+  
 }
