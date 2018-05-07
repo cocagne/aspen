@@ -78,6 +78,11 @@ trait AspenSystem extends ObjectReader {
       transact(prepare)
     }
   }
+  def transactUntilSuccessfulWithRecovery[T](onCommitFailure: (Throwable) => Future[Unit])(prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
+    retryStrategy.retryUntilSuccessful(onCommitFailure) {
+      transact(prepare)
+    }
+  }
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

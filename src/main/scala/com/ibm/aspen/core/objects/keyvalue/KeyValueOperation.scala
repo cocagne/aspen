@@ -111,6 +111,11 @@ object KeyValueOperation {
     case unknownOpCode => throw new KeyValueObjectEncodingError(new Exception("Unknown KeyValue opcode $unknownOpCode"))
   }
   
+  
+  def contentToOps(content: Map[Key,Value]): List[KeyValueOperation] = {
+    content.valuesIterator.map(v => Insert(v.key.bytes, v.value, v.timestamp)).toList
+  }
+  
   def insertOperations(content: List[(Key, Array[Byte])], ts: HLCTimestamp): List[Insert] = {
     content.map(t => Insert(t._1, t._2, ts))
   }

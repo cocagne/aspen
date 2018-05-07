@@ -19,5 +19,9 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     p.future
   }
   
+  def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = retryUntilSuccessful {
+    attempt
+  }
+  
   def shutdown(): Unit = ()
 }

@@ -61,4 +61,42 @@ class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetr
     
     p.future
   }
+  
+  def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = {
+    val p = Promise[T]()
+    
+    implicit val ec = getExecutionContext()
+    
+    def retry(limit: Int): Unit = {
+      val shouldAttempt = synchronized { !exit }
+      
+      if (shouldAttempt) {
+        attempt onComplete {
+          case Success(result) => p.success(result)
+          
+          case Failure(cause) => cause match {
+            case StopRetrying(reason) => p.failure(reason)
+            
+            case cause: Throwable =>
+              
+              val delay = rand.nextInt(limit)
+              val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
+              
+              val runnable = new Runnable { override def run(): Unit = {
+                retryUntilSuccessful(onAttemptFailure(cause)).onComplete {
+                  case Failure(reason) => p.failure(reason)
+                  case Success(_) => retry(nextLimit) 
+                }
+              }}
+              
+              getScheduler().schedule(runnable, delay, TimeUnit.MILLISECONDS)
+          }
+        }
+      }
+    }
+    
+    retry(initialRetryDelay)
+    
+    p.future
+  }
 }

@@ -16,5 +16,14 @@ class NoRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     p.future
   }
   
+  def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = {
+    val p = Promise[T]()
+    attempt onComplete {
+      case Success(r) => p.success(r)
+      case Failure(cause) => p.failure(cause)
+    }
+    p.future
+  }
+  
   def shutdown(): Unit = ()
 }

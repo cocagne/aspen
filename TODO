@@ -1,7 +1,14 @@
 
-*** TEST OVERWITE/APPEND OBJECT BEING ALLOCATED
-      - This really needs to work
-      - Can require that the current revision matches the allocation transaction
+* Have directory interface extend BaseFile. SimpleDirectory extends SimpleBaseFile
+
+* Add test to update directory UID
+
+* Add ability to override the inode with an old version
+
+* Test commit recovery on set uid
+
+* Create SimpleFile
+
 
 CumuloFS
 
@@ -9,7 +16,11 @@ FILE
 
    All updates to a file involve updating the mtime. To minimize conflicts, we'll use a per-file singleton object that multiple
    file handles can refer to. All modification options are serialized by the File interface (internally maintains a concurrent
-   linked list of requested operations). 
+   linked list of requested operations).
+   
+   All file operations are functions called to accomplish the specific requested task and return a Future to the result.
+   E.g. setMtime(newMtime), setCtime(newCtime) Base inode trait has common methods for doing the basic metadata updates across
+   all file types. Requires maintaining an internal queue of operations to prevent self-contention
     
    File could maintain currentTx, nextTx, and nextTxReadyForCommit. If currentTx completes successfully and nextTxReadyForCommit is true,
    immediately commit next Tx w/ successfully completed txUUID as the required revision. A simple opPrepCounter is used to identify each

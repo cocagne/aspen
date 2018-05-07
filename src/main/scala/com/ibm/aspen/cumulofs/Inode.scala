@@ -10,6 +10,7 @@ import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.cumulofs.error.CorruptedInode
 import com.ibm.aspen.util.Varint
+import com.ibm.aspen.base.Transaction
 
 object Inode {
   
@@ -24,10 +25,9 @@ object Inode {
   // --------- Optional ---------
   val MtimeKey            = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
   val AtimeKey            = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val SizeKey             = Key(6)  // Long
   
-  val XAttrsKey           = Key(7)  // List of <varint key-len><varint value-len><key><value>
-  val XAttrsTieredListKey = Key(8)  // TieredList of key-value pairs
+  val XAttrsKey           = Key(6)  // List of <varint key-len><varint value-len><key><value>
+  val XAttrsTieredListKey = Key(7)  // TieredList of key-value pairs
   
   val KeysReserved        = 100     // Keys Reserved for future use
   
@@ -60,6 +60,20 @@ object Inode {
     case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, refcount, timestamp, content)
     case p: FIFOPointer            => new FIFOInode(p, revision, refcount, timestamp, content)
   }
+  
+  def setMode(pointer: InodePointer, newMode: Int)(implicit tx: Transaction): (Key, Value) = {
+    (ModeKey, Value(ModeKey, int2arr((newMode & ~FileMode.S_IFMT) & FileType.toMode(pointer.ftype)), tx.timestamp))
+  }
+  
+  def setUID(newUID: Int)(implicit tx: Transaction): (Key, Value) = (UIDKey, Value(UIDKey, int2arr(newUID), tx.timestamp))
+   
+  def setGID(newGID: Int)(implicit tx: Transaction): (Key, Value) = (GIDKey, Value(GIDKey, int2arr(newGID), tx.timestamp))
+  
+  def setCtime(ctime: Timespec)(implicit tx: Transaction): (Key, Value) = (CtimeKey, Value(CtimeKey, ctime.toArray, tx.timestamp))
+  
+  def setMtime(mtime: Timespec)(implicit tx: Transaction): (Key, Value) = (CtimeKey, Value(MtimeKey, mtime.toArray, tx.timestamp))
+  
+  def setAtime(atime: Timespec)(implicit tx: Transaction): (Key, Value) = (AtimeKey, Value(AtimeKey, atime.toArray, tx.timestamp))
 }
 
 sealed abstract class Inode {
@@ -89,10 +103,7 @@ sealed abstract class Inode {
     case None => mtime
     case Some(v) => Timespec(v.value)
   }
-  def size: Long = content.get(SizeKey) match {
-    case None => 0
-    case Some(v) => arr2long(v.value)
-  }
+  
 }
 
 // ----- Directory -----
@@ -140,7 +151,7 @@ object FileInode {
   def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFREG
     Inode.getInitialContent(m, uid, gid, Nil)
-  } 
+  }
 }
 
 class FileInode(
@@ -152,7 +163,7 @@ class FileInode(
  
   import FileInode._
   
-  def fileSize: Long = content.get(FileSizeKey) match {
+  def size: Long = content.get(FileSizeKey) match {
     case None => 0
     case Some(varr) => Varint.getUnsignedLong(varr.value)
   }
@@ -186,6 +197,11 @@ class SymlinkInode(
   import SymlinkInode._
   
   override def requiredKeys = RequiredKeys
+  
+  def size: Long = content.get(LinkKey) match {
+    case None => 0
+    case Some(v) => v.value.length
+  }
 }
 
 // ----- Unix Socket -----
