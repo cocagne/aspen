@@ -1,12 +1,4 @@
 
-* Have directory interface extend BaseFile. SimpleDirectory extends SimpleBaseFile
-
-* Add test to update directory UID
-
-* Add ability to override the inode with an old version
-
-* Test commit recovery on set uid
-
 * Create SimpleFile
 
 

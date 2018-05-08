@@ -107,11 +107,11 @@ class CreateFileTask private (
     // The task group executor is created by the FileSystem class so its guaranteed to have already
     // been registered.
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
-    val dir = fs.loadDirectory(directoryPointer)
-      
+  
     fs.system.transactUntilSuccessful { implicit tx =>
     
       for {
+        dir <- fs.loadDirectory(directoryPointer) 
         prep <- dir.prepareInsert(name, newInode)
         
         _ = completeTask(tx)

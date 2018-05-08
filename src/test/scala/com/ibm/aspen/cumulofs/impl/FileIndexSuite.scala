@@ -71,7 +71,7 @@ class FileIndexSuite extends TestSystemSuite  {
     for {
       fs <- bootstrap(5)
       oroot <- fs.inodeTable.lookup(0)
-      rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
       initialContent <- rootDir.getContents()
       newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
       newInode <- fs.inodeLoader.load(newFilePointer)
@@ -91,7 +91,7 @@ class FileIndexSuite extends TestSystemSuite  {
     for {
       fs <- bootstrap(5)
       oroot <- fs.inodeTable.lookup(0)
-      rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
       initialContent <- rootDir.getContents()
       newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
       origInode <- fs.inodeLoader.load(newFilePointer)
@@ -134,7 +134,7 @@ class FileIndexSuite extends TestSystemSuite  {
       for {
         fs <- bootstrap(5)
         oroot <- fs.inodeTable.lookup(0)
-        rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+        rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
         initialContent <- rootDir.getContents()
         newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
         origInode <- fs.inodeLoader.load(newFilePointer)
@@ -176,7 +176,7 @@ class FileIndexSuite extends TestSystemSuite  {
     for {
       fs <- bootstrap(5)
       oroot <- fs.inodeTable.lookup(0)
-      rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
       initialContent <- rootDir.getContents()
       newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
       origInode <- fs.inodeLoader.load(newFilePointer)
@@ -225,7 +225,7 @@ class FileIndexSuite extends TestSystemSuite  {
     for {
       fs <- bootstrap(5)
       oroot <- fs.inodeTable.lookup(0)
-      rootDir = fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
       initialContent <- rootDir.getContents()
       newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
       origInode <- fs.inodeLoader.load(newFilePointer)

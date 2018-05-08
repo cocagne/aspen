@@ -24,12 +24,27 @@ import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.FilePointer
 import com.ibm.aspen.cumulofs.DeleteFileTask
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.cumulofs.Inode
 
 class SimpleDirectory(
-    val pointer: DirectoryPointer,
-    val fs: FileSystem) extends Directory {
+    protected var inode: DirectoryInode,
+    fs: FileSystem) extends SimpleBaseFile(fs) with Directory {
+  
+  val pointer: DirectoryPointer = inode.pointer
   
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
+  
+  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Unit = {
+   inode = new DirectoryInode(inode.pointer, newRevision, inode.refcount, newTimestamp, updatedState)
+  }
+  
+  def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
+      inode = refreshedInode
+    }}
+  }
   
   private[this] def tree(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = synchronized {
     ftl match {

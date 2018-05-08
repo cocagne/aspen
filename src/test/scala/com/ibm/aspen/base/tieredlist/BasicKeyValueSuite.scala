@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetMax
 import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.base.TransactionAborted
 
 class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
@@ -140,6 +141,48 @@ class BasicKeyValueSuite extends TestSystemSuite {
         case None => fail("missin k2")
         case Some(v) => v.value should be (k2)
       }
+    }
+  }
+  
+  test("Test keyvalue object overwrite fails on version mismatch") {
+    
+    val minimum = Key(List[Byte](1,2).toArray)
+    val maximum = Key(List[Byte](3,4).toArray)
+    val right   = List[Byte](5,6).toArray
+    val left    = List[Byte](7,8,9).toArray
+    
+    val k1 = List[Byte](1).toArray
+    val k2 = List[Byte](2).toArray
+    
+    val t = HLCTimestamp(5)
+
+    val tx1 = sys.newTransaction()
+    
+    for {
+      r <- sys.readObject(sys.radiclePointer)
+      
+      // give transaction something to do
+      meh = tx1.bumpVersion(sys.radiclePointer, r.revision)
+      
+      kvp <- sys.lowLevelAllocateKeyValueObject(
+          sys.radiclePointer, 
+          ObjectRevision(UUID.randomUUID()), 
+          BootstrapStoragePoolUUID, 
+          None,
+          TestSystem.DefaultIDA, 
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Nil, 
+          None)(tx1, executionContext)
+          
+      done <- tx1.commit()
+      
+      tx2 = sys.newTransaction()
+      
+      _ = tx2.overwrite(kvp, ObjectRevision(new UUID(1,1)), Nil, Nil)
+      
+      err <- tx2.commit().failed
+
+    } yield {
+      err.isInstanceOf[TransactionAborted] should be (true)
     }
   }
   

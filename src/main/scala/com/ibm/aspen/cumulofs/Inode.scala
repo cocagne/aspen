@@ -62,7 +62,7 @@ object Inode {
   }
   
   def setMode(pointer: InodePointer, newMode: Int)(implicit tx: Transaction): (Key, Value) = {
-    (ModeKey, Value(ModeKey, int2arr((newMode & ~FileMode.S_IFMT) & FileType.toMode(pointer.ftype)), tx.timestamp))
+    (ModeKey, Value(ModeKey, int2arr((newMode & ~FileMode.S_IFMT) | FileType.toMode(pointer.ftype)), tx.timestamp))
   }
   
   def setUID(newUID: Int)(implicit tx: Transaction): (Key, Value) = (UIDKey, Value(UIDKey, int2arr(newUID), tx.timestamp))
@@ -71,7 +71,7 @@ object Inode {
   
   def setCtime(ctime: Timespec)(implicit tx: Transaction): (Key, Value) = (CtimeKey, Value(CtimeKey, ctime.toArray, tx.timestamp))
   
-  def setMtime(mtime: Timespec)(implicit tx: Transaction): (Key, Value) = (CtimeKey, Value(MtimeKey, mtime.toArray, tx.timestamp))
+  def setMtime(mtime: Timespec)(implicit tx: Transaction): (Key, Value) = (MtimeKey, Value(MtimeKey, mtime.toArray, tx.timestamp))
   
   def setAtime(atime: Timespec)(implicit tx: Transaction): (Key, Value) = (AtimeKey, Value(AtimeKey, atime.toArray, tx.timestamp))
 }
@@ -91,7 +91,7 @@ sealed abstract class Inode {
   if (!requiredKeys.subsetOf(content.keySet))
     throw CorruptedInode(pointer, content)
   
-  def mode: Int = (arr2int(content(ModeKey).value) & ~FileMode.S_IFMT) & FileType.toMode(pointer.ftype)
+  def mode: Int = (arr2int(content(ModeKey).value) & ~FileMode.S_IFMT) | FileType.toMode(pointer.ftype)
   def uid: Int = arr2int(content(UIDKey).value)
   def gid: Int = arr2int(content(GIDKey).value)
   def ctime: Timespec = Timespec(content(CtimeKey).value)

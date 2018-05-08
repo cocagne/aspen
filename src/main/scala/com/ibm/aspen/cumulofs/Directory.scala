@@ -4,7 +4,7 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.base.Transaction
 
-trait Directory {
+trait Directory extends BaseFile {
   val pointer: DirectoryPointer
   val fs: FileSystem
   

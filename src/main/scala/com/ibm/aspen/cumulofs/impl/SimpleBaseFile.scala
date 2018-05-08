@@ -16,6 +16,7 @@ import scala.util.Success
 import scala.util.Failure
 import com.ibm.aspen.base.StopRetrying
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.cumulofs.Timespec
 
 object SimpleBaseFile {
   
@@ -31,13 +32,40 @@ object SimpleBaseFile {
     def attempt(inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): OpResult
   }
   
-  case class SetUID(uid: Int) extends FileOperation {
+  abstract class SimpleSet extends FileOperation {
     val promise = Promise[Unit]()
+    
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value)
+    
     def attempt(inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): OpResult = {
-      val updatedContent = inode.content + Inode.setUID(uid)
+      val updatedContent = inode.content + getUpdate(inode)
       tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(updatedContent))
       OpResult(Future.successful(()), Future.successful(updatedContent))
     }
+  }
+  
+  case class SetUID(uid: Int) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setUID(uid) 
+  }
+  
+  case class SetGID(gid: Int) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setGID(gid)
+  }
+  
+  case class SetMode(pointer: InodePointer, newMode: Int) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setMode(pointer, newMode)
+  }
+  
+  case class SetCtime(ts: Timespec) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setCtime(ts)
+  }
+  
+  case class SetMtime(ts: Timespec) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setMtime(ts)
+  }
+  
+  case class SetAtime(ts: Timespec) extends SimpleSet {
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setAtime(ts)
   }
 }
 
@@ -45,28 +73,38 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   
   import SimpleBaseFile._
   
-  protected[this] var inode: Inode
   private[this] val pendingOps = new java.util.concurrent.ConcurrentLinkedQueue[FileOperation]()
   private[this] var activeOp: Option[FileOperation] = None
   
-  protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Inode
+  protected def inode: Inode
+  protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Unit
   
-  def setUID(uid: Int)(implicit ec: ExecutionContext): Future[Unit] = {
-    val op = SetUID(uid)
-    enqueueOp(op)
-    op.result
+  def mode: Int = synchronized { inode.mode }
+  def uid: Int = synchronized { inode.uid }
+  def gid: Int = synchronized { inode.gid }
+  def ctime: Timespec = synchronized { inode.ctime }
+  def mtime: Timespec = synchronized { inode.mtime }
+  def atime: Timespec = synchronized { inode.atime }
+ 
+  def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit] = {
+    val iptr = synchronized { inode.pointer }
+    enqueueOp(SetMode(pointer, newMode))
   }
   
-  def refreshInode()(implicit ec: ExecutionContext): Future[Inode] = synchronized {
-    fs.inodeLoader.iload(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
-      inode
-    }}
-  }
+  def setUID(uid: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetUID(uid))
+  
+  def setGID(gid: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetGID(gid))
+  
+  def setCtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetCtime(ts))
+  
+  def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMtime(ts))
+  
+  def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
 
-  protected def enqueueOp(op: FileOperation)(implicit ec: ExecutionContext): Unit = {
+  protected def enqueueOp(op: FileOperation)(implicit ec: ExecutionContext): Future[Unit] = {
     pendingOps.add(op)
     beginNextOp()
+    op.result
   }
   
   private[this] def beginNextOp()(implicit ec: ExecutionContext): Unit = synchronized {
@@ -83,9 +121,11 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   
   private[this] def executeOp(op: FileOperation)(implicit ec: ExecutionContext): Unit = {
     
-    def onCommitFailure(foo: Throwable): Future[Unit] = refreshInode().recover { 
-      case err => throw new StopRetrying(err) // Only InvalidObject should cause a read failure, which means the object has been deleted
-    }.map(_=>())
+    def onCommitFailure(foo: Throwable): Future[Unit] = {
+      refresh().recover { 
+        case err => throw new StopRetrying(err) // Only InvalidObject should cause a read failure, which means the object has been deleted
+      }.map(_=>())
+    }
     
     def attempt(): Future[(ObjectRevision, HLCTimestamp, Map[Key,Value])] = {
       implicit val tx = fs.system.newTransaction()
@@ -96,7 +136,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
       
       val fresult = for {
         prepared <- r.readyToCommit
-        _=tx.commit()
+        _<-tx.commit()
         updatedState <- r.fileStateUpdated
       } yield (tx.txRevision, tx.timestamp, updatedState)
       
@@ -108,7 +148,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
     fs.system.retryStrategy.retryUntilSuccessful(onCommitFailure _) {
       attempt() map { t => synchronized {
         val (newRevision, newTimestamp, updatedState) = t
-        inode = updateInode(newRevision, newTimestamp, updatedState)
+        updateInode(newRevision, newTimestamp, updatedState)
         activeOp = None
         op.promise.success(())
         beginNextOp()

@@ -20,7 +20,30 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
   }
   
   def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = retryUntilSuccessful {
-    attempt
+    val p = Promise[T]()
+    attempt onComplete {
+      case Success(r) => p.success(r)
+      
+      case Failure(cause) => 
+        // Allow a single attempt to resolve the error
+        onAttemptFailure(cause) onComplete {
+          case Success(r) =>
+            attempt onComplete {
+              case Success(r) => p.success(r)
+              
+              case Failure(cause) => 
+                println(s"********************* RetryUntilSuccess Operation FAILED *after* recovery operation: $cause")
+                assert(false)
+                //p.failure(cause)
+            }
+          
+          case Failure(cause) =>
+            println(s"********************* RetryUntilSuccess Recovery Operation FAILED: $cause")
+            assert(false)
+            //p.failure(cause)
+        }
+    }
+    p.future
   }
   
   def shutdown(): Unit = ()

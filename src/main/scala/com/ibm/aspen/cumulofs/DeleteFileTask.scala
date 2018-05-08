@@ -56,7 +56,7 @@ object DeleteFileTask {
               case Some(root) => (DataRootKey, root.toArray()) :: common 
             }
             
-            val fprep = fs.loadDirectory(d.pointer).prepareForDirectoryDeletion()
+            val fprep = fs.loadDirectory(d).prepareForDirectoryDeletion()
             val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
           
             Future.sequence(fprep :: ftask :: Nil).map(_=>())
