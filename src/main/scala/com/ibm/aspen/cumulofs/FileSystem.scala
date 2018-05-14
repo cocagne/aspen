@@ -32,10 +32,22 @@ trait FileSystem {
   
   val directoryLoader: DirectoryLoader
   
+  val fileLoader: FileLoader
+  
   val localTaskGroup: TaskGroupInterface
+  
+  def defaultSegmentSize: Int
+  
+  def defaultSegmentAllocater(): Future[ObjectAllocater]
+  
+  def loadRoot()(implicit ec: ExecutionContext): Future[Directory] = {
+    inodeTable.lookupRoot() flatMap { pointer => directoryLoader.loadDirectory(this, pointer) }
+  }
   
   def loadDirectory(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[Directory] = directoryLoader.loadDirectory(this, pointer)
   def loadDirectory(inode: DirectoryInode): Directory = directoryLoader.loadDirectory(this, inode)
+  
+  def loadFile(pointer: FilePointer)(implicit ec: ExecutionContext): Future[File] = fileLoader.loadFile(this, pointer)
   
   def getDataTableNodeSize(tierNumber: Int): Int
   
@@ -44,13 +56,15 @@ trait FileSystem {
 
 object FileSystem {
   
-  val InodeTableKey                    = Key(0)
-  val DirectoryTableAllocatersArrayKey = Key(1)
-  val DirectoryTableSizesKey           = Key(2)
-  val DataTableAllocatersArrayKey      = Key(3)
-  val DataTableSizesKey                = Key(4)
-  val InodeAllocaterKey                = Key(5)
-  val LocalTaskGroupsTreeKey           = Key(6)
+  val InodeTableKey                       = Key(0)
+  val DirectoryTableAllocatersArrayKey    = Key(1)
+  val DirectoryTableSizesKey              = Key(2)
+  val DataTableAllocatersArrayKey         = Key(3)
+  val DataTableSizesKey                   = Key(4)
+  val InodeAllocaterKey                   = Key(5)
+  val LocalTaskGroupsTreeKey              = Key(6)
+  val DefaultFileSegmentAllocationPoolKey = Key(7)
+  val DefaultFileSegmentSizeKey           = Key(8)
   
   private[this] var loadedFileSystems = Map[UUID, FileSystem]()
   
@@ -89,7 +103,9 @@ object FileSystem {
       directoryTableAllocaters: Array[UUID], // For Directory entry Tiered List
       directoryTableSizes: Array[Int],
       dataTableAllocaters: Array[UUID],      // For File Data Tiered List
-      dataTableSizes: Array[Int]
+      dataTableSizes: Array[Int],
+      defaultAllocationPool: UUID,
+      defaultFileSegmentSize: Int
       )(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     
     import FileMode._
@@ -101,9 +117,9 @@ object FileSystem {
     for {
       rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
       
-      rootDirPtr = new DirectoryPointer(0, rootDirObj)
+      rootDirPtr = new DirectoryPointer(InodeTable.RootInode, rootDirObj)
       
-      inodeTblContent = KeyValueOperation.insertOperations(List((Key(0), rootDirPtr.toArray)), tx.timestamp())
+      inodeTblContent = KeyValueOperation.insertOperations(List((Key(InodeTable.RootInode), rootDirPtr.toArray)), tx.timestamp())
       
       rootInodeTblPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, inodeTblContent)
       
@@ -113,13 +129,15 @@ object FileSystem {
       lgtgRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, ByteArrayKeyOrdering, lgtgTier0)
       
       icontent = List(
-          (InodeTableKey,                    inodeTblRoot.toArray),
-          (InodeAllocaterKey,                uuid2byte(inodeAllocater)),
-          (DirectoryTableAllocatersArrayKey, encodeUUIDArray(directoryTableAllocaters)),
-          (DirectoryTableSizesKey,           encodeIntArray(directoryTableSizes)),
-          (DataTableAllocatersArrayKey,      encodeUUIDArray(dataTableAllocaters)),
-          (DataTableSizesKey,                encodeIntArray(dataTableSizes)),
-          (LocalTaskGroupsTreeKey,           lgtgRoot.toArray))
+          (InodeTableKey,                       inodeTblRoot.toArray),
+          (InodeAllocaterKey,                   uuid2byte(inodeAllocater)),
+          (DirectoryTableAllocatersArrayKey,    encodeUUIDArray(directoryTableAllocaters)),
+          (DirectoryTableSizesKey,              encodeIntArray(directoryTableSizes)),
+          (DataTableAllocatersArrayKey,         encodeUUIDArray(dataTableAllocaters)),
+          (DataTableSizesKey,                   encodeIntArray(dataTableSizes)),
+          (LocalTaskGroupsTreeKey,              lgtgRoot.toArray),
+          (DefaultFileSegmentAllocationPoolKey, uuid2byte(defaultAllocationPool)),
+          (DefaultFileSegmentSizeKey,           int2arr(defaultFileSegmentSize)))
       
       fsObjContent = KeyValueOperation.insertOperations(icontent, tx.timestamp())
       

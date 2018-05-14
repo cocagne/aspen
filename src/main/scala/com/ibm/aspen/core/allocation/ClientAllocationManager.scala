@@ -67,14 +67,16 @@ class ClientAllocationManager(
       case _ => synchronized { outstandingAllocations -= transaction.uuid }
     }
     
-    driver.start()
-    
-    driver.futureResult map { eresult => eresult match {
+    val r = driver.futureResult map { eresult => eresult match {
       case Left(err) => Left(err)
       case Right(newObjectPtr) => 
         AllocationFinalizationAction.addToAllocationTree(transaction, pool.poolDefinitionPointer, newObjectPtr)
         Right(newObjectPtr.asInstanceOf[PointerType])
     }}
+    
+    driver.start()
+    
+    r
   }
   
   def allocateDataObject(

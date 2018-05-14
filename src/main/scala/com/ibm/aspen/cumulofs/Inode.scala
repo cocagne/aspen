@@ -172,6 +172,20 @@ class FileInode(
     case None => None
     case Some(v) => Some(v.value)
   }
+  
+  def update(
+      newRevision: ObjectRevision, 
+      newTimestamp: HLCTimestamp, 
+      newSize: Long=size, 
+      newFileIndexRoot:Option[Array[Byte]]=None, 
+      newRefcount:ObjectRefcount=refcount): FileInode = {
+    val newContent = newFileIndexRoot match {
+      case None => content + (FileSizeKey -> Value(FileSizeKey, Varint.unsignedLongToArray(newSize), newTimestamp))
+      case Some(arr) => content + (FileSizeKey -> Value(FileSizeKey, Varint.unsignedLongToArray(newSize), newTimestamp)) +
+        (FileIndexRootKey -> Value(FileIndexRootKey, arr, newTimestamp))
+    }
+    new FileInode(pointer, newRevision, newRefcount, newTimestamp, newContent) 
+  }
 }
 
 // ----- Symlink -----

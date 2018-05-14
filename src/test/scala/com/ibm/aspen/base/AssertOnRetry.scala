@@ -5,6 +5,8 @@ import scala.concurrent.Promise
 import scala.util.Success
 import scala.util.Failure
 import scala.concurrent.ExecutionContext
+import java.io.StringWriter
+import java.io.PrintWriter
 
 class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
   def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
@@ -26,6 +28,10 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
       
       case Failure(cause) => 
         // Allow a single attempt to resolve the error
+        val sw = new StringWriter();
+        val pw = new PrintWriter(sw);
+        val stacktrace = cause.printStackTrace(pw);
+        println(s"** INITIAL Attempt failed due to $cause:\n $stacktrace")
         onAttemptFailure(cause) onComplete {
           case Success(r) =>
             attempt onComplete {

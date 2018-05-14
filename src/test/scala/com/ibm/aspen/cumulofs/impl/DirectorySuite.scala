@@ -19,34 +19,12 @@ import com.ibm.aspen.cumulofs.Timespec
 import com.ibm.aspen.cumulofs.FileType
 import com.ibm.aspen.cumulofs.FileMode
 
-class DirectorySuite extends TestSystemSuite {
-  
-  def bootstrap(): Future[FileSystem] = {
-    implicit val tx = sys.newTransaction()
-    val uarr = Array(Bootstrap.BootstrapObjectAllocaterUUID)
-    val iarr = Array(8192)
-    val clientUUID = new UUID(0,1)
-    for {
-      r <- sys.readObject(sys.radiclePointer)
-      
-      // give transaction something to do
-      meh = tx.bumpVersion(sys.radiclePointer, r.revision)
-      
-      alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
-      ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, uarr, iarr, uarr, iarr)
-      
-      txdone <- tx.commit()
-      
-      fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
-      
-    } yield fs 
-  }
+class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
   
   test("CumuloFS Bootstrap") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        rootInode <- rootDir.getInode()
      } yield {
        rootInode.uid should be (0)
@@ -56,8 +34,7 @@ class DirectorySuite extends TestSystemSuite {
   test("Create Directory") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
@@ -75,8 +52,7 @@ class DirectorySuite extends TestSystemSuite {
   test("Change Directory UID") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
@@ -99,8 +75,7 @@ class DirectorySuite extends TestSystemSuite {
     
     for {
       fs <- bootstrap()
-      oroot <- fs.inodeTable.lookup(0)
-      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadRoot()
       initialContent <- rootDir.getContents()
       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
@@ -125,8 +100,7 @@ class DirectorySuite extends TestSystemSuite {
     val at = Timespec(4,5)
     for {
       fs <- bootstrap()
-      oroot <- fs.inodeTable.lookup(0)
-      rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+      rootDir <- fs.loadRoot()
       initialContent <- rootDir.getContents()
       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
@@ -151,8 +125,7 @@ class DirectorySuite extends TestSystemSuite {
   test("Delete non-empty Directory") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
@@ -168,8 +141,7 @@ class DirectorySuite extends TestSystemSuite {
   test("Delete empty Directory") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        _ <- rootDir.delete("foo")       
@@ -182,8 +154,7 @@ class DirectorySuite extends TestSystemSuite {
   test("Delete Directory with data tiered list") {
      for {
        fs <- bootstrap()
-       oroot <- fs.inodeTable.lookup(0)
-       rootDir <- fs.loadDirectory(oroot.get.asInstanceOf[DirectoryPointer])
+       rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)

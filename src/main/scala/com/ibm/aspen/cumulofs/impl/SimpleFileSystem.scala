@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.cumulofs.FileLoader
 
 object SimpleFileSystem {
   def load(
@@ -80,6 +81,12 @@ class SimpleFileSystem private (
   val dataTableSizes: Array[Int]            = decodeIntArray(rootKvos.contents(FileSystem.DataTableSizesKey).value)
   val inodeAllocater: UUID                  = byte2uuid(rootKvos.contents(FileSystem.InodeAllocaterKey).value)
   
+  val defaultSegmentSize: Int = com.ibm.aspen.cumulofs.arr2int(rootKvos.contents(FileSystem.DefaultFileSegmentSizeKey).value)
+      
+  private lazy val fdefaultSegmentAllocater = system.getObjectAllocater(byte2uuid(rootKvos.contents(FileSystem.DefaultFileSegmentAllocationPoolKey).value))
+  
+  def defaultSegmentAllocater(): Future[ObjectAllocater] = fdefaultSegmentAllocater
+  
   val inodeTable: InodeTable = new SimpleInodeTable(
       system, 
       inodeAllocater, 
@@ -88,6 +95,8 @@ class SimpleFileSystem private (
   val inodeLoader: InodeLoader = new SimpleInodeLoader(system, inodeTable, new NoInodeCache)
   
   val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes)
+  
+  val fileLoader: FileLoader = new SimpleFileLoader
   
   def getDataTableNodeSize(tierNumber: Int): Int = if (tierNumber < dataTableSizes.length) dataTableSizes(tierNumber) else {
     dataTableSizes(dataTableSizes.length-1)

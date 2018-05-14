@@ -16,6 +16,7 @@ import com.ibm.aspen.cumulofs.FileType
 import com.ibm.aspen.base.AspenSystem
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.cumulofs.InodeTable.NullInode
 
 class SimpleInodeTable(
     val system: AspenSystem,
@@ -34,7 +35,12 @@ class SimpleInodeTable(
     t
   }
   
-  protected def selectNewInodeAllocationPosition() = synchronized { nextInodeNumber = rnd.nextLong() }
+  protected def selectNewInodeAllocationPosition(): Unit = synchronized { 
+    nextInodeNumber = rnd.nextLong()
+    
+    while (nextInodeNumber == NullInode)
+      nextInodeNumber = rnd.nextLong()
+  }
   
   def prepareInodeAllocation(
       ftype: FileType.Value, 

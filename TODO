@@ -2,6 +2,12 @@
 * Create SimpleFile
 
 
+** Configuring a directory could be as easy as setting extended attributes
+      cumulofs.alloc-pool=PoolUUID
+      cumulofs.file-segment-size=4096
+      
+** At write/allocation, lookup parent directories until a valid entry is found
+
 CumuloFS
 
 FILE

@@ -57,6 +57,8 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
  */
 object FileIndex {
   
+  case class DataTail(pointer: DataObjectPointer, revision: ObjectRevision, offset: Long, size: Int)
+  
   case class DecodedNodeContent(
       leftPointer: Option[LeftPointer], 
       segments: Array[Segment], 
@@ -267,20 +269,24 @@ object FileIndex {
     def rootNode: DataObjectPointer = tails.last
     
     def toArray(): Array[Byte] = {
-      val nbytes = tails.foldLeft(tier0head.encodedSize + rootNode.encodedSize)( (sz, p) => sz + p.encodedSize )
-      val arr = new Array[Byte](nbytes)
-      val bb = ByteBuffer.wrap(arr)
-      tier0head.encodeInto(bb)
-
-      // Single-element tail means that the head node is also the tail node. We can skip writing it
-      if (tails.length > 1)
-        tails.foreach(_.encodeInto(bb))
+      if (tails.length == 1) 
+        tier0head.toArray
+      else { 
+        val nbytes = tails.foldLeft(tier0head.encodedSize)( (sz, p) => sz + p.encodedSize )
+        val arr = new Array[Byte](nbytes)
+        val bb = ByteBuffer.wrap(arr)
         
-      arr
-    } 
+        tier0head.encodeInto(bb)
+  
+        tails.foreach(_.encodeInto(bb))
+          
+        arr
+      }  
+    }
   }
   object Root {
     def apply(arr: Array[Byte]): Root = {
+      
       val bb = ByteBuffer.wrap(arr)
       
       val tier0head = DataObjectPointer(bb)
@@ -313,6 +319,7 @@ class FileIndex(
   private[this] var foRoot: Future[Option[Root]] = Future.successful(initialInodeState.fileIndexRoot().map(Root(_)))
   private[this] var ofTails: Option[Future[Vector[IndexNode]]] = None
   private[this] var loadingNodes = Map[UUID, Future[IndexNode]]()
+  private[this] var refreshingForFailureOfTx: Option[UUID] = None
   
   private def loadIndexNode(tier: Int, pointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[IndexNode] = synchronized {
     cache.getNode(tier, pointer) match {  
@@ -356,6 +363,35 @@ class FileIndex(
     }}
   }
   
+  def debugGetAllSegments()(implicit ec: ExecutionContext): Future[Array[Segment]] = synchronized {
+    def rget(tail: IndexNode, rlist: List[Segment]): Future[List[Segment]] = {
+      tail.fetchLeft() flatMap { oleft =>
+        val lst = tail.segments ++: rlist
+        oleft match {
+          case None => Future.successful(lst)
+          case Some(left) => rget(left, lst) 
+        }
+      }
+    }
+    for {
+      tails <- getTails()
+      rlist <- rget(tails.get(0), Nil)
+    } yield rlist.toArray
+  }
+  
+  /** Ignores duplicate refresh calls for the same transaction failure */
+  def refreshOnTxFailure(tx: Transaction)(implicit ec: ExecutionContext): Unit = synchronized {
+    refreshingForFailureOfTx match {
+      case None =>
+        refreshingForFailureOfTx = Some(tx.uuid)
+        refresh()
+      case Some(uuid) =>
+        if (tx.uuid != uuid) {
+          refreshingForFailureOfTx = Some(tx.uuid)
+          refresh()
+        }
+    }
+  }
   def refresh()(implicit ec: ExecutionContext): Future[Option[Root]] = synchronized {
     ofTails = None
     
@@ -367,6 +403,16 @@ class FileIndex(
     }}
 
     foRoot
+  }
+  
+  def getDataTail()(implicit ec: ExecutionContext): Future[Option[DataTail]] = getTails() flatMap { tails =>
+    if (tails.size == 0)
+      Future.successful(None)
+    else {
+      val tailSegment = tails.get(0).tailSegment
+      
+      fs.system.readObject(tailSegment.pointer) map { dos => Some(DataTail(tailSegment.pointer, dos.revision, tailSegment.offset, dos.size)) }
+    }
   }
   
   def getTails()(implicit ec: ExecutionContext): Future[Vector[IndexNode]] = synchronized {
@@ -575,7 +621,7 @@ class FileIndex(
     // Reread the inode and tails if tx fails so we're prepared for a retry
     tx.result.failed.foreach { cause =>
       pStateUpdated.failure(cause)
-      refresh()
+      refreshOnTxFailure(tx)
     }
     
     def prep(oroot: Option[Root], tails: Vector[IndexNode]): Future[(Root, ()=>Unit)] = oroot match {

@@ -34,6 +34,19 @@ object Varint {
     bb.position
   }
   
+  def unsignedIntToArray(v: Int): Array[Byte] = {
+    val arr = new Array[Byte](getUnsignedIntEncodingLength(v))
+    val bb = ByteBuffer.wrap(arr)
+    putUnsignedInt(bb, v)
+    arr
+  }
+  def unsignedLongToArray(v: Long): Array[Byte] = {
+    val arr = new Array[Byte](getUnsignedLongEncodingLength(v))
+    val bb = ByteBuffer.wrap(arr)
+    putUnsignedLong(bb, v)
+    arr
+  }
+  
   def putSignedInt(bb: ByteBuffer, v: Int): Unit = putUnsignedInt(bb, (v << 1) ^ (v >> 31))
   def putSignedLong(bb: ByteBuffer, v: Long): Unit = putUnsignedLong(bb, (v << 1) ^ (v >> 63))
 

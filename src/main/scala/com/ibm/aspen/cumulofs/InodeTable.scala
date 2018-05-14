@@ -6,6 +6,11 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
+object InodeTable {
+  val NullInode = 0L
+  val RootInode = 2L
+}
+
 trait InodeTable {
   
   /** Future completes when the transaction is ready for commit */
@@ -16,4 +21,5 @@ trait InodeTable {
   
   def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]]
 
+  def lookupRoot()(implicit ec: ExecutionContext): Future[DirectoryPointer] = lookup(InodeTable.RootInode).map(_.get.asInstanceOf[DirectoryPointer])
 }

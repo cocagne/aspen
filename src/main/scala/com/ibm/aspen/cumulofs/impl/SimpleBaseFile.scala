@@ -27,13 +27,13 @@ object SimpleBaseFile {
   case class OpResult(readyToCommit: Future[Unit], fileStateUpdated: Future[Map[Key,Value]])
   
   trait FileOperation {
-    val promise: Promise[Unit]
+    val promise = Promise[Unit]()
     def result = promise.future
     def attempt(inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): OpResult
   }
   
   abstract class SimpleSet extends FileOperation {
-    val promise = Promise[Unit]()
+    //val promise = Promise[Unit]()
     
     def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value)
     
