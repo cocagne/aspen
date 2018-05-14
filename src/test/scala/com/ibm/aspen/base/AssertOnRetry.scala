@@ -31,7 +31,7 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
         val sw = new StringWriter();
         val pw = new PrintWriter(sw);
         val stacktrace = cause.printStackTrace(pw);
-        println(s"** INITIAL Attempt failed due to $cause:\n $stacktrace")
+        //println(s"** INITIAL Attempt failed due to $cause:\n $stacktrace")
         onAttemptFailure(cause) onComplete {
           case Success(r) =>
             attempt onComplete {

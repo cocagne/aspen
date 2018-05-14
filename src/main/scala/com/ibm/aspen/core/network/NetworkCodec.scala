@@ -814,46 +814,26 @@ object NetworkCodec {
   // Allocation Messages
   //-----------------------------------------------------------------------------------------------
   
-  def encode(builder:FlatBufferBuilder, o:Allocate.NewObject): Int = {
-    builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
-    val objectData = builder.endVector()
-
-    P.AllocateNewObject.startAllocateNewObject(builder)
-    P.AllocateNewObject.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
-    o.objectSize.foreach( sz => P.AllocateNewObject.addObjectSize(builder, sz) )
-    P.AllocateNewObject.addObjectData(builder, objectData)
-    P.AllocateNewObject.addInitialRefcount(builder, encode(builder, o.initialRefcount))
-    P.AllocateNewObject.addObjectType(builder, o.options match {
-      case _: DataAllocationOptions => P.ObjectType.Data
-      case _: KeyValueAllocationOptions => P.ObjectType.KeyValue
-    })
-    P.AllocateNewObject.endAllocateNewObject(builder)
-  }
-  def decode(n: P.AllocateNewObject): Allocate.NewObject = {
-    val newObjectUUID = decode(n.newObjectUUID())
-    val objectSize = if (n.objectSize() == 0) None else Some(n.objectSize())
-    val objectData = ByteBuffer.allocateDirect(n.objectDataLength())
-    objectData.put(n.objectDataAsByteBuffer())
-    objectData.position(0)
-    val initialRefcount = decode(n.initialRefcount())
-    val options = n.objectType match {
-      case P.ObjectType.Data => new DataAllocationOptions
-      case P.ObjectType.KeyValue => new KeyValueAllocationOptions
-    }
-    
-    Allocate.NewObject(newObjectUUID, options, objectSize, initialRefcount, DataBuffer(objectData))
-  }
-  
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Allocate.createFromClientVector(builder, o.fromClient.serialized)
-    val newObjects = P.Allocate.createNewObjectsVector(builder, o.newObjects.map(no => encode(builder, no)).toArray)
     val allocObj = encode(builder, o.allocatingObject)
+    builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
+    val objectData = builder.endVector()
     
     P.Allocate.startAllocate(builder)
     P.Allocate.addToStore(builder, toStore)
     P.Allocate.addFromClient(builder, clientData)
-    P.Allocate.addNewObjects(builder, newObjects)
+    
+    P.Allocate.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
+    o.objectSize.foreach( sz => P.Allocate.addObjectSize(builder, sz) )
+    P.Allocate.addObjectData(builder, objectData)
+    P.Allocate.addInitialRefcount(builder, encode(builder, o.initialRefcount))
+    P.Allocate.addObjectType(builder, o.options match {
+      case _: DataAllocationOptions => P.ObjectType.Data
+      case _: KeyValueAllocationOptions => P.ObjectType.KeyValue
+    })
+    
     P.Allocate.addTimestamp(builder, o.timestamp.asLong)
     P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
     P.Allocate.addAllocatingObject(builder, allocObj)
@@ -870,42 +850,34 @@ object NetworkCodec {
     val allocatingObjectRevision = decode(n.allocatingObjectRevision())
     val timestamp = HLCTimestamp(n.timestamp())
     
-    def newObjects(idx: Int, l:List[Allocate.NewObject]): List[Allocate.NewObject] = if (idx == -1) 
-        l
-      else 
-        newObjects(idx-1, decode(n.newObjects(idx)) :: l)
-        
-    Allocate(toStore, ClientID(fromClient), newObjects(n.newObjectsLength()-1, Nil), timestamp,
-        allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
-  }
-  
-  def encode(builder:FlatBufferBuilder, o:AllocateResponse.Allocated): Int = {
-    val storePointer = encode(builder, o.storePointer)
-    
-    P.AllocateResponseAllocated.startAllocateResponseAllocated(builder)
-    P.AllocateResponseAllocated.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
-    P.AllocateResponseAllocated.addStorePointer(builder, storePointer)
-    P.AllocateResponseAllocated.endAllocateResponseAllocated(builder)
-  }
-  def decode(n: P.AllocateResponseAllocated): AllocateResponse.Allocated = {
     val newObjectUUID = decode(n.newObjectUUID())
-    val storePointer = decode(n.storePointer())
-    
-    AllocateResponse.Allocated(newObjectUUID, storePointer)
+    val objectSize = if (n.objectSize() == 0) None else Some(n.objectSize())
+    val objectData = ByteBuffer.allocateDirect(n.objectDataLength())
+    objectData.put(n.objectDataAsByteBuffer())
+    objectData.position(0)
+    val initialRefcount = decode(n.initialRefcount())
+    val options = n.objectType match {
+      case P.ObjectType.Data => new DataAllocationOptions
+      case P.ObjectType.KeyValue => new KeyValueAllocationOptions
+    }
+        
+    Allocate(toStore, ClientID(fromClient), newObjectUUID, options, objectSize, initialRefcount, DataBuffer(objectData), timestamp,
+        allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
   }
   
   def encode(builder:FlatBufferBuilder, o:AllocateResponse): Int = {
     val fromStoreID = encode(builder, o.fromStoreId)
-    val result = o.result match {
-      case Right(l) => P.AllocateResponse.createAllocatedObjectsVector(builder, l.map(a => encode(builder, a)).toArray)
+    val storePointer = o.result match {
+      case Right(sp) => encode(builder, sp)
       case Left(_) => -1
     }
     
     P.AllocateResponse.startAllocateResponse(builder)
     P.AllocateResponse.addFromStoreID(builder, fromStoreID)
     P.AllocateResponse.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
+    P.AllocateResponse.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
     o.result match {
-      case Right(sp) => P.AllocateResponse.addAllocatedObjects(builder, result)
+      case Right(sp) => P.AllocateResponse.addAllocatedStorePointer(builder, storePointer)
       case Left(err) => P.AllocateResponse.addResultError(builder, err match {
         case AllocationErrors.InsufficientSpace => P.AllocationError.InsufficientSpace
       })
@@ -915,19 +887,15 @@ object NetworkCodec {
   def decode(n: P.AllocateResponse): AllocateResponse = {
     val fromStoreId = decode(n.fromStoreID())
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
-    val result = if (n.allocatedObjectsLength() == 0) {
+    val newObjectUUID = decode(n.newObjectUUID())
+    val result = if (n.allocatedStorePointer() == null) {
       n.resultError() match {
         case P.AllocationError.InsufficientSpace => Left(AllocationErrors.InsufficientSpace)
       }
     } else {
-      def allocatedObjects(idx: Int, l:List[AllocateResponse.Allocated]): List[AllocateResponse.Allocated] = if (idx == -1) 
-        l
-      else 
-        allocatedObjects(idx-1, decode(n.allocatedObjects(idx)) :: l)
-      
-      Right(allocatedObjects(n.allocatedObjectsLength()-1, Nil))
+      Right(decode(n.allocatedStorePointer()))
     }
-    AllocateResponse(fromStoreId, allocationTransactionUUID, result)
+    AllocateResponse(fromStoreId, allocationTransactionUUID, newObjectUUID, result)
   }
   
   def encode(builder:FlatBufferBuilder, o:AllocationStatusRequest): Int = {
@@ -940,6 +908,7 @@ object NetworkCodec {
     P.AllocationStatusRequest.addFrom(builder, from)
     P.AllocationStatusRequest.addPrimaryObject(builder, priPtr)
     P.AllocationStatusRequest.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
+    P.AllocationStatusRequest.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
     P.AllocationStatusRequest.endAllocationStatusRequest(builder)
   }
   def decode(n: P.AllocationStatusRequest): AllocationStatusRequest = {
@@ -947,8 +916,9 @@ object NetworkCodec {
     val from = decode(n.from())
     val priPtr = decode(n.primaryObject())
     val txUUID = decode(n.allocationTransactionUUID())
+    val newObjectUUID = decode(n.newObjectUUID())
     
-    AllocationStatusRequest(to, from, priPtr, txUUID)
+    AllocationStatusRequest(to, from, priPtr, txUUID, newObjectUUID)
   }
   
   def encode(builder:FlatBufferBuilder, o:AllocationStatusReply): Int = {
@@ -960,6 +930,7 @@ object NetworkCodec {
     P.AllocationStatusReply.addTo(builder, to)
     P.AllocationStatusReply.addFrom(builder, from)
     P.AllocationStatusReply.addAllocationTransactionUuid(builder, encode(builder, o.allocationTransactionUUID))
+    P.AllocationStatusRequest.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
     o.transactionStatus.foreach { status =>
       P.AllocationStatusReply.addKnown(builder, 1)
       P.AllocationStatusReply.addTransactionStatus(builder, encodeTransactionStatus(status))  
@@ -971,10 +942,11 @@ object NetworkCodec {
     val to = decode(n.to())
     val from = decode(n.from())
     val txUUID = decode(n.allocationTransactionUuid())
+    val newObjectUUID = decode(n.newObjectUUID())
     val transactionStatus = if (n.known() == 0) None else Some(decodeTransactionStatus(n.transactionStatus()))
     val objectStatus = decode(n.objectStatus())
         
-    AllocationStatusReply(to, from, txUUID, transactionStatus, objectStatus)
+    AllocationStatusReply(to, from, txUUID, newObjectUUID, transactionStatus, objectStatus)
   }
   
   //-----------------------------------------------------------------------------------------------

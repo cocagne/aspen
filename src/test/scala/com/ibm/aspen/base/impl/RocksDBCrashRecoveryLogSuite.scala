@@ -115,7 +115,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val ars = AllocationRecoveryState(
             storeId, 
-            List(AllocationRecoveryState.NewObject(sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1), 
             txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
     
     newCRL()
@@ -149,8 +149,8 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     alst.length should be (1)
     val n = alst.head
     
-    val a = ars.newObjects.head
-    val b = n.newObjects.head
+    val a = ars
+    val b = n
     
     n.storeId should be (ars.storeId)
     b.storePointer should be (a.storePointer)
@@ -187,7 +187,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     
     val ars = AllocationRecoveryState(
             storeId, 
-            List(AllocationRecoveryState.NewObject(sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1))), 
+            sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1), 
             txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
     
     newCRL()

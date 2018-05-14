@@ -32,6 +32,7 @@ import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.transaction.RevisionLock
+import com.ibm.aspen.core.allocation.AllocationOptions
 
 object DataStoreFrontend {
   
@@ -62,7 +63,7 @@ class DataStoreFrontend(
   
   override val initialized: Future[DataStore] = synchronized {
     
-    allocationRecoveryStates.foreach(loadAllocatedObjects)
+    allocationRecoveryStates.foreach(loadAllocatedObject)
     
     // Re-establish locks on all transactions we voted to commit
     
@@ -104,67 +105,44 @@ class DataStoreFrontend(
   }
   
   override def allocate(
-      newObjects: List[Allocate.NewObject],
+      newObjectUUID: UUID,
+      options: AllocationOptions,
+      objectSize: Option[Int],
+      initialRefcount: ObjectRefcount,
+      objectData: DataBuffer,
       timestamp: HLCTimestamp,
       allocationTransactionUUID: UUID,
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
     
-    Future.sequence { newObjects map { no =>
-      val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), no.initialRefcount, timestamp)
-      
-      backend.allocateObject(no.newObjectUUID, md, no.objectData) map { e => e match {
-        case Left(err) => Left(err)
-        case Right(arr) =>
-          val sp = new StorePointer(storeId.poolIndex, arr)
-          val objectType = no.options match {
-            case _: DataAllocationOptions => ObjectType.Data
-            case _: KeyValueAllocationOptions => ObjectType.KeyValue
-          }
-          Right(AllocationRecoveryState.NewObject(sp, no.newObjectUUID, objectType, no.objectSize, no.objectData, no.initialRefcount))
-      }}
-    }} map { recoveryStateList =>
-      
-      val init: (Option[AllocationErrors.Value], List[AllocationRecoveryState.NewObject]) = (None, List())
-      
-      val (allocErrs, newObjects) = recoveryStateList.foldLeft(init) { (t, e) => e match {
-        case Left(err) => (Some(err), t._2)
-        case Right(no) => (t._1, no :: t._2)
-      }}
-      
-      allocErrs match {
-        case Some(err) =>
-          newObjects.foreach(no => backend.deleteObject(StoreObjectID(no.newObjectUUID, no.storePointer)))
-          
-          Left(err)
-          
-        case None =>
-          val ars = AllocationRecoveryState(storeId, newObjects, timestamp, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
-      
-          loadAllocatedObjects(ars)
-      
-          Right(ars)
-      }
-    }
+    val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), initialRefcount, timestamp)
+        
+    backend.allocateObject(newObjectUUID, md, objectData) map { e => e match {
+      case Left(err) => Left(err)
+      case Right(arr) =>
+        val sp = new StorePointer(storeId.poolIndex, arr)
+        val objectType = options match {
+          case _: DataAllocationOptions => ObjectType.Data
+          case _: KeyValueAllocationOptions => ObjectType.KeyValue
+        }
+        val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp, 
+                                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision) 
+        Right(ars)
+    }}  
   }
   
-  private def loadAllocatedObjects(ars: AllocationRecoveryState): Unit = synchronized {
-    ars.newObjects foreach { no =>
-      val metadata = ObjectMetadata(ObjectRevision(ars.allocationTransactionUUID), no.initialRefcount, ars.timestamp)
-      objectLoader.createNewObject(no.newObjectUUID, ars.allocationTransactionUUID, no.storePointer, metadata, no.objectData, no.objectType)
-    }
+  private def loadAllocatedObject(ars: AllocationRecoveryState): Unit = synchronized {
+    val metadata = ObjectMetadata(ObjectRevision(ars.allocationTransactionUUID), ars.initialRefcount, ars.timestamp)
+    objectLoader.createNewObject(ars.newObjectUUID, ars.allocationTransactionUUID, ars.storePointer, metadata, ars.objectData, ars.objectType)
   }
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = {
-    val commit = ars.newObjects.map( no => (no.newObjectUUID, committed) ).toMap
-    allocationRecoveryComplete(ars, commit)
+    allocationRecoveryComplete(ars, committed)
   }
     
-  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = synchronized {
-    Future.sequence { commit.iterator.foldLeft(List[Future[Unit]]()) { (l, t) =>
-      val (objectUUID, commit) = t
-      objectLoader.getAlreadyLoadedObject(objectUUID) match {
-        case None => l // Shouldn't be possible encounter this line
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit] = synchronized {
+    objectLoader.getAlreadyLoadedObject(ars.newObjectUUID) match {
+        case None => Future.successful(()) // Shouldn't be possible encounter this line
         
         case Some(obj) => 
           obj.completeOperation(ars.allocationTransactionUUID)
@@ -172,11 +150,10 @@ class DataStoreFrontend(
           // Allocation recovery could complete after transactions have already updated the object. Verify that the
           // revision matches the allocation revision before trying to commit
           if (commit && obj.revision == ObjectRevision(ars.allocationTransactionUUID))
-            obj.commitBoth() :: l
+            obj.commitBoth()
           else
-            l
-      }
-    }} map (_ => ())
+            Future.successful(())
+    }
   }
   
   override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {

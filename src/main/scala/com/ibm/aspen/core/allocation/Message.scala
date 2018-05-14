@@ -17,26 +17,14 @@ sealed abstract class Message
 abstract class ClientMessage extends Message
 abstract class StoreMessage extends Message
 
-object Allocate {
-  case class NewObject(
-      newObjectUUID: UUID,
-      options: AllocationOptions,
-      objectSize: Option[Int],
-      initialRefcount: ObjectRefcount,
-      objectData: DataBuffer) {
-    override def equals(other: Any): Boolean = other match {
-      case rhs: Allocate.NewObject => 
-        objectSize == rhs.objectSize && objectData.compareTo(rhs.objectData) == 0 &&
-        initialRefcount == rhs.initialRefcount
-      case _ => false
-    }
-  }
-      
-}
 final case class Allocate(
     toStore: DataStoreID,
     fromClient: ClientID,
-    newObjects: List[Allocate.NewObject],
+    newObjectUUID: UUID,
+    options: AllocationOptions,
+    objectSize: Option[Int],
+    initialRefcount: ObjectRefcount,
+    objectData: DataBuffer,
     timestamp: HLCTimestamp,
     allocationTransactionUUID: UUID,
     allocatingObject: ObjectPointer,
@@ -45,32 +33,32 @@ final case class Allocate(
   
   override def equals(other: Any): Boolean = other match {
     case rhs: Allocate => toStore == rhs.toStore && fromClient == rhs.fromClient && 
-      newObjects == rhs.newObjects && timestamp.compareTo(rhs.timestamp) == 0 &&  
+      objectSize == rhs.objectSize && objectData.compareTo(rhs.objectData) == 0 &&
+      initialRefcount == rhs.initialRefcount && timestamp.compareTo(rhs.timestamp) == 0 &&  
       allocationTransactionUUID == rhs.allocationTransactionUUID &&
       allocatingObject == rhs.allocatingObject && allocatingObjectRevision == rhs.allocatingObjectRevision 
     case _ => false
   }
 }
 
-object AllocateResponse {
-  case class Allocated(newObjectUUID: UUID, storePointer: StorePointer)
-}
-    
 final case class AllocateResponse(
     fromStoreId: DataStoreID,
     allocationTransactionUUID: UUID,
-    result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) extends ClientMessage
+    newObjectUUID: UUID,
+    result: Either[AllocationErrors.Value, StorePointer]) extends ClientMessage
     
 final case class AllocationStatusRequest(
     to: DataStoreID,
     from: DataStoreID,
     primaryObject: ObjectPointer,
-    allocationTransactionUUID: UUID) extends StoreMessage
+    allocationTransactionUUID: UUID,
+    newObjectUUID: UUID) extends StoreMessage
     
 final case class AllocationStatusReply(
     to: DataStoreID,
     from: DataStoreID,
     allocationTransactionUUID: UUID,
+    newObjectUUID: UUID,
     transactionStatus: Option[TransactionStatus.Value], // If None, the transaction is unknown
     objectStatus: AllocationObjectStatus
     ) extends StoreMessage

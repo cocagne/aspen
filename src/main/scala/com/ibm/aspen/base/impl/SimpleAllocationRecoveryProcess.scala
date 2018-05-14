@@ -57,7 +57,7 @@ class SimpleAllocationRecoveryProcess(
     
     ars.allocatingObject.storePointers.foreach { sp =>
       val to = DataStoreID(ars.allocatingObject.poolUUID, sp.poolIndex)
-      allocMessenger.send(AllocationStatusRequest(to, store.storeId, ars.allocatingObject, ars.allocationTransactionUUID))
+      allocMessenger.send(AllocationStatusRequest(to, store.storeId, ars.allocatingObject, ars.allocationTransactionUUID, ars.newObjectUUID))
     }
   }}
   
@@ -133,8 +133,8 @@ class SimpleAllocationRecoveryProcess(
       for {
         pool <- system.getStoragePool(store.storeId.poolUUID)
         allocTree <- pool.getAllocationTree(retryStrategy)
-        results <- Future.sequence(ars.newObjects.map( no => resolveObject(no.newObjectUUID, allocTree) ))
-        complete <- store.allocationRecoveryComplete(ars, results.toMap)
+        (objId, committed) <- resolveObject(ars.newObjectUUID, allocTree)
+        complete <- store.allocationRecoveryComplete(ars, committed)
       } yield {
         crl.discardAllocationState(store.storeId, ars.allocationTransactionUUID)
         promise.success(())

@@ -312,18 +312,15 @@ table ReadResponse {
 //---------------------------------------------------------------------------
 //- Allocation Messages
 //---------------------------------------------------------------------------
-table AllocateNewObject {
+
+table Allocate {
+  toStore: DataStoreID;
+  fromClient: [byte];
   newObjectUUID: UUID;
   objectType: ObjectType;
   objectSize: int;
   initialRefcount: ObjectRefcount;
   objectData: [byte];
-}
-
-table Allocate {
-  toStore: DataStoreID;
-  fromClient: [byte];
-  newObjects: [AllocateNewObject];
   timestamp: long;
   allocationTransactionUUID: UUID;
   allocatingObject: ObjectPointer;
@@ -335,14 +332,15 @@ enum AllocationError:byte {
 }
 
 table AllocateResponseAllocated {
-  newObjectUUID: UUID;
+  
   storePointer: StorePointer;
 }
 
 table AllocateResponse {
   fromStoreID: DataStoreID;
   allocationTransactionUUID: UUID;
-  allocatedObjects: [AllocateResponseAllocated];
+  newObjectUUID: UUID;
+  allocatedStorePointer: StorePointer;
   resultError: AllocationError;
 }
 
@@ -351,12 +349,14 @@ table AllocationStatusRequest {
    from: DataStoreID;
    primaryObject: ObjectPointer;
    allocationTransactionUUID: UUID;
+   newObjectUUID: UUID;
 }
 
 table AllocationStatusReply {
    to: DataStoreID;
    from: DataStoreID;
    allocation_transaction_uuid: UUID;
+   newObjectUUID: UUID;
    known: byte; // 1 if transaction is known. 0 if not
    transactionStatus: TransactionStatus;
    objectStatus: AllocationObjectStatus;

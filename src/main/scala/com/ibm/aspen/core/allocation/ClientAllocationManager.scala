@@ -30,13 +30,14 @@ class ClientAllocationManager(
     val clientMessenger: ClientSideAllocationMessenger,
     val driverFactory: AllocationDriver.Factory)(implicit ec: ExecutionContext) extends ClientSideAllocationMessageReceiver {
   
+  // Maps newObjectUUID -> driver
   private[this] var outstandingAllocations = Map[UUID, AllocationDriver]()
   
   def shutdown(): Unit = outstandingAllocations.foreach( t => t._2.shutdown() )
   
   def receive(m: AllocateResponse): Unit = { 
-    synchronized { outstandingAllocations.get(m.allocationTransactionUUID) } foreach {
-      driver => driver.receiveAllocationResult(m.fromStoreId, m.allocationTransactionUUID, m.result)
+    synchronized { outstandingAllocations.get(m.newObjectUUID) } foreach {
+      driver => driver.receiveAllocationResult(m.fromStoreId, m.result)
     }  
   }
   
@@ -61,10 +62,10 @@ class ClientAllocationManager(
     val driver = driverFactory.create(clientMessenger, pool.uuid, newObjectUUID, objectSize, objectIDA, objectData, options, timestamp, 
                                       initialRefcount, transaction.uuid, allocatingObject, allocatingObjectRevision)
                                       
-    synchronized { outstandingAllocations += (transaction.uuid -> driver) }
+    synchronized { outstandingAllocations += (newObjectUUID -> driver) }
     
     driver.futureResult onComplete {
-      case _ => synchronized { outstandingAllocations -= transaction.uuid }
+      case _ => synchronized { outstandingAllocations -= newObjectUUID }
     }
     
     val r = driver.futureResult map { eresult => eresult match {

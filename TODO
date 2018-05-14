@@ -423,6 +423,8 @@ Error Handling:
    * Refuse to vote on transaction if any FinalizationAction is unknown
    
    * Create "Orphaned Task" Group for newly created tasks where the TaskGroup cannot be found
+  
+** Verify that allocation recovery of objects that failed allocation are discarded
    
 ** TransactionRecovery must check to ensure all FinalizationActions are understood and refuse to start if not
    - Must also vote Abort if any finalizer is unknown OR fails to parse

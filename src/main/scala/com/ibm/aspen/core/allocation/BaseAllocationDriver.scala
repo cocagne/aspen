@@ -43,7 +43,7 @@ class BaseAllocationDriver (
   
   def futureResult = promise.future
   
-  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value,  List[AllocateResponse.Allocated]]]()
+  private[this] var responses =  Map[Byte, Either[AllocationErrors.Value,  StorePointer]]()
   
   def shutdown(): Unit = {}
   
@@ -55,8 +55,8 @@ class BaseAllocationDriver (
     
     for ( (storeIndex, objectData) <- toSend ) {
       val storeId = DataStoreID(poolUUID, storeIndex)
-      val newObjects = List( Allocate.NewObject(newObjectUUID, options, objectSize, initialRefcount, objectData) )
-      val msg = Allocate(storeId, messenger.clientId, newObjects, timestamp,
+      
+      val msg = Allocate(storeId, messenger.clientId, newObjectUUID, options, objectSize, initialRefcount, objectData, timestamp,
                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                          
       messenger.send(storeId, msg)
@@ -64,8 +64,7 @@ class BaseAllocationDriver (
   }
   
   def receiveAllocationResult(fromStoreId: DataStoreID, 
-                              allocationTransactionUUID: UUID, 
-                              result: Either[AllocationErrors.Value,  List[AllocateResponse.Allocated]]): Unit = synchronized {
+                              result: Either[AllocationErrors.Value,  StorePointer]): Unit = synchronized {
     if (promise.isCompleted)
       return // Already done, nothing left to do
       
@@ -77,7 +76,7 @@ class BaseAllocationDriver (
       var pointers = List[StorePointer]()
       
       responses.foreach(t => t._2 match {
-        case Right(lst) => pointers = lst.head.storePointer :: pointers
+        case Right(ptr) => pointers = ptr :: pointers
         case Left(err) => errors += (t._1 -> err)
       })
       

@@ -96,14 +96,11 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
 
     implicit val executionContext = ExecutionContext.Implicits.global
     
-    val lno0 = List(Allocate.NewObject(uuid0, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty))
-    val lno1 = List(Allocate.NewObject(uuid1, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty))
-    
-    val f = ds.allocate(lno0, initialTimestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(ars0) => ds.allocate(lno1, initialTimestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
+    val f = ds.allocate(uuid0, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
+      case Right(ars0) => ds.allocate(uuid1, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
         case Right(ars1) => 
-          val op0 = mkObjPtr(uuid0, ars0.newObjects.head.storePointer)
-          val op1 = mkObjPtr(uuid1, ars1.newObjects.head.storePointer)
+          val op0 = mkObjPtr(uuid0, ars0.storePointer)
+          val op1 = mkObjPtr(uuid1, ars1.storePointer)
           Future.successful((ds, op0, op1))
         case Left(err) => fail("Returned failure instead of object content")
       })

@@ -16,6 +16,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.allocation.AllocationOptions
 
 /* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
@@ -35,7 +36,11 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit] = Future.successful(())
   
-  def allocate(newObjects: List[Allocate.NewObject],
+  def allocate(newObjectUUID: UUID,
+               options: AllocationOptions,
+               objectSize: Option[Int],
+               initialRefcount: ObjectRefcount,
+               objectData: DataBuffer,
                timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
@@ -45,7 +50,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = Future.successful(())
   
-  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit] = Future.successful(())
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit] = Future.successful(())
   
   def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = Future.successful(Left(new InvalidLocalPointer))
   

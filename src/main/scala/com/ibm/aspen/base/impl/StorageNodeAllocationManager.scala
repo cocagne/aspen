@@ -22,6 +22,7 @@ import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.allocation.AllocationObjectStatus
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.objects.StorePointer
 
 object StorageNodeAllocationManager {
   case class Key(storeId: DataStoreID, transactionUUID: UUID)
@@ -90,12 +91,16 @@ class StorageNodeAllocationManager(
   
   def receive(m: Allocate): Unit = getStore(m.toStore).foreach{ store => {
       
-      def reply(result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]) = {
-        allocationMessenger.send(m.fromClient, AllocateResponse(m.toStore, m.allocationTransactionUUID, result))
+      def reply(result: Either[AllocationErrors.Value, StorePointer]) = {
+        allocationMessenger.send(m.fromClient, AllocateResponse(m.toStore, m.allocationTransactionUUID, m.newObjectUUID, result))
       }
       
       store.allocate(
-          m.newObjects, 
+          m.newObjectUUID,
+          m.options,
+          m.objectSize,
+          m.initialRefcount,
+          m.objectData,
           m.timestamp,
           m.allocationTransactionUUID, 
           m.allocatingObject, 
@@ -105,8 +110,7 @@ class StorageNodeAllocationManager(
           
           case Right(ars) => 
             trackAllocation(store, ars) foreach { _ =>
-              val allocs = ars.newObjects.map(n => AllocateResponse.Allocated(n.newObjectUUID, n.storePointer)) 
-              reply(Right(allocs))
+              reply(Right(ars.storePointer))
             }
         }
       }
@@ -119,7 +123,7 @@ class StorageNodeAllocationManager(
         case Left(err) => Left(ObjectReadError(err))
         case Right((md, locks)) => Right(AllocationObjectStatus.State(md.revision, md.refcount, locks))
       }
-      allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, txStatus, 
+      allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, message.newObjectUUID, txStatus, 
                                            AllocationObjectStatus(message.primaryObject.uuid, state))) 
     }
   }

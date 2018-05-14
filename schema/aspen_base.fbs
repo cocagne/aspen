@@ -27,18 +27,14 @@ table CRLTransactionState {
     last_accepted_value: bool;    // null if no accepted proposals
 }
 
-table CRLNewObject {
+table CRLAllocationRecoveryState {
+    dataStoreID: com.ibm.aspen.core.network.protocol.DataStoreID;
     storePointer: com.ibm.aspen.core.network.protocol.StorePointer;
     newObjectUUID: com.ibm.aspen.core.network.protocol.UUID;
     objectType: ObjectType;
     objectSize: int;
     objectData: [byte];
     initialRefcount: com.ibm.aspen.core.network.protocol.ObjectRefcount;
-}
-
-table CRLAllocationRecoveryState {
-    dataStoreID: com.ibm.aspen.core.network.protocol.DataStoreID;
-    newObjects: [CRLNewObject];
     timestamp: long;
     allocationTransactionUUID: com.ibm.aspen.core.network.protocol.UUID;
     allocatingObject: com.ibm.aspen.core.network.protocol.ObjectPointer;

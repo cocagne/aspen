@@ -32,8 +32,7 @@ trait AllocationDriver {
   def start(): Unit
   
   def receiveAllocationResult(fromStoreId: DataStoreID, 
-                              allocationTransactionUUID: UUID, 
-                              result: Either[AllocationErrors.Value, List[AllocateResponse.Allocated]]): Unit 
+                              result: Either[AllocationErrors.Value, StorePointer]): Unit 
 }
 
 object AllocationDriver {

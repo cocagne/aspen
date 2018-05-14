@@ -77,7 +77,6 @@ class SimpleFileAppendSuite extends TestSystemSuite with CumuloFSBootstrap {
   }
   
   test("Append two full segments of bytes") {
-    println("STARTING")
     for {
       fs <- bootstrap(fileSegmentSize=5)
       rootDir <- fs.loadRoot()
@@ -92,7 +91,6 @@ class SimpleFileAppendSuite extends TestSystemSuite with CumuloFSBootstrap {
       data <- sfile.debugRead()
       d0 <- sys.readObject(sarr(0).pointer)
     } yield {
-      println("CHECKING")
       file.size should be (10)
       file2.size should be (10)
       sarr.length should be (2)

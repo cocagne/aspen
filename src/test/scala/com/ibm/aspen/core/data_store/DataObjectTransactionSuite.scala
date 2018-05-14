@@ -68,12 +68,9 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
 
     implicit val executionContext = ExecutionContext.Implicits.global
     
-    val lno0 = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent0))
-    val lno1 = List(Allocate.NewObject(uuid1, new DataAllocationOptions, None, oneRef, icontent1))
-    
-    val f = ds.allocate(lno0, timestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(ars0) => ds.allocate(lno1, timestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
-        case Right(ars1) => Future.successful((ds, ars0.newObjects.head.storePointer, ars1.newObjects.head.storePointer))
+    val f = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent0, timestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
+      case Right(ars0) => ds.allocate(uuid1, new DataAllocationOptions, None, oneRef, icontent1, timestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
+        case Right(ars1) => Future.successful((ds, ars0.storePointer, ars1.storePointer))
         case Left(err) => fail("Returned failure instead of object content")
       })
       case Left(err) => fail("Returned failure instead of store pointer")
@@ -150,11 +147,11 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val lno = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent))
-    val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
+    
+    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, allocObj, allocRev)
             
     futureResponse map { either => either match {
-      case Right(ars) => ars.newObjects.head.storePointer.poolIndex should be (ds.storeId.poolIndex)
+      case Right(ars) => ars.storePointer.poolIndex should be (ds.storeId.poolIndex)
       case Left(err) => fail("Returned failure instead of store pointer")
     }}
 	}
@@ -163,13 +160,13 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
-    val lno = List(Allocate.NewObject(uuid0, new DataAllocationOptions, None, oneRef, icontent))
-    val futureResponse = ds.allocate(lno, timestamp, txUUID, allocObj, allocRev)
+    
+    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, allocObj, allocRev)
             
     val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, timestamp), icontent, Nil)
     
     futureResponse flatMap { either => either match {
-      case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.newObjects.head.storePointer)).flatMap(er => er match {
+      case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.storePointer)).flatMap(er => er match {
         case Right(data) => data should be (expected)
         case Left(err) => fail(s"Returned failure instead of object content: $err")
       })

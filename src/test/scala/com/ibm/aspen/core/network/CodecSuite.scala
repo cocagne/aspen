@@ -250,8 +250,9 @@ class CodecSuite extends FunSuite with Matchers {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)
     val txUUID = new java.util.UUID(3,4)
+    val objUUID = new java.util.UUID(5,6)
     
-    val ar = AllocateResponse(storeId, txUUID, Left(AllocationErrors.InsufficientSpace))
+    val ar = AllocateResponse(storeId, txUUID, objUUID, Left(AllocationErrors.InsufficientSpace))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -278,8 +279,8 @@ class CodecSuite extends FunSuite with Matchers {
     val objUUID = new java.util.UUID(5,6)
     
     val sp = StorePointer(0, Array[Byte](0, 1, 2, 3))
-    val la = List(AllocateResponse.Allocated(objUUID, sp))
-    val ar = AllocateResponse(storeId, txUUID, Right(la))
+    
+    val ar = AllocateResponse(storeId, txUUID, objUUID, Right(sp))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -310,9 +311,8 @@ class CodecSuite extends FunSuite with Matchers {
     val objUUID = new java.util.UUID(5,6)
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val lno = List(Allocate.NewObject(objUUID, new DataAllocationOptions, s1, ref, d1))
     val ts = HLCTimestamp.now
-    val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
+    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -343,9 +343,8 @@ class CodecSuite extends FunSuite with Matchers {
     val objUUID = new java.util.UUID(5,6)
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
-    val lno = List(Allocate.NewObject(objUUID, new DataAllocationOptions, s1, ref, d1))
     val ts = HLCTimestamp.now
-    val a1 = Allocate(storeId, c1, lno, ts, txUUID,  op, rev)
+    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  op, rev)
     
     val builder = new FlatBufferBuilder(1024)
     

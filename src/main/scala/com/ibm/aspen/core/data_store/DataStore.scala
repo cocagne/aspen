@@ -19,6 +19,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.transaction.VersionBump
+import com.ibm.aspen.core.allocation.AllocationOptions
 
 object DataStore {
   trait Factory {
@@ -62,7 +63,11 @@ trait DataStore {
    * with the specified UUID. If success/failure cannot be determined, the recovery process may attempt to 
    * force the allocation to fail by bumping the revision of the target object.
    */
-  def allocate(newObjects: List[Allocate.NewObject],
+  def allocate(newObjectUUID: UUID,
+               options: AllocationOptions,
+               objectSize: Option[Int],
+               initialRefcount: ObjectRefcount,
+               objectData: DataBuffer,
                timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
                allocatingObject: ObjectPointer,
@@ -79,7 +84,7 @@ trait DataStore {
    *  
    *  The AllocationRecoveryState will be deleted after the returned future completes
    */
-  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Map[UUID, Boolean]): Future[Unit]
+  def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit]
   
   
   /** Reads and returns the object metadata, data, and a list of any active locks on the object */

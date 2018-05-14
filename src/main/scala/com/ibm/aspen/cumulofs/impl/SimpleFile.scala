@@ -188,24 +188,15 @@ class SimpleFile(
         def ralloc(bufs: List[DataBuffer], remainingBytes: Int, arr: Array[Byte], bb: ByteBuffer, 
             allocations: List[Future[(DataObjectPointer, Int)]]): List[Future[(DataObjectPointer, Int)]]  = {
           if (bufs.isEmpty) {
-            println(s"ALLOC .isEmpty")
             val falloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
-            falloc.onComplete {
-              case Success(_) => println("  ALLOC.isEmpty success")
-              case Failure(err) => println(s"  ALLOC.isEmpty failed $err")
-            }
-            falloc :: allocations
             
+            falloc :: allocations
           }
           else if (bb.remaining == 0) {
             val nextArr = new Array[Byte]( if (remainingBytes < segmentSize) remainingBytes else segmentSize )
             val nextbb = ByteBuffer.wrap(nextArr)
-            println(s"ALLOC bb.remaining == 0")
             val nextAlloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
-            nextAlloc .onComplete {
-              case Success(_) => println("  ALLOC.bb.remaining == 0 success")
-              case Failure(err) => println(s"  ALLOC.bb.remaining == 0 failed $err")
-            }
+            
             ralloc(bufs, remainingBytes, nextArr, nextbb, nextAlloc :: allocations)
           } 
           else if (bb.remaining >= bufs.head.size) {
@@ -222,7 +213,7 @@ class SimpleFile(
         val initialbb = ByteBuffer.wrap(initialArr)
         
         Future.sequence(ralloc(dataBufs, bufferdBytes, initialArr, initialbb, Nil)) flatMap { rallocs =>
-          println("ALLOCS Complete")
+          
           val allocs = rallocs.reverse
           
           val last = allocs.last
