@@ -33,15 +33,10 @@ class SimpleFile(
   
   val index = new FileIndex(fs, cache, inode)
   
-  // Queue of append operations. We use a mutable queue here to prevent holding on to
-  // DataBuffer references loger than necessary 
-  private[this] val appendOpBacklog = new scala.collection.mutable.Queue[AppendOperation]
+  private[this] var queuedAppendOpsCount = 0
   
-  // True if an AppendOperation has been placed into the work queue
-  private[this] var appendIsQueued = false
-  
-  // If an append operation is queued, we'll add incoming append buffers here. When the append op is
-  // full, it'll be enqueued into the appendOpBacklog
+  // If one or more append operations are queued, we'll add incoming append buffers here. When the append op is
+  // full or the final outstanding append op is complete, it'll be queued for execution
   private[this] var tailAppendOp: Option[AppendOperation] = None
   
   // Tracks the state of the end-of-file data object
@@ -95,22 +90,29 @@ class SimpleFile(
    * */
   def write(offset: Long, data: DataBuffer): Future[Unit] = ???
   
+  private[this] def enqueueAppendOp(op: AppendOperation)(implicit ec: ExecutionContext): Unit = {
+    queuedAppendOpsCount += 1
+    enqueueOp(op)
+  }
+  
   def append(data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit] = synchronized {
     val tao = tailAppendOp match {
       case None =>
         val tao = new AppendOperation(data)
         
-        if (appendIsQueued)
+        if (queuedAppendOpsCount >= 1)
           tailAppendOp = Some(tao)
         else
-          enqueueOp(tao)
+          enqueueAppendOp(tao)
           
         tao
+        
       case Some(tao) =>
         if (tao.addBuffer(data))
           tao
         else {
-          appendOpBacklog.enqueue(tao)
+          // Tail buffer is full. Enqueue for execution and start the next tail
+          enqueueAppendOp(tao)
           val newTao = new AppendOperation(data)
           tailAppendOp = Some(newTao)
           newTao
@@ -120,7 +122,35 @@ class SimpleFile(
     tao.result
   }
   
-  
+  def append(data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    if (data.isEmpty)
+      return Future.successful(())
+      
+    def createOps(ldata: List[DataBuffer], ops: List[AppendOperation]): List[AppendOperation] = {
+      if (ldata.isEmpty)
+        ops
+      else {
+        val tao = new AppendOperation(data.head)
+        var l = data.tail
+        while (!l.isEmpty && tao.addBuffer(l.head))
+          l = l.tail
+        createOps(l, tao :: ops)
+      }
+    }
+    
+    val rops = createOps(data, Nil)
+    val lastOp = rops.head
+    val ops = rops.reverse
+      
+    tailAppendOp foreach { op =>
+      tailAppendOp = None
+      enqueueAppendOp(op)
+    }
+    
+    ops.foreach(enqueueAppendOp)
+    
+    lastOp.result
+  }
   
   class AppendOperation(initialBuffer: DataBuffer) extends SimpleBaseFile.FileOperation {
     
@@ -132,7 +162,7 @@ class SimpleFile(
         false
       else {
         rbuffers = db :: rbuffers
-        rbufbytes += rbufbytes + db.size
+        rbufbytes += db.size
         true
       }
     }
@@ -264,6 +294,13 @@ class SimpleFile(
           case Success(_) => synchronized {
             dataTail = Some(Some(newDataTail))
             inode = curInode.asInstanceOf[FileInode].update(tx.txRevision, tx.timestamp, newFileSize, onewRoot, curInode.refcount)
+            queuedAppendOpsCount -= 1
+            if (queuedAppendOpsCount == 0) {
+              tailAppendOp.foreach { op =>
+                tailAppendOp = None
+                enqueueAppendOp(op)
+              }
+            }
             pcomplete.success(updatedContent)
           }
         }

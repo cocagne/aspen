@@ -136,6 +136,33 @@ class SimpleFileAppendSuite extends TestSystemSuite with CumuloFSBootstrap {
     }
   }
   
+  test("Append to partially filled segment, no split. Multi buffer") {
+    for {
+      fs <- bootstrap(fileSegmentSize=5)
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+      file <- fs.loadFile(newFilePointer)
+      db = DataBuffer(Array[Byte](0,1))
+      _ <- file.append(db)
+      _ <- file.asInstanceOf[SimpleFile].append(List(DataBuffer(Array[Byte](2)), DataBuffer(Array[Byte](3))))
+      file2 <- fs.loadFile(newFilePointer)
+      sfile = file2.asInstanceOf[SimpleFile]
+      sarr <- sfile.index.debugGetAllSegments()
+      data <- sfile.debugRead()
+      d0 <- sys.readObject(sarr(0).pointer)
+    } yield {
+      file.size should be (4)
+      file2.size should be (4)
+      sarr.length should be (1)
+      data.length should be (4)
+      data(0) should be (0)
+      data(1) should be (1)
+      data(2) should be (2)
+      data(3) should be (3)
+    }
+  }
+  
   test("Append to partially filled segment, exactly fill segment") {
     for {
       fs <- bootstrap(fileSegmentSize=5)
@@ -165,6 +192,34 @@ class SimpleFileAppendSuite extends TestSystemSuite with CumuloFSBootstrap {
     }
   }
   
+  test("Append to partially filled segment, exactly fill segment. Multi buffer") {
+    for {
+      fs <- bootstrap(fileSegmentSize=5)
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+      file <- fs.loadFile(newFilePointer)
+      db = DataBuffer(Array[Byte](0,1))
+      _ <- file.append(db)
+      _ <- file.asInstanceOf[SimpleFile].append(List(DataBuffer(Array[Byte](2)), DataBuffer(Array[Byte](3,4))))
+      file2 <- fs.loadFile(newFilePointer)
+      sfile = file2.asInstanceOf[SimpleFile]
+      sarr <- sfile.index.debugGetAllSegments()
+      data <- sfile.debugRead()
+      d0 <- sys.readObject(sarr(0).pointer)
+    } yield {
+      file.size should be (5)
+      file2.size should be (5)
+      sarr.length should be (1)
+      data.length should be (5)
+      data(0) should be (0)
+      data(1) should be (1)
+      data(2) should be (2)
+      data(3) should be (3)
+      data(4) should be (4)
+    }
+  }
+  
   test("Append to partially filled segment, with split") {
     for {
       fs <- bootstrap(fileSegmentSize=5)
@@ -176,6 +231,40 @@ class SimpleFileAppendSuite extends TestSystemSuite with CumuloFSBootstrap {
       _ <- file.append(db)
       db2 = DataBuffer(Array[Byte](2,3,4,5,6,7))
       _ <- file.append(db2)
+      file2 <- fs.loadFile(newFilePointer)
+      sfile = file2.asInstanceOf[SimpleFile]
+      sarr <- sfile.index.debugGetAllSegments()
+      data <- sfile.debugRead()
+      d0 <- sys.readObject(sarr(0).pointer)
+    } yield {
+      file.size should be (8)
+      file2.size should be (8)
+      sarr.length should be (2)
+      data.length should be (8)
+      data(0) should be (0)
+      data(1) should be (1)
+      data(2) should be (2)
+      data(3) should be (3)
+      data(4) should be (4)
+      data(5) should be (5)
+      data(6) should be (6)
+      data(7) should be (7)
+    }
+  }
+  
+  test("Append to partially filled segment, with split. Multi buffer") {
+    for {
+      fs <- bootstrap(fileSegmentSize=5)
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+      file <- fs.loadFile(newFilePointer)
+      db = DataBuffer(Array[Byte](0,1))
+      _ <- file.append(db)
+      _ <- file.asInstanceOf[SimpleFile].append(List(
+          DataBuffer(Array[Byte](2,3)), 
+          DataBuffer(Array[Byte](4,5)),
+          DataBuffer(Array[Byte](6,7))))
       file2 <- fs.loadFile(newFilePointer)
       sfile = file2.asInstanceOf[SimpleFile]
       sarr <- sfile.index.debugGetAllSegments()
