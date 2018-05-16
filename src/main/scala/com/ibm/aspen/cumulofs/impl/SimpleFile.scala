@@ -21,6 +21,7 @@ import com.ibm.aspen.util.Varint
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.cumulofs.File
+import com.ibm.aspen.cumulofs.Timespec
 
 class SimpleFile(
     fs: FileSystem,
@@ -152,10 +153,12 @@ class SimpleFile(
     lastOp.result
   }
   
-  class AppendOperation(initialBuffer: DataBuffer) extends SimpleBaseFile.FileOperation {
+  abstract class AbstractWriteOperation(initialBuffer: DataBuffer) extends SimpleBaseFile.FileOperation {
     
     private[this] var rbuffers = List(initialBuffer)
     private[this] var rbufbytes = initialBuffer.size
+    
+    protected def numBufferedBytes: Int = rbufbytes
     
     def addBuffer(db: DataBuffer): Boolean = synchronized {
       if (rbufbytes + db.size / segmentSize > 5)
@@ -167,148 +170,189 @@ class SimpleFile(
       }
     }
     
+    /** Overwrites existing segments. Returns the remaining buffers that must go into newly allocated segments.
+     *  And the number of bytes the current tail segment was extended by
+     */
+    def overwriteSegments(
+        odt: Option[FileIndex.DataTail], 
+        buffers: List[DataBuffer], 
+        nbytes: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[(List[DataBuffer], Int)]
+    
+    /** Allocates additional segments to be added to the file. Returns optional updated Root & Tail state as well as a Future
+     *  to the index's internal state being successfully updated to reflect the transaction commit. This future must
+     *  complete before the next operation begins. Note this method will only be called if dataBufs is non-empty.
+     */
+    def allocateAdditionalSegments(
+        curInode: Inode,
+        totalWriteSize: Int,
+        odt: Option[FileIndex.DataTail],
+        dataBufs: List[DataBuffer],
+        bufferdBytes: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[(FileIndex.Root, FileIndex.DataTail, Future[Unit])] = {
+      
+      def ralloc(bufs: List[DataBuffer], remainingBytes: Int, arr: Array[Byte], bb: ByteBuffer, 
+          allocations: List[Future[(DataObjectPointer, Int)]]): List[Future[(DataObjectPointer, Int)]]  = {
+        if (bufs.isEmpty) {
+          val falloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
+          
+          falloc :: allocations
+        }
+        else if (bb.remaining == 0) {
+          val nextArr = new Array[Byte]( if (remainingBytes < segmentSize) remainingBytes else segmentSize )
+          val nextbb = ByteBuffer.wrap(nextArr)
+          val nextAlloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
+          
+          ralloc(bufs, remainingBytes, nextArr, nextbb, nextAlloc :: allocations)
+        } 
+        else if (bb.remaining >= bufs.head.size) {
+          bb.put(bufs.head.asReadOnlyBuffer())
+          ralloc(bufs.tail, remainingBytes - bufs.head.size, arr, bb, allocations)
+        } else {
+          val nput = bb.remaining
+          bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
+          ralloc(bufs.head.slice(nput) :: bufs.tail, remainingBytes - nput, arr, bb, allocations)
+        }
+      }
+      
+      val initialArr = new Array[Byte]( if (bufferdBytes < segmentSize) bufferdBytes else segmentSize )
+      val initialbb = ByteBuffer.wrap(initialArr)
+      
+      Future.sequence(ralloc(dataBufs, bufferdBytes, initialArr, initialbb, Nil)) flatMap { rallocs =>
+        
+        val allocs = rallocs.reverse
+        
+        val last = allocs.last
+        
+        val (newFileSize, firstAllocOffset) = odt match {
+          case None => (totalWriteSize.asInstanceOf[Long], 0L)
+          case Some(dt) => (dt.offset + dt.size + totalWriteSize, dt.offset + segmentSize)
+        }
+        
+        val newDt = FileIndex.DataTail(last._1, tx.txRevision, newFileSize - last._2, last._2)
+        
+        index.prepareAppend(curInode.pointer.pointer, curInode.revision, curInode.timestamp, firstAllocOffset, allocs) map { t =>
+          (t._1, newDt, t._2)
+        }
+      }
+    }
+    
     def attempt(curInode: Inode)(implicit tx: Transaction, ec: ExecutionContext): SimpleBaseFile.OpResult = synchronized {
       val pprep       = Promise[Unit]()
       val pcomplete   = Promise[Map[Key,Value]]()
+      val buffers     = rbuffers.reverse
       val nbytes      = rbufbytes
       
-      def fillTailNode(odt: Option[FileIndex.DataTail]): (List[DataBuffer], Int) = odt match {
-        case None => (rbuffers.reverse, nbytes)
-        case Some(dt) => 
-          val spaceLeft = segmentSize - dt.size
-          val buffers = rbuffers.reverse
-          
-          if (spaceLeft == 0)
-            return (buffers, nbytes)
-          else {
-            val arr = new Array[Byte]( if (spaceLeft >= nbytes) nbytes else spaceLeft )
-            val bb = ByteBuffer.wrap(arr)
-            
-            def rfill(bufs: List[DataBuffer], remainingBytes: Int): (List[DataBuffer], Int) = {
-              if (bufs.isEmpty)
-                (Nil, remainingBytes)
-              else if (bb.remaining == 0)
-                (bufs, remainingBytes)
-              else if (bb.remaining >= bufs.head.size) {
-                bb.put(bufs.head.asReadOnlyBuffer())
-                rfill(bufs.tail, remainingBytes - bufs.head.size)
-              } else {
-                val nput = bb.remaining
-                bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
-                rfill(bufs.head.slice(nput) :: bufs.tail, remainingBytes - nput)
-              }
-            }
-            
-            val (remainingBuffers, remainingBytes) = rfill(buffers, nbytes)
-            
-            tx.append(dt.pointer, dt.revision, DataBuffer(arr))
-            
-            (remainingBuffers, remainingBytes)
-          }
-      }
-      
-      // Returned future must complete before next append operation may begin
-      def allocateAdditionalSegments(
+      def allocSegments(
           odt: Option[FileIndex.DataTail],
           dataBufs: List[DataBuffer],
-          bufferdBytes: Int): Future[Option[(FileIndex.Root, FileIndex.DataTail, Future[Unit])]] = if (dataBufs.isEmpty) 
+          numAppendBytes: Int): Future[Option[(FileIndex.Root, FileIndex.DataTail, Future[Unit])]] = if (dataBufs.isEmpty) 
         Future.successful(None)
       else {
-        
-        def ralloc(bufs: List[DataBuffer], remainingBytes: Int, arr: Array[Byte], bb: ByteBuffer, 
-            allocations: List[Future[(DataObjectPointer, Int)]]): List[Future[(DataObjectPointer, Int)]]  = {
-          if (bufs.isEmpty) {
-            val falloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
-            
-            falloc :: allocations
-          }
-          else if (bb.remaining == 0) {
-            val nextArr = new Array[Byte]( if (remainingBytes < segmentSize) remainingBytes else segmentSize )
-            val nextbb = ByteBuffer.wrap(nextArr)
-            val nextAlloc = segmentAllocater.allocateDataObject(curInode.pointer.pointer, curInode.revision, DataBuffer(arr)).map(p => (p, arr.length))
-            
-            ralloc(bufs, remainingBytes, nextArr, nextbb, nextAlloc :: allocations)
-          } 
-          else if (bb.remaining >= bufs.head.size) {
-            bb.put(bufs.head.asReadOnlyBuffer())
-            ralloc(bufs.tail, remainingBytes - bufs.head.size, arr, bb, allocations)
-          } else {
-            val nput = bb.remaining
-            bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
-            ralloc(bufs.head.slice(nput) :: bufs.tail, remainingBytes - nput, arr, bb, allocations)
-          }
-        }
-        
-        val initialArr = new Array[Byte]( if (bufferdBytes < segmentSize) bufferdBytes else segmentSize )
-        val initialbb = ByteBuffer.wrap(initialArr)
-        
-        Future.sequence(ralloc(dataBufs, bufferdBytes, initialArr, initialbb, Nil)) flatMap { rallocs =>
-          
-          val allocs = rallocs.reverse
-          
-          val last = allocs.last
-          
-          val (newFileSize, firstAllocOffset) = odt match {
-            case None => (nbytes.asInstanceOf[Long], 0L)
-            case Some(dt) => (dt.offset + dt.size + nbytes, dt.offset + segmentSize)
-          }
-          
-          val newDt = FileIndex.DataTail(last._1, tx.txRevision, newFileSize - last._2, last._2)
-          
-          index.prepareAppend(curInode.pointer.pointer, curInode.revision, curInode.timestamp, firstAllocOffset, allocs) map { t =>
-            Some((t._1, newDt, t._2))
-          }
-        }
+        allocateAdditionalSegments(curInode, nbytes, odt, dataBufs, numAppendBytes).map(Some(_))
       }
       
       val fprep = for {
         odt <- getDataTail()
-        (bufs, remainingBytes) = fillTailNode(odt)
-        oupdate <- allocateAdditionalSegments(odt, bufs, remainingBytes)
+        (remainingBufs, tailExtendedBytes) <- overwriteSegments(odt, buffers, nbytes)
+        numAppendBytes = remainingBufs.foldLeft(0)( (sz, db) => sz + db.size )
+        oupdate <- allocSegments(odt, remainingBufs, numAppendBytes)
       }
       yield {
-        
-        val newFileSize = odt match {
-          case None => nbytes 
-          case Some(dt) => dt.offset + dt.size + nbytes
-        }
-        
-        val sz = (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newFileSize), tx.timestamp))
         
         val (updatedContent, newDataTail, onewRoot, fstateUpdated) = oupdate match {
           case None =>
             val dt = odt.get
-            val newDt = FileIndex.DataTail(dt.pointer, tx.txRevision, dt.offset, dt.size + nbytes)
-            (curInode.content + sz, newDt, None, Future.successful(()))
             
-          case Some((newRoot, newDataTail, fstateUpdated)) => 
-            val newContent = curInode.content + sz + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, newRoot.toArray(), tx.timestamp))
+            val newDt = FileIndex.DataTail(dt.pointer, tx.txRevision, dt.offset, dt.size + tailExtendedBytes)
+            
+            val newFileSize = newDt.offset + newDt.size
+            
+            val szUpdate = (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newFileSize), tx.timestamp))
+            val mtimeUpdate = (Inode.MtimeKey -> Value(Inode.MtimeKey, Timespec.now.toArray, tx.timestamp))
+            
+            val newContent = curInode.content + mtimeUpdate + szUpdate 
+
+            (newContent, newDt, None, Future.successful(()))
+            
+          case Some((newRoot, newDataTail, fstateUpdated)) =>
+            val newFileSize = newDataTail.offset + newDataTail.size
+            
+            val newContent = curInode.content + 
+            (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, newRoot.toArray(), tx.timestamp)) + 
+            (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newFileSize), tx.timestamp)) +
+            (Inode.MtimeKey -> Value(Inode.MtimeKey, Timespec.now.toArray, tx.timestamp))
             
             (newContent, newDataTail, Some(newRoot.toArray), fstateUpdated)
         }
+        
+        val newFileSize = newDataTail.offset + newDataTail.size
         
         tx.overwrite(curInode.pointer.pointer, curInode.revision, Nil, KeyValueOperation.contentToOps(updatedContent))
         
         fstateUpdated onComplete {
           case Failure(cause) => pcomplete.failure(cause)
-          case Success(_) => synchronized {
-            dataTail = Some(Some(newDataTail))
-            inode = curInode.asInstanceOf[FileInode].update(tx.txRevision, tx.timestamp, newFileSize, onewRoot, curInode.refcount)
-            queuedAppendOpsCount -= 1
-            if (queuedAppendOpsCount == 0) {
-              tailAppendOp.foreach { op =>
-                tailAppendOp = None
-                enqueueAppendOp(op)
+          case Success(_) => 
+            synchronized {
+              dataTail = Some(Some(newDataTail))
+              inode = curInode.asInstanceOf[FileInode].update(tx.txRevision, tx.timestamp, newFileSize, onewRoot, curInode.refcount)
+              queuedAppendOpsCount -= 1
+              if (queuedAppendOpsCount == 0) {
+                tailAppendOp.foreach { op =>
+                  tailAppendOp = None
+                  enqueueAppendOp(op)
+                }
               }
             }
+            
             pcomplete.success(updatedContent)
-          }
         }
       }
       
       fprep.failed.foreach(cause => pcomplete.failure(cause)) 
      
       SimpleBaseFile.OpResult(fprep, pcomplete.future)
+    }
+  }
+  
+  class AppendOperation(initialBuffer: DataBuffer) extends AbstractWriteOperation(initialBuffer) {
+    
+    def overwriteSegments(
+        odt: Option[FileIndex.DataTail], 
+        buffers: List[DataBuffer], 
+        nbytes: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[(List[DataBuffer], Int)] = {
+      odt match {
+        case None => Future.successful((buffers, 0))
+        
+        case Some(dt) => 
+          val spaceLeft = segmentSize - dt.size
+          
+          if (spaceLeft == 0)
+            Future.successful((buffers, 0))
+          else {
+            val arr = new Array[Byte]( if (spaceLeft >= nbytes) nbytes else spaceLeft )
+            val bb = ByteBuffer.wrap(arr)
+            
+            def rfill(bufs: List[DataBuffer], tailExtendedBytes: Int): (List[DataBuffer], Int) = {
+              if (bufs.isEmpty)
+                (Nil, tailExtendedBytes)
+              else if (bb.remaining == 0)
+                (bufs, tailExtendedBytes)
+              else if (bb.remaining >= bufs.head.size) {
+                bb.put(bufs.head.asReadOnlyBuffer())
+                rfill(bufs.tail, tailExtendedBytes + bufs.head.size)
+              } else {
+                val nput = bb.remaining
+                bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
+                rfill(bufs.head.slice(nput) :: bufs.tail, tailExtendedBytes + nput)
+              }
+            }
+            
+            val (remainingBuffers, tailExtendedBytes) = rfill(buffers, 0)
+            
+            tx.append(dt.pointer, dt.revision, DataBuffer(arr))
+            
+            Future.successful((remainingBuffers, tailExtendedBytes))
+          }
+        }
     }
   }
 }
