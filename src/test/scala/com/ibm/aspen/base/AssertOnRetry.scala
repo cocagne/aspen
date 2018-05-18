@@ -13,6 +13,9 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     val p = Promise[T]()
     attempt onComplete {
       case Success(r) => p.success(r)
+      
+      case Failure(StopRetrying(cause)) => p.failure(cause)
+      
       case Failure(cause) => 
         println(s"********************* RetryUntilSuccess Operation FAILED: $cause")
         assert(false)
@@ -26,6 +29,8 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
     attempt onComplete {
       case Success(r) => p.success(r)
       
+      case Failure(StopRetrying(cause)) => p.failure(StopRetrying(cause))
+      
       case Failure(cause) => 
         // Allow a single attempt to resolve the error
         val sw = new StringWriter();
@@ -38,13 +43,13 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
               case Success(r) => p.success(r)
               
               case Failure(cause) => 
-                println(s"********************* RetryUntilSuccess Operation FAILED *after* recovery operation: $cause")
+                println(s"********************* RetryUntilSuccessWithRecovery Operation FAILED *after* recovery operation: $cause")
                 assert(false)
                 //p.failure(cause)
             }
           
           case Failure(cause) =>
-            println(s"********************* RetryUntilSuccess Recovery Operation FAILED: $cause")
+            println(s"********************* RetryUntilSuccessWithRecovery Operation FAILED: $cause")
             assert(false)
             //p.failure(cause)
         }

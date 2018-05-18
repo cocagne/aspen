@@ -22,6 +22,9 @@ import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.cumulofs.File
 import com.ibm.aspen.cumulofs.Timespec
+import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.base.StopRetrying
+import com.ibm.aspen.cumulofs.error.HolesNotSupported
 
 class SimpleFile(
     fs: FileSystem,
@@ -35,10 +38,16 @@ class SimpleFile(
   val index = new FileIndex(fs, cache, inode)
   
   private[this] var queuedAppendOpsCount = 0
+  private[this] var queuedWriteOpsCount = 0
   
   // If one or more append operations are queued, we'll add incoming append buffers here. When the append op is
   // full or the final outstanding append op is complete, it'll be queued for execution
   private[this] var tailAppendOp: Option[AppendOperation] = None
+  
+  // For batching contiguous writes, we'll keep track of the tail write operation (if any). If the next write begins
+  // where the next ends and the tail has not yet been queued, we'll add it to the tail. When the write op is
+  // full or the final outstanding write op is complete, it'll be queued for execution
+  private[this] var tailWriteOp: Option[ContiguousWriteOperation] = None
   
   // Tracks the state of the end-of-file data object
   private[this] var dataTail: Option[Option[FileIndex.DataTail]] = None
@@ -79,17 +88,73 @@ class SimpleFile(
       rfill(0).map(_ => arr)
     }
   }
-  /* PendingWrite(val startOffset, var endOffset, buffers: List[DataBuffer])
-   * 
-   * SimpleFile keeps map of Map[EndOffset, PendingWrite] to allow adjacent writes to be buffered into the same pending write.
-   * 
-   * When write begins, it removes itself from the pendingWrites map to prevent additional items from being added
-   * if not all data can be written in the same Tx, add a new pendingWrite to SimpleFile.
-   * 
-   * Only 1 pendingWrite and 1 append is allowed in the OpQueue at a time. Upon successful completion, enqueue a 
-   * new op for the next item in the pending list
-   * */
-  def write(offset: Long, data: DataBuffer): Future[Unit] = ???
+
+  private[this] def enqueueWriteOp(op: ContiguousWriteOperation)(implicit ec: ExecutionContext): Unit = {
+    queuedWriteOpsCount += 1
+    enqueueOp(op)
+  }
+  
+  def write(offset: Long, data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    val two = tailWriteOp match {
+      case None =>
+        val two = new ContiguousWriteOperation(offset, data)
+        
+        if (queuedWriteOpsCount >= 1)
+          tailWriteOp = Some(two)
+        else
+          enqueueWriteOp(two)
+          
+        two
+        
+      case Some(two) =>
+        if (offset == two.endOffset && two.addBuffer(data))
+          two
+        else {
+          // Tail buffer is full. Enqueue for execution and start the next tail
+          enqueueWriteOp(two)
+          val newTwo = new ContiguousWriteOperation(offset, data)
+          tailWriteOp = Some(newTwo)
+          newTwo
+        }
+    }
+    
+    two.result
+  }
+  
+  def write(offset: Long, data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    if (data.isEmpty)
+      return Future.successful(())
+      
+    def createOps(writeOffset: Long, ldata: List[DataBuffer], ops: List[ContiguousWriteOperation]): List[ContiguousWriteOperation] = {
+      var nextOffset = writeOffset
+      if (ldata.isEmpty)
+        ops
+      else {
+        val two = new ContiguousWriteOperation(writeOffset, data.head)
+        var l = data.tail
+        while (!l.isEmpty && two.addBuffer(l.head)) {
+          nextOffset += l.head.size
+          l = l.tail
+        }
+        createOps(nextOffset, l, two :: ops)
+      }
+    }
+    
+    val rops = createOps(offset, data, Nil)
+    val lastOp = rops.head
+    val ops = rops.reverse
+      
+    tailWriteOp foreach { op =>
+      tailWriteOp = None
+      enqueueWriteOp(op)
+    }
+    
+    ops.foreach(enqueueWriteOp)
+    
+    lastOp.result
+  }
+  
+  // -- Append --
   
   private[this] def enqueueAppendOp(op: AppendOperation)(implicit ec: ExecutionContext): Unit = {
     queuedAppendOpsCount += 1
@@ -170,6 +235,8 @@ class SimpleFile(
       }
     }
     
+    def onOpComplete()(implicit ec: ExecutionContext): Unit
+    
     /** Overwrites existing segments. Returns the remaining buffers that must go into newly allocated segments.
      *  And the number of bytes the current tail segment was extended by
      */
@@ -184,7 +251,6 @@ class SimpleFile(
      */
     def allocateAdditionalSegments(
         curInode: Inode,
-        totalWriteSize: Int,
         odt: Option[FileIndex.DataTail],
         dataBufs: List[DataBuffer],
         bufferdBytes: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[(FileIndex.Root, FileIndex.DataTail, Future[Unit])] = {
@@ -212,7 +278,7 @@ class SimpleFile(
           ralloc(bufs.head.slice(nput) :: bufs.tail, remainingBytes - nput, arr, bb, allocations)
         }
       }
-      
+
       val initialArr = new Array[Byte]( if (bufferdBytes < segmentSize) bufferdBytes else segmentSize )
       val initialbb = ByteBuffer.wrap(initialArr)
       
@@ -223,15 +289,34 @@ class SimpleFile(
         val last = allocs.last
         
         val (newFileSize, firstAllocOffset) = odt match {
-          case None => (totalWriteSize.asInstanceOf[Long], 0L)
-          case Some(dt) => (dt.offset + dt.size + totalWriteSize, dt.offset + segmentSize)
+          case None => (bufferdBytes.asInstanceOf[Long], 0L)
+          case Some(dt) => (dt.offset + segmentSize + bufferdBytes, dt.offset + segmentSize)
         }
-        
+       
         val newDt = FileIndex.DataTail(last._1, tx.txRevision, newFileSize - last._2, last._2)
         
         index.prepareAppend(curInode.pointer.pointer, curInode.revision, curInode.timestamp, firstAllocOffset, allocs) map { t =>
           (t._1, newDt, t._2)
         }
+      }
+    }
+    
+    /** Fills the byte buffer using the data in bufs. The returned list is the remaining data to be written. If the
+     *  last list element does not exactly fit into the byte buffer the data buffer is sliced and the remaining content
+     *  from it will be the first element in the returned list
+     */
+    protected def rfill(bb: ByteBuffer, bufs: List[DataBuffer]): List[DataBuffer] = {
+      if (bufs.isEmpty)
+        Nil
+      else if (bb.remaining == 0)
+        bufs
+      else if (bb.remaining >= bufs.head.size) {
+        bb.put(bufs.head.asReadOnlyBuffer())
+        rfill(bb, bufs.tail)
+      } else {
+        val nput = bb.remaining
+        bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
+        rfill(bb, bufs.head.slice(nput) :: bufs.tail)
       }
     }
     
@@ -247,7 +332,7 @@ class SimpleFile(
           numAppendBytes: Int): Future[Option[(FileIndex.Root, FileIndex.DataTail, Future[Unit])]] = if (dataBufs.isEmpty) 
         Future.successful(None)
       else {
-        allocateAdditionalSegments(curInode, nbytes, odt, dataBufs, numAppendBytes).map(Some(_))
+        allocateAdditionalSegments(curInode, odt, dataBufs, numAppendBytes).map(Some(_))
       }
       
       val fprep = for {
@@ -294,13 +379,9 @@ class SimpleFile(
             synchronized {
               dataTail = Some(Some(newDataTail))
               inode = curInode.asInstanceOf[FileInode].update(tx.txRevision, tx.timestamp, newFileSize, onewRoot, curInode.refcount)
-              queuedAppendOpsCount -= 1
-              if (queuedAppendOpsCount == 0) {
-                tailAppendOp.foreach { op =>
-                  tailAppendOp = None
-                  enqueueAppendOp(op)
-                }
-              }
+              
+              onOpComplete()
+              
             }
             
             pcomplete.success(updatedContent)
@@ -314,6 +395,16 @@ class SimpleFile(
   }
   
   class AppendOperation(initialBuffer: DataBuffer) extends AbstractWriteOperation(initialBuffer) {
+    
+    def onOpComplete()(implicit ec: ExecutionContext): Unit = {
+      queuedAppendOpsCount -= 1
+      if (queuedAppendOpsCount == 0) {
+        tailAppendOp.foreach { op =>
+          tailAppendOp = None
+          enqueueAppendOp(op)
+        }
+      }
+    }
     
     def overwriteSegments(
         odt: Option[FileIndex.DataTail], 
@@ -331,28 +422,94 @@ class SimpleFile(
             val arr = new Array[Byte]( if (spaceLeft >= nbytes) nbytes else spaceLeft )
             val bb = ByteBuffer.wrap(arr)
             
-            def rfill(bufs: List[DataBuffer], tailExtendedBytes: Int): (List[DataBuffer], Int) = {
-              if (bufs.isEmpty)
-                (Nil, tailExtendedBytes)
-              else if (bb.remaining == 0)
-                (bufs, tailExtendedBytes)
-              else if (bb.remaining >= bufs.head.size) {
-                bb.put(bufs.head.asReadOnlyBuffer())
-                rfill(bufs.tail, tailExtendedBytes + bufs.head.size)
-              } else {
-                val nput = bb.remaining
-                bb.put(bufs.head.slice(0, nput).asReadOnlyBuffer())
-                rfill(bufs.head.slice(nput) :: bufs.tail, tailExtendedBytes + nput)
-              }
-            }
-            
-            val (remainingBuffers, tailExtendedBytes) = rfill(buffers, 0)
+            val remainingBuffers = rfill(bb, buffers)
             
             tx.append(dt.pointer, dt.revision, DataBuffer(arr))
             
-            Future.successful((remainingBuffers, tailExtendedBytes))
+            Future.successful((remainingBuffers, arr.length))
           }
         }
+    }
+  }
+  
+  class ContiguousWriteOperation(offset: Long, initialBuffer: DataBuffer) extends AbstractWriteOperation(initialBuffer) {
+    
+    def endOffset: Long = synchronized { offset + numBufferedBytes }
+    
+    def onOpComplete()(implicit ec: ExecutionContext): Unit = {
+      queuedWriteOpsCount -= 1
+      if (queuedWriteOpsCount == 0) {
+        tailWriteOp.foreach { op =>
+          tailWriteOp = None
+          enqueueWriteOp(op)
+        }
+      }
+    }
+    
+    def getObjectsForRange(nbytes: Int)(implicit ec: ExecutionContext): Future[List[(Long, DataObjectState)]] = {
+      index.getIndexNodeForOffset(offset + nbytes) flatMap { otail => otail match {
+        case None => Future.successful(Nil)
+        case Some(node) => 
+          node.getSegmentsForRange(offset, nbytes).map(lst => lst.map(s => fs.system.readObject(s.pointer).map(dos => (s.offset, dos)))) flatMap { flf =>
+            Future.sequence(flf)
+          }
+      }}
+    }
+    
+    // Find tail segment of the range. If None or offset + segmentSize is less than offset + nbytes, we'll be appending
+    def overwriteSegments(
+        odt: Option[FileIndex.DataTail], 
+        buffers: List[DataBuffer], 
+        nbytes: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[(List[DataBuffer], Int)] = {
+      
+      odt match {
+        case None => if (offset != 0) throw StopRetrying( HolesNotSupported() )
+        case Some(dt) => if (offset > dt.offset + dt.size) throw StopRetrying( HolesNotSupported() )
+      }
+      
+      getObjectsForRange(nbytes) map { toOverwrite => 
+        if (toOverwrite.isEmpty)
+          (buffers, 0)
+        else {
+          def roverwrite(
+              segmentOffset: Int, 
+              existing: List[(Long, DataObjectState)], 
+              remainingBuffers: List[DataBuffer], 
+              extendedBytes: Int, 
+              remainingBytes: Int): (List[DataBuffer], Int) = {
+            
+            if (remainingBuffers.isEmpty || existing.isEmpty)
+              (remainingBuffers, extendedBytes)
+            else {
+              val dos = existing.head._2
+              val writeEndOffset = segmentOffset + remainingBytes
+              
+              val (allocSize, extendingSize) = if (writeEndOffset >= segmentSize) 
+                (segmentSize, 0) // extending size is only used if we don't allocate new segments so we can just put zero here 
+              else if (writeEndOffset > dos.data.size)
+                (writeEndOffset, writeEndOffset - dos.data.size)
+              else
+                (dos.data.size, 0)
+              
+              val arr = new Array[Byte]( allocSize )
+              val bb = ByteBuffer.wrap(arr)
+              
+              bb.put(dos.data.asReadOnlyBuffer())
+              
+              bb.position(segmentOffset)
+              
+              val reducedBuffers = rfill(bb, remainingBuffers)
+              
+              tx.overwrite(dos.pointer, dos.revision, DataBuffer(arr))
+              
+              roverwrite(0, existing.tail, reducedBuffers, extendingSize, remainingBytes - (arr.length - segmentOffset))
+            }
+          }
+          
+          val initialSegmentOffset = (offset - toOverwrite.head._1).asInstanceOf[Int]
+          roverwrite(initialSegmentOffset, toOverwrite, buffers, 0, nbytes)
+        }
+      }
     }
   }
 }

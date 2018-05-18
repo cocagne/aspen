@@ -9,5 +9,9 @@ trait File extends BaseFile {
   
   def size: Long
   
+  def write(offset: Long, data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit]
+  def write(offset: Long, data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] 
+  
   def append(data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit]
+  def append(data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit]
 }

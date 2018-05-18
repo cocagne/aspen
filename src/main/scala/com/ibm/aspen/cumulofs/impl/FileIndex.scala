@@ -188,6 +188,27 @@ object FileIndex {
       rfind(0)
     }
     
+    def getSegmentsForRange(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[List[Segment]] = {
+      val tailOffset = offset + nbytes
+      
+      def rfill(n: IndexNode, lst: List[Segment]): Future[List[Segment]] = {
+        val updatedList = segments.filter(s => s.offset >= offset && s.offset < tailOffset) ++: lst
+        
+        if (containsOffset(offset) || leftPointer.isEmpty) {
+          val lst = if (updatedList.isEmpty || offset != updatedList.head.offset ) {
+            getSegmentContainingOffset(offset) :: updatedList
+          } else {
+            updatedList
+          }
+          
+          Future.successful(lst)
+        } else
+          fetchLeft().flatMap(rn => rfill(rn.get, updatedList))
+      }
+      
+      seekTo(tailOffset).flatMap(rfill(_, Nil)) 
+    }
+    
     def fetchLeft()(implicit ec: ExecutionContext): Future[Option[IndexNode]] = leftPointer match {
       case None => Future.successful(None)
       case Some(lp) => index.loadIndexNode(tier, lp.pointer).map(Some(_))

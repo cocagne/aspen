@@ -1,3 +1,6 @@
+** Blind overwrites of DataObjects is okay but not blind appends
+   - Bind append could mix state and fresh data
+   - would require significant Tx and recovery changes
 
 * Create SimpleFile
 
