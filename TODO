@@ -1,87 +1,20 @@
-** Blind overwrites of DataObjects is okay but not blind appends
-   - Bind append could mix state and fresh data
-   - would require significant Tx and recovery changes
 
-* Create SimpleFile
-
-
-** Configuring a directory could be as easy as setting extended attributes
-      cumulofs.alloc-pool=PoolUUID
-      cumulofs.file-segment-size=4096
-      
-** At write/allocation, lookup parent directories until a valid entry is found
+** hardlink support
 
 CumuloFS
 
-FILE
+Files
+   - All modifications update the mtime so the entire inode will be overwritten with each transaction
+   - All operations are serialized (concurrent linked queue) within the base file implementation
+   - Tx failure causes cached file state to be discarded and re-read.
+       - Simple, conservative, and should perform decently in the absence of contention (NOT appropriate for even modest contention though)
+   - Regular files use an index structure similar to classical Indirect blocks. The index is updated as part of the write transaction
+       - Index nodes are allocated via a dedicated allocater so they may be placed on separate storage pools from the data
+   - Holes and truncation are currently not supported
+   - Starts with refcount of 2
+       - Tx that drops refcount to 1 also creates a DeleteFile task
 
-   All updates to a file involve updating the mtime. To minimize conflicts, we'll use a per-file singleton object that multiple
-   file handles can refer to. All modification options are serialized by the File interface (internally maintains a concurrent
-   linked list of requested operations).
    
-   All file operations are functions called to accomplish the specific requested task and return a Future to the result.
-   E.g. setMtime(newMtime), setCtime(newCtime) Base inode trait has common methods for doing the basic metadata updates across
-   all file types. Requires maintaining an internal queue of operations to prevent self-contention
-    
-   File could maintain currentTx, nextTx, and nextTxReadyForCommit. If currentTx completes successfully and nextTxReadyForCommit is true,
-   immediately commit next Tx w/ successfully completed txUUID as the required revision. A simple opPrepCounter is used to identify each
-   "prepare" operation. If the completion of a prepare matches the current counter value nextTxReadyForCommit is flipped to true and the
-   pendingOps value is incremented. Next op placed in buffer, look at pendingOps. If above threshold, leave in queue. If below, incr prepCounter,
-   pendingOps, and set nextTxReadyForCommit to false. 
-   
-   On Tx failure, invalidate nextTx and move all current and pending ops back into the operations queue then re-start as if the ops were
-   freshly arrived.
-
-
-FileHandle
-  - Uses FileIndex to navigate file content & impl read/write/seek
-  
-  - May be that every write operation should update the inode
-     - Ensures consistent mtime
-     - Ensures contention on 1 client truncate while another is writing
-     - Active writers?.... maybe not needed if update inode on every operation?
-
-FileIndex
-  - Root contains Tier0 first and last for each tier
-     - Allows instant find of up nodes for insertion
-     - Overwrites are relatively infrequent (every 250Mb w/ 4Mb segments and 4kb tier0)
-  - Default to 4Kb tier nodes
-  - Impl should be agnostic of tier sizes & data object sizes
-  - Operates in append-only manner
-  - Truncate operation uses Task for unlinking file data (maybe modified DeleteFile task)
-  - Dont worry about contention
-  - Can build in support for refresh root on update
-  - Use mutable data structure
-  - Use completely full tier0 nodes
-
-How to handle regular files?
-   * Most often it'll be linear read/write
-   * Random Access could just use a cache of Tier0+ nodes
-      * Where will we miss? Once allocated, the pointer to a byte range is fixed
-          - Relocation will result in an InvalidObject so we'll know to re-read the tier0 node for an up-to-date
-            data object pointer.
-      * The tail tier-0 node is the only place contention can occur. And *that* is only on attempts to append the next
-        object.
-      * A Balanced tree structure is also of no advantage for the file index. No need to split into equally balanced nodes
-         * better to have fully packed nodes.
-         
-         
-* Looks like we'll want a custom data structure for this. Should make cursor implementation easier too.
-  - Won't need FAs to manage the tree structure. We'll explicitly Not Care about contention on writes
-  - transactUntilSuccessful should be sufficient for inserting new tier0 node and into tier1 tree
-      - though that could bubble up
-         - does it matter? chance of failure is no higher
-         
-* With 4Mb data segments and 4Kb tier0 nodes and assuming an average pointer entry of 60 bytes each tier0 node
-  will index about 1GB of data
-  
-
-      
-* May need a special Cursor instance to handle this. Equivalent of FileHandle
-
-* RegularFile
-* RegularFileLoader
-
 Caching:
    - DirectoryLoader & FileLoader can cache Directory & File instances
       - These hold cached Futures to the content TieredLists
@@ -103,7 +36,20 @@ Creating File/Directories:
           - Insert into Directory tree
       - This can be a SteppedTask
           - 
-          
+
+Future Extensions:
+
+   * Simultaneously Supporting Multiple File Implementations:
+
+	  - Configuring a directory could be as easy as setting extended attributes
+	        cumulofs.alloc-pool=PoolUUID
+	        cumulofs.file-segment-size=4096
+	      
+	  - At write/allocation, lookup parent directories until a valid entry is found
+
+
+
+FUSE
 
 * Implement ls -l on root directory
    * load directory instance
@@ -133,6 +79,12 @@ caching
 
 ----------------------------------
 
+** Blind overwrites of DataObjects is okay but not blind appends
+   - Bind append could mix state and fresh data
+   - would require significant Tx and recovery changes
+
+----------------------------------
+
 * Tiered List Reads
    - When trees are replicated at each site, we can exclusively use local reads during nav
       - Except for the last object IF we need guaranteed up-to-date data
@@ -144,106 +96,7 @@ caching
    - For multi-object Tx it gets even more murky with timing issues
    - Better to restart a transactional operation from the beginning. Refresh everything.
     
-* ObjectAllocaterRegistry
-   - Remove hardcoded limitation
-   - first 16 bytes is the type UUID
-      
-* CompactingAppend
-   - KeyValue Append operation that also causes each store to discard all but the most-recent KV pair
-   - Uses revision check & updates revision
-   - Appends to the newly-compacted object
-   
 ----------------------------------
-
-* In order to support tries with tiers on dedicated pools, we're going to have to have a standard way
-  to define allocation pools such that stores can load them from FinalizationActions
-  
-* May have to go back to the idea of a TreeDescriptor
-    - Though we can keep the current model. The "Root" just contains more than the top tier number
-    - Removes the fundamental distinction between Read-Only & MutableTier lists
-    - We'll probably still want this from a code perspective though. Better to use immutable whenever
-      changes are not intended
-    
-* AllocationGroup
-  - GroupUUIDKey -> <groupType UUID><flatbuffer>
-  - groupType UUID -> Use this to fetch a registered group type. Can have a few by default
-
-
-* def addStorageNode(cfg: StorageNodeConfiguration): Future[StorageNode]
-  def getStorageNode(nodeUUID: UUID): Future[StorageNode]
-  
-  StorageNode
-     uuid: UUID
-     def getTaskGroup(): Future[TaskGroup]
-       - cache result of first successful future
-       
-  def createNewStoragePool( cfg: StoragePoolConfig ): Future[StoragePool]
-    - Ideally creation is a single transaction (so we don't get half-created pools)
-    StoragePoolConfig
-       uuid: UUID
-       stores: List[ (storeConfig: StorageNodeConfiguration, StorageNode) ]
-    - Create storage node config object and task for initializing on the storage node
-    - task is assigned to the storage-node's task group which executes locally on the storage node
-    - StoragePool definition should contain the StorageNode UUID for each store
-    - Probably DONT need a per-store object. Pool definition should be sufficient.
-       |-> initialization task simply retries on update failure (which it'd have to do anyway)
-    
-* Could slim TestSystem down to a single node with 3 data stores rather than dealing with 3 separate systems
-
-* Defining New Pools
-  - Would be awfully handy if new stores could be defined directly within graph
-  
-  - Pool could hold reference to StoreConfig
-     - Defines Store Type & tunable parameters
-     - Could also hold things like minimumSize, current usage, desiredBackingMedia (ssd/hdd/ram)
-     - Could distinguish between 'DesiredConfig' and 'ActualConfig'
-     - Actual could include full paths on file system
-     - Points to the owning storage node config or None if the Store is not currently hosted (new)
-     
-* StorageNode config
-  - Pairwise refs to all hosted DataStore instances
-  - Assignment to StorageNode atomically updates DataStore object and StorageNode object
-  - Authoritative source for NetworkEndpoint
-
-
-* Add ObjectAllocaters tree
-  - Maps name to ObjectAllocater definition
-     - Which is just a list of pool names
-     - Randomly choose one for each alloc if >1 pool
-     - Deal with full / weighted allocations later
-
-* KVTree needs per-tier configuration
-   - Ideally this would be loaded from the treeDefinitionObject
-       - Tree Def contains a list of object allocater names
-        
-* Should AspenSystem be broken into
-    TaskGroupManager, StoragePoolManager, ObjectAllocaterManager, etc ?
-    
-* Add assertion into method adding finalization actions to transactions that verifies that the FA UUID is
-  registered with the System
-    | -> avoids problem of creating un-completeable FAs
-    
-            
-* RAM only pool would be good for Tasks (we'll always want them in memory)
-
-----------------------------------------------------------
-* Basic FS Implementation
-  
-  * Inode tree is authoritative source of file existence
-  * File object refcount is incr/decr by one with each directory hard-link
-  * Start with refcount of 2 so file can go to one on no more directory links
-  * Downref to 1 Tx places the file in a Pending Delete task that gets added to this client's task group
- 
-  SimpleDownRefImpl:
-    - Every 30 sec, each client looks for newly-opened files that are more than 30 sec old.
-    - When found, create object / incref the PersistentOpen counter object for that inode (PersistentOpenHandle tree)
-    - PendingDelete task checks every 30 sec for no entry in PersistentOpenHandle tree
-    - When no open handles left, begin delete process. Refcount for data slices is always (0,1)
-    
-  Config:
-    - Use FSConfig class to load all ObjectAllocaters
-       - Provides single-point of config
-       - Could also have a JSON object w/ configurable params like timeouts and the like
 
 ----------------------------------------------------------
 
@@ -283,17 +136,9 @@ caching
 ** Transaction unit tests are *really* light. 
    
 ** Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
-   - Send PrepareResponse messages to originatingClient (allows 1RTT notice of successful commit in common case)
-   - Consider adding error-handling info to TxResolution message sent by TxDriver to the client
-   - Can describe why Abort was chosen for resolution
-   - Use Option[], no need to send this info to other stores, only the client
-   
-** Add VersionLock & RefcountLocks to txd & store
-   - These can be shared between Tx. No need for exclusive access
-   - Will mean that Tx conflicts needs to be a list of transactions though
-   
-** Add Container Object Support to txd & store
-   
+   - There really *isn't* a reliable solution to this problem. If a tx fails, the client's best option is to investigate
+     the current state of the remote object by re-reading it.
+      
 ** DataStore Transfers
    - Shut down store
    - Update store location to point at new host
@@ -314,9 +159,6 @@ caching
    - Can be implemented on top of BufferredConsistentRocksDB
    - On start, load all kv w/ visit method
    - Eschews most of the complexity of the RocksDBStore impl
-   
-** Consider refactoring RocksDBDataStore into a generic Key-Value data store that takes an object with an API
-   similar to that of BufferedConsistentRocksDB
    
 ** Error handling approaches
    - Can differ for different pools

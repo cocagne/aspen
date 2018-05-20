@@ -49,6 +49,16 @@ trait FileSystem {
   
   def loadFile(pointer: FilePointer)(implicit ec: ExecutionContext): Future[File] = fileLoader.loadFile(this, pointer)
   
+  def loadSymlink(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[Symlink]
+  
+  def loadUnixSocket(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocket]
+  
+  def loadFIFO(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFO]
+  
+  def loadCharacterDevice(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDevice]
+  
+  def loadBlockDevice(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDevice]
+  
   def getDataTableNodeSize(tierNumber: Int): Int
   
   def getDataTableNodeAllocater(tierNumber: Int): Future[ObjectAllocater]

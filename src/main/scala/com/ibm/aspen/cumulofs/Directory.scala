@@ -46,4 +46,33 @@ trait Directory extends BaseFile {
     CreateFileTask.execute(fs, pointer, name, FileType.File, initialOps).map(_.asInstanceOf[FilePointer])
   }
 
+  def createSymlink(name: String, mode: Int, uid: Int, gid: Int, link: String)(implicit ec: ExecutionContext): Future[SymlinkPointer] = {
+    val (initialOps, initalContent) = SymlinkInode.getInitialContent(mode, uid, gid, link)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.Symlink, initialOps).map(_.asInstanceOf[SymlinkPointer])
+  }
+  
+  def createUnixSocket(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[UnixSocketPointer] = {
+    val (initialOps, initalContent) = UnixSocketInode.getInitialContent(mode, uid, gid)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.UnixSocket, initialOps).map(_.asInstanceOf[UnixSocketPointer])
+  }
+  
+  def createFIFO(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FIFOPointer] = {
+    val (initialOps, initalContent) = FIFOInode.getInitialContent(mode, uid, gid)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.FIFO, initialOps).map(_.asInstanceOf[FIFOPointer])
+  }
+  
+  def createCharacterDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[CharacterDevicePointer] = {
+    val (initialOps, initalContent) = CharacterDeviceInode.getInitialContent(mode, uid, gid, rdev)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.CharacterDevice, initialOps).map(_.asInstanceOf[CharacterDevicePointer])
+  }
+  
+  def createBlockDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[BlockDevicePointer] = {
+    val (initialOps, initalContent) = BlockDeviceInode.getInitialContent(mode, uid, gid, rdev)
+    
+    CreateFileTask.execute(fs, pointer, name, FileType.BlockDevice, initialOps).map(_.asInstanceOf[BlockDevicePointer])
+  }
 }

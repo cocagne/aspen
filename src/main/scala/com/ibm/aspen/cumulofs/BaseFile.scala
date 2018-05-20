@@ -2,6 +2,8 @@ package com.ibm.aspen.cumulofs
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 trait BaseFile {
   val pointer: InodePointer
@@ -15,6 +17,8 @@ trait BaseFile {
   def ctime: Timespec
   def mtime: Timespec
   def atime: Timespec
+  
+  def linkCount: Int
  
   def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit]
   
@@ -27,4 +31,6 @@ trait BaseFile {
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
+  
+  def incrementHardLinkCount()(implicit tx: Transaction, ec: ExecutionContext): Future[ObjectRefcount]
 }

@@ -17,6 +17,7 @@ import scala.util.Failure
 import com.ibm.aspen.base.StopRetrying
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.cumulofs.Timespec
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 object SimpleBaseFile {
   
@@ -24,7 +25,7 @@ object SimpleBaseFile {
    *  structures (such as a FileIndex) have been updated to reflect the state of the new change.
    *  The future value is the updated Inode content
    */
-  case class OpResult(readyToCommit: Future[Unit], fileStateUpdated: Future[Map[Key,Value]])
+  case class OpResult(readyToCommit: Future[Unit], fileStateUpdated: Future[Map[Key,Value]], newRefcount: Option[ObjectRefcount]=None)
   
   trait FileOperation {
     val promise = Promise[Unit]()
@@ -69,6 +70,16 @@ object SimpleBaseFile {
   }
 }
 
+/** Provides a simple mechanism for satisfying file modification operations across all file types.
+ *  
+ * All updates to a file involve updating the mtime. To minimize conflicts, we'll use a per-file singleton object that multiple
+ * file handles can refer to. All modification options are serialized by the File interface (internally maintains a concurrent
+ * linked list of requested operations).
+ *
+ * All file operations are functions called to accomplish the specific requested task and return a Future to the result.
+ * E.g. setMtime(newMtime), setCtime(newCtime) Base inode trait has common methods for doing the basic metadata updates across
+ * all file types. Requires maintaining an internal queue of operations to prevent self-contention 
+ */
 abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   
   import SimpleBaseFile._
@@ -77,7 +88,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   private[this] var activeOp: Option[FileOperation] = None
   
   protected def inode: Inode
-  protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Unit
+  protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit
   
   def mode: Int = synchronized { inode.mode }
   def uid: Int = synchronized { inode.uid }
@@ -85,6 +96,8 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   def ctime: Timespec = synchronized { inode.ctime }
   def mtime: Timespec = synchronized { inode.mtime }
   def atime: Timespec = synchronized { inode.atime }
+  
+  def linkCount: Int = synchronized { inode.refcount.count - 1 }
  
   def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit] = {
     val iptr = synchronized { inode.pointer }
@@ -100,6 +113,26 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMtime(ts))
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
+  
+  def incrementHardLinkCount()(implicit tx: Transaction, ec: ExecutionContext): Future[ObjectRefcount] = synchronized {
+    val origRefcount = inode.refcount
+    val newRefcount = inode.refcount.increment()
+    val p = Promise[ObjectRefcount]
+    
+    tx.setRefcount(inode.pointer.pointer, inode.refcount, newRefcount)
+    
+    tx.result onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(_) => 
+        synchronized {
+          if (inode.refcount == origRefcount)
+            updateInode(tx.txRevision, tx.timestamp(), inode.content, Some(newRefcount)) 
+        }
+        p.success(newRefcount)
+    }
+    
+    p.future
+  }
 
   protected def enqueueOp(op: FileOperation)(implicit ec: ExecutionContext): Future[Unit] = {
     pendingOps.add(op)
@@ -127,7 +160,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
       }.map(_=>())
     }
     
-    def attempt(): Future[(ObjectRevision, HLCTimestamp, Map[Key,Value])] = {
+    def attempt(): Future[(ObjectRevision, HLCTimestamp, Map[Key,Value], Option[ObjectRefcount])] = {
       implicit val tx = fs.system.newTransaction()
       
       val icopy = synchronized { inode }
@@ -138,7 +171,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
         prepared <- r.readyToCommit
         _<-tx.commit()
         updatedState <- r.fileStateUpdated
-      } yield (tx.txRevision, tx.timestamp, updatedState)
+      } yield (tx.txRevision, tx.timestamp, updatedState, r.newRefcount)
       
       fresult.failed.foreach(err => tx.invalidateTransaction(err))
       
@@ -147,8 +180,8 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
     
     fs.system.retryStrategy.retryUntilSuccessful(onCommitFailure _) {
       attempt() map { t => synchronized {
-        val (newRevision, newTimestamp, updatedState) = t
-        updateInode(newRevision, newTimestamp, updatedState)
+        val (newRevision, newTimestamp, updatedState, newRefcount) = t
+        updateInode(newRevision, newTimestamp, updatedState, newRefcount)
         activeOp = None
         op.promise.success(())
         beginNextOp()

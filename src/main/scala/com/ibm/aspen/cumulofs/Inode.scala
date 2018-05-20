@@ -199,6 +199,8 @@ object SymlinkInode {
     val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFLNK
     Inode.getInitialContent(m, uid, gid, (LinkKey -> link.getBytes(StandardCharsets.UTF_8)) :: Nil)
   }
+  
+  def setLink(newLink: String)(implicit tx: Transaction): (Key, Value) = (LinkKey, Value(LinkKey, newLink.getBytes(StandardCharsets.UTF_8), tx.timestamp))
 }
 
 class SymlinkInode(
@@ -212,10 +214,9 @@ class SymlinkInode(
   
   override def requiredKeys = RequiredKeys
   
-  def size: Long = content.get(LinkKey) match {
-    case None => 0
-    case Some(v) => v.value.length
-  }
+  def size: Int = content(LinkKey).value.length
+  
+  def link: String = new String(content(LinkKey).value, StandardCharsets.UTF_8)
 }
 
 // ----- Unix Socket -----
@@ -266,9 +267,13 @@ object DeviceInode {
   def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {
     Inode.getInitialContent(mode, uid, gid, (DeviceTypeKey -> int2arr(rdev)) :: Nil)
   }
+  
+  def setDeviceType(rdev: Int)(implicit tx: Transaction): (Key, Value) = (DeviceTypeKey, Value(DeviceTypeKey, int2arr(rdev), tx.timestamp))
 }
 
-sealed abstract class DeviceInode extends Inode {}
+sealed abstract class DeviceInode extends Inode {
+  def rdev: Int = arr2int(content(DeviceInode.DeviceTypeKey).value)
+}
 
 object CharacterDeviceInode {
   def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Value]) = {

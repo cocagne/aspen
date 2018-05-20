@@ -25,6 +25,7 @@ import com.ibm.aspen.cumulofs.Timespec
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.base.StopRetrying
 import com.ibm.aspen.cumulofs.error.HolesNotSupported
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 class SimpleFile(
     fs: FileSystem,
@@ -52,8 +53,8 @@ class SimpleFile(
   // Tracks the state of the end-of-file data object
   private[this] var dataTail: Option[Option[FileIndex.DataTail]] = None
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Unit = {
-   inode = new FileInode(inode.pointer, newRevision, inode.refcount, newTimestamp, updatedState)
+  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
+   inode = new FileInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
   }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {

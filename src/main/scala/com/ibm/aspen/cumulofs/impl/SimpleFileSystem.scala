@@ -20,6 +20,16 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.cumulofs.FileLoader
+import com.ibm.aspen.cumulofs.Symlink
+import com.ibm.aspen.cumulofs.SymlinkPointer
+import com.ibm.aspen.cumulofs.UnixSocketPointer
+import com.ibm.aspen.cumulofs.UnixSocket
+import com.ibm.aspen.cumulofs.FIFOPointer
+import com.ibm.aspen.cumulofs.FIFO
+import com.ibm.aspen.cumulofs.CharacterDevicePointer
+import com.ibm.aspen.cumulofs.BlockDevice
+import com.ibm.aspen.cumulofs.CharacterDevice
+import com.ibm.aspen.cumulofs.BlockDevicePointer
 
 object SimpleFileSystem {
   def load(
@@ -106,6 +116,16 @@ class SimpleFileSystem private (
     val allocaterUUID = if (tierNumber < dataTableAllocaters.length) dataTableAllocaters(tierNumber) else dataTableAllocaters(dataTableAllocaters.length-1)
     system.getObjectAllocater(allocaterUUID)
   }
+  
+  def loadSymlink(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[Symlink] = inodeLoader.load(pointer).map(new SimpleSymlink(_,this)) 
+  
+  def loadUnixSocket(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocket] = inodeLoader.load(pointer).map(new SimpleUnixSocket(_,this))
+  
+  def loadFIFO(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFO] = inodeLoader.load(pointer).map(new SimpleFIFO(_,this))
+  
+  def loadCharacterDevice(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDevice] = inodeLoader.load(pointer).map(new SimpleCharacterDevice(_,this))
+  
+  def loadBlockDevice(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDevice] = inodeLoader.load(pointer).map(new SimpleBlockDevice(_,this))
   
   FileSystem.register(this)
   

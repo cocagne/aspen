@@ -27,6 +27,7 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.cumulofs.Inode
+import com.ibm.aspen.core.objects.ObjectRefcount
 
 class SimpleDirectory(
     protected var inode: DirectoryInode,
@@ -36,8 +37,8 @@ class SimpleDirectory(
   
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value]): Unit = {
-   inode = new DirectoryInode(inode.pointer, newRevision, inode.refcount, newTimestamp, updatedState)
+  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
+   inode = new DirectoryInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
   }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
