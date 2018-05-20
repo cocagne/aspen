@@ -28,6 +28,7 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.cumulofs.Inode
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.cumulofs.BaseFile
 
 class SimpleDirectory(
     protected var inode: DirectoryInode,
@@ -119,6 +120,12 @@ class SimpleDirectory(
       _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
       prep <- tl.put(name, pointer.toArray)
     } yield ()
+  }
+  
+  def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
+    implicit val tx = fs.system.newTransaction()
+    
+    prepareInsert(name, file.pointer).flatMap { _ =>tx.commit() }
   }
   
   def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {

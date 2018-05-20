@@ -31,6 +31,5 @@ trait BaseFile {
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
-  
-  def incrementHardLinkCount()(implicit tx: Transaction, ec: ExecutionContext): Future[ObjectRefcount]
+
 }

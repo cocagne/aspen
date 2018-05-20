@@ -113,26 +113,6 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMtime(ts))
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
-  
-  def incrementHardLinkCount()(implicit tx: Transaction, ec: ExecutionContext): Future[ObjectRefcount] = synchronized {
-    val origRefcount = inode.refcount
-    val newRefcount = inode.refcount.increment()
-    val p = Promise[ObjectRefcount]
-    
-    tx.setRefcount(inode.pointer.pointer, inode.refcount, newRefcount)
-    
-    tx.result onComplete {
-      case Failure(cause) => p.failure(cause)
-      case Success(_) => 
-        synchronized {
-          if (inode.refcount == origRefcount)
-            updateInode(tx.txRevision, tx.timestamp(), inode.content, Some(newRefcount)) 
-        }
-        p.success(newRefcount)
-    }
-    
-    p.future
-  }
 
   protected def enqueueOp(op: FileOperation)(implicit ec: ExecutionContext): Future[Unit] = {
     pendingOps.add(op)

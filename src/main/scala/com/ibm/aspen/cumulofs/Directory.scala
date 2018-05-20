@@ -30,6 +30,8 @@ trait Directory extends BaseFile {
     fs.system.transact { implicit tx => prepareDelete(name) }
   }
   
+  def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit]
+  
   /** Ensures the directory is empty and that all resources are cleaned up if the transaction successfully commits 
    */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]

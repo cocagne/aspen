@@ -49,25 +49,6 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
      }
   }
   
-  test("Update Directory Hard Link Count") {
-    implicit val tx = sys.newTransaction()
-     for {
-       fs <- bootstrap()
-       rootDir <- fs.loadRoot()
-       initialContent <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
-       newDir <- fs.loadDirectory(newDirPointer)
-       origLink = newDir.linkCount
-       fincr = newDir.incrementHardLinkCount()
-       _ <- tx.commit()
-       newDir2 <- fs.loadDirectory(newDirPointer)
-     } yield {
-       origLink should be (1)
-       newDir.linkCount should be (2)
-       newDir2.linkCount should be (2)
-     }
-  }
-  
   test("Change Directory UID") {
      for {
        fs <- bootstrap()
@@ -257,6 +238,22 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     } yield {
       us.uid should be (1)
       us.rdev should be (10)
+    }
+  }
+  
+  test("Test Hardlink") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      sptr <- rootDir.createBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+      us <- fs.loadBlockDevice(sptr)
+      _ <- rootDir.hardLink("bar", us)
+      us2 <- fs.loadBlockDevice(sptr)
+      postLinkContent <- rootDir.getContents()
+    } yield {
+      us2.linkCount should be (2)
+      postLinkContent.size should be (2)  
     }
   }
 }
