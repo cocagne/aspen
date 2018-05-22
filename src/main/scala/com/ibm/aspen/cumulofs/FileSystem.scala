@@ -40,6 +40,23 @@ trait FileSystem {
   
   def defaultSegmentAllocater(): Future[ObjectAllocater]
   
+  def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[BaseFile]] = inodeTable.lookup(inodeNumber) flatMap { optr =>
+    optr match {
+      case None => Future.successful(None)
+      case Some(iptr) => lookup(iptr).map(Some(_))
+    }
+  }
+  
+  def lookup(iptr: InodePointer)(implicit ec: ExecutionContext): Future[BaseFile] =  iptr match {
+    case ptr: DirectoryPointer => loadDirectory(ptr)
+    case ptr: FilePointer => loadFile(ptr)
+    case ptr: SymlinkPointer => loadSymlink(ptr)
+    case ptr: UnixSocketPointer => loadUnixSocket(ptr)
+    case ptr: FIFOPointer => loadFIFO(ptr)
+    case ptr: CharacterDevicePointer => loadCharacterDevice(ptr)
+    case ptr: BlockDevicePointer => loadBlockDevice(ptr)
+  }
+  
   def loadRoot()(implicit ec: ExecutionContext): Future[Directory] = {
     inodeTable.lookupRoot() flatMap { pointer => directoryLoader.loadDirectory(this, pointer) }
   }

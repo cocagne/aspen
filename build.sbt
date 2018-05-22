@@ -34,6 +34,8 @@ lazy val root = (project in file(".")).
       "org.json4s"          %% "json4s-jackson" % "3.6.0-M2",
       "org.xerial.snappy"   %  "snappy-java"    % "1.1.7.1",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % "2.9.2",
+      "net.java.dev.jna"    %  "jna"            % "4.5.0",
+      "net.java.dev.jna"    %  "jna-platform"   % "4.5.0",
     )
   )
   

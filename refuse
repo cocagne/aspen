@@ -1,0 +1,174 @@
+#!/usr/bin/env python
+
+"""
+Remote Fuse relay daemon.
+"""
+
+import os
+import os.path
+import sys
+import socket
+import struct
+import threading
+
+from ctypes import *
+
+libc = cdll.LoadLibrary("libc.so.6")
+
+#def mount(source:String, target: String, filesystemtype: String, mountflags: Long, data: String): Int
+#def umount2(target:String, flags:Int): Int
+#def getpagesize(): Int
+
+libc.mount.restype = c_int
+libc.mount.argtypes = [c_char_p, c_char_p, c_char_p, c_long, c_char_p]
+
+libc.umount2.restype = c_int
+libc.umount2.argtypes = [c_char_p, c_int]
+
+libc.getpagesize.restype = c_int
+libc.getpagesize.argtypes = []
+
+
+S_IFREG = 0x8000 # regular file
+S_IFDIR = 0x4000 # directory
+
+MS_RDONLY      = 0x001
+MS_NOSUID      = 0x002
+MS_NODEV       = 0x004
+MS_NOEXEC      = 0x008
+MS_SYNCHRONOUS = 0x010
+MS_NODIRATIME  = 0x800
+
+MNT_DETACH     = 0x002
+
+HEADER_SIZE = 40
+
+READ_SIZE = 128*1024 + 40
+
+class ConnectionLost (Exception):
+    pass
+
+class FileToSocketRelay (threading.Thread):
+
+    def __init__(self, sock, device_fd):
+        threading.Thread.__init__(self)
+        self.sock = sock
+        self.device_fd = device_fd
+        self.daemon = True
+        self.connected = True
+
+    def relay(self, msg):
+        mlen = len(msg)
+        nsent = 0
+        while nsent < mlen:
+            print '   Relaying ', mlen - nsent
+            n = self.sock.send(msg[nsent:])
+            if n == 0:
+                raise ConnectionLost()
+            nsent += n
+
+    def run(self):
+        print 'Relay thread started'
+        try:
+            while self.connected:
+                data = os.read(self.device_fd, READ_SIZE)
+                self.relay(data)
+        except OSError:
+            pass
+        except ConnectionLost:
+            pass
+        print 'Connection lost. Read thread terminating'
+            
+
+
+# mount_point path to mount the filesystem at
+# subtype Name of the filesystem type as displayed by mtab. This can be set to any short string.
+# mount_flags zero or more of the MS_* flags combined with OR
+#
+def main(mount_point, subtype='refuse', mount_flags=MS_NODIRATIME, port=1111):
+
+    rootmode = None
+
+    if not os.path.exists(mount_point):
+        print 'Mmount point does not exist: {}'.format(mount_point)
+        sys.exit(1)
+
+    if os.path.isdir(mount_point):
+        rootmode = S_IFDIR
+    elif os.path.isfile(mount_point):
+        rootmode = S_IFREG
+    else:
+        print 'Unsupported mount point file type: {}'.format(mount_point)
+        sys.exit(1)
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(('0.0.0.0', port))
+    sock.listen(5)
+    
+    while True:
+        print 'Accepting new fuse connection'
+        
+        (clisock, address) = sock.accept()
+
+        device_fd = os.open('/dev/fuse', os.O_RDWR)
+        uid = os.getuid()
+        gid = os.getgid()
+
+        
+        mount_ops_prefix = 'fd={},rootmode={:o},user_id={},group_id={}'.format(device_fd, rootmode, uid, gid)
+
+        def read(nbytes):
+            n = 0
+            l = list()
+            while n < nbytes:
+                b = clisock.recv(nbytes - n)
+                if len(b) == 0:
+                    raise ConnectionLost()
+                n += len(b)
+                l.append(b)
+            if len(l) == 0:
+                return l[0]
+            else:
+                return ''.join(l)
+
+        mount_ops_len = struct.unpack('=I', read(4))[0]
+
+        if mount_ops_len == 0:
+            mount_ops = mount_ops_prefix
+        else:
+            mount_ops = mount_ops_prefix + ',' + read(mount_ops_len)
+
+
+        print 'Mount args: ', [subtype, mount_point, "fuse."+subtype, mount_flags, mount_ops]
+        res = libc.mount(subtype, mount_point, "fuse."+subtype, mount_flags, mount_ops)
+
+        if res < 0:
+            print 'Failed to mount fuse device. Error code {}'.format(res)
+            clisock.close()
+            raise ConnectionLost()
+
+        relay = FileToSocketRelay(clisock, device_fd)
+        
+        relay.start()
+
+        try:
+            while True:
+                data = clisock.recv(64*1024)
+                nread = len(data)
+                
+                if nread == 0:
+                    raise ConnectionLost()
+                
+                nwritten = os.write(device_fd, data)
+                
+                if nwritten != nread:
+                    raise ConnectionLost()
+        
+        except (ConnectionLost, OSError):
+            print 'Connection lost'
+            clisock.close()
+            os.close(device_fd)
+            libc.umount2(mount_point, MNT_DETACH)
+
+main('/mnt')

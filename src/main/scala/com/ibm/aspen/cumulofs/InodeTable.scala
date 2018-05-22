@@ -8,7 +8,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
 object InodeTable {
   val NullInode = 0L
-  val RootInode = 2L
+  val RootInode = 1L
 }
 
 trait InodeTable {

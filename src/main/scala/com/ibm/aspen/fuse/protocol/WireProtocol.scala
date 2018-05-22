@@ -1,0 +1,313 @@
+package com.ibm.aspen.fuse.protocol
+
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.ByteOrder
+import scala.annotation.tailrec
+import com.ibm.aspen.fuse.FuseOptions
+import com.ibm.aspen.fuse.LinuxAPI
+import com.ibm.aspen.fuse.protocol.OpCode._
+import com.ibm.aspen.fuse.protocol.messages.InitReply
+import com.ibm.aspen.fuse.protocol.messages.InitRequest
+import com.ibm.aspen.fuse.protocol.messages.ReadDirRequest
+import com.ibm.aspen.fuse.protocol.messages.RequestHeader
+import com.ibm.aspen.fuse.protocol.messages.GetAttrRequest
+import com.ibm.aspen.fuse.protocol.messages.OpenDirRequest
+import com.ibm.aspen.fuse.protocol.messages.ReleaseRequest
+import com.ibm.aspen.fuse.protocol.messages.ReleaseDirRequest
+import com.ibm.aspen.fuse.protocol.messages.LookupRequest
+import com.ibm.aspen.fuse.protocol.messages.OpenRequest
+import com.ibm.aspen.fuse.protocol.messages.ReadRequest
+import java.nio.channels.GatheringByteChannel
+import java.nio.channels.ScatteringByteChannel
+
+object WireProtocol {
+  
+  // The kernel limits all data transfers to 32 pages. We'll add an extra one just in case the kernel decides to use
+  // the full 32 pages for data and sends an extra one contianing the message header. 
+  // TODO: This is hard-coded to assume 4Kb pages. Fix it.
+  val ReadBufferSizeInKb = 132
+  
+  //
+  // Reply Header Format:
+  //    <4-byte length (including header, reply, and data)>, <error_code>, <unique>
+  //
+  private def replyError(channel: GatheringByteChannel, unique: Long, error: Int): Unit = {
+    val bb = ByteBuffer.allocate(16)
+    bb.order(ByteOrder.nativeOrder())
+    
+    bb.putInt(16)
+    bb.putInt(-error) // Note the negation of the error argument
+    bb.putLong(unique)
+    
+    bb.flip()
+    println(s"Responding with error code $error")
+    channel.write(bb)
+  }
+  
+  private def replyOk(channel: GatheringByteChannel, protocolVersion: ProtocolVersion, unique: Long, reply: Reply): Unit = {
+    val staticReplyLength = reply.staticReplyLength
+    
+    val bb = ByteBuffer.allocate(16 + staticReplyLength)
+    bb.order(ByteOrder.nativeOrder())
+    val intent = 16 + staticReplyLength + reply.dataLength
+    bb.putInt(16 + staticReplyLength + reply.dataLength)
+    bb.putInt(0)
+    bb.putLong(unique)
+    reply.write(bb) // call this even if the staticReplyLength is zero. Provides a handle for message finalization
+    
+    bb.flip()
+    
+    if (reply.dataBuffers.isEmpty) {
+      if (bb.remaining() != intent)
+        println(s"***************** Sending WRONG NUMBER OF BYTES ${bb.remaining()} should be sending $intent")
+      channel.write(bb)
+    } else {
+      channel.write((bb :: reply.dataBuffers).toArray)
+    }
+      
+    reply.releaseBuffers()
+  }
+  
+  def apply(
+      mountPoint: String, 
+      subtype: String, 
+      mountFlags: Long, 
+      fuseMountOptions: Option[String], 
+      ops: FuseOptions,
+      bufferManager: IOBufferManager,
+      read_channel: ScatteringByteChannel,
+      write_channel: GatheringByteChannel ): WireProtocol = {
+    
+    @tailrec
+    def handshake(obb: Option[ByteBuffer]): WireProtocol = {
+      println("*** Beginning Handshake ***")
+      
+      // Minimum Fuse read buffer is 8Kb
+      val bb = obb match { 
+        case Some(b) => 
+          b.clear()
+          b
+        case None => bufferManager.allocateDirectBuffer(8)
+      }
+
+      read_channel.read(bb)
+      
+      bb.flip()
+      
+      val header = new RequestHeader(bb)
+      
+      println(s"Handshake header: $header")
+      
+      if (header.opcode != FUSE_INIT) {
+        println("NOT A FUSE INIT MESSAGE")
+        replyError(write_channel, header.unique, LinuxAPI.EIO)
+        handshake(Some(bb))
+      } 
+      else {
+        val ini = InitRequest(ProtocolVersion(0,0), header, bb)
+        
+        println(s"Handshake init: $ini")
+        
+        val kernelProtocolVersion = ProtocolVersion(ini.major, ini.minor)
+        //println(s"Got init request: $ini")
+        
+        // Anything below major version 7 is too far back
+        if (kernelProtocolVersion < ProtocolVersion(7,0)) 
+          throw new UnsupportedFuseProtocolVersion(ini.major, ini.minor)
+        
+        else if (ini.major > CurrentProtocolVersion.major) {
+          // Kernel version is too high. Request a lower protocol version
+          val reply = new InitReply(kernelProtocolVersion, 
+                                    CurrentProtocolVersion.major, CurrentProtocolVersion.minor, 0, 0, 0, 0, 0, 0)
+          
+          replyOk(write_channel, ProtocolVersion(0,0), header.unique, reply)
+          
+          // Wait for next request to arrive
+          handshake(Some(bb))
+        } 
+        else {
+
+          // Always enable. This is superseded by the max_write argument
+          val FUSE_BIG_WRITES = 1 << 5
+          
+          val capabilities = (ini.flags & ops.requestedCapabilities) | FUSE_BIG_WRITES
+          
+          // We can set max_readahead smaller than what the kernel supports but we can't make it larger
+          val max_readahead = if (ini.max_readahead < ops.max_readahead) ini.max_readahead else ops.max_readahead
+          
+          val max_write = ops.max_write
+          
+          val max_background = if (ops.max_background > 0xFFFF) 0xFFFF else ops.max_background
+            
+          val congestion_threshold = if (ops.congestion_threshold == 0) 
+            (max_background * 3.0/4.0).asInstanceOf[Int] 
+          else {
+            if (ops.congestion_threshold > 0xFFFF) 0xFFFF else ops.congestion_threshold
+          }
+          
+          val time_gran = if (kernelProtocolVersion >= ProtocolVersion(7,23)) ops.time_gran else 1
+          
+          val reply = InitReply(
+              kernelProtocolVersion,
+              CurrentProtocolVersion.major, 
+              CurrentProtocolVersion.minor,
+              max_readahead,
+              capabilities,
+              max_background.asInstanceOf[Short],
+              congestion_threshold.asInstanceOf[Short],
+              max_write,
+              time_gran)
+            
+          replyOk(write_channel, kernelProtocolVersion, header.unique, reply)
+          
+          val actualOps = FuseOptions(max_readahead, max_background, congestion_threshold, max_write, time_gran, capabilities)
+          
+          bufferManager.returnBuffer(bb)
+          
+          new WireProtocol(mountPoint, subtype, read_channel, write_channel, kernelProtocolVersion, actualOps, bufferManager)
+        }
+      }
+    }
+    
+    handshake(None)
+  }
+}
+
+class WireProtocol private (
+    val mountPoint: String, 
+    val subtype: String,
+    private val read_channel: ScatteringByteChannel,
+    private val write_channel: GatheringByteChannel,
+    val protocolVersion: ProtocolVersion,
+    val options: FuseOptions,
+    val bufferManager: IOBufferManager) {
+  
+  import WireProtocol._
+  
+  private var readBuffer: Option[ByteBuffer] = None
+  
+  def unmount(): Unit = {
+    read_channel.close()
+    write_channel.close()
+    LinuxAPI.fuse_umount(mountPoint)
+  }
+  
+  def replyError(unique: Long, error: Int): Unit = WireProtocol.replyError(write_channel, unique, error)
+  
+  def replyOk(unique: Long, reply: Reply): Unit = WireProtocol.replyOk(write_channel, protocolVersion, unique, reply)
+  
+  private def readAtLeast(bb: ByteBuffer, numBytes: Int): ByteBuffer = {
+    val startPos = bb.position()
+    val dataEnd = if (bb.limit == bb.capacity()) 0 else bb.limit
+
+    val endPos = dataEnd + numBytes
+    
+    if (dataEnd - startPos >= numBytes)
+      return bb // Already have enough data
+    
+    bb.position(dataEnd)
+    bb.limit(bb.capacity())
+
+    while (bb.position < endPos) { 
+      if (read_channel.read(bb) < 0)
+        throw new LostConnection
+    }
+    
+    bb.limit(bb.position)
+    bb.position(startPos)
+    bb
+  }
+    
+  /** Reads and returns the next valid request.
+   *  
+   *  TODO - Enable ref-counted sharing of read Data buffers
+   *     - Manager allocates a RefcountedReadBuffer which maintains a refcount and pointer to buffer manager
+   *     - When requests require a data buffer, They incref the RefcountedReadBuffer and create a ReadOnlyByteBuffer w/
+   *       their slice of the buffer
+   *     - When response is sent, the request is released() 
+   *     - users may want to be able to incref themselves to persist the data buffer beyond the normal release
+   *  
+   *  Throws LostConnection if the fuse connection to the kernel is lost
+   *  @return the next supported Request
+   */
+  @tailrec
+  final def readNextRequest(): Request = synchronized {
+    println("**** WAITING FOR REQUEST ****")
+    
+    def readAtLeastOneMessage(bb: ByteBuffer): (ByteBuffer, RequestHeader) = {
+      readAtLeast(bb, RequestHeader.HeaderSize)
+        
+      val header = new RequestHeader(bb)
+      println(s"Got Request: $header")
+      val mlen = header.len - RequestHeader.HeaderSize
+      
+      if (bb.remaining() < mlen)
+        readAtLeast(bb, mlen)
+        
+      if (bb.remaining() == mlen)
+        readBuffer = None
+        
+      else if (bb.remaining() > mlen)
+        readBuffer = Some(bb) // Read too much. Resume processing this buffer next time
+      
+      (bb, header)
+    }
+    
+    val (bb, header) = readBuffer match {
+      case None => 
+        val bb = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
+        readAtLeastOneMessage(bb)
+        
+      case Some(bb) =>
+        // Resume with data from previous read
+        
+        def realloc(): (ByteBuffer, RequestHeader) = {
+          val nbb = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
+          nbb.put(bb)
+          nbb.limit(nbb.position)
+          nbb.position(0)
+          readAtLeastOneMessage(nbb)
+        }
+        
+        if (bb.remaining() < RequestHeader.HeaderSize) 
+          realloc()
+        else {
+          val startPos = bb.position
+          val header = new RequestHeader(bb)
+          val mlen = header.len - RequestHeader.HeaderSize
+          
+          if (bb.remaining() ==  mlen) {
+            // This is the last message in the buffer
+            readBuffer = None 
+            (bb, header)
+          }
+          else if (bb.remaining() >  mlen) {
+            // More than one message left in the buffer
+            (bb, header)
+          }
+          else {
+            // We don't have the full message. 
+            bb.position(startPos)
+            realloc()
+          }
+        }
+    }
+    
+    header.opcode match {
+      
+      case OpCode.FUSE_OPENDIR    => OpenDirRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_GETATTR    => GetAttrRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_READDIR    => ReadDirRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_RELEASE    => ReleaseRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_RELEASEDIR => ReleaseDirRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_LOOKUP     => LookupRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_OPEN       => OpenRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_READ       => ReadRequest(protocolVersion, header, bb)
+      
+      case _ => 
+        replyError(header.unique, LinuxAPI.ENOSYS)
+        readNextRequest()
+    }
+  }
+}

@@ -33,7 +33,9 @@ trait TieredKeyValueList {
   
   protected def getObjectReaderForTier(tier: Int): ObjectReader
   
-  def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos => kvos.contents.get(key) }
+  def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos =>
+    kvos.contents.get(key) 
+  }
   
   def visitAll(visitor: (Value) => Unit)(implicit ec: ExecutionContext): Future[Unit] = visitRange(Key.AbsoluteMinimum, None, visitor)
   

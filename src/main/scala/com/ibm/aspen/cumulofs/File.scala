@@ -14,4 +14,6 @@ trait File extends BaseFile {
   
   def append(data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit]
   def append(data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit]
+  
+  def debugRead()(implicit ec: ExecutionContext): Future[Array[Byte]]
 }
