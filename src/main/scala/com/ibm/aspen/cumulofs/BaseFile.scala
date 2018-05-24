@@ -32,4 +32,11 @@ trait BaseFile {
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
 
+  def setattr(
+      newUID: Int, 
+      newGID: Int, 
+      ctime: Timespec, 
+      mtime: Timespec, 
+      atime: Timespec, 
+      newMode: Int)(implicit ec: ExecutionContext): Future[Unit]
 }

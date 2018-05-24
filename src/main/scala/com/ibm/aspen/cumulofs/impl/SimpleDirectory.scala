@@ -110,15 +110,22 @@ class SimpleDirectory(
     tree flatMap { tl => tl.get(name) } map { o => o.map(v => DirectoryEntry(v).pointer) }
   }
   
-  def prepareInsert(name: String, pointer: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+  def prepareInsert(name: String, pointer: InodePointer, incref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
 
     val fkvos = fs.system.readObject(pointer.pointer)
     
     for {
       tl <- tree
       kvos <- fkvos
-      _ = tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
+      _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
       prep <- tl.put(name, pointer.toArray)
+    } yield ()
+  }
+  
+  def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    for {
+      tl <- tree
+      prep <- tl.replace(oldName: String, newName: String)
     } yield ()
   }
   
@@ -128,19 +135,24 @@ class SimpleDirectory(
     prepareInsert(name, file.pointer).flatMap { _ =>tx.commit() }
   }
   
-  def prepareDelete(name: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+  def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
       case None => Future.unit // Directory entry not found. We're done!
       
       case Some(inodePtr) => 
         val fdelEntryPrep = tl.delete(name)
-        val ftaskPrep     = DeleteFileTask.prepare(fs, inodePtr)
         
-        for {
-          _ <- fdelEntryPrep
-          _ <- ftaskPrep
-        } yield ()
+        if (decref) {
+          val ftaskPrep     = DeleteFileTask.prepare(fs, inodePtr)
+          
+          for {
+            _ <- fdelEntryPrep
+            _ <- ftaskPrep
+          } yield ()
+        } else {
+          fdelEntryPrep
+        }
     }
 
     val fentry = lookup(name)

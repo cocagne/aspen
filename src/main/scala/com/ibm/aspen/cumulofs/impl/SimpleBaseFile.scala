@@ -68,6 +68,14 @@ object SimpleBaseFile {
   case class SetAtime(ts: Timespec) extends SimpleSet {
     def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = Inode.setAtime(ts)
   }
+  
+  case class SetAttr(uid: Int, gid: Int, ct: Timespec, mt: Timespec, at: Timespec, mode: Int) extends FileOperation {
+    def attempt(inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): OpResult = {
+      val updatedContent = Inode.setattr(inode, uid, gid, ct, mt, at, mode)
+      tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(updatedContent))
+      OpResult(Future.successful(()), Future.successful(updatedContent))
+    }
+  }
 }
 
 /** Provides a simple mechanism for satisfying file modification operations across all file types.
@@ -113,6 +121,14 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMtime(ts))
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
+  
+  def setattr(
+      newUID: Int, 
+      newGID: Int, 
+      ctime: Timespec, 
+      mtime: Timespec, 
+      atime: Timespec, 
+      newMode: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAttr(newUID, newGID, ctime, mtime, atime, newMode))
 
   protected def enqueueOp(op: FileOperation)(implicit ec: ExecutionContext): Future[Unit] = {
     pendingOps.add(op)

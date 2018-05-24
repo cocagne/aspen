@@ -12,3 +12,5 @@ class CorruptedLinkedList extends KeyValueError
 
 /** Thrown when a single split is insufficient to insert all requested content */
 class NodeSizeExceeded extends KeyValueError
+
+class KeyDoesNotExist(val key: Key) extends KeyValueError

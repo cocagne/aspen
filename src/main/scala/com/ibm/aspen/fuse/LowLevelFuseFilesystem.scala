@@ -21,6 +21,13 @@ import com.ibm.aspen.fuse.protocol.messages.DataReply
 import com.ibm.aspen.fuse.protocol.messages.ReadRequest
 import java.nio.channels.ScatteringByteChannel
 import java.nio.channels.GatheringByteChannel
+import com.ibm.aspen.fuse.protocol.messages.WriteRequest
+import com.ibm.aspen.fuse.protocol.messages.WriteReply
+import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
+import com.ibm.aspen.fuse.protocol.messages.MknodRequest
+import com.ibm.aspen.fuse.protocol.messages.ErrorOnly
+import com.ibm.aspen.fuse.protocol.messages.RenameRequest
+import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 
  /** 
    *  
@@ -75,6 +82,12 @@ class LowLevelFuseFilesystem(
       case r: LookupRequest => lookup(r, new Response[DirEntryReply](wp, r.unique))
       case r: OpenRequest => open(r, new Response[OpenReply](wp, r.unique))
       case r: ReadRequest => read(r, new Response[DataReply](wp, r.unique))
+      case r: WriteRequest => write(r, new Response[WriteReply](wp, r.unique))
+      case r: SetAttrRequest => setattr(r, new Response[GetAttrReply](wp, r.unique))
+      case r: MknodRequest => mknod(r, new Response[DirEntryReply](wp, r.unique))
+      case r: MkdirRequest => mkdir(r, new Response[DirEntryReply](wp, r.unique))
+      case r: RenameRequest => rename(r, new Response[ErrorOnly](wp, r.unique))
+      
       case r =>
         println(s"UNSUPPORTED REQUEST TYPE $r")
     }
@@ -90,4 +103,9 @@ class LowLevelFuseFilesystem(
   def lookup(request: LookupRequest, response: Response[DirEntryReply]): Unit = response.error(LinuxAPI.ENOSYS)
   def open(request: OpenRequest, response: Response[OpenReply]): Unit = response.error(LinuxAPI.ENOSYS)
   def read(request: ReadRequest, response: Response[DataReply]): Unit = response.error(LinuxAPI.ENOSYS)
+  def write(request: WriteRequest, response: Response[WriteReply]): Unit = response.error(LinuxAPI.ENOSYS)
+  def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = response.error(LinuxAPI.ENOSYS)
+  def mknod(request: MknodRequest, response: Response[DirEntryReply]): Unit = response.error(LinuxAPI.ENOSYS)
+  def mkdir(request: MkdirRequest, response: Response[DirEntryReply]): Unit = response.error(LinuxAPI.ENOSYS)
+  def rename(request: RenameRequest, response: Response[ErrorOnly]): Unit = response.error(LinuxAPI.ENOSYS)
 }

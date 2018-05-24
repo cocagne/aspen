@@ -74,6 +74,17 @@ object Inode {
   def setMtime(mtime: Timespec)(implicit tx: Transaction): (Key, Value) = (MtimeKey, Value(MtimeKey, mtime.toArray, tx.timestamp))
   
   def setAtime(atime: Timespec)(implicit tx: Transaction): (Key, Value) = (AtimeKey, Value(AtimeKey, atime.toArray, tx.timestamp))
+  
+  def setattr(
+      inode: Inode, 
+      newUID: Int, 
+      newGID: Int, 
+      ctime: Timespec, 
+      mtime: Timespec, 
+      atime: Timespec, 
+      newMode: Int)(implicit tx: Transaction): Map[Key, Value] = {
+    inode.content + setUID(newUID) + setGID(newGID) + setCtime(ctime) + setMtime(mtime) + setAtime(atime) + setMode(inode.pointer, newMode)
+  }
 }
 
 sealed abstract class Inode {

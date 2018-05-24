@@ -20,6 +20,11 @@ import com.ibm.aspen.fuse.protocol.messages.OpenRequest
 import com.ibm.aspen.fuse.protocol.messages.ReadRequest
 import java.nio.channels.GatheringByteChannel
 import java.nio.channels.ScatteringByteChannel
+import com.ibm.aspen.fuse.protocol.messages.WriteRequest
+import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
+import com.ibm.aspen.fuse.protocol.messages.MknodRequest
+import com.ibm.aspen.fuse.protocol.messages.RenameRequest
+import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 
 object WireProtocol {
   
@@ -304,6 +309,11 @@ class WireProtocol private (
       case OpCode.FUSE_LOOKUP     => LookupRequest(protocolVersion, header, bb)
       case OpCode.FUSE_OPEN       => OpenRequest(protocolVersion, header, bb)
       case OpCode.FUSE_READ       => ReadRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_WRITE      => WriteRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_SETATTR    => SetAttrRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_MKNOD      => MknodRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_RENAME     => RenameRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_MKDIR      => MkdirRequest(protocolVersion, header, bb)
       
       case _ => 
         replyError(header.unique, LinuxAPI.ENOSYS)

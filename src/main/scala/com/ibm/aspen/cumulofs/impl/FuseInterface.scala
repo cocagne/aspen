@@ -31,6 +31,17 @@ import com.ibm.aspen.fuse.protocol.messages.ReadDirRequest
 import com.ibm.aspen.fuse.protocol.messages.ReadDirReply
 import com.ibm.aspen.fuse.{FileType => FuseFileType}
 import com.ibm.aspen.cumulofs.{FileType => CumuloFileType}
+import com.ibm.aspen.fuse.protocol.messages.WriteRequest
+import com.ibm.aspen.fuse.protocol.messages.WriteReply
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
+import com.ibm.aspen.cumulofs.Timespec
+import com.ibm.aspen.fuse.protocol.messages.MknodRequest
+import com.ibm.aspen.cumulofs.FileMode
+import com.ibm.aspen.fuse.protocol.messages.RenameRequest
+import com.ibm.aspen.fuse.protocol.messages.ErrorOnly
+import scala.concurrent.Future
+import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 
 object FuseInterface {
   def toFuseFileType(ft: CumuloFileType.Value): FuseFileType.Value = ft match {
@@ -169,10 +180,167 @@ class FuseInterface(
       case None => response.error(LinuxAPI.EINVAL)
       case Some(file) => file.debugRead().onComplete { 
         case Failure(cause) => response.error(LinuxAPI.EIO)
-        case Success(data) => response.ok(DataReply(ByteBuffer.wrap(data)))
+        case Success(data) =>
+          val bb = ByteBuffer.wrap(data)
+          if (request.offset > bb.limit())
+            response.error(LinuxAPI.EIO)
+          else {
+            bb.position(request.offset.asInstanceOf[Int])
+            response.ok(DataReply(bb))
+          }
       }
     }
-  } 
+  }
+  
+  override def write(request: WriteRequest, response: Response[WriteReply]): Unit = synchronized {
+    openFiles.get(request.fileHandle) match {
+      case None => response.error(LinuxAPI.EINVAL)
+      case Some(file) => file.write(request.offset, DataBuffer(request.data)).onComplete { 
+        case Failure(cause) => response.error(LinuxAPI.EIO)
+        case Success(data) => response.ok(new WriteReply(request.size))
+      }
+    }
+  }
+  
+  override def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = {
+    println(s"** Setattr: $request")
+    fs.lookup(request.inode) onComplete {
+      case Failure(cause) => response.error(LinuxAPI.ENOENT)
+      case Success(None) =>
+        println(s"** Setattr INODE NOT FOUND ${request.inode}")
+        response.error(LinuxAPI.ENOENT)
+        
+      case Success(Some(file)) => 
+        
+        val ct = request.ctime.getOrElse(file.ctime)
+        val mt = request.mtime.getOrElse(file.mtime)
+        val at = request.atime.getOrElse(file.atime)
+        val mode = request.mode.getOrElse(file.mode)
+        val uid = request.newUID.getOrElse(file.uid)
+        val gid = request.newGID.getOrElse(file.gid)
+        
+        file.setattr(uid, gid, ct, mt, at, mode) onComplete {
+          case Failure(cause) => response.error(LinuxAPI.EIO)
+          case Success(_) => response.ok(new GetAttrReply(1, 0, stat(file)))
+        }
+    }
+  }
+  
+  override def mknod(request: MknodRequest, response: Response[DirEntryReply]): Unit = {
+    fs.lookup(request.inode) onComplete {
+      case Failure(cause) =>
+        println(s"mknod failure $cause")
+        response.error(LinuxAPI.ENOENT)
+      
+      case Success(Some(dir: Directory)) =>
+        import FileMode._
+        
+        val r = (request.mode & S_IFMT) match {
+          case S_IFSOCK => Some(dir.createUnixSocket(request.name, request.mode, request.uid, request.gid))
+          case S_IFLNK  => Some(dir.createSymlink(request.name, request.mode, request.uid, request.gid, ""))
+          case S_IFREG  => Some(dir.createFile(request.name, request.mode, request.uid, request.gid))
+          case S_IFBLK  => Some(dir.createBlockDevice(request.name, request.mode, request.uid, request.gid, request.rdev))
+          case S_IFDIR  => Some(dir.createDirectory(request.name, request.mode, request.uid, request.gid))
+          case S_IFCHR  => Some(dir.createCharacterDevice(request.name, request.mode, request.uid, request.gid, request.rdev))
+          case S_IFFIFO => Some(dir.createFIFO(request.name, request.mode, request.uid, request.gid))
+          case _        => None
+        }
+        
+        r match {
+          case None => response.error(LinuxAPI.EINVAL)
+          
+          case Some(f) => 
+            f.flatMap(pointer => fs.lookup(pointer)) onComplete {
+              case Failure(cause) => response.error(LinuxAPI.EIO)
+              
+              case Success(file) => 
+                
+                val d = DirEntry( inode = file.pointer.number,
+                                  generation = 0,
+                                  stat = stat(file),
+                                  attrTimeout = 10,
+                                  attrTimeoutNsec = 0,
+                                  entryTimeout = 10,
+                                  entryTimeoutNsec = 0)
+                                  
+                response.ok(new DirEntryReply(d)) 
+            }
+        }
+      
+      case Success(f) =>
+        response.error(LinuxAPI.EINVAL)
+    }
+  }
+  
+  override def mkdir(request: MkdirRequest, response: Response[DirEntryReply]): Unit = {
+    fs.lookup(request.inode) onComplete {
+      case Failure(cause) =>
+        println(s"mkdir failure $cause")
+        response.error(LinuxAPI.ENOENT)
+      
+      case Success(Some(dir: Directory)) =>
+        import FileMode._
+        
+        val f = dir.createDirectory(request.name, request.mode, request.uid, request.gid)
+         
+        f.flatMap(pointer => fs.lookup(pointer)) onComplete {
+          case Failure(cause) => response.error(LinuxAPI.EIO)
+          
+          case Success(file) => 
+            
+            val d = DirEntry( inode = file.pointer.number,
+                              generation = 0,
+                              stat = stat(file),
+                              attrTimeout = 10,
+                              attrTimeoutNsec = 0,
+                              entryTimeout = 10,
+                              entryTimeoutNsec = 0)
+                              
+            response.ok(new DirEntryReply(d)) 
+        }
+      
+      case Success(f) =>
+        println(s"mkdir failure2 $f")
+        response.error(LinuxAPI.EINVAL)
+    }
+  }
+  
+  override def rename(request: RenameRequest, response: Response[ErrorOnly]): Unit = {
+    val foldDir = fs.lookup(request.inode)
+    val fnewDir = fs.lookup(request.newDirInode)
+    
+    implicit val tx = fs.system.newTransaction()
+    
+    def prep(oldf: Option[BaseFile], newf: Option[BaseFile]): Future[Unit] = (oldf, newf) match {
+      case (Some(oldDir: Directory), Some(newDir: Directory)) => 
+        if (oldDir.pointer.pointer.uuid == newDir.pointer.pointer.uuid) {
+          oldDir.prepareRename(request.oldName, request.newName)
+        } else {
+          oldDir.getEntry(request.oldName) flatMap { oiptr => 
+            Future.sequence(List(
+              oldDir.prepareDelete(request.oldName, decref=false),
+              newDir.prepareInsert(request.newName, oiptr.get, incref=false)
+            )).map(_=>())  
+          }
+        }
+      case _ => throw new Exception("Bad inode pointers")
+    }
+    
+    val f = for {
+      oldDir <- foldDir
+      newDir <- fnewDir
+      _ <- prep(oldDir, newDir)
+      _ <- tx.commit()
+    } yield ()
+    
+    f onComplete {
+      case Failure(cause) => 
+        println(s"Failed rename operation: $cause")
+        tx.invalidateTransaction(cause)
+        response.error(LinuxAPI.EINVAL)
+      case Success(_) => response.error(0)
+    }
+  }
   
   override def opendir(request: OpenDirRequest, response: Response[OpenReply]): Unit = {
     fs.lookup(request.inode) onComplete {

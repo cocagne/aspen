@@ -22,6 +22,7 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.KeyValueObjectState
 
+
 class SimpleMutableTieredListSuite extends TestSystemSuite {
   import Bootstrap._
   
@@ -80,6 +81,77 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
         case None => fail("failed to find target key")
         case Some(v) => v.value should be (value)
       }
+    }
+  }
+  
+  test("Test replace non-existent value") {
+  
+    val treeId = Key(Array[Byte](0,0,0))
+    val target = Key(Array[Byte](2))
+    val value = Array[Byte](2,3,4)
+    
+    val invalid = Key("NONEXISTENT")
+    
+    implicit val tx = sys.newTransaction()
+    
+    for {
+      l0 <- alloc(None, None, None, List((target -> value)))
+      
+      nodeSizeLimit = 300
+      
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      
+      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
+      
+      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      
+      r <- smt.replace(invalid, target).failed
+
+    } yield {
+      r match {
+        case err: KeyDoesNotExist => err.key should be (invalid)
+        case _ => fail("failed to find target key")
+      }
+    }
+  }
+  
+  test("Test replace value. Single node") {
+  
+    val treeId = Key(Array[Byte](0,0,0))
+    val target = Key(Array[Byte](2))
+    val value = Array[Byte](2,3,4)
+    
+    val old = Key("old")
+    
+    def put(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
+      implicit val tx = sys.newTransaction()
+      smt.put(old, value).flatMap(_ => tx.commit())
+    }
+    
+    def replace(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
+      implicit val tx = sys.newTransaction()
+      smt.replace(old, target).flatMap(_ => tx.commit())
+    }
+    
+    for {
+      l0 <- alloc(None, None, None, List((target -> value)))
+      
+      nodeSizeLimit = 300
+      
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      
+      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
+      
+      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      
+      _ <- put(smt)
+      
+      _ <- replace(smt)
+      
+      v <- smt.get(target)
+
+    } yield {
+      java.util.Arrays.equals(v.get.value, value) should be (true)
     }
   }
   

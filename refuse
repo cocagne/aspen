@@ -165,7 +165,7 @@ def main(mount_point, subtype='refuse', mount_flags=MS_NODIRATIME, port=1111):
                 if nwritten != nread:
                     raise ConnectionLost()
         
-        except (ConnectionLost, OSError):
+        except (ConnectionLost, OSError, socket.error):
             print 'Connection lost'
             clisock.close()
             os.close(device_fd)
