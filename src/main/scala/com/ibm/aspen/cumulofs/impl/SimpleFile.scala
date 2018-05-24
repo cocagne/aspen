@@ -64,6 +64,12 @@ class SimpleFile(
     }}
   }
   
+  override def freeResources()(implicit ec: ExecutionContext): Future[Unit] = {
+    println(s"TODO: FREE FILE RESOURCES")
+    Future.unit
+    //Future.failed(new Exception("Implement File Deletion!"))
+  }
+  
   override def size: Long = synchronized { inode.size }
   
   def getDataTail()(implicit ec: ExecutionContext): Future[Option[FileIndex.DataTail]] = synchronized {

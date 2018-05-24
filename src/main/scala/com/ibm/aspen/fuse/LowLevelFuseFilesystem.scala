@@ -28,6 +28,8 @@ import com.ibm.aspen.fuse.protocol.messages.MknodRequest
 import com.ibm.aspen.fuse.protocol.messages.ErrorOnly
 import com.ibm.aspen.fuse.protocol.messages.RenameRequest
 import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
+import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
+import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
 
  /** 
    *  
@@ -87,7 +89,8 @@ class LowLevelFuseFilesystem(
       case r: MknodRequest => mknod(r, new Response[DirEntryReply](wp, r.unique))
       case r: MkdirRequest => mkdir(r, new Response[DirEntryReply](wp, r.unique))
       case r: RenameRequest => rename(r, new Response[ErrorOnly](wp, r.unique))
-      
+      case r: UnlinkRequest => unlink(r, new Response[ErrorOnly](wp, r.unique))
+      case r: ForgetRequest => forget(r)
       case r =>
         println(s"UNSUPPORTED REQUEST TYPE $r")
     }
@@ -108,4 +111,6 @@ class LowLevelFuseFilesystem(
   def mknod(request: MknodRequest, response: Response[DirEntryReply]): Unit = response.error(LinuxAPI.ENOSYS)
   def mkdir(request: MkdirRequest, response: Response[DirEntryReply]): Unit = response.error(LinuxAPI.ENOSYS)
   def rename(request: RenameRequest, response: Response[ErrorOnly]): Unit = response.error(LinuxAPI.ENOSYS)
+  def unlink(request: UnlinkRequest, response: Response[ErrorOnly]): Unit = response.error(LinuxAPI.ENOSYS)
+  def forget(request: ForgetRequest): Unit = {}
 }

@@ -39,4 +39,7 @@ trait BaseFile {
       mtime: Timespec, 
       atime: Timespec, 
       newMode: Int)(implicit ec: ExecutionContext): Future[Unit]
+  
+  /** Frees all objects owned by the inode */
+  def freeResources()(implicit ec: ExecutionContext): Future[Unit] = Future.unit
 }

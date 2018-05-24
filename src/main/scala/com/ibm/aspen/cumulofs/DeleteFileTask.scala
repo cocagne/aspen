@@ -23,8 +23,7 @@ object DeleteFileTask {
   
   private val FileSystemUUIDKey = Key(BaseKeyId + 1)
   private val InodePointerKey   = Key(BaseKeyId + 2)
-  private val DataRootKey       = Key(BaseKeyId + 3)
-  
+
   /** Configures the transaction to delete the target inode and launch a file deletion task
    *  that will remove it from the Inode table and preform any necessary cleanup activities
    *  such as deleting file data and their associated tiered lists.
@@ -39,32 +38,28 @@ object DeleteFileTask {
       // all we need to do is decrement the refcount. If it's exactly two, we need to create
       // the deletion task to clean up the inode resources
       //
-      if (inode.refcount.count != 2) {
+      if (inode.refcount.count > 2) {
         tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
         Future.unit
-      } else {
-        tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement().decrement())
+      } 
+      else if (inode.refcount.count == 2 ) {
+        tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
         
-               
+        val content = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.toArray))
+        
+        val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
+        
         inode match {
-          case d: DirectoryInode =>
-            
-            val common = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.toArray))
-            
-            val content = d.contentTree match {
-              case None => common
-              case Some(root) => (DataRootKey, root.toArray()) :: common 
-            }
-            
-            val fprep = fs.loadDirectory(d).prepareForDirectoryDeletion()
-            val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
-          
-            Future.sequence(fprep :: ftask :: Nil).map(_=>())
-            
-          case f: FileInode => throw new NotImplementedException
+          case d: DirectoryInode => fs.loadDirectory(d).prepareForDirectoryDeletion().flatMap(_ => ftask).map(_=>())
+
+          case f: FileInode => ftask.map(_=>())
             
           case _ => Future.unit // No additional work to do
         }
+      } 
+      else {
+        // Probably a race condition
+        Future.unit
       }
     }
   }
@@ -100,17 +95,10 @@ class DeleteFileTask private (
     
     val iptr = InodePointer(state(InodePointerKey))
     
-    val fremovedFromTable = fs.inodeTable.delete(iptr)
-    
-    val fdataDeleted = iptr match {
-      case _: DirectoryPointer => deleteDirectoryData(fs)
-      case _: FilePointer => deleteFileData(fs)
-      case _ => Future.unit
-    }
-    
     for {
-      _ <- fremovedFromTable
-      _ <- fdataDeleted
+      file <- fs.lookup(iptr)
+      _ <- file.freeResources()
+      _ <- fs.inodeTable.delete(iptr)
     } yield {
       system.transactUntilSuccessful { tx =>
         completeTask(tx)
@@ -118,15 +106,5 @@ class DeleteFileTask private (
       }
     }
   }
-  
-  def deleteDirectoryData(fs: FileSystem): Future[Unit] = state.get(DataRootKey) match {
-    case None => Future.unit
-    case Some(arr) => 
-      val tlroot = TieredKeyValueList.Root(arr)
-      val tl = new SimpleMutableTieredKeyValueList(system, Left(pointer.kvPointer), DataRootKey, LexicalKeyOrdering, Some(tlroot))
-      
-      tl.destroy( _ => Future.unit )
-  }
-  
-  def deleteFileData(fs: FileSystem): Future[Unit] = Future.failed(new NotImplementedError)
+
 }

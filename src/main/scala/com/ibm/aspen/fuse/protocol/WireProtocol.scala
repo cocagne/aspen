@@ -25,6 +25,8 @@ import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
 import com.ibm.aspen.fuse.protocol.messages.MknodRequest
 import com.ibm.aspen.fuse.protocol.messages.RenameRequest
 import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
+import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
+import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
 
 object WireProtocol {
   
@@ -314,6 +316,8 @@ class WireProtocol private (
       case OpCode.FUSE_MKNOD      => MknodRequest(protocolVersion, header, bb)
       case OpCode.FUSE_RENAME     => RenameRequest(protocolVersion, header, bb)
       case OpCode.FUSE_MKDIR      => MkdirRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_UNLINK     => UnlinkRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_FORGET     => ForgetRequest(protocolVersion, header, bb)
       
       case _ => 
         replyError(header.unique, LinuxAPI.ENOSYS)

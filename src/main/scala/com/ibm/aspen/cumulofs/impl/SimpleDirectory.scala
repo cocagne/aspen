@@ -136,14 +136,15 @@ class SimpleDirectory(
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
-    
+    println(s"** DOING DELETE of $name with decref $decref")
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
       case None => Future.unit // Directory entry not found. We're done!
       
       case Some(inodePtr) => 
         val fdelEntryPrep = tl.delete(name)
-        
+        println(s"** prepping delete")
         if (decref) {
+          println(s"** prepping task")
           val ftaskPrep     = DeleteFileTask.prepare(fs, inodePtr)
           
           for {
@@ -165,6 +166,16 @@ class SimpleDirectory(
   
   }
   
+  override def freeResources()(implicit ec: ExecutionContext): Future[Unit] = {
+    for {
+      tl <- tree
+      node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
+      _ = if (node.kvos.contents.isEmpty) throw new DirectoryNotEmpty(pointer)
+      done <- tree.flatMap(_.destroy( _ => Future.unit ))
+    } yield ()
+  }
+    
+
   /** This prevents entries from being added to the directory while the delete is in progress. The
    *  directory must be empty so the tier0 list will contain only a single element. Deleting that
    *  node is made part of the directory deletion transaction. Thus either the other writer will win

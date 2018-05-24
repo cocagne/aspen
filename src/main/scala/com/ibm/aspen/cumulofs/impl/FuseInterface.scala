@@ -42,6 +42,8 @@ import com.ibm.aspen.fuse.protocol.messages.RenameRequest
 import com.ibm.aspen.fuse.protocol.messages.ErrorOnly
 import scala.concurrent.Future
 import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
+import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
+import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
 
 object FuseInterface {
   def toFuseFileType(ft: CumuloFileType.Value): FuseFileType.Value = ft match {
@@ -94,6 +96,10 @@ class FuseInterface(
                                      read_channel, write_channel, obufferManager) 
 {
   import FuseInterface._
+  
+  var openFiles = Map[Long, File]()
+  var openDirs = Set[Long]()
+  var nextfd = 1L
   
   override def getattr(request: GetAttrRequest, response: Response[GetAttrReply]): Unit = {
     println(s"getattr request for ${request.inode}")
@@ -151,9 +157,51 @@ class FuseInterface(
     }
   }
   
-  var openFiles = Map[Long, File]()
-  var openDirs = Set[Long]()
-  var nextfd = 1L
+  override def forget(request: ForgetRequest): Unit = {
+    println(s"Got forget request! $request")
+  }
+  
+  override def unlink(request: UnlinkRequest, response: Response[ErrorOnly]): Unit = {
+    println(s"Unlink request for ${request.name} in directory ${request.inode}")
+    
+    fs.lookup(request.inode) onComplete {
+      case Failure(cause) =>
+        println(s"unlink failure0 :( $cause")
+        response.error(LinuxAPI.ENOENT)
+      
+      case Success(ofile) => ofile match {
+        case None => response.error(LinuxAPI.ENOENT)
+        
+        case Some(file) => 
+          file match {
+            case dir: Directory => 
+              dir.getEntry(request.name) onComplete {
+                case Failure(cause) =>
+                  println(s"unlink failure1 :( $cause")
+                  response.error(LinuxAPI.EIO)
+                
+                case Success(None) => response.error(LinuxAPI.ENOENT)
+                
+                case Success(Some(pointer)) =>
+                  if (pointer.ftype == CumuloFileType.Directory)
+                    response.error(LinuxAPI.EINVAL)
+                  else {
+                    dir.delete(request.name) onComplete {
+                      case Failure(cause) =>
+                        println(s"unlink failure2 :( $cause")
+                        response.error(LinuxAPI.EIO)
+                      case Success(_) => response.error(0)
+                    }
+                  }
+              }
+            
+            case nondir => response.error(LinuxAPI.EINVAL)
+          }
+        }
+    }
+  }
+  
+  
     
   override def open(request: OpenRequest, response: Response[OpenReply]): Unit = synchronized {
     val fd = nextfd
