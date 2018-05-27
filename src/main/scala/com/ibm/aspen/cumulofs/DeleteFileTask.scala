@@ -17,6 +17,8 @@ import sun.reflect.generics.reflectiveObjects.NotImplementedException
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 object DeleteFileTask {
   private val BaseKeyId = SteppedDurableTask.ReservedToKeyId
@@ -30,7 +32,7 @@ object DeleteFileTask {
    */
   def prepare(
       fs: FileSystem, 
-      victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+      victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
     
     fs.inodeLoader.iload(victim) flatMap { inode =>
       //
@@ -40,7 +42,7 @@ object DeleteFileTask {
       //
       if (inode.refcount.count > 2) {
         tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
-        Future.unit
+        Future.successful(Future.unit)
       } 
       else if (inode.refcount.count == 2 ) {
         tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
@@ -50,16 +52,22 @@ object DeleteFileTask {
         val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
         
         inode match {
-          case d: DirectoryInode => fs.loadDirectory(d).prepareForDirectoryDeletion().flatMap(_ => ftask).map(_=>())
-
-          case f: FileInode => ftask.map(_=>())
+          case d: DirectoryInode => 
+            for {
+              prep <- fs.loadDirectory(d).prepareForDirectoryDeletion()
+              taskReady <- ftask
+            } yield taskReady.map(_=>())
             
-          case _ => Future.unit // No additional work to do
+          case f: FileInode => for {
+            taskReady <- ftask
+          } yield taskReady.map(_=>())
+            
+          case _ => Future.successful(Future.unit) // No additional work to do
         }
       } 
       else {
         // Probably a race condition
-        Future.unit
+        Future.successful(Future.unit)
       }
     }
   }
@@ -95,9 +103,17 @@ class DeleteFileTask private (
     
     val iptr = InodePointer(state(InodePointerKey))
     
+    def destroyInode(ikvos: KeyValueObjectState): Future[Unit] = {
+      implicit val tx = system.newTransaction()
+      tx.setRefcount(iptr.pointer, ikvos.refcount, ikvos.refcount.setCount(0))
+      tx.commit() 
+    }
+    
     for {
       file <- fs.lookup(iptr)
       _ <- file.freeResources()
+      ikvos <- system.readObject(iptr.pointer)
+      _ <- destroyInode(ikvos)
       _ <- fs.inodeTable.delete(iptr)
     } yield {
       system.transactUntilSuccessful { tx =>

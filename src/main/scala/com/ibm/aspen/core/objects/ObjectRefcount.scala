@@ -5,4 +5,5 @@ case class ObjectRefcount(updateSerial: Int, count: Int) {
   
   def increment(): ObjectRefcount = ObjectRefcount(updateSerial+1, count+1)
   def decrement(): ObjectRefcount = ObjectRefcount(updateSerial+1, count-1)
+  def setCount(newCount: Int): ObjectRefcount = ObjectRefcount(updateSerial+1, newCount)
 }

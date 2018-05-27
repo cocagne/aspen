@@ -24,12 +24,20 @@ trait Directory extends BaseFile {
   
   def prepareInsert(name: String, pointer: InodePointer, incref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
-  def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
+  def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]]
   
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
-    fs.system.transact { implicit tx => prepareDelete(name) }
+    implicit val tx = fs.system.newTransaction()
+    val f = for {
+      fcomplete <- prepareDelete(name)
+      _ <- tx.commit()
+      _ <- fcomplete
+    } yield ()
+    
+    f.failed.foreach( tx.invalidateTransaction(_) )
+    f
   }
   
   def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit]

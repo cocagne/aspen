@@ -15,6 +15,8 @@ import com.ibm.aspen.core.read.InvalidObject
 import com.ibm.aspen.cumulofs.FileInode
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
 
 class FileIndexSuite extends TestSystemSuite with CumuloFSBootstrap {
@@ -182,6 +184,44 @@ class FileIndexSuite extends TestSystemSuite with CumuloFSBootstrap {
           tailNode.tailOffset should be (15)
           tailNode.leftPointer.get.offset should be (0)
       }
+    }
+  }
+  
+  test("Create multi-node file index destruction") {
+    implicit val tx = sys.newTransaction()
+    
+    for {
+      fs <- bootstrap(5)
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+      origInode <- fs.inodeLoader.load(newFilePointer)
+      dop1 <- allocDataObject()
+      dop2 <- allocDataObject()
+      dop3 <- allocDataObject()
+      dop4 <- allocDataObject()
+      dop5 <- allocDataObject()
+      dop6 <- allocDataObject()
+      idx = new FileIndex(fs, FileIndex.NoCache, origInode)
+      segments = List((dop1, 1), (dop2,2), (dop3,3), (dop4,4), (dop5,5), (dop6,6))
+      (root, fupdated) <- idx.prepareAppend(newFilePointer.pointer, origInode.revision, origInode.timestamp, 0, segments)
+      newContent = origInode.content + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, root.toArray(), tx.timestamp))
+      _=tx.overwrite(origInode.pointer.pointer, origInode.revision, Nil, KeyValueOperation.contentToOps(newContent))
+      done <- tx.commit()
+      stateUpdated <- fupdated
+      orootNode <- idx.getRootIndexNode()
+      oheadNode <- idx.getIndexNodeForOffset(0)
+      otailNode <- idx.getIndexNodeForOffset(99999)
+      toast <- idx.destroy()
+      eroot <- sys.readObject(orootNode.get.nodePointer).failed
+      ehead <- sys.readObject(oheadNode.get.nodePointer).failed
+      etail <- sys.readObject(otailNode.get.nodePointer).failed
+      eseg <- sys.readObject(oheadNode.get.segments(0).pointer).failed
+    } yield {
+      eroot.isInstanceOf[InvalidObject] should be (true)
+      ehead.isInstanceOf[InvalidObject] should be (true)
+      etail.isInstanceOf[InvalidObject] should be (true)
+      eseg.isInstanceOf[InvalidObject] should be (true)
     }
   }
   

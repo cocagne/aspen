@@ -25,6 +25,8 @@ import scala.collection.immutable.Queue
 import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.read.InvalidObject
 
 /** FileIndex is similar to a TieredList in that it uses a hierarchy of singly-linked lists to build a distributed 
  *  index but this implementation is optimized specifically for indexing file data. Data is sequentially appended to
@@ -139,6 +141,44 @@ object FileIndex {
   def encodedEntriesSize(oleft: Option[LeftPointer], segments: List[(Segment, Int)], oright: Option[RightPointer]): Int = {
     oleft.map(_.encodedSize).getOrElse(0) + segments.foldLeft(0)( (sz, t) => t._2 + sz ) + oright.map(_.encodedSize).getOrElse(0)
   }
+  
+  private[cumulofs] def destroyNodeSegment(node: IndexNode)(implicit ec: ExecutionContext): Future[IndexNode] = if (node.segments.isEmpty) Future.successful(node) else {
+    val victim = node.segments.last
+    
+    val fready = if (node.tier == 0) {
+      Future.unit
+    } else {
+      node.index.loadIndexNode(node.tier-1, victim.pointer).flatMap(lowerNode => lowerNode.destroy()) recover {
+        case o: InvalidObject => ()
+      }
+    }
+    
+    fready.flatMap { _ =>
+      implicit val tx = node.index.fs.system.newTransaction()
+      
+      def getRemaining(i: Int, l: List[(Segment, Int)]): List[(Segment, Int)] = if (i == -1) l else {
+        getRemaining(i-1, (node.segments(i), node.segments(i).encodedSize) :: l)
+      }
+      val remaining = getRemaining(node.segments.length-2, Nil)
+      val newIndexNodeContent = encodeEntries(node.leftPointer, remaining, node.rightPointer, None)
+      
+      if (node.tier == 0) 
+        tx.setRefcount(victim.pointer, ObjectRefcount(0,1), ObjectRefcount(1,0))
+      
+      tx.overwrite(node.nodePointer, node.revision, newIndexNodeContent)
+      tx.commit().map { _ =>
+        IndexNode(node.tier, node.index, node.nodePointer, node.leftPointer, remaining.map(t=>t._1).toArray, node.rightPointer,
+            tx.txRevision, node.size, tx.timestamp())
+      }
+    }
+  }
+  
+  private[cumulofs] def destroyNodeSegments(node: IndexNode)(implicit ec: ExecutionContext): Future[IndexNode] = if (node.segments.isEmpty) 
+    Future.successful(node) 
+  else {
+    destroyNodeSegment(node).flatMap(newNode => destroyNodeSegments(newNode)) 
+  }
+  
   
   case class IndexNode(
       tier: Int, 
@@ -257,6 +297,30 @@ object FileIndex {
         p.future
       }
     }
+    
+    /** Future returns when all segments in the node have been destroyed */
+    private[cumulofs] def destroySegments()(implicit ec: ExecutionContext): Future[IndexNode] = {
+      
+      @volatile var node = this
+      
+      def onAttemptFailure(cause: Throwable): Future[Unit] = {
+        refresh() map { updatedNode =>
+          node = updatedNode
+        }
+      }
+      
+      index.fs.system.retryStrategy.retryUntilSuccessful(onAttemptFailure _) {
+        destroyNodeSegments(node)
+      }
+    }
+    
+    private[cumulofs] def destroy()(implicit ec: ExecutionContext): Future[Unit] = index.fs.system.retryStrategy.retryUntilSuccessful {
+      destroySegments() flatMap { node =>   
+        implicit val tx = index.fs.system.newTransaction()
+        tx.setRefcount(node.nodePointer, ObjectRefcount(0,1), ObjectRefcount(1,0))
+        tx.commit()
+      }  
+    }
   }
   
   trait IndexNodeCache {
@@ -361,6 +425,17 @@ class FileIndex(
           fnode
       }
     }
+  }
+  
+  private[cumulofs] def destroy()(implicit ec: ExecutionContext): Future[Unit] = {
+    for {
+      _ <- refresh()
+      oroot <- getRootIndexNode()
+      _ <- oroot match {
+        case None => Future.unit
+        case Some(root) => root.destroy()
+      }
+    } yield ()
   }
   
   private[cumulofs] def getRootIndexNode()(implicit ec: ExecutionContext): Future[Option[IndexNode]] = synchronized {

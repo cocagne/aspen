@@ -53,6 +53,9 @@ abstract class TransactionDriver(
     if (msg.proposalId != proposer.currentProposalId)
       return
       
+    //if (!msg.errors.isEmpty)
+    //  println(s"TX ERRORS: ${msg.errors}")
+      
     msg.response match {
       case Left(nack) => 
         onNack(nack.promisedId)

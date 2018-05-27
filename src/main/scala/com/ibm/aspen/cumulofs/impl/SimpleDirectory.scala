@@ -87,7 +87,6 @@ class SimpleDirectory(
             allocater <- fs.system.getObjectAllocater(fs.directoryLoader.directoryTableAllocaters(0))
             dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
             dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.directoryTableAllocaters, fs.directoryLoader.directoryTableSizes, LexicalKeyOrdering, dirContentPtr)
-        
             _ = tx.append(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray(), tx.timestamp()) :: Nil)
           } yield dirTblRoot  
         }
@@ -135,24 +134,23 @@ class SimpleDirectory(
     prepareInsert(name, file.pointer).flatMap { _ =>tx.commit() }
   }
   
-  def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
-    println(s"** DOING DELETE of $name with decref $decref")
-    def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Unit] = oentry match {
-      case None => Future.unit // Directory entry not found. We're done!
+  def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
+    
+    def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Future[Unit]] = oentry match {
+      case None => Future.successful(Future.unit) // Directory entry not found. We're done!
       
       case Some(inodePtr) => 
         val fdelEntryPrep = tl.delete(name)
-        println(s"** prepping delete")
+        
         if (decref) {
-          println(s"** prepping task")
-          val ftaskPrep     = DeleteFileTask.prepare(fs, inodePtr)
+          val ftaskPrep = DeleteFileTask.prepare(fs, inodePtr)
           
           for {
             _ <- fdelEntryPrep
-            _ <- ftaskPrep
-          } yield ()
+            fcomplete <- ftaskPrep
+          } yield fcomplete
         } else {
-          fdelEntryPrep
+          fdelEntryPrep.map(_=>Future.unit)
         }
     }
 
@@ -161,18 +159,9 @@ class SimpleDirectory(
     for {
       tl <- tree
       oentry <- fentry
-      prepped <- del(tl, oentry)
-    } yield ()
+      fcomplete <- del(tl, oentry)
+    } yield fcomplete
   
-  }
-  
-  override def freeResources()(implicit ec: ExecutionContext): Future[Unit] = {
-    for {
-      tl <- tree
-      node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
-      _ = if (node.kvos.contents.isEmpty) throw new DirectoryNotEmpty(pointer)
-      done <- tree.flatMap(_.destroy( _ => Future.unit ))
-    } yield ()
   }
     
 
