@@ -1,79 +1,20 @@
 
 CumuloFS
 
-Files
-   - All modifications update the mtime so the entire inode will be overwritten with each transaction
-   - All operations are serialized (concurrent linked queue) within the base file implementation
-   - Tx failure causes cached file state to be discarded and re-read.
-       - Simple, conservative, and should perform decently in the absence of contention (NOT appropriate for even modest contention though)
-   - Regular files use an index structure similar to classical Indirect blocks. The index is updated as part of the write transaction
-       - Index nodes are allocated via a dedicated allocater so they may be placed on separate storage pools from the data
-   - Holes and truncation are currently not supported
-   - Starts with refcount of 2
-       - Tx that drops refcount to 1 also creates a DeleteFile task
-
-   
-Caching:
-   - DirectoryLoader & FileLoader can cache Directory & File instances
-      - These hold cached Futures to the content TieredLists
-      - Inodes are always re-read on demand
-   - For refreshing TieredList
-      - Update every 30 seconds?
-      - Track update count and refresh root when > threshold?
-      - Better would be to add a callback to TieredList
-         - Even better would be to build refresh-needed detection into TieredList
-             - Mixin trait?
-         
-
-Creating File/Directories:
-   * Directory instance makes for an ideal interface
-      - create/mknod is given the parent directory inode
-      - All we need to do is:
-          - create the hosting inode instance w/ appropriate content
-          - Insert get InodeNumer/InsertIntoInodeTable
-          - Insert into Directory tree
-      - This can be a SteppedTask
-          - 
-
-Future Extensions:
+  Future Extensions:
 
    * Simultaneously Supporting Multiple File Implementations:
-
 	  - Configuring a directory could be as easy as setting extended attributes
 	        cumulofs.alloc-pool=PoolUUID
 	        cumulofs.file-segment-size=4096
 	      
 	  - At write/allocation, lookup parent directories until a valid entry is found
 
-
-
-FUSE
-
-* Implement ls -l on root directory
-   * load directory instance
-   * opendir support -> returns OpenDir
-   * readdir support
-      - internal fileHandle (incr by 1 for each entry read & maintain copy of last key to resume from)
-      - if read request on open dir does not resume from previous file descriptor location,
-        drop cached location. Count entries from beginning and resume from that location.
-        
-* FUSE_CREATE is used to create missing files/dirs unless it returns ENOSYS. Then mknod + open are used
-  mknod
-   name of the file trails the header
-   the rdev param is a dev_t and is set only if the mode indicates a device file
-     |-> From the filesystem layer, we should be able to ignore the format of the content. Just store 
-         and send back when asked
-
-  
-** First file impl should read all file pointers as well.
-  - Maybe make the management of file pointers a Mixin trait for OpenDirectory/OpenFile?
-
-caching
-  write-through: (aka DirectIO) Data -> cache -> device then return
-  write-around: Data -> device then return
-  write-back: Data -> mem. Return. Background -> device
-  
-  * Even with write-back, files can be opened w/ DirectIO
+  caching
+    write-through: (aka DirectIO) Data -> cache -> device then return
+    write-around: Data -> device then return
+    write-back: Data -> mem. Return. Background -> device
+      * Even with write-back, files can be opened w/ DirectIO
 
 ----------------------------------
 
@@ -97,11 +38,6 @@ caching
 ----------------------------------
 
 ----------------------------------------------------------
-
-** Consider sfuse integration here.
-   * Could run program in Debug mode and mount from VM
-   * Would require ScalaIDE within VM
-      -- Probably worth it. Just run VM full-screen on another window and swipe between
 
 * JeroMQ networking (as simple as possible)
 
@@ -127,15 +63,7 @@ caching
    
 ** For single KV store per media device, prefix the key with a unique store prefix
    - 2 bytes is probably sufficient (16k stores per device)
-   
-   
-** Need some kind of solution for AllocationStrategies (how choose pool to allocate from?)
-   
-** Transaction unit tests are *really* light. 
-   
-** Currently have no good way to tell a client _why_ their transaction failed. All client gets is Accepted & Finalized messages
-   - There really *isn't* a reliable solution to this problem. If a tx fails, the client's best option is to investigate
-     the current state of the remote object by re-reading it.
+   - Rocks/LevelDB, allows rapid dump of per-store data
       
 ** DataStore Transfers
    - Shut down store
@@ -146,11 +74,12 @@ caching
    
 ** Live DataStore Transfers
    * Put store in Read-Only mode
-   * Instantaneously transfer ownership to new host
+   * Original store sends CRL state to new store
    * Host forwards reads to old node while state transfer is in progress
-   * Use the RAM-Only DataStore backend to maintain a durable in-mem copy of all modified objects while StoreTransfer is in progress
-   * Load new DataStore
-   * Begin process of write cached object to new store + delete from in-mem db
+   * Use temporary DataStore (rocks?) to maintain all written objects while transfer is in progress
+       - Keep in-mem copy of all written UUIDs to avoid having to search two backends for each read
+   * Transfer previous entries to new store
+   * Overwrite and previous entries with newly-written entries & remove from temporary store
    * When all objects are removed, transfer is complete
 
 ** RAM-Only DataStore
