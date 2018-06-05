@@ -381,8 +381,11 @@ table Message {
   accept_response: TxAcceptResponse;
   resolved: TxResolved;
   finalized: TxFinalized;
+  heartbeat: TxHeartbeat;
   allocate: Allocate;
   allocate_response: AllocateResponse;
+  allocateStatus: AllocationStatusRequest;
+  allocateStatusResponse: AllocationStatusReply;
   read: Read;
   read_response: ReadResponse;
 }

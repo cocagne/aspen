@@ -14,8 +14,8 @@ import com.ibm.aspen.core.HLCTimestamp
 
 sealed abstract class Message
 
-abstract class ClientMessage extends Message
-abstract class StoreMessage extends Message
+abstract sealed class ClientMessage extends Message
+abstract sealed class StoreMessage extends Message
 
 final case class Allocate(
     toStore: DataStoreID,
