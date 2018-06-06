@@ -4,7 +4,7 @@ import java.util.UUID
 
 object YamlFormat {
   
-  class FormatError(msg: String) extends Exception
+  class FormatError(val msg: String) extends Exception(msg)
   
   trait Format[T] {
     def format(o: Object): T
@@ -54,9 +54,20 @@ object YamlFormat {
     
     override def format(o: Object): List[T] = o match {
       case v: java.util.List[_] =>
-        import collection.JavaConversions._
+        val jl = v.asInstanceOf[java.util.List[Object]]
         
-        v.asInstanceOf[List[Object]].map( e => elementFormat.format(e) )
+        import collection.JavaConverters._
+        var index = 1
+        
+        jl.asScala.map { o =>
+          try {
+            val t = elementFormat.format(o)
+            index += 1
+            t
+          } catch {
+            case e: FormatError => throw new FormatError(s"list element $index => ${e.msg}")
+          }
+        }.toList
 
       case _ => throw new FormatError(s"List Required")
     }
@@ -78,7 +89,7 @@ object YamlFormat {
         try {
           formatter.format(e.asInstanceOf[Object])
         } catch {
-          case e: FormatError => throw new FormatError(s"$name => $e")
+          case e: FormatError => throw new FormatError(s"$name => ${e.msg}")
         }
       case _ => throw new FormatError(s"Object Required")
     }
@@ -96,7 +107,7 @@ object YamlFormat {
           try {
             Some(formatter.format(e.asInstanceOf[Object]))
           } catch {
-            case e: FormatError => throw new FormatError(s"$name => $e")
+            case e: FormatError => throw new FormatError(s"$name => ${e.msg}")
           }
         }
       case _ => throw new FormatError(s"Object Required")
@@ -162,17 +173,5 @@ object YamlFormat {
       case _ => throw new FormatError(s"Object Required")
     }
   }
-  
-  object Foo {
-    val f = YList(YInt)
-    object Foomat extends YObject[Foomat] {
-      val num = Required("num", YInt)
-      val name = Optional("name", YString)
-      
-      val attrs = num :: name :: Nil
-      
-      def create(o: Object): Foomat = Foomat(num.get(o), name.get(o))
-    }
-    case class Foomat(num: Int, name: Option[String])
-  }
+
 }

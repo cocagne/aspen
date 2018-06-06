@@ -36,6 +36,7 @@ lazy val root = (project in file(".")).
       "net.java.dev.jna"    %  "jna"            % "4.5.0",
       "net.java.dev.jna"    %  "jna-platform"   % "4.5.0",
       "org.yaml"            %  "snakeyaml"      % "1.21",
+      "com.github.scopt"    %% "scopt"          % "3.7.0",
     )
   )
   
@@ -73,10 +74,11 @@ sourceGenerators in Compile += Def.task {
   net_out_dir.listFiles().toSeq ++ abase_out_dir.listFiles().toSeq 
 }.taskValue
 
-
 EclipseKeys.withSource := true
 EclipseKeys.withJavadoc := true
 EclipseKeys.executionEnvironment := Some(EclipseExecutionEnvironment.JavaSE18)
 EclipseKeys.createSrc := EclipseCreateSrc.Default + EclipseCreateSrc.ManagedSrc
 
+enablePlugins(PackPlugin)
+packMain := Map("demo" -> "com.ibm.aspen.demo.Main")
 

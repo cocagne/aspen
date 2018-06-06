@@ -4,6 +4,13 @@ import com.ibm.aspen.demo.YamlFormat._
 import java.util.UUID
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.ida.Replication
+import java.io.File
+import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.constructor.SafeConstructor
+import java.io.FileInputStream
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.base.impl.Bootstrap
 
 /* 
  pools:
@@ -65,7 +72,7 @@ object ConfigFile {
     val name = Required("name", YString)
     val pool = Required("pool", YString)
     val uuid = Required("uuid", YUUID)
-    val ida  = Choice("ida", Map(("replication" -> ReplicationFormat)))
+    val ida  = Required("ida",  Choice("type", Map(("replication" -> ReplicationFormat))))
     
     val attrs = name :: pool :: uuid :: ida :: Nil
     
@@ -86,9 +93,9 @@ object ConfigFile {
   case class DataStore(pool: String, store: Int, backend: StorageBackend)
   
   object DataStore extends YObject[DataStore] {
-    val pool    = Required("pool", YString)
-    val store   = Required("store", YInt)
-    val backend = Choice("backend", Map(("rocksdb" -> RocksDB)))
+    val pool    = Required("pool",     YString)
+    val store   = Required("store",    YInt)
+    val backend = Required("backend", Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
     
     val attrs = pool :: store :: backend :: Nil
     
@@ -98,20 +105,72 @@ object ConfigFile {
   case class StorageNode(name: String, uuid: UUID, endpoint: String, crl: StorageBackend, stores: List[DataStore])
   
   object StorageNode extends YObject[StorageNode] {
-    val name     = Required("name", YString)
-    val uuid     = Required("uuid", YUUID)
+    val name     = Required("name",     YString)
+    val uuid     = Required("uuid",     YUUID)
     val endpoint = Required("endpoint", YString)
-    val crl      = Choice("backend", Map(("rocksdb" -> RocksDB)))
-    val stores   = Required("stores", YList(DataStore))
+    val crl      = Required("crl",      Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
+    val stores   = Required("stores",   YList(DataStore))
     
     val attrs = name :: uuid :: endpoint :: crl :: stores :: Nil
     
     def create(o: Object): StorageNode = StorageNode(name.get(o), uuid.get(o), endpoint.get(o), crl.get(o), stores.get(o))
   }
   
-  case class Config(pools: Map[String, Pool], allocaters: Map[String, ObjectAllocater], nodes: Map[String, StorageNode]) {
+  object YStorePointer  extends YObject[StorePointer] {
+    val poolIndex = Required("pool-index", YInt)
+    val data      = Optional("data",       YString)
+    
+    val attrs = poolIndex :: data :: Nil
+    
+    def create(o: Object): StorePointer = {
+      val idx = poolIndex.get(o).asInstanceOf[Byte]
+      val arr = data.get(o) match {
+        case None => new Array[Byte](0)
+        case Some(s) => java.util.Base64.getDecoder.decode(s)
+      }
+      new StorePointer(idx, arr)
+    }
+  }
+  
+  object RadiclePointer extends YObject[KeyValueObjectPointer] {
+    val uuid          = Required("uuid",           YUUID)
+    val poolUUID      = Required("pool-uuid",      YUUID)
+    val size          = Optional("size",           YInt)
+    val ida           = Required("ida",            Choice("type", Map(("replication" -> ReplicationFormat))))
+    val storePointers = Required("store-pointers", YList(YStorePointer))
+    
+    val attrs = uuid :: poolUUID :: size :: ida :: storePointers :: Nil
+    
+    def create(o: Object): KeyValueObjectPointer = KeyValueObjectPointer(uuid.get(o), poolUUID.get(o), size.get(o), ida.get(o), storePointers.get(o).toArray)
+  }
+  
+  case class Config(pools: Map[String, Pool], allocaters: Map[String, ObjectAllocater], nodes: Map[String, StorageNode], oradicle: Option[KeyValueObjectPointer]) {
     // Validate config
     {
+      allocaters.values.foreach { a =>
+        if (!pools.contains(a.pool))
+          throw new FormatError(s"Object Allocater ${a.name} references unknown pool ${a.pool}")
+      }
+      
+      if (!allocaters.contains("bootstrap-allocater"))
+        throw new FormatError("Missing Required Object Allocater: 'bootstrap-allocater'")
+      
+      if (!pools.contains("bootstrap-pool"))
+        throw new FormatError("Missing Required Pool: 'bootstrap-pool'")
+      
+      if (!(pools("bootstrap-pool").uuid.getMostSignificantBits == 0 && pools("bootstrap-pool").uuid.getLeastSignificantBits == 0))
+        throw new FormatError("bootstrap-pool must use a zeroed UUID")
+      
+      if (allocaters("bootstrap-allocater").pool != "bootstrap-pool")
+        throw new FormatError("bootstrap-allocater must use the bootstrap-pool")
+      
+      nodes.values.foreach { n =>
+        n.stores.foreach { s =>
+          if (!pools.contains(s.pool))
+            throw new FormatError(s"Storage Node ${n.name} references unknown pool ${s.pool}")
+        }
+      }
+      
       val allStores = pools.values.foldLeft(Set[String]()) { (s, p) =>
         (0 until p.width).foldLeft(s)( (s, i) => s + s"${p.name}:$i" )
       }
@@ -135,19 +194,25 @@ object ConfigFile {
   }
   
   object Config extends YObject[Config] {
-    val pools = Required("pools", YList(Pool))
+    val pools      = Required("pools",             YList(Pool))
     val allocaters = Required("object-allocaters", YList(ObjectAllocater))
-    val nodes = Required("storage-nodes", YList(StorageNode))
+    val nodes      = Required("storage-nodes",     YList(StorageNode))
+    val radicle    = Optional("radicle",           RadiclePointer)
     
-    val attrs = pools :: allocaters :: nodes :: Nil
+    val attrs = pools :: allocaters :: nodes :: radicle :: Nil
     
     def create(o: Object): Config = {
       Config( 
           pools.get(o).map(p => (p.name -> p)).toMap, 
           allocaters.get(o).map(p => (p.name -> p)).toMap, 
-          nodes.get(o).map(p => (p.name -> p)).toMap)
+          nodes.get(o).map(p => (p.name -> p)).toMap,
+          radicle.get(o))
     }
   }
   
-  
+  def loadConfig(file: File): Config = {
+    val yaml = new Yaml(new SafeConstructor)
+    val y = yaml.load[java.util.AbstractMap[Object,Object]](new FileInputStream(file))
+    Config.create(y)
+  }
 }

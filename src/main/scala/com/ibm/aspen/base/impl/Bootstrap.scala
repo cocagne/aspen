@@ -104,8 +104,7 @@ object Bootstrap {
         val (store, storeIndex) = t
         store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
       }}
-      
-      Future.sequence(falloc) map { _ => 
+      Future.sequence(falloc) map { _ =>
           new KeyValueObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
       }
     }
