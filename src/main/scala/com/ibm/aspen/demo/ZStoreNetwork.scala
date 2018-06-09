@@ -58,6 +58,7 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   val ctx = new ZContext()
   
   val rtr = ctx.createSocket(ZMQ.ROUTER)
+  rtr.setIdentity(com.ibm.aspen.util.uuid2byte(config.nodes(nodeName).uuid))
   rtr.bind(routerEndpoint)
   
   val dealers = config.nodes.foldLeft(Map[DataStoreID, Socket]()) { (m, n) =>
@@ -69,16 +70,23 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   }
   
   val receiverThread = new Thread {
+    setDaemon(true)
+    
     override def run(): Unit = {
-      setDaemon(true)
       
       while (true) {
         val msg = ZMsg.recvMsg(rtr)
+        
         if (msg != null) {
           
-          val p = Message.getRootAsMessage(ByteBuffer.wrap(msg.pop().getData()))
+          msg.pop() // discard from address
+          
+          val msgData = msg.pop().getData()
+          
+          val p = Message.getRootAsMessage(ByteBuffer.wrap(msgData))
         
           if (p.prepare() != null) {
+            println("got prepare")
             val message = NetworkCodec.decode(p.prepare())
 
             val updateContent = msg.pop() match {
@@ -106,14 +114,17 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
             t.foreach(receiver => receiver.receive(message, updateContent))
           } 
           else if (p.prepareResponse() != null) {
+            println("got prepareResponse")
             val message = NetworkCodec.decode(p.prepareResponse())
             t.foreach(receiver => receiver.receive(message, None))
           }
           else if (p.accept() != null) {
+            println("got accept")
             val message = NetworkCodec.decode(p.accept())
             t.foreach(receiver => receiver.receive(message, None))
           }
           else if (p.acceptResponse() != null) {
+            println("got acceptResponse")
             val message = NetworkCodec.decode(p.acceptResponse())
             t.foreach(receiver => receiver.receive(message, None))
           }
@@ -130,6 +141,7 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
             t.foreach(receiver => receiver.receive(message, None))
           }
           else if (p.allocate() != null) {
+            println(s"got allocate request. Receiver: $a")
             val message = NetworkCodec.decode(p.allocate())
             a.foreach(receiver => receiver.receive(message))
           }
@@ -144,6 +156,9 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
           else if (p.read() != null) {
             val message = NetworkCodec.decode(p.read())
             r.foreach(receiver => receiver.receive(message))
+          }
+          else {
+            println("Unknown Message!")
           }
         }
         msg.destroy()

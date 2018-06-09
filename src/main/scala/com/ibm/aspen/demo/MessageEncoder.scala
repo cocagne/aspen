@@ -34,6 +34,14 @@ object MessageEncoder {
   
   def encodePrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]]): ZMsg = {
     val zmsg = encodeMessage(None, message)
+    
+    {
+      val msgData = zmsg.getFirst.getData
+      val p = Message.getRootAsMessage(ByteBuffer.wrap(msgData))
+        
+      println(s"Decode test: p.prepare() != null ${p.prepare() != null}")
+    }
+    
     updateContent.foreach { l =>
       val sz = l.foldLeft(0)((sz, lu) => sz + 16 + 4 + lu.data.size)
       if (sz > 0) {
@@ -45,7 +53,8 @@ object MessageEncoder {
           bb.putInt(lu.data.size)
           bb.put(lu.data.asReadOnlyBuffer())
         }
-        zmsg.add(arr)
+        println(s"Data Length: ${arr.length}")
+        zmsg.addLast(arr)
       }
     }
     zmsg
@@ -62,11 +71,11 @@ object MessageEncoder {
         val o = NetworkCodec.encode(builder, m)
     
         Message.startMessage(builder)
-        Message.addReadResponse(builder, o)
+        Message.addPrepare(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
 
       case m: TxPrepareResponse =>
         val o = NetworkCodec.encode(builder, m)
@@ -74,9 +83,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addPrepareResponse(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: TxAccept =>
         val o = NetworkCodec.encode(builder, m)
@@ -84,9 +93,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAccept(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: TxAcceptResponse =>
         val o = NetworkCodec.encode(builder, m)
@@ -94,9 +103,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAcceptResponse(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: TxResolved =>
         val o = NetworkCodec.encode(builder, m)
@@ -104,9 +113,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addResolved(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: TxFinalized =>
         val o = NetworkCodec.encode(builder, m)
@@ -114,9 +123,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addFinalized(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: TxHeartbeat =>
         val o = NetworkCodec.encode(builder, m)
@@ -124,9 +133,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addHeartbeat(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
     }
     
     zmsg
@@ -145,9 +154,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAllocate(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: AllocateResponse =>
         val o = NetworkCodec.encode(builder, m)
@@ -155,9 +164,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAllocateResponse(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: AllocationStatusRequest =>
         val o = NetworkCodec.encode(builder, m)
@@ -165,9 +174,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAllocateStatus(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: AllocationStatusReply =>
         val o = NetworkCodec.encode(builder, m)
@@ -175,9 +184,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addAllocateStatusResponse(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
     }
     
     zmsg
@@ -196,9 +205,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addRead(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
         
       case m: ReadResponse =>
         val o = NetworkCodec.encode(builder, m)
@@ -206,9 +215,9 @@ object MessageEncoder {
         Message.startMessage(builder)
         Message.addReadResponse(builder, o)
 
-        builder.finish(Message.endMessage(builder))
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
-        zmsg.add(builder.dataBuffer().array())
+        zmsg.add(builder.sizedByteArray())
     }
     
     zmsg

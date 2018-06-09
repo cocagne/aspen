@@ -42,6 +42,8 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
   
   val rtr = ctx.createSocket(ZMQ.ROUTER)
   
+  rtr.setIdentity(com.ibm.aspen.util.uuid2byte(clientId.uuid))
+  
   val storeHosts = config.nodes.foldLeft(Map[DataStoreID, Array[Byte]]()) { (m, n) =>
     val addr = uuid2byte(n._2.uuid)
     rtr.connect(n._2.endpoint)
@@ -51,11 +53,14 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
   }
   
   val receiverThread = new Thread {
+    setDaemon(true)
+    
     override def run(): Unit = {
-      setDaemon(true)
       
       while (true) {
         val msg = ZMsg.recvMsg(rtr)
+        
+        msg.pop() // discard from address
         
         if (msg != null) {
           

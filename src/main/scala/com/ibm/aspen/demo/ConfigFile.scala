@@ -144,6 +144,8 @@ object ConfigFile {
     def create(o: Object): KeyValueObjectPointer = KeyValueObjectPointer(uuid.get(o), poolUUID.get(o), size.get(o), ida.get(o), storePointers.get(o).toArray)
   }
   
+  def zeroeduuid(uuid: UUID): Boolean = uuid.getMostSignificantBits == 0 && uuid.getLeastSignificantBits == 0
+  
   case class Config(pools: Map[String, Pool], allocaters: Map[String, ObjectAllocater], nodes: Map[String, StorageNode], oradicle: Option[KeyValueObjectPointer]) {
     // Validate config
     {
@@ -158,11 +160,14 @@ object ConfigFile {
       if (!pools.contains("bootstrap-pool"))
         throw new FormatError("Missing Required Pool: 'bootstrap-pool'")
       
-      if (!(pools("bootstrap-pool").uuid.getMostSignificantBits == 0 && pools("bootstrap-pool").uuid.getLeastSignificantBits == 0))
+      if (!zeroeduuid(pools("bootstrap-pool").uuid))
         throw new FormatError("bootstrap-pool must use a zeroed UUID")
       
       if (allocaters("bootstrap-allocater").pool != "bootstrap-pool")
         throw new FormatError("bootstrap-allocater must use the bootstrap-pool")
+      
+      if (!zeroeduuid(allocaters("bootstrap-allocater").uuid))
+        throw new FormatError("bootstrap-allocater must use a zeroed UUID")
       
       nodes.values.foreach { n =>
         n.stores.foreach { s =>
@@ -186,7 +191,7 @@ object ConfigFile {
       val uuids = pools.values.map(p => p.uuid) ++ allocaters.values.map(a => a.uuid) ++ nodes.values.map(n => n.uuid)
       
       uuids.foldLeft(Set[UUID]()) { (s, u) =>
-        if (s.contains(u))
+        if (s.contains(u) && !zeroeduuid(u))
           throw new FormatError(s"Duplicated UUID: $u")
         s + u
       }

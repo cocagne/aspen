@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.base.Transaction
 
 /* Move this to aspen.core.keyvalue package
  *    Create KeyValueNodeOperation class hierarchy there
@@ -118,6 +119,10 @@ object KeyValueOperation {
   
   def insertOperations(content: List[(Key, Array[Byte])], ts: HLCTimestamp): List[Insert] = {
     content.map(t => Insert(t._1, t._2, ts))
+  }
+  
+  def insertOperations(content: List[(Key, Array[Byte])])(implicit tx: Transaction): List[Insert] = {
+    content.map(t => Insert(t._1, t._2, tx.timestamp()))
   }
   
   def opsToArray(ops: List[KeyValueOperation]): Array[Byte] = {

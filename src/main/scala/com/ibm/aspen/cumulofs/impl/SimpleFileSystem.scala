@@ -45,17 +45,17 @@ object SimpleFileSystem {
           case Some(v) => system.readObject(KeyValueObjectPointer(v.value)) flatMap { kvos => LocalTaskGroup.createExecutor(system, kvos) }
           
           case None => 
+            
             val ffgroup = system.transact { implicit tx =>
             
               val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
               
               for {
                 node <- t.fetchMutableNode(taskGroupKey)
-                
+            
                 (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(system, node.kvos.pointer, node.kvos.revision, allocaterUUID)
-                
+            
                 ready <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
-
               } yield fgroup
             }
             

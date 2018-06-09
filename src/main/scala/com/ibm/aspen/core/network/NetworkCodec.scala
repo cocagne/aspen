@@ -678,8 +678,7 @@ object NetworkCodec {
     val transactionUUID = decode(n.transactionUuid())
     val response = n.responseType() match {
       case P.TxPrepareResponseType.Promise =>
-        val lastAcceptedId = decode(n.lastAcceptedId())
-        val opt = if (lastAcceptedId == null) None else Some((lastAcceptedId, n.lastAcceptedValue()))
+        val opt = if (n.lastAcceptedId() == null) None else Some((decode(n.lastAcceptedId()), n.lastAcceptedValue()))
         Right(TxPrepareResponse.Promise(opt))
       case P.TxPrepareResponseType.Nack => Left(TxPrepareResponse.Nack(decode(n.promisedId())))
     }
