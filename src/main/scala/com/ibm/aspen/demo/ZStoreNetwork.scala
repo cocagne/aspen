@@ -79,11 +79,18 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
         
         if (msg != null) {
           
+          var frames: List[Int] = Nil
+          val i = msg.iterator()
+          while (i.hasNext()) {
+            val frame = i.next()
+            frames = frame.getData.length :: frames
+          }
+          
           msg.pop() // discard from address
           
-          val msgData = msg.pop().getData()
-          
-          val p = Message.getRootAsMessage(ByteBuffer.wrap(msgData))
+          val msgbb = ByteBuffer.wrap(msg.pop().getData())
+          println(s"Received message with frame sizes: ${frames.reverse}. Frame count: ${frames.size}")
+          val p = Message.getRootAsMessage(msgbb)
         
           if (p.prepare() != null) {
             println("got prepare")
@@ -95,6 +102,7 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
                 var localUpdates: List[LocalUpdate] = Nil
                 val bb = ByteBuffer.wrap(zframe.getData)
                 
+                println(s"   Prepare data length: ${bb.remaining()}")
                 // local update content is a series of <16-byte-uuid><4-byte-length><data>
                 
                 while (bb.remaining() != 0) {

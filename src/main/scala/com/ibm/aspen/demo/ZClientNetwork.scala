@@ -98,20 +98,33 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
   def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
   def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
   
-  def send(toStore: DataStoreID, message: Allocate): Unit = {
+  def psend(kind: String, zmsg: ZMsg): Unit = {
+    var frames: List[Int] = Nil
+    val i = zmsg.iterator()
+    while (i.hasNext()) {
+      val frame = i.next()
+      frames = frame.getData.length :: frames
+    }
+    println(s"Sending $kind message with frame sizes: ${frames.reverse}. Frame count: ${frames.size}")
+  }
+  
+  def send(toStore: DataStoreID, message: Allocate): Unit = synchronized {
     val zmsg = encodeMessage(None, message)
     zmsg.addFirst(storeHosts(message.toStore))
+    psend("allocate", zmsg)
     zmsg.send(rtr)
   }
   
-  def send(toStore: DataStoreID, message: Read): Unit  = {
+  def send(toStore: DataStoreID, message: Read): Unit  = synchronized {
     val zmsg = encodeMessage(None, message)
     zmsg.addFirst(storeHosts(message.toStore))
+    psend("read", zmsg)
     zmsg.send(rtr)
   }
   
-  def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = {
+  def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = synchronized {
     val zmsg = encodePrepare(message, Some(updateContent))
+    psend("prepare", zmsg)
     zmsg.addFirst(storeHosts(message.to))
     zmsg.send(rtr)
   }

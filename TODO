@@ -2,6 +2,20 @@
 # run "sbt pack"
 # then invoke ./target/pack/bin/demo
 
+Basic Error Handling
+  * Reads
+  * Transaction
+  * Store online/offline
+      * Choose Leader
+      - Super simple. Each node actively heartbeats every 2 sec. "offline" if 3 polling periods are missed
+  * retry strategy
+  * object allocaters
+  
+  * Object Update Error recovery/logging
+  * Failed store rebuild
+  * Allocation driver?
+
+
 Demo
   * Client UUIDs can be randomly generated and don't need to persist
   * Clients will connect to all hosts and messages are only sent in response to client-initiate actions

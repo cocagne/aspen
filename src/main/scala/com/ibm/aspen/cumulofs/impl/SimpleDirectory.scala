@@ -59,7 +59,9 @@ class SimpleDirectory(
   }
   
   private[this] def loadTieredList(inode: DirectoryInode)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = inode.contentTree match {
-    case Some(root) => Future.successful(createTieredList(root))
+    case Some(root) =>
+      Future.successful(createTieredList(root))
+      
     case None => fs.system.retryStrategy.retryUntilSuccessful {
       for {
         // Ensure we have an up-to-date copy of the inode state. This is necessary for retries where some other node may

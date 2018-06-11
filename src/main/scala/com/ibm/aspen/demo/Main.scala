@@ -45,6 +45,7 @@ import com.ibm.aspen.base.impl.BaseTransactionFinalizer
 import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.core.transaction.TransactionDriver
+import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
 
 object Main {
   
@@ -158,7 +159,7 @@ object Main {
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
         isStorageNodeOnline = (_:StorageNodeID) => true,
         net = zcliNet,
-        defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,
@@ -231,7 +232,7 @@ object Main {
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
         isStorageNodeOnline = (_:StorageNodeID) => true,
         net = zcliNet,
-        defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,

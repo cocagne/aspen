@@ -34,14 +34,8 @@ object MessageEncoder {
   
   def encodePrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]]): ZMsg = {
     val zmsg = encodeMessage(None, message)
-    
-    {
-      val msgData = zmsg.getFirst.getData
-      val p = Message.getRootAsMessage(ByteBuffer.wrap(msgData))
-        
-      println(s"Decode test: p.prepare() != null ${p.prepare() != null}")
-    }
-    
+    val prepLen = zmsg.getFirst.getData.length
+    var dataLen = 0
     updateContent.foreach { l =>
       val sz = l.foldLeft(0)((sz, lu) => sz + 16 + 4 + lu.data.size)
       if (sz > 0) {
@@ -53,10 +47,11 @@ object MessageEncoder {
           bb.putInt(lu.data.size)
           bb.put(lu.data.asReadOnlyBuffer())
         }
-        println(s"Data Length: ${arr.length}")
+        dataLen = arr.length
         zmsg.addLast(arr)
       }
     }
+    println(s"Encoded Prepare - prep: $prepLen  data: $dataLen")
     zmsg
   }
   
