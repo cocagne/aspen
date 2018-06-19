@@ -36,8 +36,12 @@ object LocalTaskGroup extends TaskGroupType {
     val taskPointer: DurableTaskPointer
   }
   
-  case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask
-  case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask
+  case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask {
+    println(s"Created IDLE task with state object ${taskPointer.kvPointer.uuid} revision ${revision}")
+  }
+  case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask {
+    println(s"Created ACTIVE task with state object ${taskPointer.kvPointer.uuid} type ${task.getClass.getTypeName}")
+  }
   
   /** Allocates a new task group within the context of a transaction. The outter Future completes when the transaction
    *  is ready to be committed.
@@ -120,7 +124,9 @@ object LocalTaskGroup extends TaskGroupType {
           IdleTask(taskNumber, DurableTaskPointer(pointer), taskState.revision)
         else {
           system.typeRegistry.getTypeFactory[DurableTaskType](taskType) match {
-            case None => throw new Exception("Unknown Task Type") // TODO need a better error handling strategy here
+            case None =>
+              println(s"UNKNOWN TASK TYPE: $taskType")
+              throw new Exception("Unknown Task Type") // TODO need a better error handling strategy here
             case Some(ttype) => 
               val task = ttype.createTask(system, DurableTaskPointer(taskState.pointer), taskState.revision, taskState.contents) 
               ActiveTask(taskNumber, DurableTaskPointer(taskState.pointer), task) 

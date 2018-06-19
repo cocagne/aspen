@@ -28,18 +28,20 @@ object RocksDBCrashRecoveryLog {
   val AllocKeyOffset: Byte = 2
   
   // Key = XOR of poolUUID & transactionUUID with the first byte set to the poolIndex and the last to the key offset
-  private def getKey(storeId: DataStoreID, transactionUUID: UUID, offset:Byte): Array[Byte] = {
+  private def getKey(storeId: DataStoreID, transactionUUID: UUID, oobjectUUID: Option[UUID], offset:Byte): Array[Byte] = {
     val bb = ByteBuffer.allocate(16)
-    bb.putLong(0, transactionUUID.getMostSignificantBits ^ storeId.poolUUID.getMostSignificantBits)
-    bb.putLong(8, transactionUUID.getLeastSignificantBits ^ storeId.poolUUID.getLeastSignificantBits)
+    val omsb = oobjectUUID.map(uuid => uuid.getMostSignificantBits).getOrElse(0L)
+    val olsb = oobjectUUID.map(uuid => uuid.getLeastSignificantBits).getOrElse(0L)
+    bb.putLong(0, transactionUUID.getMostSignificantBits ^ storeId.poolUUID.getMostSignificantBits ^ omsb)
+    bb.putLong(8, transactionUUID.getLeastSignificantBits ^ storeId.poolUUID.getLeastSignificantBits ^ olsb)
     bb.put(0, storeId.poolIndex)
     bb.put(15, offset)
     bb.array()
   }
   
-  private def getDataKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, TxDataKeyOffset)
-  private def getStateKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, TxStateKeyOffset)
-  private def getAllocKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, AllocKeyOffset)
+  private def getDataKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, None, TxDataKeyOffset)
+  private def getStateKey(storeId: DataStoreID, transactionUUID: UUID) = getKey(storeId, transactionUUID, None, TxStateKeyOffset)
+  private def getAllocKey(storeId: DataStoreID, transactionUUID: UUID, objectUUID: UUID) = getKey(storeId, transactionUUID, Some(objectUUID), AllocKeyOffset)
   
   private def isDataKey(key: Array[Byte]) = key(15) == TxDataKeyOffset
   private def isStateKey(key: Array[Byte]) = key(15) == TxStateKeyOffset
@@ -51,7 +53,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   private [this] var shuttingDown: Option[Future[Unit]] = None
   private [this] var pendingSaves = Set[Future[Unit]]()
   private [this] var pendingTransactions = Map[UUID,TransactionRecoveryState]()
-  private [this] var pendingAllocations = Map[UUID,AllocationRecoveryState]()
+  private [this] var pendingAllocations = Map[UUID,List[AllocationRecoveryState]]()
   
   import RocksDBCrashRecoveryLog._
   
@@ -74,7 +76,8 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     
       if (isAllocKey(key)) {
         val ars = CRLCodec.allocationFromByteArray(value)
-        pendingAllocations += (ars.allocationTransactionUUID -> ars)
+        val lst = ars :: pendingAllocations.getOrElse(ars.allocationTransactionUUID, Nil)
+        pendingAllocations += (ars.allocationTransactionUUID -> lst)
       }
       else if(isDataKey(key)) {
         txData = txData + (keyToUUID(key) -> CRLCodec.transactionDataFromByteArray(value))
@@ -93,7 +96,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
         }
       }
       
-      (pendingTransactions.values.toList, pendingAllocations.values.toList)
+      (pendingTransactions.values.toList, pendingAllocations.values.toList.flatten)
     }
   }
   
@@ -116,19 +119,22 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   
   def getFullAllocationRecoveryState(): Map[DataStoreID, List[AllocationRecoveryState]] = synchronized {
     var m = Map[DataStoreID, List[AllocationRecoveryState]]()
-    pendingAllocations.valuesIterator.foreach(ars => m.get(ars.storeId) match {
-      case None => m += (ars.storeId -> List(ars))
-      case Some(l) =>
-        val newList = ars:: l
-        m += (ars.storeId -> newList)
-    })
+    pendingAllocations.valuesIterator.foreach { lars => lars.foreach { ars => 
+      m.get(ars.storeId) match {
+        case None => m += (ars.storeId -> List(ars))
+        case Some(l) =>
+          val newList = ars:: l
+          m += (ars.storeId -> newList)
+      }
+    }}
+    
     m
   }
   
   def getAllocationRecoveryStateForStore(storeId: DataStoreID): List[AllocationRecoveryState] = {
     // Get a snapshot of the mutable dictionary and iterate over that to minimize the lock duration
     val pa = synchronized { pendingAllocations }
-    pa.foldLeft(List[AllocationRecoveryState]())( (l, t) => if (t._2.storeId == storeId) t._2 :: l else l )
+    pa.values.flatten.filter(ars => ars.storeId == storeId).toList
   }
   
   def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = {
@@ -191,12 +197,12 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit] = {
     val value = CRLCodec.toAllocationByteArray(state)
     synchronized {
-      db.put(getAllocKey(state.storeId, state.allocationTransactionUUID), value)
+      db.put(getAllocKey(state.storeId, state.allocationTransactionUUID, state.newObjectUUID), value)
     }
   }
   
-  def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = synchronized { 
-    db.delete(getAllocKey(storeId, allocationTransactionUUID))
+  def discardAllocationState(state: AllocationRecoveryState): Unit = synchronized { 
+    db.delete(getAllocKey(state.storeId, state.allocationTransactionUUID, state.newObjectUUID))
   }
   
   def close(): Future[Unit] = synchronized {

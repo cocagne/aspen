@@ -122,11 +122,21 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
     ll
   }
   
-  def commitMetadata(): Future[Unit] = loader.backend.putObjectMetaData(objectId, ObjectMetadata(revision, refcount, timestamp))
+  def keepUntilDone(fn: => Future[Unit]): Future[Unit] = {
+    val keepUntilCommitComplete = UUID.randomUUID()
+    beginOperation(keepUntilCommitComplete)
+    val f = fn
+    f onComplete {
+      case _ => completeOperation(keepUntilCommitComplete)
+    }
+    f
+  }
   
-  def commitData(): Future[Unit] = loader.backend.putObjectData(objectId, data)
+  def commitMetadata(): Future[Unit] = keepUntilDone(loader.backend.putObjectMetaData(objectId, ObjectMetadata(revision, refcount, timestamp)))
   
-  def commitBoth(): Future[Unit] = loader.backend.putObject(objectId, ObjectMetadata(revision, refcount, timestamp), data)
+  def commitData(): Future[Unit] = keepUntilDone(loader.backend.putObjectData(objectId, data))
+  
+  def commitBoth(): Future[Unit] = keepUntilDone(loader.backend.putObject(objectId, ObjectMetadata(revision, refcount, timestamp), data))
   
   def loadMetadata(): Future[Either[ObjectReadError, MutableObject]] = fmeta match {
     case Some(f) => f

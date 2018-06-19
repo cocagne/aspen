@@ -14,7 +14,7 @@ object ByteArrayKeyOrdering extends KeyOrdering {
     if (b.bytes.length == 0 && a.bytes.length != 0) return 1
     
     for (i <- 0 until a.bytes.length) {
-      if (i > b.bytes.length) return 1 // a is longer than b and all preceeding bytes are equal
+      if (i > b.bytes.length-1) return 1 // a is longer than b and all preceeding bytes are equal
       if (a.bytes(i) < b.bytes(i)) return -1 // a is less than b
       if (a.bytes(i) > b.bytes(i)) return 1  // a is greater than b
     }

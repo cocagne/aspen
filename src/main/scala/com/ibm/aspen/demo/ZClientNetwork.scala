@@ -20,6 +20,11 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.NetworkCodec
 import org.zeromq.ZMsg
 import com.ibm.aspen.core.network.protocol.Message
+import org.zeromq.ZLoop
+import org.zeromq.ZMQ.PollItem
+import org.zeromq.ZMQ.Socket
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.LinkedBlockingQueue
 
 class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config) extends ClientSideNetwork 
     with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler {
@@ -38,65 +43,92 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
   def a = synchronized { oa }
   def t = synchronized { ot }
   
+  val sendQueue = new LinkedBlockingQueue[ () => Unit ]()
+  
   val ctx = new ZContext()
+  val reactor = new ZLoop(ctx)
+  val handler = new ZLoop.IZLoopHandler {
+    override def handle(loop: ZLoop, item: PollItem, arg: AnyRef): Int = {
+      val msg = ZMsg.recvMsg(item.getSocket)
+      
+      if (msg != null) {
+        
+        val msgFrame = msg.pop().getData()
+        
+        val dataFrame = msg.pop() match {
+          case null => None
+          case zframe => Some(zframe.getData)
+        }
+        
+        handleMessage(msgFrame, dataFrame)
+        
+        msg.destroy()
+      }
+      
+      0
+    }
+  }
   
-  val rtr = ctx.createSocket(ZMQ.ROUTER)
-  
-  rtr.setIdentity(com.ibm.aspen.util.uuid2byte(clientId.uuid))
-  
-  val storeHosts = config.nodes.foldLeft(Map[DataStoreID, Array[Byte]]()) { (m, n) =>
-    val addr = uuid2byte(n._2.uuid)
-    rtr.connect(n._2.endpoint)
+  val dealers = config.nodes.foldLeft(Map[DataStoreID, Socket]()) { (m, n) =>
+    val dlr = ctx.createSocket(ZMQ.DEALER)
+    dlr.setIdentity(com.ibm.aspen.util.uuid2byte(clientId.uuid))
+    dlr.connect(n._2.endpoint)
+    reactor.addPoller(new PollItem(dlr, ZMQ.Poller.POLLIN), handler, ())
     n._2.stores.foldLeft(m) { (m, s) =>
-      m + (DataStoreID(config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> addr)
+      m + (DataStoreID(config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> dlr)
     }
   }
   
   val receiverThread = new Thread {
     setDaemon(true)
     
+    override def run(): Unit = reactor.start()
+  }
+  receiverThread.start()
+  
+  val senderThread = new Thread {
+    setDaemon(true)
     override def run(): Unit = {
-      
-      while (true) {
-        val msg = ZMsg.recvMsg(rtr)
-        
-        msg.pop() // discard from address
-        
-        if (msg != null) {
-          
-          val p = Message.getRootAsMessage(ByteBuffer.wrap(msg.pop().getData()))
-        
-          if (p.readResponse() != null) {
-            val message = NetworkCodec.decode(p.readResponse())
-            r.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.acceptResponse() != null) {
-            val message = NetworkCodec.decode(p.acceptResponse())
-            t.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.resolved() != null) {
-            val message = NetworkCodec.decode(p.resolved())
-            t.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.finalized() != null) {
-            val message = NetworkCodec.decode(p.finalized())
-            t.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.allocateResponse() != null) {
-            val message = NetworkCodec.decode(p.allocateResponse())
-            a.foreach(receiver => receiver.receive(message))
-          }
-        }
-        msg.destroy()
-      }
+      while (true)
+        sendQueue.take()()
     }
   }
+  senderThread.start()
   
-  receiverThread.start()
+  def handleMessage(msgFrame: Array[Byte], dataFrame: Option[Array[Byte]]): Unit = {
+
+    val p = Message.getRootAsMessage(ByteBuffer.wrap(msgFrame))
+  
+    if (p.readResponse() != null) {
+      val message = NetworkCodec.decode(p.readResponse())
+      r.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.acceptResponse() != null) {
+      val message = NetworkCodec.decode(p.acceptResponse())
+      t.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.resolved() != null) {
+      val message = NetworkCodec.decode(p.resolved())
+      println(s"tx resolved ${message.transactionUUID} comitted = ${message.committed}")
+      t.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.finalized() != null) {
+      val message = NetworkCodec.decode(p.finalized())
+      t.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.allocateResponse() != null) {
+      val message = NetworkCodec.decode(p.allocateResponse())
+      a.foreach(receiver => receiver.receive(message))
+    }
+  }
   
   def setReceiver(receiver: ClientSideReadMessageReceiver): Unit = synchronized { or = Some(receiver) }
   def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
   def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
+  
+  def enqueue(fn: => Unit): Unit = {
+    sendQueue.add( () => fn )  
+  }
   
   def psend(kind: String, zmsg: ZMsg): Unit = {
     var frames: List[Int] = Nil
@@ -108,25 +140,24 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
     println(s"Sending $kind message with frame sizes: ${frames.reverse}. Frame count: ${frames.size}")
   }
   
-  def send(toStore: DataStoreID, message: Allocate): Unit = synchronized {
+  def send(toStore: DataStoreID, message: Allocate): Unit = enqueue {
     val zmsg = encodeMessage(None, message)
-    zmsg.addFirst(storeHosts(message.toStore))
     psend("allocate", zmsg)
-    zmsg.send(rtr)
+    zmsg.send(dealers(toStore))
   }
   
-  def send(toStore: DataStoreID, message: Read): Unit  = synchronized {
+  def send(toStore: DataStoreID, message: Read): Unit  = enqueue {
     val zmsg = encodeMessage(None, message)
-    zmsg.addFirst(storeHosts(message.toStore))
-    psend("read", zmsg)
-    zmsg.send(rtr)
+    //psend("read", zmsg)
+    zmsg.send(dealers(toStore))
   }
   
-  def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = synchronized {
+  def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = enqueue {
     val zmsg = encodePrepare(message, Some(updateContent))
-    psend("prepare", zmsg)
-    zmsg.addFirst(storeHosts(message.to))
-    zmsg.send(rtr)
+    //psend("prepare", zmsg)
+    val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
+    println(s"Sending prepare txid ${message.txd.transactionUUID} for objects: ${sb.toString()}")
+    zmsg.send(dealers(message.to))
   }
 
 }

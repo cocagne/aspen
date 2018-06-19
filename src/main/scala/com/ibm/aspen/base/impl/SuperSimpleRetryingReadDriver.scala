@@ -28,8 +28,10 @@ class SuperSimpleRetryingReadDriver(
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)  {
   
   val retryTask = BackgroundTask.schedulePeriodic(period=Duration(250, MILLISECONDS), callNow=false)( sendReadRequests() )
-  
+  println(s"Beginning read of object ${objectPointer.uuid}")
   readResult.onComplete {
-    case _ => retryTask.cancel()
+    case _ => 
+      retryTask.cancel()
+      println(s"    Read complete for object ${objectPointer.uuid}")
   }
 }

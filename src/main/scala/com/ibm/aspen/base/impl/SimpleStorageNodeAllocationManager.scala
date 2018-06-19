@@ -29,15 +29,17 @@ class SimpleStorageNodeAllocationManagerclass(
     val (allocs, recovers) = synchronized { (allocations, recoveryProcesses) }
     
     allocs.foreach { t =>
-      val (key, value) = t
-      if (Duration(now - value.lastHeartbeatTimestamp, MILLISECONDS) > allocationTimeout && ! recovers.contains(key)) {
-        val rp = new SimpleAllocationRecoveryProcess(statusQueryPeriod, system, allocationMessenger, crl, value.store, value.ars)
-        
-        recoveryProcesses += (key -> rp)
-        
-        rp.done foreach { _ => synchronized {
-          recoveryProcesses -= key
-        }}
+      val (key, m) = t
+      m.values.foreach { value =>
+        if (Duration(now - value.lastHeartbeatTimestamp, MILLISECONDS) > allocationTimeout && ! recovers.contains(key)) {
+          val rp = new SimpleAllocationRecoveryProcess(statusQueryPeriod, system, allocationMessenger, crl, value.store, value.ars)
+          
+          recoveryProcesses += (key -> rp)
+          
+          rp.done foreach { _ => synchronized {
+            recoveryProcesses -= key
+          }}
+        }
       }
     }
   }}

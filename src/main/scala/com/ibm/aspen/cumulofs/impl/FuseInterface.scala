@@ -311,6 +311,7 @@ class FuseInterface(
                                   entryTimeout = 10,
                                   entryTimeoutNsec = 0)
                                   
+                println(s"Created file ${request.name} with inode ${file.pointer.number} and type ${file.getClass.getTypeName}")
                 response.ok(new DirEntryReply(d)) 
             }
         }
@@ -343,7 +344,7 @@ class FuseInterface(
                               attrTimeoutNsec = 0,
                               entryTimeout = 10,
                               entryTimeoutNsec = 0)
-                              
+            println(s"Created directory ${request.name} with inode ${file.pointer.number}")        
             response.ok(new DirEntryReply(d)) 
         }
       

@@ -136,7 +136,7 @@ class SimpleAllocationRecoveryProcess(
         (objId, committed) <- resolveObject(ars.newObjectUUID, allocTree)
         complete <- store.allocationRecoveryComplete(ars, committed)
       } yield {
-        crl.discardAllocationState(store.storeId, ars.allocationTransactionUUID)
+        crl.discardAllocationState(ars)
         promise.success(())
       }
     } 

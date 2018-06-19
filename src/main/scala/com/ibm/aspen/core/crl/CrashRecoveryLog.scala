@@ -29,7 +29,7 @@ trait CrashRecoveryLog {
   
   def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit]
   
-  def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit
+  def discardAllocationState(state: AllocationRecoveryState): Unit
   
   def close(): Future[Unit]
 }

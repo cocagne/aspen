@@ -46,6 +46,7 @@ import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
+import com.ibm.aspen.cumulofs.CumuloFSTypeRegistry
 
 object Main {
   
@@ -167,7 +168,7 @@ object Main {
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = new NoRetry,
-        userTypeRegistry = None
+        userTypeRegistry = Some(CumuloFSTypeRegistry)
         )
     
     val f = initializeCumulofs(sys)

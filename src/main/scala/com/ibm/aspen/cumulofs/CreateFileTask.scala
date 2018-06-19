@@ -55,21 +55,25 @@ object CreateFileTask {
     val encodedFS = uuid2byte(fs.uuid)
 
     val ftaskPrepared = fs.system.transactUntilSuccessful { implicit tx =>
-      
+      println(s"Getting inode for creation of $name")
       for {
         newInode <- fs.inodeTable.prepareInodeAllocation(ftype, inodeOps)
-        
+        _=println(s"Preparing task for creation of $name with inode $newInode")  
         taskState = List(
             (DirectoryKey,      encodedDir),
             (NameKey,           encodedName),
             (InodePointerKey,   newInode.toArray),
             (FileSystemUUIDKey, encodedFS))
             
-        taskPrepared <- fs.localTaskGroup.prepareTask(TaskType, taskState)
         
+        taskPrepared <- fs.localTaskGroup.prepareTask(TaskType, taskState)
+        _=println(s"Committing task prep of $name with inode $newInode")
         committed <- tx.commit()
         
-      } yield taskPrepared.map(_ => newInode)
+      } yield {
+        println(s"Prepared task for creation of inode $newInode")
+        taskPrepared.map(_ => newInode)
+      }
     }
     
     ftaskPrepared.flatMap( ftaskComplete => ftaskComplete )
@@ -107,16 +111,19 @@ class CreateFileTask private (
     // The task group executor is created by the FileSystem class so its guaranteed to have already
     // been registered.
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
-  
+    println(s"Create file task started for inode ${newInode}")
     fs.system.transactUntilSuccessful { implicit tx =>
-    
+      println(s"Loading directory for inode ${newInode}")
       for {
-        dir <- fs.loadDirectory(directoryPointer) 
+        dir <- fs.loadDirectory(directoryPointer)
+        _=println(s"preparing insert ${newInode}")
         prep <- dir.prepareInsert(name, newInode)
-        
+        _=println(s"completing task ${newInode}")
         _ = completeTask(tx)
         
-      } yield ()
+      } yield {
+        println(s"Successfully completed CreateFileTask for inode $newInode")
+      }
     }
   
   }

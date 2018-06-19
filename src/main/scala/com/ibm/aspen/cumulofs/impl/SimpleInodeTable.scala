@@ -52,14 +52,18 @@ class SimpleInodeTable(
     val inodeNumber = allocateInode()
     val key = Key(inodeNumber)
     val requirements = KeyValueUpdate.KVRequirement(key, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
-    
+    println(s"Preparing Inode allocation of inode${key.longValue} txid ${tx.uuid}")
     for {
       allocater <- fallocater
+      _=println("Fetching mutable node")
       node <- table.fetchMutableNode(inodeNumber)
+      _=println("Allocating inode KV object")
       ptr <- allocater.allocateKeyValueObject(node.kvos.pointer, node.kvos.revision, inodeOps)
+      iptr = InodePointer(ftype, inodeNumber, ptr)
+      _=println(s"Preparing Inode table insertion for inode ${key.longValue} node object ${node.kvos.pointer.uuid} txid ${tx.uuid}")
+      _<-node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
     } yield {
-      val iptr = InodePointer(ftype, inodeNumber, ptr)
-      node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
+      println("Inode prepared")
       iptr
     }
   }

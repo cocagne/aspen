@@ -39,6 +39,9 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
+import org.zeromq.ZMQ.PollItem
+import java.util.concurrent.LinkedBlockingQueue
+
 
 class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends StoreSideNetwork 
      with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
@@ -52,6 +55,8 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   def r = synchronized { or }
   def a = synchronized { oa }
   def t = synchronized { ot }
+  
+  val sendQueue = new LinkedBlockingQueue[ () => Unit ]()
   
   val routerEndpoint = config.nodes(nodeName).endpoint
   
@@ -71,110 +76,138 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   
   val receiverThread = new Thread {
     setDaemon(true)
-    
+    var heartbeat = 0
     override def run(): Unit = {
-      
-      while (true) {
-        val msg = ZMsg.recvMsg(rtr)
-        
-        if (msg != null) {
+      val reactor = new ZLoop(ctx)
+      val handler = new ZLoop.IZLoopHandler {
+        override def handle(loop: ZLoop, item: PollItem, arg: AnyRef): Int = {
+          val msg = ZMsg.recvMsg(rtr)
           
-          var frames: List[Int] = Nil
-          val i = msg.iterator()
-          while (i.hasNext()) {
-            val frame = i.next()
-            frames = frame.getData.length :: frames
-          }
-          
-          msg.pop() // discard from address
-          
-          val msgbb = ByteBuffer.wrap(msg.pop().getData())
-          println(s"Received message with frame sizes: ${frames.reverse}. Frame count: ${frames.size}")
-          val p = Message.getRootAsMessage(msgbb)
-        
-          if (p.prepare() != null) {
-            println("got prepare")
-            val message = NetworkCodec.decode(p.prepare())
-
-            val updateContent = msg.pop() match {
-              case null => None
-              case zframe => 
-                var localUpdates: List[LocalUpdate] = Nil
-                val bb = ByteBuffer.wrap(zframe.getData)
-                
-                println(s"   Prepare data length: ${bb.remaining()}")
-                // local update content is a series of <16-byte-uuid><4-byte-length><data>
-                
-                while (bb.remaining() != 0) {
-                  val msb = bb.getLong()
-                  val lsb = bb.getLong()
-                  val len = bb.getInt()
-                  val uuid = new UUID(msb, lsb)
-                  val slice = bb.asReadOnlyBuffer()
-                  slice.limit( slice.position + len )
-                  bb.position( bb.position + len )
-                  localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
-                }
-                
-                Some(localUpdates)
+          if (msg != null) {
+            
+            msg.pop() // discard from address
+            
+            val msgFrame = msg.pop().getData()
+            if (msgFrame.length == 1) {
+              heartbeat += 1
+              println(s"Heartbeat: $heartbeat")
+            } else {
+              val dataFrame = msg.pop() match {
+                case null => None
+                case zframe => Some(zframe.getData)
+              }
+              
+              handleMessage(msgFrame, dataFrame)
             }
             
-            t.foreach(receiver => receiver.receive(message, updateContent))
-          } 
-          else if (p.prepareResponse() != null) {
-            println("got prepareResponse")
-            val message = NetworkCodec.decode(p.prepareResponse())
-            t.foreach(receiver => receiver.receive(message, None))
+            msg.destroy()
           }
-          else if (p.accept() != null) {
-            println("got accept")
-            val message = NetworkCodec.decode(p.accept())
-            t.foreach(receiver => receiver.receive(message, None))
-          }
-          else if (p.acceptResponse() != null) {
-            println("got acceptResponse")
-            val message = NetworkCodec.decode(p.acceptResponse())
-            t.foreach(receiver => receiver.receive(message, None))
-          }
-          else if (p.resolved() != null) {
-            val message = NetworkCodec.decode(p.resolved())
-            t.foreach(receiver => receiver.receive(message, None))
-          }
-          else if (p.finalized() != null) {
-            val message = NetworkCodec.decode(p.finalized())
-            t.foreach(receiver => receiver.receive(message, None))
-          }
-          else if (p.heartbeat() != null) {
-            val message = NetworkCodec.decode(p.heartbeat())
-            t.foreach(receiver => receiver.receive(message, None))
-          }
-          else if (p.allocate() != null) {
-            println(s"got allocate request. Receiver: $a")
-            val message = NetworkCodec.decode(p.allocate())
-            a.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.allocateStatus() != null) {
-            val message = NetworkCodec.decode(p.allocateStatus())
-            a.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.allocateStatusResponse() != null) {
-            val message = NetworkCodec.decode(p.allocateStatusResponse())
-            a.foreach(receiver => receiver.receive(message))
-          }
-          else if (p.read() != null) {
-            val message = NetworkCodec.decode(p.read())
-            r.foreach(receiver => receiver.receive(message))
-          }
-          else {
-            println("Unknown Message!")
-          }
+          
+          0
         }
-        msg.destroy()
       }
+      reactor.addPoller(new PollItem(rtr, ZMQ.Poller.POLLIN), handler, ())
+      reactor.start()
     }
   }
   
   receiverThread.start()
+  
+  val senderThread = new Thread {
+    setDaemon(true)
+    override def run(): Unit = {
+      while (true)
+        sendQueue.take()()
+    }
+  }
+  senderThread.start()
+  
+  def handleMessage(msgFrame: Array[Byte], dataFrame: Option[Array[Byte]]): Unit = synchronized {
+    
+    val p = Message.getRootAsMessage(ByteBuffer.wrap(msgFrame))
+  
+    if (p.prepare() != null) {
+      println("got prepare")
+      val message = NetworkCodec.decode(p.prepare())
+      
+      val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
+      println(s"got prepare txid ${message.txd.transactionUUID} for objects: ${sb.toString()}")
+
+      val updateContent = dataFrame match {
+        case None => None
+        case Some(arr) => 
+          var localUpdates: List[LocalUpdate] = Nil
+          val bb = ByteBuffer.wrap(arr)
+          
+          println(s"   Prepare data length: ${bb.remaining()}")
+          // local update content is a series of <16-byte-uuid><4-byte-length><data>
+          
+          while (bb.remaining() != 0) {
+            val msb = bb.getLong()
+            val lsb = bb.getLong()
+            val len = bb.getInt()
+            val uuid = new UUID(msb, lsb)
+            val slice = bb.asReadOnlyBuffer()
+            slice.limit( slice.position + len )
+            bb.position( bb.position + len )
+            localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
+          }
+          
+          Some(localUpdates)
+      }
+      
+      t.foreach(receiver => receiver.receive(message, updateContent))
+    } 
+    else if (p.prepareResponse() != null) {
+      println("got prepareResponse")
+      val message = NetworkCodec.decode(p.prepareResponse())
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.accept() != null) {
+      println("got accept")
+      val message = NetworkCodec.decode(p.accept())
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.acceptResponse() != null) {
+      println("got acceptResponse")
+      val message = NetworkCodec.decode(p.acceptResponse())
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.resolved() != null) {
+      val message = NetworkCodec.decode(p.resolved())
+      println(s"got resolved for txid ${message.transactionUUID} committed = ${message.committed}")
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.finalized() != null) {
+      println("got finalized")
+      val message = NetworkCodec.decode(p.finalized())
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.heartbeat() != null) {
+      val message = NetworkCodec.decode(p.heartbeat())
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.allocate() != null) {
+      println(s"got allocate request. Receiver: $a")
+      val message = NetworkCodec.decode(p.allocate())
+      a.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.allocateStatus() != null) {
+      val message = NetworkCodec.decode(p.allocateStatus())
+      a.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.allocateStatusResponse() != null) {
+      val message = NetworkCodec.decode(p.allocateStatusResponse())
+      a.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.read() != null) {
+      val message = NetworkCodec.decode(p.read())
+      r.foreach(receiver => receiver.receive(message))
+    }
+    else {
+      println("Unknown Message!")
+    }
+  }
   
   // -----------------------------------------------------
   // StoreSideNetwork
@@ -194,39 +227,47 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
   
   
-  def send(message: TransactionMessage): Unit = synchronized {
+  def enqueue(fn: => Unit): Unit = {
+    sendQueue.add( () => fn )  
+  }
+  
+  def send(message: TransactionMessage): Unit = enqueue {
+    message match {
+      case m: TxPrepareResponse => println(s"   prepare response disposition: ${m.disposition}")
+      case _ => 
+    }
     encodeMessage(None, message).send(dealers(message.to))
   }
   
-  def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = synchronized {
+  def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = enqueue {
     encodeMessage(Some(client), acceptResponse).send(rtr)
   }
   
-  def send(client: ClientID, resolved: TxResolved): Unit = synchronized {
+  def send(client: ClientID, resolved: TxResolved): Unit = enqueue {
     encodeMessage(Some(client), resolved).send(rtr)
   }
   
-  def send(client: ClientID, finalized: TxFinalized): Unit = synchronized {
+  def send(client: ClientID, finalized: TxFinalized): Unit = enqueue {
     encodeMessage(Some(client), finalized).send(rtr)
   }
   
-  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = synchronized {
+  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = enqueue {
     encodePrepare(message, updateContent).send(dealers(message.to))
   }
   
-  def send(client: ClientID, message: allocation.ClientMessage): Unit = synchronized {
+  def send(client: ClientID, message: allocation.ClientMessage): Unit = enqueue {
     encodeMessage(Some(client), message).send(rtr)
   }
   
-  def send(message: AllocationStatusRequest): Unit = synchronized {
+  def send(message: AllocationStatusRequest): Unit = enqueue {
     encodeMessage(None, message).send(dealers(message.to))
   }
   
-  def send(message: AllocationStatusReply): Unit = synchronized {
+  def send(message: AllocationStatusReply): Unit = enqueue {
     encodeMessage(None, message).send(dealers(message.to))
   } 
   
-  def send(client: ClientID, message: read.ReadResponse): Unit = synchronized {
+  def send(client: ClientID, message: read.ReadResponse): Unit = enqueue {
     encodeMessage(Some(client), message).send(rtr)
   }
 }

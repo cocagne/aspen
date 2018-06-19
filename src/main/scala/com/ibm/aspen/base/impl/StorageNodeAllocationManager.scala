@@ -41,7 +41,7 @@ class StorageNodeAllocationManager(
   
   import StorageNodeAllocationManager._
   
-  protected[this] var allocations = Map[Key, Value]()
+  protected[this] var allocations = Map[Key, Map[UUID,Value]]()
   protected[this] var stores = Map[DataStoreID, DataStore]()
     
   protected[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
@@ -58,13 +58,24 @@ class StorageNodeAllocationManager(
   
   private def trackAllocation(store: DataStore, ars: AllocationRecoveryState): Future[AllocationRecoveryState] = synchronized {
     val key = Key(ars.storeId, ars.allocationTransactionUUID)
+    def createValue(): Value = {
+      val fsaved = crl.saveAllocationRecoveryState(ars).map(_=>ars)
+      Value(fsaved, store, ars)
+    }
     val value = allocations.get(key) match {
-      case Some(v) => v
       case None =>
-        val fsaved = crl.saveAllocationRecoveryState(ars).map(_=>ars)
-        val v = Value(fsaved, store, ars)
-        allocations += (key -> v)
+        val v = createValue()
+        allocations += (key -> Map((ars.newObjectUUID -> v)))
         v
+        
+      case Some(m) => m.get(ars.newObjectUUID) match {
+        case Some(v) => v
+        case None => 
+          val v = createValue()
+          val newMap = m + (ars.newObjectUUID -> v)
+          allocations += (key -> newMap)
+          v
+      }
     }
     value.saved
   }
@@ -72,17 +83,19 @@ class StorageNodeAllocationManager(
   private def stopTracking(storeId: DataStoreID, transactionUUID: UUID, committed: Boolean): Unit = synchronized {
     val key = Key(storeId, transactionUUID)
     
-    allocations.get(key).foreach{ v =>
+    allocations.get(key).foreach{ m =>
       allocations -= key
       
-      v.store.allocationResolved(v.ars, committed).foreach { _ =>
-        crl.discardAllocationState(storeId, transactionUUID)
+      m.values.foreach { v =>
+        v.store.allocationResolved(v.ars, committed).foreach { _ =>
+          crl.discardAllocationState(v.ars)
+        }
       }
     }
   }
   
   def receive(heartbeat: TxHeartbeat): Unit = synchronized {
-    allocations.get(Key(heartbeat.to, heartbeat.transactionUUID)) foreach { v => v.heartbeatReceived() }
+    allocations.get(Key(heartbeat.to, heartbeat.transactionUUID)) foreach { m => m.values.foreach( v => v.heartbeatReceived() ) }
   }
   
   def receive(resolved: TxResolved): Unit = stopTracking(resolved.to, resolved.transactionUUID, resolved.committed) 

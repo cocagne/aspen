@@ -238,6 +238,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
                                 
     val ods0 = DataStoreID(otherPool, 0)
     val ods1 = DataStoreID(otherPool, 1)
+    val ods2 = DataStoreID(otherPool, 2)
     
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
     val prep = mkprep(1, 0, 0, txd)
@@ -271,6 +272,17 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
+            ds2,
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil))
+            
+    messenger.messages should be (Nil)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
             ods0, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
@@ -283,6 +295,17 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
             ods1, 
+            txd.transactionUUID, 
+            Right(TxPrepareResponse.Promise(None)), 
+            ProposalID(1,0),
+            TransactionDisposition.VoteAbort,
+            Nil))
+            
+    messenger.messages should be (Nil)
+    
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ods2, 
             txd.transactionUUID, 
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),

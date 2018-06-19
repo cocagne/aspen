@@ -61,6 +61,13 @@ class DataStoreFrontend(
 
   private[this] var lockedTransactions = Map[UUID, StoreTransaction]()
   
+  // Maps UUIDs of locked transactions to unlocked transactions that have a good chance of
+  // locking if they re-attempt the lock after the locked transactions complete.
+  private[this] var delayedTransactions = Map[UUID, StoreTransaction]()
+  
+  // maps Transaction UUIDs to the list of objects being allocated in that transaction
+  private[this] var allocations = Map[UUID, List[MutableObject]]()
+  
   override val initialized: Future[DataStore] = synchronized {
     
     allocationRecoveryStates.foreach(loadAllocatedObject)
@@ -126,14 +133,19 @@ class DataStoreFrontend(
           case _: KeyValueAllocationOptions => ObjectType.KeyValue
         }
         val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp, 
-                                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision) 
+                                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+                                          
+        loadAllocatedObject(ars)
+        
         Right(ars)
     }}  
   }
   
   private def loadAllocatedObject(ars: AllocationRecoveryState): Unit = synchronized {
     val metadata = ObjectMetadata(ObjectRevision(ars.allocationTransactionUUID), ars.initialRefcount, ars.timestamp)
-    objectLoader.createNewObject(ars.newObjectUUID, ars.allocationTransactionUUID, ars.storePointer, metadata, ars.objectData, ars.objectType)
+    val obj = objectLoader.createNewObject(ars.newObjectUUID, ars.allocationTransactionUUID, ars.storePointer, metadata, ars.objectData, ars.objectType)
+    val lst = obj :: allocations.getOrElse(ars.allocationTransactionUUID, Nil)
+    allocations += (ars.allocationTransactionUUID -> lst)
   }
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = {
@@ -141,18 +153,29 @@ class DataStoreFrontend(
   }
     
   def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit] = synchronized {
-    objectLoader.getAlreadyLoadedObject(ars.newObjectUUID) match {
-        case None => Future.successful(()) // Shouldn't be possible encounter this line
-        
-        case Some(obj) => 
-          obj.completeOperation(ars.allocationTransactionUUID)
-          
+    allocations.get(ars.allocationTransactionUUID) match {
+      case None => Future.unit
+      
+      case Some(lst) =>  
+        val flst = lst.map { mo => 
+
           // Allocation recovery could complete after transactions have already updated the object. Verify that the
           // revision matches the allocation revision before trying to commit
-          if (commit && obj.revision == ObjectRevision(ars.allocationTransactionUUID))
-            obj.commitBoth()
-          else
+          if (commit && mo.revision == ObjectRevision(ars.allocationTransactionUUID)) {
+            val fcommitted = mo.commitBoth()
+            
+            fcommitted onComplete {
+              case _ => mo.completeOperation(ars.allocationTransactionUUID)
+            }
+            
+            fcommitted
+          } else {
+            mo.completeOperation(ars.allocationTransactionUUID)
             Future.successful(())
+          }
+        }
+        
+        Future.sequence(flst).map(_=>())
     }
   }
   
@@ -168,6 +191,7 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
+          println(s"getObject ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.data, obj.locks))
         }
       }}
@@ -191,6 +215,7 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
+          println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.locks))
         }
       }}
@@ -209,19 +234,21 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
+          println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
           Right((obj.data, obj.locks))
         }
       }}
   }
   
+  private[this] def tryLock(st: StoreTransaction): Unit = synchronized {
+    if (st.checkRequirementsAndLock())
+      lockedTransactions += (st.txd.transactionUUID -> st)
+  }
+  
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
     val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
-    st.objectsLoaded map { _ => synchronized {
-      val errors = st.checkRequirementsAndLock()
-      if (errors.isEmpty)
-        lockedTransactions += (txd.transactionUUID -> st)
-      errors
-    }}
+    st.objectsLoaded.foreach(_ => tryLock(st))
+    st.lockPromise.future
   }
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
@@ -239,15 +266,26 @@ class DataStoreFrontend(
       val fcommit = st.commit()
       
       fcommit map { _ => synchronized {
-        st.releaseObjects()
+        releaseLocks(st)
       }}
     }}
   }
   
+  private[this] def releaseLocks(completedSt: StoreTransaction): Unit = {
+    val transactionUUID = completedSt.txd.transactionUUID
+    completedSt.releaseObjects()
+    delayedTransactions.get(transactionUUID).foreach { delayedSt =>
+      delayedTransactions -= transactionUUID
+      delayedSt.waitingForTransactions -= transactionUUID
+      if (delayedSt.waitingForTransactions.isEmpty)
+        tryLock(delayedSt)
+    }
+  }
+  
   def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
     lockedTransactions.get(txd.transactionUUID) foreach { st =>
-      st.releaseObjects()
       lockedTransactions -= txd.transactionUUID
+      releaseLocks(st)
     }
   }
   
@@ -259,6 +297,10 @@ class DataStoreFrontend(
     
     var locked = false
     var released = false
+    
+    var waitingForTransactions = Set[UUID]()
+    
+    val lockPromise = Promise[List[ObjectTransactionError]]()
     
     val dataUpdates: Map[UUID, DataBuffer] = updateData.map(lu => (lu.objectUUID -> lu.data)).toMap
     
@@ -602,13 +644,42 @@ class DataStoreFrontend(
       errors
     }
       
-    def checkRequirementsAndLock(): List[ObjectTransactionError] = {
+    
+    def checkRequirementsAndLock(): Boolean = {
       val errors = requirements.flatMap( requirement => getRequirementErrors(requirement) ) 
       
       if (errors.isEmpty)
         lockObjects()
+      else {
+        println(s"**** ERRORS IN TRANSACTION ${txd.transactionUUID}")
+        errors.foreach(err => println(s"   $err"))
         
-      errors
+        val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
+          case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
+          case _ => m
+        }}
+        
+        val probablyMissedCommitOfLockedTx = errors.forall { e => e match {
+          case r: RevisionMismatch => collisions.get(r.objectPointer.uuid) match {
+            case None => false
+            case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
+          }
+          case _ => false
+        }}
+        
+        if (probablyMissedCommitOfLockedTx) {
+          println(s"PROBABLY MISSED COMMIT")
+          collisions.values.foreach { lockedTxUUID => 
+            waitingForTransactions += lockedTxUUID
+            delayedTransactions += (lockedTxUUID -> this)
+          }
+        }
+      }
+    
+      if (waitingForTransactions.isEmpty)
+        lockPromise.success(errors)
+        
+      waitingForTransactions.isEmpty && errors.isEmpty
     }
   }
 }

@@ -29,6 +29,7 @@ final case class Key(bytes: Array[Byte]) {
   
   def intValue: Int = new BigInteger(bytes).intValue()
   def longValue: Long = new BigInteger(bytes).longValue()
+  def stringValue: String = new String(bytes, StandardCharsets.UTF_8)
 }
 
 object Key {

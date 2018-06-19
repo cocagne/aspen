@@ -11,7 +11,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 
 class MemoryOnlyCRL extends CrashRecoveryLog {
   private [this] var pendingTransactions = Map[DataStoreID, Map[UUID, TransactionRecoveryState]]()
-  private [this] var pendingAllocations = Map[DataStoreID, Map[UUID, AllocationRecoveryState]]()
+  private [this] var pendingAllocations = Map[DataStoreID, Map[UUID, List[AllocationRecoveryState]]]()
   
   override def close(): Future[Unit] = Future.successful(())
   
@@ -23,10 +23,10 @@ class MemoryOnlyCRL extends CrashRecoveryLog {
       m
   }
   
-  private def gA(storeId: DataStoreID): Map[UUID, AllocationRecoveryState] = pendingAllocations.get(storeId) match {
+  private def gA(storeId: DataStoreID): Map[UUID, List[AllocationRecoveryState]] = pendingAllocations.get(storeId) match {
     case Some(m) => m
     case None =>
-      val m = Map[UUID, AllocationRecoveryState]()
+      val m = Map[UUID, List[AllocationRecoveryState]]()
       pendingAllocations = pendingAllocations + (storeId -> m)
       m
   }
@@ -50,19 +50,22 @@ class MemoryOnlyCRL extends CrashRecoveryLog {
   
   override def getFullAllocationRecoveryState(): Map[DataStoreID, List[AllocationRecoveryState]] = synchronized {
     var m = Map[DataStoreID, List[AllocationRecoveryState]]()
-    pendingAllocations.foreach(t => { t._2.valuesIterator.foreach(ars => m.get(ars.storeId) match {
-      case None => m += (ars.storeId -> List(ars))
-      case Some(l) =>
-        val newList = ars:: l
-        m += (ars.storeId -> newList)
-      })
+    pendingAllocations.foreach(t => { t._2.valuesIterator.foreach { lars => lars.foreach { ars => 
+        m.get(ars.storeId) match {
+          case None => m += (ars.storeId -> List(ars))
+          case Some(l) =>
+            val newList = ars:: l
+            m += (ars.storeId -> newList)
+        }
+      }
+    }
     })
     m
   }
   
   override def getAllocationRecoveryStateForStore(storeId: DataStoreID): List[AllocationRecoveryState] = synchronized {
-    val m = pendingAllocations.getOrElse(storeId, Map[UUID, AllocationRecoveryState]())
-    m.values.toList
+    val m = pendingAllocations.getOrElse(storeId, Map[UUID, List[AllocationRecoveryState]]())
+    m.values.toList.flatten
   }
   
   override def saveTransactionRecoveryState(state: TransactionRecoveryState): Future[Unit] = synchronized {
@@ -80,16 +83,17 @@ class MemoryOnlyCRL extends CrashRecoveryLog {
   }
   
   override def saveAllocationRecoveryState(state: AllocationRecoveryState): Future[Unit] = synchronized {
-    val ins = (state.allocationTransactionUUID -> state)
     val smap = gA(state.storeId)
+    val lst = state :: smap.getOrElse(state.allocationTransactionUUID, Nil)
+    val updated = smap + (state.allocationTransactionUUID -> lst) 
     
-    pendingAllocations = pendingAllocations + (state.storeId -> (smap + ins))
+    pendingAllocations = pendingAllocations + (state.storeId -> updated)
     
     Future.successful(())
   }
   
-  override def discardAllocationState(storeId: DataStoreID, allocationTransactionUUID: UUID): Unit = synchronized {
-    val smap = gA(storeId)
-    pendingAllocations = pendingAllocations + (storeId -> (smap - allocationTransactionUUID))
+  override def discardAllocationState(state: AllocationRecoveryState): Unit = synchronized {
+    val smap = gA(state.storeId)
+    pendingAllocations = pendingAllocations + (state.storeId -> (smap - state.allocationTransactionUUID))
   }
 }

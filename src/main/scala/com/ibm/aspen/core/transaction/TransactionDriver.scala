@@ -61,6 +61,7 @@ abstract class TransactionDriver(
         onNack(nack.promisedId)
       
       case Right(promise) => 
+        
         peerDispositions += (msg.from -> msg.disposition)
         
         if (isValidAcceptor(msg.from))
@@ -74,27 +75,34 @@ abstract class TransactionDriver(
           // each of the objects referenced by the transaction
           for (op <- allObjects) {
             var nReplies = 0
+            var nAbortVotes = 0
+            var nCommitVotes = 0
             var canCommitObject = true
             
             op.storePointers.foreach(sp => peerDispositions.get(DataStoreID(op.poolUUID, sp.poolIndex)).foreach(disposition => {
               nReplies += 1
               disposition match {
-                case TransactionDisposition.VoteCommit => 
-                case _ =>
+                case TransactionDisposition.VoteCommit => nCommitVotes += 1
+                case _ => nAbortVotes += 1
                   // TODO: We can be quite a bit smarter about choosing when we must abort
-                  canCommitObject = false
+                  //canCommitObject = false
               }
             }))
             
             if (nReplies < op.ida.writeThreshold)
               return
             
+            if (nReplies != op.ida.width && nCommitVotes < op.ida.writeThreshold && op.ida.width - nAbortVotes >= op.ida.writeThreshold)
+              return
+              
+            if (op.ida.width - nAbortVotes < op.ida.writeThreshold)
+              canCommitObject = false
+              
             // Once canCommitTransaction flips to false, it stays there
             canCommitTransaction = canCommitTransaction && canCommitObject
           }
           
           // If we get here, we've made our decision
-          
           proposer.setLocalProposal(canCommitTransaction)
           
           sendAcceptMessages()

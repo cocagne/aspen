@@ -179,7 +179,16 @@ object KeyValueList {
       if (newKvos.contents.isEmpty)
         joinOnEmpty(newKvos, requirements, timestamp, maxSize, ordering, reader, onJoin)
       else {
+        println(s"LIST APPEND of node ${kvos.pointer.uuid} txid ${tx.uuid}")
+        println(s"Append args: ${kvos.pointer.uuid}, None, $requirements $appendOps")
+        try {
         tx.append(kvos.pointer, None, requirements, appendOps)
+        } catch {
+          case t: Throwable => 
+            println(s"**** EXCEPTION **** $t")
+            throw t
+        }
+        println(s"APPEND COMPLETE")
         Future.successful(newKvos)
       }
     } else {
@@ -203,6 +212,7 @@ object KeyValueList {
         if (newKvos.contents.isEmpty)
           joinOnEmpty(newKvos, requirements, timestamp, maxSize, ordering, reader, onJoin)
         else {
+          println(s"LIST OVERWRITE of node ${kvos.pointer.uuid}")
           tx.overwrite(kvos.pointer, kvos.revision, requirements, ops)
           Future.successful(newKvos)
         }
@@ -240,7 +250,7 @@ object KeyValueList {
       ordering: KeyOrdering,
       allocater: ObjectAllocater,
       onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
-    
+    println(s"LIST SPLIT of node ${kvos.pointer.uuid}")
     val contents = inserts.foldLeft(kvos.contents.filter(t => !deleteSet.contains(t._1))){ (m, t) =>
       m + (t._1 -> Value(t._1, t._2, timestamp))
     }
@@ -295,7 +305,7 @@ object KeyValueList {
       ordering: KeyOrdering,
       reader: ObjectReader,
       onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
-    
+    println(s"LIST JOIN of node ${emptyKvos.pointer.uuid}")
     val opsReady = emptyKvos.right match {
       case None => Future.successful(None)
       case Some(rightArr) =>

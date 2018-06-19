@@ -37,6 +37,7 @@ lazy val root = (project in file(".")).
       "net.java.dev.jna"    %  "jna-platform"   % "4.5.0",
       "org.yaml"            %  "snakeyaml"      % "1.21",
       "com.github.scopt"    %% "scopt"          % "3.7.0",
+      "io.netty"            %  "netty-all"          % "4.1.25.Final",
     )
   )
   

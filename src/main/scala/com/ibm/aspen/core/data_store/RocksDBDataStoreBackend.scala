@@ -73,6 +73,7 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   override def haveFreeSpaceForAppend(objectId: StoreObjectID, currentDataSize: Int, newDataSize: Int): Boolean = true
   
   override def allocateObject(objectUUID: UUID, metadata: ObjectMetadata, data: DataBuffer): Future[Either[AllocationErrors.Value, Array[Byte]]] = {
+    println(s"Allocating $objectUUID")
     allocating += (objectUUID -> (metadata, data))
     Future.successful(Right(NullArray))
   }
@@ -108,15 +109,22 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   }
   
   override def getObject(objectId: StoreObjectID): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer)]] = {
+    
     allocating.get(objectId.objectUUID) match {
-      case Some(t) => Future.successful(Right(t))
+      case Some(t) => 
+        println(s"getObject $objectId (allocating)")
+        Future.successful(Right(t))
       case None => for {
         emetadata <- db.get(metadataKey(objectId)) map { o => o match {
-          case None => Left(new InvalidLocalPointer)
+          case None =>
+            println(s"getObject $objectId (NO METADATA)")
+            Left(new InvalidLocalPointer)
           case Some(arr) => Right(bytesToMetadata(arr))
         }}
         edata <- db.get(dataKey(objectId)) map { o => o match {
-          case None => Left(new InvalidLocalPointer)
+          case None => 
+            println(s"getObject $objectId (NO DATA)")
+            Left(new InvalidLocalPointer)
           case Some(arr) => Right(DataBuffer(arr))
         }}
       } yield {
@@ -131,6 +139,7 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   }
   
   override def putObjectMetaData(objectId: StoreObjectID, metadata: ObjectMetadata): Future[Unit] = {
+    println(s"put ObjectMetaData $objectId")
     allocating.get(objectId.objectUUID) match {
       case Some(t) => putObject(objectId, metadata, t._2)
       case None =>
@@ -139,6 +148,7 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   }
   
   override def putObjectData(objectId: StoreObjectID, data:DataBuffer): Future[Unit] = {
+    println(s"put ObjectData $objectId")
     allocating.get(objectId.objectUUID) match {
       case Some(t) => putObject(objectId, t._1, data)
       case None =>
@@ -148,7 +158,7 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   
   override def putObject(objectId: StoreObjectID, metadata: ObjectMetadata, data: DataBuffer): Future[Unit] = {
     allocating.get(objectId.objectUUID) foreach { _ => allocating -= objectId.objectUUID } 
-      
+    println(s"put Object $objectId")
     Future.sequence(List(
         db.put(metadataKey(objectId), metadataToBytes(metadata)),
         db.put(dataKey(objectId), data.getByteArray()))).map(_ => ())

@@ -87,6 +87,7 @@ abstract class SteppedDurableTask(
   
   def completeTask(tx: Transaction, result: Option[AnyRef]=None): Unit = synchronized {
     val idleTask = new Array[Byte](16) // Zeroed Type UUID
+    println(s"Completing Task State. Task Object = ${taskPointer.kvPointer.uuid} expected revision ${currentRevision}")
     tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(DurableTask.TaskTypeKey, idleTask, tx.timestamp())))
     
     tx.result foreach { _ => synchronized { 
