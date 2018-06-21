@@ -15,12 +15,11 @@ Bootstrap Procedure:
     ./target/pack/bin/demo node local/cfg.yaml node_a
 
 Basic Error Handling
-  * Reads
+  * Reads - Done
   * Transaction
-  * Store online/offline
-      * Choose Leader
-      - Super simple. Each node actively heartbeats every 2 sec. "offline" if 3 polling periods are missed
-  * retry strategy
+  * Store online/offline - Done
+  * Replace StorageNodeOnline with DataStoreOnline
+  * retry strategy - ExponentialBackoff
   * object allocaters
   
   * Object Update Error recovery/logging

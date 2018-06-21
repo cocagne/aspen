@@ -13,8 +13,6 @@ import com.ibm.aspen.util.byte2uuid
 
 class NStoreConnectionManager(
     val storeNetwork: NStoreNetwork, 
-    val serverBossGroup: NioEventLoopGroup,
-    val serverWorkerGroup: NioEventLoopGroup, 
     val port: Int) {
  
   private val serverBoot = new ServerBootstrap
@@ -34,7 +32,7 @@ class NStoreConnectionManager(
               val clientUUID = byte2uuid(arr)
               oclientUUID = Some(clientUUID)
               updateClientConnetion(clientUUID, Some(ctx))
-              println(s"Client connected: $clientUUID")
+              storeNetwork.nnet.setNodeOnline(clientUUID)
             } else 
               println(s"RECEIVED UNEXPECTED INITIAL MESSAGE OF SIZE: ${arr.length}")
               
@@ -48,7 +46,7 @@ class NStoreConnectionManager(
     override def channelInactive(ctx: ChannelHandlerContext): Unit = synchronized {
       oclientUUID.foreach { clientUUID => 
         updateClientConnetion(clientUUID, None)
-        println(s"Client disconnected: $clientUUID")
+        storeNetwork.nnet.setNodeOffline(clientUUID)
       }
     }
 
@@ -70,7 +68,7 @@ class NStoreConnectionManager(
     clientConnections.get(clientUUID).foreach(_.writeAndFlush(msg))
   }
   
-  serverBoot.group(serverBossGroup, serverWorkerGroup)
+  serverBoot.group(storeNetwork.nnet.serverBossGroup, storeNetwork.nnet.serverWorkerGroup)
             .channel(classOf[NioServerSocketChannel])
             .option[java.lang.Integer](ChannelOption.SO_BACKLOG, 100)
             .handler(new LoggingHandler(LogLevel.INFO))

@@ -51,7 +51,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
   
   val nodeConfig = nnet.config.nodes(nodeName)
   
-  val connectionMgr = new NStoreConnectionManager(this, nnet.serverBossGroup, nnet.serverWorkerGroup, nodeConfig.endpoint.port)
+  val connectionMgr = new NStoreConnectionManager(this, nodeConfig.endpoint.port)
   
   val stores = nnet.config.nodes.foldLeft(Map[DataStoreID, NClientConnection]()) { (m, n) =>
     val ep = n._2.endpoint

@@ -154,12 +154,11 @@ object Main {
     
     val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
 
-    //val zcliNet = new ZClientNetwork(ClientID(UUID.randomUUID()), cfg)
     val nnet = new NettyNetwork(cfg)
     val cliNet = nnet.createClientNetwork()
     
     val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = (o:ObjectPointer) => 0,
+        chooseDesignatedLeader = nnet.chooseDesignatedLeader _,
         isStorageNodeOnline = (_:StorageNodeID) => true,
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
