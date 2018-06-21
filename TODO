@@ -1,4 +1,14 @@
 
+Basic Error Handling
+  * Transaction
+  * Allocation
+  * object allocaters
+  
+  * Object Update Error recovery/logging
+  * Failed store rebuild
+  * Allocation driver?
+
+
 # Building for demo appliction
 # run "sbt pack"
 # then invoke ./target/pack/bin/demo
@@ -13,22 +23,6 @@ Bootstrap Procedure:
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a
 
-Basic Error Handling
-  * Transaction
-  * retry strategy - ExponentialBackoff
-  * object allocaters
-  
-  * Object Update Error recovery/logging
-  * Failed store rebuild
-  * Allocation driver?
-
-
-Demo
-  * Client UUIDs can be randomly generated and don't need to persist
-  * Clients will connect to all hosts and messages are only sent in response to client-initiate actions
-
-* Add support for multiple object allocaters
-   - Currently hard-coded to always return a single pool allocater
 
 Pre sbt-pack demo launch script:
 #!/bin/bash

@@ -45,6 +45,7 @@ import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
 import com.ibm.aspen.cumulofs.CumuloFSTypeRegistry
+import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 
 object Main {
   
@@ -166,7 +167,7 @@ object Main {
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
-        retryStrategy = new NoRetry,
+        retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
         userTypeRegistry = Some(CumuloFSTypeRegistry)
         )
     
@@ -242,7 +243,7 @@ object Main {
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
-        retryStrategy = new NoRetry,
+        retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
         userTypeRegistry = None
         )
     
