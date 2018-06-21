@@ -25,11 +25,13 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
   
   override val clientId = ClientID(UUID.randomUUID())
   
+  val onlineTracker = new OnlineTracker(nnet.config)
+  
   println(s"CLIENT UUID: ${clientId.uuid}")
    
   val stores = nnet.config.nodes.foldLeft(Map[DataStoreID, NClientConnection]()) { (m, n) =>
     val ep = n._2.endpoint
-    val cnet = new NClientConnection(nnet.clientWorkerGroup, clientId.uuid, ep.host, ep.port, receiveMessage)
+    val cnet = new NClientConnection(nnet.clientWorkerGroup, clientId.uuid, n._2.uuid, ep.host, ep.port, receiveMessage, onlineTracker)
 
     n._2.stores.foldLeft(m) { (m, s) =>
       m + (DataStoreID(nnet.config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> cnet)

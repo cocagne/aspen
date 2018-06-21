@@ -7,7 +7,6 @@ import com.ibm.aspen.base.impl.{codec => P}
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.base.impl.AllocationFinalizationAction.FAContent
 import java.util.UUID
-import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.Key

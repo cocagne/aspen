@@ -18,7 +18,6 @@ import com.ibm.aspen.core.transaction.ClientTransactionManager
 import com.ibm.aspen.core.allocation.ClientAllocationManager
 import com.ibm.aspen.core.allocation.AllocationDriver
 import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.base.UnsupportedIDA
 import com.ibm.aspen.core.objects.ObjectRefcount
@@ -57,6 +56,8 @@ import com.ibm.aspen.base.task.DurableTaskType
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.FinalizationActionHandler
 import com.ibm.aspen.base.task.TaskGroupType
+import com.ibm.aspen.base.StorageHost
+import com.ibm.aspen.core.data_store.DataStoreID
 
 
 object BasicAspenSystem {
@@ -74,7 +75,7 @@ object BasicAspenSystem {
 // StoragePool UUID 0000 is used for bootstrapping pool
 class BasicAspenSystem(
     val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
-    val isStorageNodeOnline: (StorageNodeID) => Boolean,
+    val getStorageHostFn: (DataStoreID) => Future[StorageHost],
     val net: ClientSideNetwork,
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
@@ -93,6 +94,8 @@ class BasicAspenSystem(
   protected val readManager = new ClientReadManager(net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
+  
+  def getStorageHost(storeId: DataStoreID): Future[StorageHost] = getStorageHostFn(storeId)
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit = {
@@ -267,7 +270,7 @@ class BasicAspenSystem(
   }
   
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool] = { 
-    storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer, isStorageNodeOnline)
+    storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer)
   }
   
   

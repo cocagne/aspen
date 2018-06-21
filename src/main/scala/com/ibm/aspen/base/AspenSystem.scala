@@ -20,6 +20,7 @@ import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.base.task.DurableTaskType
+import com.ibm.aspen.core.data_store.DataStoreID
 
 trait AspenSystem extends ObjectReader {
   
@@ -55,6 +56,8 @@ trait AspenSystem extends ObjectReader {
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]
+  
+  def getStorageHost(storeId: DataStoreID): Future[StorageHost]
   
   def transact[T](prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     val tx = newTransaction()

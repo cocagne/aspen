@@ -16,9 +16,11 @@ import com.ibm.aspen.util.uuid2byte
 class NClientConnection(
     val clientWorkerGroup: NioEventLoopGroup, 
     val clientUUID: UUID, 
+    val hostUUID: UUID,
     val host: String, 
     val port: Int,
-    val msgReceived: (Array[Byte]) => Unit) {
+    val msgReceived: (Array[Byte]) => Unit,
+    val onlineTracker: OnlineTracker) {
   
   private[this] var octx: Option[ChannelHandlerContext] = None
   
@@ -44,12 +46,14 @@ class NClientConnection(
     
     override def channelActive(ctx: ChannelHandlerContext): Unit = {
       println(s"Connected to $host:$port")
+      onlineTracker.setNodeOnline(hostUUID)
       ctx.writeAndFlush(uuid2byte(clientUUID))
       setContext(Some(ctx))
     }
     
     override def channelInactive(ctx: ChannelHandlerContext): Unit = {
       println(s"Disconnected from $host:$port")
+      onlineTracker.setNodeOffline(hostUUID)
       setContext(None)
     }
     

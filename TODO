@@ -1,5 +1,4 @@
 
-
 # Building for demo appliction
 # run "sbt pack"
 # then invoke ./target/pack/bin/demo
@@ -15,10 +14,7 @@ Bootstrap Procedure:
     ./target/pack/bin/demo node local/cfg.yaml node_a
 
 Basic Error Handling
-  * Reads - Done
   * Transaction
-  * Store online/offline - Done
-  * Replace StorageNodeOnline with DataStoreOnline
   * retry strategy - ExponentialBackoff
   * object allocaters
   

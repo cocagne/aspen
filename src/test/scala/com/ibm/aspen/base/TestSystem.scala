@@ -14,7 +14,6 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.network.ClientID
 import java.util.UUID
-import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.read.BaseReadDriver
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
@@ -105,9 +104,18 @@ class TestSystem(
     
     val clientId = ClientID(new UUID(0, store.storeId.poolIndex))
     
+    object Host extends StorageHost {
+    
+      val uuid: UUID = UUID.randomUUID()
+      
+      def online: Boolean = true
+    
+      def ownsStore(storeId: DataStoreID)(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(true)
+    }
+    
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
-        isStorageNodeOnline = (_:StorageNodeID) => true,
+        getStorageHostFn = (_:DataStoreID) => Future.successful(Host),
         net = new net.CNet(clientId),
         defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,

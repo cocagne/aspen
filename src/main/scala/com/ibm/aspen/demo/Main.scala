@@ -14,7 +14,6 @@ import java.util.UUID
 import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.network.StorageNodeID
 import com.ibm.aspen.core.read.BaseReadDriver
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
@@ -28,7 +27,6 @@ import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import scala.concurrent.Future
 import com.ibm.aspen.cumulofs.FileSystem
-
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.ibm.aspen.cumulofs.FileInode
 import com.ibm.aspen.cumulofs.impl.SimpleFileSystem
@@ -158,8 +156,8 @@ object Main {
     val cliNet = nnet.createClientNetwork()
     
     val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = nnet.chooseDesignatedLeader _,
-        isStorageNodeOnline = (_:StorageNodeID) => true,
+        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
+        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
@@ -234,8 +232,8 @@ object Main {
     //val zcliNet = new ZClientNetwork(clientId, cfg)
     
     val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = (o:ObjectPointer) => 0,
-        isStorageNodeOnline = (_:StorageNodeID) => true,
+        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
+        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,

@@ -5,7 +5,6 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.network.StorageNodeID
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.objects.StorePointer
@@ -86,7 +85,6 @@ object Bootstrap {
     val timestamp = HLCTimestamp.now
     val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
     val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
-    val hostingStorageNodes = List.fill(bootstrapPoolIDA.width)(StorageNodeID(ZeroedUUID)).toArray
     
     val objectSize = bootstrapStores.foldLeft(None:Option[Int])((ox,y) => (ox, y.maximumAllowedObjectSize) match {
       case (None, None) => None
@@ -128,7 +126,7 @@ object Bootstrap {
       
       bootstrapPoolPtr <- allocateKV(List(
           (BaseStoragePool.PoolUUIDKey,            uuid2byte(BootstrapStoragePoolUUID)), 
-          (BaseStoragePool.HostingStorageNodesKey, BaseStoragePool.encodeStorageNodeIDs(hostingStorageNodes)),
+          (BaseStoragePool.NumberOfStoresKey,      BaseStoragePool.encodeNumberOfStores(bootstrapPoolIDA.width)),
           (BaseStoragePool.AllocationTreeKey,      treeRoot(allocPtr))
       ))
 

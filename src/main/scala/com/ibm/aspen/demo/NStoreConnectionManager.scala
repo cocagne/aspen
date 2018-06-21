@@ -32,7 +32,6 @@ class NStoreConnectionManager(
               val clientUUID = byte2uuid(arr)
               oclientUUID = Some(clientUUID)
               updateClientConnetion(clientUUID, Some(ctx))
-              storeNetwork.nnet.setNodeOnline(clientUUID)
             } else 
               println(s"RECEIVED UNEXPECTED INITIAL MESSAGE OF SIZE: ${arr.length}")
               
@@ -46,7 +45,6 @@ class NStoreConnectionManager(
     override def channelInactive(ctx: ChannelHandlerContext): Unit = synchronized {
       oclientUUID.foreach { clientUUID => 
         updateClientConnetion(clientUUID, None)
-        storeNetwork.nnet.setNodeOffline(clientUUID)
       }
     }
 
