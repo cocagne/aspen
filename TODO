@@ -1,12 +1,12 @@
 
 Basic Error Handling
   * Transaction
-  * Allocation
+  * Allocation Recovery
+  * Allocation Driver
   * object allocaters
   
   * Object Update Error recovery/logging
   * Failed store rebuild
-  * Allocation driver?
 
 
 # Building for demo appliction

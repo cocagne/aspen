@@ -28,7 +28,6 @@ lazy val root = (project in file(".")).
     libraryDependencies ++= Seq(
       "org.scalatest"       %% "scalatest"      % "3.0.4" % "test",
       "com.github.blemale"  %% "scaffeine"      % "2.5.0" % "compile",
-      "org.zeromq"          %  "jeromq"         % "0.4.3",
       "org.rocksdb"         %  "rocksdbjni"     % "5.5.1",
       "org.json4s"          %% "json4s-native"  % "3.6.0-M2",
       "org.json4s"          %% "json4s-jackson" % "3.6.0-M2",
