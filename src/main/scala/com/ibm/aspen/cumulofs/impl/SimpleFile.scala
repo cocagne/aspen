@@ -54,7 +54,7 @@ class SimpleFile(
   private[this] var dataTail: Option[Option[FileIndex.DataTail]] = None
   
   override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new FileInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+    inode = new FileInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
   }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {

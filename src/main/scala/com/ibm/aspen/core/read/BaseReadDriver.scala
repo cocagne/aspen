@@ -78,7 +78,7 @@ class BaseReadDriver(
       return // Already done
       
     def addError(err: ObjectReadError.Value): Unit = {
-      println(s"read error ${objectPointer.uuid}: $err from store ${response.fromStore}")
+      //println(s"read error ${objectPointer.uuid}: $err from store ${response.fromStore}")
       errors += (response.fromStore -> err)
         
       if (storeStates.contains(response.fromStore))
@@ -101,7 +101,7 @@ class BaseReadDriver(
         }
         
         val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
-        println(s"read ok obj ${objectPointer.uuid} rev ${cs.revision} from store ${response.fromStore}")
+        //println(s"read ok obj ${objectPointer.uuid} rev ${cs.revision} from store ${response.fromStore}")
         storeStates += (response.fromStore -> ss)
         
         if (errors.contains(response.fromStore))
@@ -149,14 +149,13 @@ class BaseReadDriver(
       val sortedCounts = revisionCounts.toList.sortBy( t => - t._2 )
       
       if (sortedCounts.head._2 == sortedCounts.tail.head._2) {
-        println(s"  NO DEFINITIVE WINNER $sortedCounts")
         return // No definitive winner. Wait for more responses
       }
       
       val pruneSet = sortedCounts.drop(1).map( t => t._1 ).toSet
       
       storeStates foreach { t =>
-        println(s"  PRUNING VERSION $t")
+        
         val (storeId, ss) = t
         
         if (pruneSet.contains(ss.revision)) {

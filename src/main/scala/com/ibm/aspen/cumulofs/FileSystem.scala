@@ -141,10 +141,10 @@ object FileSystem {
     
     val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, None)
     
-    println(s"Allocating rootDirObj")
+    
     for {
       rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
-      _=println(s"Allocated $rootDirObj")
+    
       rootDirPtr = new DirectoryPointer(InodeTable.RootInode, rootDirObj)
       
       inodeTblContent = KeyValueOperation.insertOperations(List((Key(InodeTable.RootInode), rootDirPtr.toArray)), tx.timestamp())

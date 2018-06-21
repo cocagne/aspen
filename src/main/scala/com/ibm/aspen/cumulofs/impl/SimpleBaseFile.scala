@@ -142,6 +142,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
       case None =>
         val next = pendingOps.poll()
         if (next != null) {
+          //println(s"Begining Inode operation on ${inode.pointer.pointer.uuid} with revision ${inode.revision}")
           activeOp = Some(next)
           executeOp(next)
         }
@@ -177,6 +178,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
     fs.system.retryStrategy.retryUntilSuccessful(onCommitFailure _) {
       attempt() map { t => synchronized {
         val (newRevision, newTimestamp, updatedState, newRefcount) = t
+        //println(s"Updated Inode ${inode.pointer.pointer.uuid} revision ${inode.revision} to $newRevision")
         updateInode(newRevision, newTimestamp, updatedState, newRefcount)
         activeOp = None
         op.promise.success(())

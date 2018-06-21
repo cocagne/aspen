@@ -60,7 +60,6 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
         updatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, root.getTierNodeSize(0), inserts, deletes, requirements, 
                        keyOrdering, reader, allocater, onSplit, onJoin)
       } yield {
-        println(s"Insert Update prepared for object ${updatedKvos.pointer.uuid} orig node: ${kvos.pointer.uuid} right ${kvos.right}")
         new MutableNode(updatedKvos)
       }
     }

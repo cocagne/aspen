@@ -29,7 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue
 class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config) extends ClientSideNetwork 
     with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler {
   
-  import MessageEncoder._
+  import ZMessageEncoder._
   
   val readHandler: ClientSideReadHandler = this
   val allocationHandler: ClientSideAllocationHandler = this
@@ -72,7 +72,8 @@ class ZClientNetwork(override val clientId: ClientID, config: ConfigFile.Config)
   val dealers = config.nodes.foldLeft(Map[DataStoreID, Socket]()) { (m, n) =>
     val dlr = ctx.createSocket(ZMQ.DEALER)
     dlr.setIdentity(com.ibm.aspen.util.uuid2byte(clientId.uuid))
-    dlr.connect(n._2.endpoint)
+    val ep = n._2.endpoint
+    dlr.connect(s"tcp://${ep.host}:${ep.port}")
     reactor.addPoller(new PollItem(dlr, ZMQ.Poller.POLLIN), handler, ())
     n._2.stores.foldLeft(m) { (m, s) =>
       m + (DataStoreID(config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> dlr)

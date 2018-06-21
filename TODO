@@ -1,19 +1,18 @@
-* Allocation handling isn't working out. Allocated objects aren't getting written as part of Tx commit AND mid-allocation objects aren't being loaded
-  - Need to re-work the flow
-  - Allocation Tracking has to change. Currently using Key(ars.storeId, ars.allocationTransactionUUID)
-      -> CANT DO MULTIPLE ALLOCS PER TX
-      - no wonder this isn't working at all
-  - Need Total redesign
-  - AllocationTracker is passed into DataStoreFrontend
-       - allocation calls track
-       - allocationResolved calls stoptrack
-       - Alloc recovery state is passed to constructor
-          - for each, call track
 
 
 # Building for demo appliction
 # run "sbt pack"
 # then invoke ./target/pack/bin/demo
+
+Bootstrap Procedure:
+    sbt pack
+    rm -r ~/temp/aspen/*
+    ./target/pack/bin/demo bootstrap local/t.yaml
+    emacs local/cfg.yaml
+    ./target/pack/bin/demo cumulofs local/cfg.yaml 192.168.227.4 1111
+    
+  For each node:
+    ./target/pack/bin/demo node local/cfg.yaml node_a
 
 Basic Error Handling
   * Reads

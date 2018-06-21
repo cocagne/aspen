@@ -37,10 +37,10 @@ object LocalTaskGroup extends TaskGroupType {
   }
   
   case class IdleTask(taskNumber: Int, taskPointer: DurableTaskPointer, revision: ObjectRevision) extends ReusableTask {
-    println(s"Created IDLE task with state object ${taskPointer.kvPointer.uuid} revision ${revision}")
+    //println(s"Created IDLE task with state object ${taskPointer.kvPointer.uuid} revision ${revision}")
   }
   case class ActiveTask(taskNumber: Int, taskPointer: DurableTaskPointer, task: DurableTask) extends ReusableTask {
-    println(s"Created ACTIVE task with state object ${taskPointer.kvPointer.uuid} type ${task.getClass.getTypeName}")
+    //println(s"Created ACTIVE task with state object ${taskPointer.kvPointer.uuid} type ${task.getClass.getTypeName}")
   }
   
   /** Allocates a new task group within the context of a transaction. The outter Future completes when the transaction

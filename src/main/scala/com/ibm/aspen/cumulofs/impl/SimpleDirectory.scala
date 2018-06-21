@@ -119,7 +119,6 @@ class SimpleDirectory(
       tl <- tree
       kvos <- fkvos
       _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
-      _=println(s"Doing put for name $name")
       prep <- tl.put(name, pointer.toArray)
     } yield ()
   }

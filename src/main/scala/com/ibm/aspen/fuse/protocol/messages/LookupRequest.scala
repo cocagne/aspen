@@ -25,8 +25,6 @@ object LookupRequest extends RequestFactory {
     val bytes = new Array[Byte](bb.remaining())
     bb.get(bytes)
     
-    println(s"Looking up bytes bytes ${com.ibm.aspen.util.arr2string(bytes)} len ${bytes.length} last byte ${bytes(bytes.length-1)}")
-    
     new LookupRequest(header, new String(bytes, 0, bytes.length-1, StandardCharsets.UTF_8))
   }
 }

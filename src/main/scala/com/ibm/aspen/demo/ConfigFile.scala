@@ -102,12 +102,23 @@ object ConfigFile {
     def create(o: Object): DataStore = DataStore(pool.get(o), store.get(o), backend.get(o))
   }
   
-  case class StorageNode(name: String, uuid: UUID, endpoint: String, crl: StorageBackend, stores: List[DataStore])
+  case class Endpoint(host: String, port: Int)
+  
+  object Endpoint extends YObject[Endpoint] {
+    val host = Required("host", YString)
+    val port = Required("port", YInt)
+
+    val attrs = host :: port :: Nil
+    
+    def create(o: Object): Endpoint = Endpoint(host.get(o), port.get(o))
+  }
+  
+  case class StorageNode(name: String, uuid: UUID, endpoint: Endpoint, crl: StorageBackend, stores: List[DataStore])
   
   object StorageNode extends YObject[StorageNode] {
     val name     = Required("name",     YString)
     val uuid     = Required("uuid",     YUUID)
-    val endpoint = Required("endpoint", YString)
+    val endpoint = Required("endpoint", Endpoint)
     val crl      = Required("crl",      Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
     val stores   = Required("stores",   YList(DataStore))
     

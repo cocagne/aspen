@@ -154,12 +154,14 @@ object Main {
     
     val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
 
-    val zcliNet = new ZClientNetwork(ClientID(UUID.randomUUID()), cfg)
+    //val zcliNet = new ZClientNetwork(ClientID(UUID.randomUUID()), cfg)
+    val nnet = new NettyNetwork(cfg)
+    val cliNet = nnet.createClientNetwork()
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
         isStorageNodeOnline = (_:StorageNodeID) => true,
-        net = zcliNet,
+        net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
@@ -226,13 +228,16 @@ object Main {
     
     val clientId = ClientID(UUID.randomUUID())
     
-    val znodeNet = new ZStoreNetwork(nodeName, cfg)
-    val zcliNet = new ZClientNetwork(clientId, cfg)
+    val nnet = new NettyNetwork(cfg)
+    val nodeNet = nnet.createStoreNetwork(nodeName)
+    val cliNet = nnet.createClientNetwork()
+    //val znodeNet = new ZStoreNetwork(nodeName, cfg)
+    //val zcliNet = new ZClientNetwork(clientId, cfg)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = (o:ObjectPointer) => 0,
         isStorageNodeOnline = (_:StorageNodeID) => true,
-        net = zcliNet,
+        net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
@@ -244,7 +249,7 @@ object Main {
         userTypeRegistry = None
         )
     
-    val storageNode = new StorageNode(crl, znodeNet)
+    val storageNode = new StorageNode(crl, nodeNet)
     
     object dsFactory extends DataStore.Factory {
 

@@ -30,7 +30,7 @@ import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import org.zeromq.ZMsg
 
-object MessageEncoder {
+object ZMessageEncoder {
   
   def encodePrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]]): ZMsg = {
     val zmsg = encodeMessage(None, message)

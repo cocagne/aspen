@@ -44,6 +44,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
 import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
+import java.util.UUID
 
 object FuseInterface {
   def toFuseFileType(ft: CumuloFileType.Value): FuseFileType.Value = ft match {
@@ -97,7 +98,8 @@ class FuseInterface(
 {
   import FuseInterface._
   
-  var openFiles = Map[Long, File]()
+  var openFiles = Map[Long, File]()    // InodeNumber -> open file
+  var fileHandles = Map[Long, File]()  // FileHandle -> open file
   var openDirs = Set[Long]()
   var nextfd = 1L
   
@@ -213,8 +215,9 @@ class FuseInterface(
         println(s"** INODE NOT FOUND ${request.inode}")
         response.error(LinuxAPI.ENOENT)
       case Success(Some(file: File)) => synchronized {
-          openFiles += (fd -> file)
-          response.ok(new OpenReply(fd, request.flags))
+        openFiles += (file.pointer.number -> file)  
+        fileHandles += (fd -> file)
+        response.ok(new OpenReply(fd, request.flags))
       }
       case Success(Some(other)) => 
         println(s"OTHER $other")
@@ -224,7 +227,7 @@ class FuseInterface(
   }
   
   override def read(request: ReadRequest, response: Response[DataReply]): Unit = synchronized {
-    openFiles.get(request.fileHandle) match {
+    fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
       case Some(file) => file.debugRead().onComplete { 
         case Failure(cause) => response.error(LinuxAPI.EIO)
@@ -241,7 +244,7 @@ class FuseInterface(
   }
   
   override def write(request: WriteRequest, response: Response[WriteReply]): Unit = synchronized {
-    openFiles.get(request.fileHandle) match {
+    fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
       case Some(file) => file.write(request.offset, DataBuffer(request.data)).onComplete { 
         case Failure(cause) => response.error(LinuxAPI.EIO)
@@ -250,9 +253,16 @@ class FuseInterface(
     }
   }
   
-  override def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = {
+  override def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = synchronized {
     println(s"** Setattr: $request")
-    fs.lookup(request.inode) onComplete {
+    
+    // Check to see if we have an open file first. Fetch directly otherwise
+    val ffile =  openFiles.get(request.inode) match {
+      case None => fs.lookup(request.inode)
+      case Some(f) => Future.successful(Some(f))
+    }
+    
+    ffile onComplete {
       case Failure(cause) => response.error(LinuxAPI.ENOENT)
       case Success(None) =>
         println(s"** Setattr INODE NOT FOUND ${request.inode}")

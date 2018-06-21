@@ -1,37 +1,30 @@
 package com.ibm.aspen.demo
 
-import org.zeromq._
-import org.zeromq.ZMQ.Poller
-import org.zeromq.ZMQ.Socket
-
 import com.ibm.aspen.core.network.StoreSideNetwork
 import com.ibm.aspen.core.network.StoreSideReadHandler
 import com.ibm.aspen.core.network.StoreSideAllocationHandler
 import com.ibm.aspen.core.network.StoreSideTransactionHandler
-import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
 import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.network.protocol.Message
-import java.nio.ByteBuffer
 import com.ibm.aspen.core.network.NetworkCodec
-import com.ibm.aspen.core.read
-import com.ibm.aspen.core.allocation
-import com.ibm.aspen.core.network.ClientID
+import java.nio.ByteBuffer
+import com.ibm.aspen.core.transaction.LocalUpdate
+import java.util.UUID
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.data_store.DataStoreID
+import io.netty.channel.nio.NioEventLoopGroup
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxFinalized
 import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
-import java.util.UUID
-import com.ibm.aspen.core.DataBuffer
-import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.transaction.TxPrepareResponse
 import com.ibm.aspen.core.transaction.TxAccept
 import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.util.uuid2byte
+import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.allocation.AllocationStatusRequest
+import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.transaction.{Message => TransactionMessage}
 import com.ibm.aspen.core.allocation.{Message => AllocationMessage}
 import com.ibm.aspen.core.read.{Message => ReadMessage}
@@ -39,14 +32,14 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
-import org.zeromq.ZMQ.PollItem
-import java.util.concurrent.LinkedBlockingQueue
+import com.ibm.aspen.core.network.ClientID
+import com.ibm.aspen.core.read
+import com.ibm.aspen.core.allocation
 
-
-class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends StoreSideNetwork 
-     with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
-    
-  import ZMessageEncoder._
+class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreSideNetwork 
+   with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
+  
+  import NMessageEncoder._
   
   var or: Option[StoreSideReadMessageReceiver] = None
   var oa: Option[StoreSideAllocationMessageReceiver] = None
@@ -56,107 +49,59 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   def a = synchronized { oa }
   def t = synchronized { ot }
   
-  val sendQueue = new LinkedBlockingQueue[ () => Unit ]()
+  val nodeConfig = nnet.config.nodes(nodeName)
   
-  val ep = config.nodes(nodeName).endpoint
+  val connectionMgr = new NStoreConnectionManager(this, nnet.serverBossGroup, nnet.serverWorkerGroup, nodeConfig.endpoint.port)
   
-  val routerEndpoint = s"tcp://${ep.host}:${ep.port}"
-  
-  val ctx = new ZContext()
-  
-  val rtr = ctx.createSocket(ZMQ.ROUTER)
-  rtr.setIdentity(com.ibm.aspen.util.uuid2byte(config.nodes(nodeName).uuid))
-  rtr.bind(routerEndpoint)
-  
-  val dealers = config.nodes.foldLeft(Map[DataStoreID, Socket]()) { (m, n) =>
-    val dlr = ctx.createSocket(ZMQ.DEALER)
+  val stores = nnet.config.nodes.foldLeft(Map[DataStoreID, NClientConnection]()) { (m, n) =>
     val ep = n._2.endpoint
-    dlr.connect(s"tcp://${ep.host}:${ep.port}")
+    val cnet = new NClientConnection(nnet.clientWorkerGroup, nodeConfig.uuid, ep.host, ep.port, (msg) => ())
+
     n._2.stores.foldLeft(m) { (m, s) =>
-      m + (DataStoreID(config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> dlr)
+      m + (DataStoreID(nnet.config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> cnet)
     }
   }
   
-  val receiverThread = new Thread {
-    setDaemon(true)
-    var heartbeat = 0
-    override def run(): Unit = {
-      val reactor = new ZLoop(ctx)
-      val handler = new ZLoop.IZLoopHandler {
-        override def handle(loop: ZLoop, item: PollItem, arg: AnyRef): Int = {
-          val msg = ZMsg.recvMsg(rtr)
-          
-          if (msg != null) {
-            
-            msg.pop() // discard from address
-            
-            val msgFrame = msg.pop().getData()
-            if (msgFrame.length == 1) {
-              heartbeat += 1
-              println(s"Heartbeat: $heartbeat")
-            } else {
-              val dataFrame = msg.pop() match {
-                case null => None
-                case zframe => Some(zframe.getData)
-              }
-              
-              handleMessage(msgFrame, dataFrame)
-            }
-            
-            msg.destroy()
-          }
-          
-          0
-        }
-      }
-      reactor.addPoller(new PollItem(rtr, ZMQ.Poller.POLLIN), handler, ())
-      reactor.start()
-    }
-  }
-  
-  receiverThread.start()
-  
-  val senderThread = new Thread {
-    setDaemon(true)
-    override def run(): Unit = {
-      while (true)
-        sendQueue.take()()
-    }
-  }
-  senderThread.start()
-  
-  def handleMessage(msgFrame: Array[Byte], dataFrame: Option[Array[Byte]]): Unit = synchronized {
+  def receiveMessage(msg: Array[Byte]): Unit = synchronized {
     
-    val p = Message.getRootAsMessage(ByteBuffer.wrap(msgFrame))
-  
+    val bb = ByteBuffer.wrap(msg)
+    val origLimit = bb.limit()
+    val msgLen = bb.getInt()
+    
+    bb.limit(4+msgLen) // Limit to end of message
+    
+    // Must pass a read-only copy to the following method. It'll corrupt the rest of the buffer otherwise
+    val p = Message.getRootAsMessage(bb.asReadOnlyBuffer())
+    
+    bb.limit(origLimit)
+    bb.position(4 + msgLen) // reposition to encoded data
+    
     if (p.prepare() != null) {
-      println("got prepare")
+      //println("got prepare")
       val message = NetworkCodec.decode(p.prepare())
       
       val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
       println(s"got prepare txid ${message.txd.transactionUUID} for objects: ${sb.toString()}")
 
-      val updateContent = dataFrame match {
-        case None => None
-        case Some(arr) => 
-          var localUpdates: List[LocalUpdate] = Nil
-          val bb = ByteBuffer.wrap(arr)
-          
-          println(s"   Prepare data length: ${bb.remaining()}")
-          // local update content is a series of <16-byte-uuid><4-byte-length><data>
-          
-          while (bb.remaining() != 0) {
-            val msb = bb.getLong()
-            val lsb = bb.getLong()
-            val len = bb.getInt()
-            val uuid = new UUID(msb, lsb)
-            val slice = bb.asReadOnlyBuffer()
-            slice.limit( slice.position + len )
-            bb.position( bb.position + len )
-            localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
-          }
-          
-          Some(localUpdates)
+      val updateContent = if (bb.remaining() == 0) None else {
+        
+        var localUpdates: List[LocalUpdate] = Nil
+        
+        // local update content is a series of <16-byte-uuid><4-byte-length><data>
+        
+        while (bb.remaining() != 0) {
+          val msb = bb.getLong()
+          val lsb = bb.getLong()
+          val len = bb.getInt()
+          val uuid = new UUID(msb, lsb)
+        
+          val slice = bb.asReadOnlyBuffer()
+          slice.limit( slice.position + len )
+          bb.position( bb.position + len )
+          localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
+        }
+        
+        Some(localUpdates)
       }
       
       t.foreach(receiver => receiver.receive(message, updateContent))
@@ -229,48 +174,43 @@ class ZStoreNetwork(val nodeName: String, config: ConfigFile.Config) extends Sto
   def setReceiver(receiver: StoreSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
   def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
   
-  
-  def enqueue(fn: => Unit): Unit = {
-    sendQueue.add( () => fn )  
-  }
-  
-  def send(message: TransactionMessage): Unit = enqueue {
+  def send(message: TransactionMessage): Unit = {
     message match {
       case m: TxPrepareResponse => println(s"   prepare response disposition: ${m.disposition}")
       case _ => 
     }
-    encodeMessage(None, message).send(dealers(message.to))
+    stores(message.to).send(encodeMessage(message))
   }
   
-  def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = enqueue {
-    encodeMessage(Some(client), acceptResponse).send(rtr)
+  def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(acceptResponse))
   }
   
-  def send(client: ClientID, resolved: TxResolved): Unit = enqueue {
-    encodeMessage(Some(client), resolved).send(rtr)
+  def send(client: ClientID, resolved: TxResolved): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(resolved))
   }
   
-  def send(client: ClientID, finalized: TxFinalized): Unit = enqueue {
-    encodeMessage(Some(client), finalized).send(rtr)
+  def send(client: ClientID, finalized: TxFinalized): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(finalized))
   }
   
-  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = enqueue {
-    encodePrepare(message, updateContent).send(dealers(message.to))
+  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
+    stores(message.to).send(encodeMessage(message, updateContent))
   }
   
-  def send(client: ClientID, message: allocation.ClientMessage): Unit = enqueue {
-    encodeMessage(Some(client), message).send(rtr)
+  def send(client: ClientID, message: allocation.ClientMessage): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
   }
   
-  def send(message: AllocationStatusRequest): Unit = enqueue {
-    encodeMessage(None, message).send(dealers(message.to))
+  def send(message: AllocationStatusRequest): Unit = {
+    stores(message.to).send(encodeMessage(message))
   }
   
-  def send(message: AllocationStatusReply): Unit = enqueue {
-    encodeMessage(None, message).send(dealers(message.to))
+  def send(message: AllocationStatusReply): Unit = {
+    stores(message.to).send(encodeMessage(message))
   } 
   
-  def send(client: ClientID, message: read.ReadResponse): Unit = enqueue {
-    encodeMessage(Some(client), message).send(rtr)
+  def send(client: ClientID, message: read.ReadResponse): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
   }
 }

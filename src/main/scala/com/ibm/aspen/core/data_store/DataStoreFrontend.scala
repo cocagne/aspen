@@ -191,7 +191,7 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
-          println(s"getObject ${pointer.uuid} ${obj.metadata}")
+          //println(s"getObject ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.data, obj.locks))
         }
       }}
@@ -215,7 +215,7 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
-          println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
+          //println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.locks))
         }
       }}
@@ -234,7 +234,7 @@ class DataStoreFrontend(
         case Left(err) => Left(err)
         case Right(obj) => synchronized {
           obj.completeOperation(readUUID)
-          println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
+          //println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
           Right((obj.data, obj.locks))
         }
       }}
@@ -651,12 +651,17 @@ class DataStoreFrontend(
       if (errors.isEmpty)
         lockObjects()
       else {
-        println(s"**** ERRORS IN TRANSACTION ${txd.transactionUUID}")
-        errors.foreach(err => println(s"   $err"))
+        //println(s"**** ERRORS IN TRANSACTION ${txd.transactionUUID}")
+        //errors.foreach(err => println(s"   $err"))
         
         val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
           case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
           case _ => m
+        }}
+        
+        val mismatches = errors.foldLeft(Set[UUID]()) { (s, e) => e match {
+          case r: RevisionMismatch => s + r.objectPointer.uuid
+          case _ => s
         }}
         
         val probablyMissedCommitOfLockedTx = errors.forall { e => e match {
@@ -664,11 +669,13 @@ class DataStoreFrontend(
             case None => false
             case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
           }
+          
+          case c: TransactionCollision => mismatches.contains(c.objectPointer.uuid) 
+          
           case _ => false
         }}
         
         if (probablyMissedCommitOfLockedTx) {
-          println(s"PROBABLY MISSED COMMIT")
           collisions.values.foreach { lockedTxUUID => 
             waitingForTransactions += lockedTxUUID
             delayedTransactions += (lockedTxUUID -> this)

@@ -106,7 +106,7 @@ class TransactionBuilder(
   }
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
-    println(s"   TXB Append txid $transactionUUID object ${objectPointer.uuid}")
+    //println(s"   TXB Append txid $transactionUUID object ${objectPointer.uuid}")
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     if (revisionLocks.contains(objectPointer))
@@ -120,7 +120,7 @@ class TransactionBuilder(
   }
   
   def overwrite(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {
-    println(s"   TXB Overwrite txid $transactionUUID object ${objectPointer.uuid}")
+    //println(s"   TXB Overwrite txid $transactionUUID object ${objectPointer.uuid}")
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     if (revisionLocks.contains(objectPointer))
@@ -138,7 +138,7 @@ class TransactionBuilder(
       requiredRevision: Option[ObjectRevision],
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit = synchronized {
-    println(s"   TXB KV Append txid $transactionUUID object ${pointer.uuid}")
+    //println(s"   TXB KV Append txid $transactionUUID object ${pointer.uuid}")
     if (updatingObjects.contains(pointer))
       throw MultipleDataUpdatesToObject(pointer)
     if (revisionLocks.contains(pointer))
@@ -152,7 +152,7 @@ class TransactionBuilder(
       requiredRevision: ObjectRevision,
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit = synchronized {
-    println(s"   TXB KV Overwrite txid $transactionUUID object ${pointer.uuid}")
+    //println(s"   TXB KV Overwrite txid $transactionUUID object ${pointer.uuid}")
     if (updatingObjects.contains(pointer))
       throw MultipleDataUpdatesToObject(pointer)
     if (revisionLocks.contains(pointer))
@@ -162,7 +162,7 @@ class TransactionBuilder(
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {
-    println(s"   TXB SetRef txid $transactionUUID object ${objectPointer.uuid}")
+    //println(s"   TXB SetRef txid $transactionUUID object ${objectPointer.uuid}")
     if (refcountUpdates.contains(objectPointer))
       throw MultipleRefcountUpdatesToObject(objectPointer)
     
@@ -173,7 +173,7 @@ class TransactionBuilder(
   }
   
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized {
-    println(s"   TXB BumpVersion txid $transactionUUID object ${objectPointer.uuid}")
+    //println(s"   TXB BumpVersion txid $transactionUUID object ${objectPointer.uuid}")
     if (updatingObjects.contains(objectPointer))
       throw MultipleDataUpdatesToObject(objectPointer)
     if (revisionLocks.contains(objectPointer))
@@ -186,7 +186,7 @@ class TransactionBuilder(
   }
   
   def lockRevision(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): Unit = synchronized {
-    println(s"   TXB LockRevision txid $transactionUUID object ${objectPointer.uuid}")
+    //println(s"   TXB LockRevision txid $transactionUUID object ${objectPointer.uuid}")
     if (updatingObjects.contains(objectPointer))
       throw ConflictingRequirements(objectPointer)
     
