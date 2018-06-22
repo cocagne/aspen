@@ -47,10 +47,10 @@ class SimpleAllocationRecoveryProcess(
   private[this] var revisionChanged = false
   private[this] var resolving = false
   private[this] var bumpingVersion = false
-  private[this] val promise = Promise[Unit]()
+  private[this] val promise = Promise[Boolean]()
   private[this] val retryStrategy = new ExponentialBackoffRetryStrategy
   
-  def done: Future[Unit] = promise.future
+  def done: Future[Boolean] = promise.future
   
   private[this] val queryTask = BackgroundTask.schedulePeriodic(statusQueryPeriod) { synchronized {
     replies = Map()
@@ -136,8 +136,7 @@ class SimpleAllocationRecoveryProcess(
         (objId, committed) <- resolveObject(ars.newObjectUUID, allocTree)
         complete <- store.allocationRecoveryComplete(ars, committed)
       } yield {
-        crl.discardAllocationState(ars)
-        promise.success(())
+        promise.success(committed)
       }
     } 
   }

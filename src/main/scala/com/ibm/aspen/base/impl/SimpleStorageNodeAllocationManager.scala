@@ -5,9 +5,10 @@ import com.ibm.aspen.core.network.StoreSideAllocationMessenger
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{ Duration, MILLISECONDS }
 import java.util.UUID
+import com.ibm.aspen.core.allocation.AllocationStatusReply
 
 
-class SimpleStorageNodeAllocationManagerclass(
+class SimpleStorageNodeAllocationManager(
     val heartbeatPeriod: Duration,
     val allocationTimeout: Duration,
     val statusQueryPeriod: Duration,
@@ -36,13 +37,20 @@ class SimpleStorageNodeAllocationManagerclass(
           
           recoveryProcesses += (key -> rp)
           
-          rp.done foreach { _ => synchronized {
+          rp.done foreach { committed => synchronized {
             recoveryProcesses -= key
+            stopTracking(key.storeId, key.transactionUUID, committed)
           }}
         }
       }
     }
   }}
+  
+  override def receive(message: AllocationStatusReply): Unit = synchronized {
+    recoveryProcesses.get(Key(message.to, message.allocationTransactionUUID)).foreach { rp =>
+      rp.receive(message)
+    }
+  }
   
   override def shutdown(): Unit = bgTask.cancel()
 }

@@ -1,11 +1,25 @@
 
 Basic Error Handling
+  * Read
+      - SuperSimpleRetryingReadDriver
+          Fixed delay between retries
+          
   * Transaction
       - Client side, keep sending prepares
-      - Detect stalled tx and begin driving - SimpleStoreTxMgr
-      - Driver contention
+      - SimpleStorageNodeTxMgr
+          Background Task polls transactions. If last heartbeat exceeds a threshold timeout, launch a Tx driver
+      - SimpleFixedDelayTransactionDriver
+          Starts a new Paxos round after a fixed delay. Should be sufficient for simple situations
+          
   * Allocation Recovery
-      - SimpleAllocManager - already have it! :)
+      - SimpleStorageNodeAllocationManager
+          Polls in-progress allocations. If a threshold is exceeded, launch the recovery process
+      - SimpleAllocationRecoveryProcess
+          Queries Tx status and awaits completion
+          If version of allocating object hasnt changed, bump the version
+          Once the version is known to have changed, look up the object in the allocation tree.
+          If present, the object was successfully allocated. Otherwise the object may be discarded
+          
   * Allocation Driver
   * object allocaters
   

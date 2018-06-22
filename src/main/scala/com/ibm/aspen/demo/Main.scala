@@ -48,6 +48,7 @@ import com.ibm.aspen.cumulofs.CumuloFSTypeRegistry
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
 import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
+import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
 
 object Main {
   
@@ -231,8 +232,6 @@ object Main {
     val nnet = new NettyNetwork(cfg)
     val nodeNet = nnet.createStoreNetwork(nodeName)
     val cliNet = nnet.createClientNetwork()
-    //val znodeNet = new ZStoreNetwork(nodeName, cfg)
-    //val zcliNet = new ZClientNetwork(clientId, cfg)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
@@ -276,7 +275,13 @@ object Main {
 
     val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, storageNode.net.transactionHandler, 
                      txDriverFactory, finalizerFactory.factory)
-    val allocMgr = new StorageNodeAllocationManager(storageNode.crl, storageNode.net.allocationHandler)
+    
+    val allocHeartbeatPeriod   = Duration(3, SECONDS)
+    val allocTimeout           = Duration(4, SECONDS)
+    val allocStatusQueryPeriod = Duration(1, SECONDS)
+    
+    val allocMgr = new SimpleStorageNodeAllocationManager(allocHeartbeatPeriod, allocTimeout, allocStatusQueryPeriod, sys,
+                       storageNode.crl, storageNode.net.allocationHandler)
     
     storageNode.recoverPendingOperations(txMgr, allocMgr)
     

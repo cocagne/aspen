@@ -80,7 +80,7 @@ class StorageNodeAllocationManager(
     value.saved
   }
   
-  private def stopTracking(storeId: DataStoreID, transactionUUID: UUID, committed: Boolean): Unit = synchronized {
+  protected def stopTracking(storeId: DataStoreID, transactionUUID: UUID, committed: Boolean): Unit = synchronized {
     val key = Key(storeId, transactionUUID)
     
     allocations.get(key).foreach{ m =>
