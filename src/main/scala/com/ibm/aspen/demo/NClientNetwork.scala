@@ -63,6 +63,10 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
       val message = NetworkCodec.decode(p.readResponse())
       r.foreach(receiver => receiver.receive(message))
     }
+    else if (p.prepareResponse() != null) {
+      val message = NetworkCodec.decode(p.prepareResponse())
+      t.foreach(receiver => receiver.receive(message))
+    }
     else if (p.acceptResponse() != null) {
       val message = NetworkCodec.decode(p.acceptResponse())
       t.foreach(receiver => receiver.receive(message))

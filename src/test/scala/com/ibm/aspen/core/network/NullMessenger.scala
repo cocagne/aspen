@@ -8,9 +8,11 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.transaction.TxPrepareResponse
 
 class NullMessenger extends StoreSideTransactionMessenger {
   override def send(message: Message): Unit = ()
+  def send(client: ClientID, prepareResponse: TxPrepareResponse): Unit = ()
   override def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = ()
   override def send(client: ClientID, resolved: TxResolved): Unit = ()
   override def send(client: ClientID, finalized: TxFinalized): Unit = ()

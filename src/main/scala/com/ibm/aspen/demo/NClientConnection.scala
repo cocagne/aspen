@@ -55,6 +55,7 @@ class NClientConnection(
       println(s"Disconnected from $host:$port")
       onlineTracker.setNodeOffline(hostUUID)
       setContext(None)
+      reconnect()
     }
     
     override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {

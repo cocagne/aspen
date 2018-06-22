@@ -10,7 +10,21 @@ import scala.concurrent.duration.Duration
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.transaction.TxAcceptResponse
+import com.ibm.aspen.core.transaction.TxPrepareResponse
 
+object SimpleClientTransactionDriver {
+  
+  def factory(retransmitDelay: Duration)(implicit ec: ExecutionContext): ClientTransactionDriver.Factory = {
+    def f(
+      messenger: ClientSideTransactionMessenger,
+      txd: TransactionDescription, 
+      updateData: Map[DataStoreID, List[LocalUpdate]]): ClientTransactionDriver = new SimpleClientTransactionDriver(retransmitDelay, messenger, txd, updateData)  
+    
+    f _
+  }
+ 
+  
+}
 
 class SimpleClientTransactionDriver(
     val retransmitDelay: Duration,
@@ -19,6 +33,7 @@ class SimpleClientTransactionDriver(
     updateData: Map[DataStoreID, List[LocalUpdate]])
     (implicit ec: ExecutionContext) extends ClientTransactionDriver(messenger, txd, updateData) {
   
+  private var haveUpdateContent = Set[DataStoreID]()
   private var responded = Set[DataStoreID]()
   
   private val task = BackgroundTask.schedulePeriodic(retransmitDelay) {
@@ -28,6 +43,10 @@ class SimpleClientTransactionDriver(
   override def shutdown(): Unit = task.cancel()
   
   result onComplete { _ => task.cancel() }
+  
+  override def receive(prepareResponse: TxPrepareResponse): Unit = synchronized {
+    haveUpdateContent += prepareResponse.from
+  }
   
   override def receive(acceptResponse: TxAcceptResponse): Unit = synchronized {
     responded += acceptResponse.from
@@ -44,7 +63,7 @@ class SimpleClientTransactionDriver(
       
       val updateContent = updateData.get(toStore) match {
         case None => Nil
-        case Some(lst) => lst
+        case Some(lst) => if (haveUpdateContent.contains(toStore)) Nil else lst
       }
       
       messenger.send(initialPrepare, updateContent)

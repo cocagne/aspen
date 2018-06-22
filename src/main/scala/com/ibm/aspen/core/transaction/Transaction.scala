@@ -129,7 +129,10 @@ class Transaction(
           //       that the node will be in this state for a significant period of time. Leave it to the 
           //       CrashRecoveryLog to do the appropriate logging. In the mean time, we should still do
           //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState).foreach(_ => messenger.send(response))
+          crl.saveTransactionRecoveryState(recoveryState).foreach { _ => 
+            messenger.send(response)
+            txd.originatingClient.foreach( client => messenger.send(client, response) )
+          }
         }
     }
   }

@@ -184,6 +184,10 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
     stores(message.to).send(encodeMessage(message))
   }
   
+  def send(client: ClientID, prepareResponse: TxPrepareResponse): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(prepareResponse))  
+  }
+  
   def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = {
     connectionMgr.sendMessageToClient(client.uuid, encodeMessage(acceptResponse))
   }

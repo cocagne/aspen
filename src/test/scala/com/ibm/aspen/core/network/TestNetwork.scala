@@ -25,6 +25,7 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
+import com.ibm.aspen.core.transaction.TxPrepareResponse
 
 
 class TestNetwork {
@@ -68,6 +69,7 @@ class TestNetwork {
     def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
     
     def send(message: transaction.Message): Unit = get(message.to).foreach(sn => sn.t.foreach(t => t.receive(message, None)))
+    def send(client: ClientID, prepareResponse: TxPrepareResponse): Unit = get(client).foreach(c => c.t.foreach(t => t.receive(prepareResponse)))
     def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = get(client).foreach(c => c.t.foreach(t => t.receive(acceptResponse)))
     def send(client: ClientID, resolved: TxResolved): Unit = get(client).foreach(c => c.t.foreach(t => t.receive(resolved)))
     def send(client: ClientID, finalized: TxFinalized): Unit = get(client).foreach(c => c.t.foreach(t => t.receive(finalized)))

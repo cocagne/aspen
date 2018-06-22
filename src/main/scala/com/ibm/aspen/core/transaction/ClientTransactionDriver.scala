@@ -47,6 +47,8 @@ class ClientTransactionDriver(
     }
   }
   
+  def receive(prepareResponse: TxPrepareResponse): Unit = {}
+  
   def receive(finalized: TxFinalized): Unit = synchronized {
     if (!promise.isCompleted)
       promise.success(finalized.committed)

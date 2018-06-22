@@ -49,6 +49,7 @@ import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
 import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
 import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
+import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
 
 object Main {
   
@@ -159,12 +160,14 @@ object Main {
     val nnet = new NettyNetwork(cfg)
     val cliNet = nnet.createClientNetwork()
     
+    val prepareRetransmitDelay = Duration(1, SECONDS)
+    
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
-        defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
+        defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
@@ -233,12 +236,14 @@ object Main {
     val nodeNet = nnet.createStoreNetwork(nodeName)
     val cliNet = nnet.createClientNetwork()
     
+    val prepareRetransmitDelay = Duration(1, SECONDS)
+    
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
-        defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
+        defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
