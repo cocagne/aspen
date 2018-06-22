@@ -46,6 +46,8 @@ import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
 import com.ibm.aspen.cumulofs.CumuloFSTypeRegistry
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
+import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
+import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
 
 object Main {
   
@@ -266,7 +268,14 @@ object Main {
     
     val finalizerFactory = new BaseTransactionFinalizer(sys)
      
-    val txMgr = new StorageNodeTransactionManager(storageNode.crl, storageNode.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+    val txHeartbeatPeriod = Duration(1, SECONDS)
+    val txHeartbeatTimeout = Duration(3, SECONDS) // Delay until another store tries to drive transaction to completion
+    val txRetryDelay = Duration(3, SECONDS) // Delay between advancing the Paxos round and sending new prepare messages
+    
+    val txDriverFactory = SimpleFixedDelayTransactionDriver.factory(txRetryDelay)
+
+    val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, storageNode.net.transactionHandler, 
+                     txDriverFactory, finalizerFactory.factory)
     val allocMgr = new StorageNodeAllocationManager(storageNode.crl, storageNode.net.allocationHandler)
     
     storageNode.recoverPendingOperations(txMgr, allocMgr)

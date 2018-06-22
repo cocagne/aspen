@@ -170,7 +170,7 @@ abstract class TransactionDriver(
   
   def mayBeDiscarded: Boolean = synchronized { finalized }
   
-  protected def onFinalized(committed: Boolean) = synchronized {
+  protected def onFinalized(committed: Boolean): Unit = synchronized {
     if (!finalized) {
       finalized = true
       
@@ -189,6 +189,12 @@ abstract class TransactionDriver(
     peerDispositions = Map()
     acceptedPeers = Set()
     proposer.nextRound()
+  }
+  
+  protected def sendPrepareMessages(): Unit = {
+    val proposalId = synchronized { proposer.currentProposalId }
+    
+    txd.allDataStores.foreach( toStore => messenger.send(TxPrepare(toStore, storeId, txd, proposalId)) )
   }
   
   protected def sendAcceptMessages(): Unit = {

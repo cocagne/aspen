@@ -1,7 +1,11 @@
 
 Basic Error Handling
   * Transaction
+      - Client side, keep sending prepares
+      - Detect stalled tx and begin driving - SimpleStoreTxMgr
+      - Driver contention
   * Allocation Recovery
+      - SimpleAllocManager - already have it! :)
   * Allocation Driver
   * object allocaters
   
