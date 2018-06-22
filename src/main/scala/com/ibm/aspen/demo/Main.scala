@@ -50,6 +50,7 @@ import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
 import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
 import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
 import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
+import com.ibm.aspen.base.impl.SuperSimpleRetryingAllocationDriver
 
 object Main {
   
@@ -161,6 +162,7 @@ object Main {
     val cliNet = nnet.createClientNetwork()
     
     val prepareRetransmitDelay = Duration(1, SECONDS)
+    val allocationRetransmitDelay = Duration(1, SECONDS)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
@@ -168,7 +170,7 @@ object Main {
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
-        defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
+        defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
@@ -237,6 +239,7 @@ object Main {
     val cliNet = nnet.createClientNetwork()
     
     val prepareRetransmitDelay = Duration(1, SECONDS)
+    val allocationRetransmitDelay = Duration(1, SECONDS)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
@@ -244,7 +247,7 @@ object Main {
         net = cliNet,
         defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
-        defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
+        defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,

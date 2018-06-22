@@ -1,17 +1,24 @@
 
+  * object allocaters
+  * Object Update Error recovery/logging
+  * Failed store rebuild
+
 Basic Error Handling
   * Read
       - SuperSimpleRetryingReadDriver
           Fixed delay between retries
           
   * Transaction
-      - Client side, keep sending prepares
+      - SimpleClientTransactionDriver
+          Retransmits prepare with fixed delay. Update data stops being sent after first response is received
       - SimpleStorageNodeTxMgr
           Background Task polls transactions. If last heartbeat exceeds a threshold timeout, launch a Tx driver
       - SimpleFixedDelayTransactionDriver
           Starts a new Paxos round after a fixed delay. Should be sufficient for simple situations
           
   * Allocation Recovery
+      - SuperSimpleRetryingAllocationDriver
+          Fixed delay between retransmit
       - SimpleStorageNodeAllocationManager
           Polls in-progress allocations. If a threshold is exceeded, launch the recovery process
       - SimpleAllocationRecoveryProcess
@@ -19,12 +26,8 @@ Basic Error Handling
           If version of allocating object hasnt changed, bump the version
           Once the version is known to have changed, look up the object in the allocation tree.
           If present, the object was successfully allocated. Otherwise the object may be discarded
-          
-  * Allocation Driver
-  * object allocaters
+           
   
-  * Object Update Error recovery/logging
-  * Failed store rebuild
 
 
 # Building for demo appliction
