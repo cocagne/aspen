@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.util
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import com.ibm.aspen.base.MissedUpdateStrategy
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -78,7 +79,8 @@ object Bootstrap {
    */
   def initializeNewSystem(
       bootstrapStores: List[DataStore],
-      bootstrapPoolIDA: IDA)(implicit ec: ExecutionContext): Future[KeyValueObjectPointer] = {
+      bootstrapPoolIDA: IDA,
+      bootstrapPoolMissedUpdateStrategy: MissedUpdateStrategy)(implicit ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     
     require( bootstrapPoolIDA.width >= bootstrapStores.length)
 
@@ -121,14 +123,23 @@ object Bootstrap {
       TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), ByteArrayKeyOrdering, rootNode).toArray
     }
     
+    def getPoolKV(allocPtr: KeyValueObjectPointer): List[(Key, Array[Byte])] = {
+      val ipoolkv = List(
+            (BaseStoragePool.PoolUUIDKey,                 uuid2byte(BootstrapStoragePoolUUID)), 
+            (BaseStoragePool.NumberOfStoresKey,           BaseStoragePool.encodeNumberOfStores(bootstrapPoolIDA.width)),
+            (BaseStoragePool.AllocationTreeKey,           treeRoot(allocPtr)),
+            (BaseStoragePool.MissedUpdateStrategyUUIDKey, uuid2byte(bootstrapPoolMissedUpdateStrategy.strategyUUID))
+        )
+      bootstrapPoolMissedUpdateStrategy.config match {
+        case None => ipoolkv
+        case Some(v) => (BaseStoragePool.MissedUpdateStrategyCfgKey, v) :: ipoolkv
+      }
+    }
+    
     for {
       allocPtr <- allocateKV(Nil)
       
-      bootstrapPoolPtr <- allocateKV(List(
-          (BaseStoragePool.PoolUUIDKey,            uuid2byte(BootstrapStoragePoolUUID)), 
-          (BaseStoragePool.NumberOfStoresKey,      BaseStoragePool.encodeNumberOfStores(bootstrapPoolIDA.width)),
-          (BaseStoragePool.AllocationTreeKey,      treeRoot(allocPtr))
-      ))
+      bootstrapPoolPtr <- allocateKV(getPoolKV(allocPtr))
 
       storagePoolTreePtr <- allocateKV(List( (Key(BootstrapStoragePoolUUID), bootstrapPoolPtr.toArray) ))
 

@@ -37,6 +37,7 @@ import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.base.task.DurableTaskType
 import scala.annotation.tailrec
+import com.ibm.aspen.base.impl.PerStoreMissedUpdate
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -148,7 +149,9 @@ class TestSystem(
   val (store1, crl1) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 1))
   val (store2, crl2) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 2))
   
-  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA), 500 milliseconds)
+  val missedUpdateStrategy = PerStoreMissedUpdate.getStrategy(Array(BootstrapObjectAllocaterUUID), Array(8192))
+  
+  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA, missedUpdateStrategy), 500 milliseconds)
   
   val net = new TestNetwork
   

@@ -51,6 +51,7 @@ import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
 import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
 import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingAllocationDriver
+import com.ibm.aspen.base.impl.PerStoreMissedUpdate
 
 object Main {
   
@@ -317,7 +318,12 @@ object Main {
     
     val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
     
-    val fptr = Bootstrap.initializeNewSystem(bootstrapStores, bootstrapPoolIDA)
+    val missedUpdateStrategy = cfg.pools("bootstrap-pool").missedUpdateStrategy match {
+      case pss: ConfigFile.PerStoreSet => 
+        PerStoreMissedUpdate.getStrategy(pss.allocaters.map(name => cfg.allocaters(name).uuid).toArray, pss.nodeSizes.toArray)
+    }
+    
+    val fptr = Bootstrap.initializeNewSystem(bootstrapStores, bootstrapPoolIDA, missedUpdateStrategy)
     
     val radicle = Await.result(fptr, Duration(5000, MILLISECONDS))
     

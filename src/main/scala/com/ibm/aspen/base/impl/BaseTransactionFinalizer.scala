@@ -11,7 +11,7 @@ import com.ibm.aspen.base.UpdateableFinalizationAction
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.FinalizationActionHandler
 
-class BaseTransactionFinalizer(system: BasicAspenSystem)(implicit ec: ExecutionContext) {
+class BaseTransactionFinalizer(val system: BasicAspenSystem)(implicit ec: ExecutionContext) {
   
   object factory extends TransactionFinalizer.Factory{
     def create(
@@ -31,7 +31,7 @@ class BaseTransactionFinalizer(system: BasicAspenSystem)(implicit ec: ExecutionC
           // Preceeding code should not allow this to occur
           assert(false, "Unknown Finalizers or deserialization problems must be caught before this point") 
           l
-        case Some(fah) => fah.createAction(sfa.data) :: l
+        case Some(fah) => fah.createAction(system, txd, sfa.data, acceptedPeers) :: l
       }
     }
     

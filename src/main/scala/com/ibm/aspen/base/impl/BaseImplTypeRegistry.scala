@@ -21,9 +21,10 @@ object BaseImplTypeRegistry {
     )
     
     val handlers = List(
-        new AllocationFinalizationAction(system),
-        new TieredKeyValueListSplitFA(system),
-        new TieredKeyValueListJoinFA(system)
+        new AllocationFinalizationAction,
+        new TieredKeyValueListSplitFA,
+        new TieredKeyValueListJoinFA,
+        PerStoreMissedUpdate
     )
     
     class DirectRegistry extends TypeRegistry {

@@ -96,6 +96,11 @@ class BaseTransaction(
     case Left(_) => throw PostCommitTransactionModification()
   }
   
+  def addFinalizationAction(finalizationActionUUID: UUID): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.addFinalizationAction(finalizationActionUUID)
+    case Left(_) => throw PostCommitTransactionModification()
+  }
+  
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized { state } match {
     case Right(bldr) => bldr.addNotifyOnResolution(storesToNotify)
     case Left(_) => throw PostCommitTransactionModification()

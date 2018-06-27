@@ -7,6 +7,9 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.KeyValueObjectState
+
 
 trait StoragePool {
   val uuid: UUID
@@ -24,6 +27,8 @@ trait StoragePool {
   
   /** Throws AllocationError: UnsupportedIDA if the IDA is not supported*/
   def selectStoresForAllocation(ida: IDA): Array[Int]
+  
+  def getMissedUpdateStrategy(): MissedUpdateStrategy
   
   def refresh()(implicit ec: ExecutionContext): Future[StoragePool]
 }

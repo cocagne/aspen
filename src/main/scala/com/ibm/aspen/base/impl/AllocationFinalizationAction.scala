@@ -14,6 +14,7 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 object AllocationFinalizationAction {
   val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
@@ -27,16 +28,9 @@ object AllocationFinalizationAction {
     val notifyStores = newNodePointer.storePointers.map(sp => DataStoreID(newNodePointer.poolUUID, sp.poolIndex)).toSet
     transaction.addNotifyOnResolution(notifyStores)
   }
-}
-
-class AllocationFinalizationAction(
-    val system: AspenSystem) extends FinalizationActionHandler {
-  
-  import AllocationFinalizationAction._
-  
-  val typeUUID: UUID = AddToAllocationTreeUUID
   
   class AddToAllocationTree(
+      val system: AspenSystem,
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer) extends FinalizationAction {
     
@@ -58,15 +52,24 @@ class AllocationFinalizationAction(
       
       fcommit
     }
-  
-    def completionDetected(): Unit = ()
   }
+}
+
+class AllocationFinalizationAction extends FinalizationActionHandler {
   
-  override def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
+  import AllocationFinalizationAction._
+  
+  val typeUUID: UUID = AddToAllocationTreeUUID
+  
+  override def createAction(
+      system: AspenSystem, 
+      txd: TransactionDescription,
+      serializedActionData: Array[Byte], 
+      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
 
     val fa = BaseCodec.decodeFinalizationActionContent(serializedActionData)
     
-    new AddToAllocationTree(fa.storagePoolDefinitionPointer, fa.newNodePointer)      
+    new AddToAllocationTree(system, fa.storagePoolDefinitionPointer, fa.newNodePointer)      
   }
 }
 

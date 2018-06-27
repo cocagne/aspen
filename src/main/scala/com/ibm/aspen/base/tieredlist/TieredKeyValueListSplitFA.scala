@@ -17,6 +17,8 @@ import scala.util.Success
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import scala.concurrent.Promise
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 object TieredKeyValueListSplitFA {
   val FinalizationActionUUID = UUID.fromString("09d1c4a2-22a7-48b0-85f4-726afea02f2a")
@@ -49,23 +51,9 @@ object TieredKeyValueListSplitFA {
       targetTier: Int, 
       left: KeyValueListPointer, 
       right: KeyValueListPointer,
-      keyOrdering: KeyOrdering) 
-}
-
-class TieredKeyValueListSplitFA(
-    val system: AspenSystem) extends FinalizationActionHandler {
-  
-  import TieredKeyValueListSplitFA._
-  
-  val typeUUID: UUID = FinalizationActionUUID
-  
-  def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
-    new InsertIntoUpperTier( BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData) )
-  }
-  
-  class InsertIntoUpperTier(val c: Content) extends FinalizationAction {
-    
-    def completionDetected(): Unit = ()
+      keyOrdering: KeyOrdering)
+      
+  class InsertIntoUpperTier(val system: AspenSystem, val c: Content) extends FinalizationAction {
     
     def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
@@ -127,5 +115,19 @@ class TieredKeyValueListSplitFA(
       p.future
     }
   }
+}
+
+class TieredKeyValueListSplitFA extends FinalizationActionHandler {
   
+  import TieredKeyValueListSplitFA._
+  
+  val typeUUID: UUID = FinalizationActionUUID
+  
+  def createAction(
+      system: AspenSystem,
+      txd: TransactionDescription,
+      serializedActionData: Array[Byte], 
+      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+    new InsertIntoUpperTier(system, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData))
+  }
 }

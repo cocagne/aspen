@@ -212,6 +212,10 @@ class TransactionBuilder(
     finalizationActions = SerializedFinalizationAction(finalizationActionUUID, serializedContent) :: finalizationActions
   }
   
+  def addFinalizationAction(finalizationActionUUID: UUID): Unit = synchronized {
+    finalizationActions = SerializedFinalizationAction(finalizationActionUUID, new Array[Byte](0)) :: finalizationActions
+  }
+  
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized {
     notifyOnResolution = notifyOnResolution ++ storesToNotify
   }

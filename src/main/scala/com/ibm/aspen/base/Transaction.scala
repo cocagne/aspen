@@ -54,6 +54,8 @@ trait Transaction {
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
   
+  def addFinalizationAction(finalizationActionUUID: UUID): Unit
+  
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit
   
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction

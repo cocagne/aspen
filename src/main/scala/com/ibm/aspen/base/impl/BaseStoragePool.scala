@@ -23,12 +23,16 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.util.byte2uuid
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.base.StorageHost
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.base.MissedUpdateStrategy
 
 object BaseStoragePool {
   
-  val PoolUUIDKey            = Key(Array[Byte](0))
-  val NumberOfStoresKey      = Key(Array[Byte](1))
-  val AllocationTreeKey      = Key(Array[Byte](2))
+  val PoolUUIDKey                 = Key(Array[Byte](0))
+  val NumberOfStoresKey           = Key(Array[Byte](1))
+  val AllocationTreeKey           = Key(Array[Byte](2))
+  val MissedUpdateStrategyUUIDKey = Key(Array[Byte](3))
+  val MissedUpdateStrategyCfgKey  = Key(Array[Byte](4))
   
   def encodeNumberOfStores(num: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
@@ -46,6 +50,9 @@ object BaseStoragePool {
           val poolUUID = byte2uuid(kvos.contents(PoolUUIDKey).value)
           val numStores = ByteBuffer.wrap(kvos.contents(NumberOfStoresKey).value).getInt()
           val allocationTreeRoot = TieredKeyValueList.Root(kvos.contents(AllocationTreeKey).value)
+          val strategyUUID = byte2uuid(kvos.contents(MissedUpdateStrategyUUIDKey).value)
+          val cfg = kvos.contents.get(MissedUpdateStrategyCfgKey).map(v => v.value)
+          val mus = MissedUpdateStrategy(strategyUUID, cfg)
           
           val fhosts = (0 until numStores).map { i =>
             val storeId = DataStoreID(poolUUID, i.asInstanceOf[Byte])
@@ -55,7 +62,7 @@ object BaseStoragePool {
           Future.sequence(fhosts).map { lst =>
           
           new BaseStoragePool(system, poolDefinitionPointer, kvos.revision, kvos.refcount, 
-              poolUUID, lst.toArray, allocationTreeRoot)
+              poolUUID, lst.toArray, allocationTreeRoot, mus)
           }
       } 
     }
@@ -69,7 +76,8 @@ class BaseStoragePool(
     val poolDefinitionRefcount: ObjectRefcount,
     val uuid: UUID,
     val storageHosts: Array[StorageHost],
-    val allocationTreeRoot: TieredKeyValueList.Root) extends StoragePool {
+    val allocationTreeRoot: TieredKeyValueList.Root,
+    val missedUpdateStrategy: MissedUpdateStrategy) extends StoragePool {
   
   import BaseStoragePool._
   
@@ -92,6 +100,8 @@ class BaseStoragePool(
   override def getAllocationTree(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = {
     Future.successful(new SimpleMutableTieredKeyValueList(system, Left(poolDefinitionPointer), AllocationTreeKey, ByteArrayKeyOrdering))
   }
+  
+  def getMissedUpdateStrategy(): MissedUpdateStrategy = missedUpdateStrategy
 
 } // end BaseStoragePool
 

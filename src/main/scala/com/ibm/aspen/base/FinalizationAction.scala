@@ -15,5 +15,5 @@ trait FinalizationAction {
   def execute()(implicit ec: ExecutionContext): Future[Unit]
   
   /** Called when we are explicitly informed that some other peer has completed the action */
-  def completionDetected(): Unit
+  def completionDetected(): Unit = ()
 }

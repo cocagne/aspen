@@ -21,6 +21,9 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+import java.util.UUID
+import com.ibm.aspen.core.transaction.KeyValueUpdate.KVRequirement
+import com.ibm.aspen.core.transaction.KeyValueUpdate.TimestampRequirement
 
 object SimpleMutableTieredKeyValueList {
   
@@ -35,6 +38,31 @@ object SimpleMutableTieredKeyValueList {
     }
   }
   
+  def load(system: AspenSystem, containerObject: KeyValueObjectPointer, treeKey: Key, encodedRoot: Array[Byte]): SimpleMutableTieredKeyValueList = {
+    val root = TieredKeyValueList.Root(encodedRoot)
+    new SimpleMutableTieredKeyValueList(system, Left(containerObject), treeKey, root.keyOrdering, Some(root))
+  }
+  
+  def create(
+      system: AspenSystem,
+      kvos: KeyValueObjectState,
+      treeKey: Key,
+      objectAllocaters: Array[UUID], 
+      tierNodeSizes: Array[Int], 
+      keyOrdering: KeyOrdering)(implicit ec: ExecutionContext): Future[SimpleMutableTieredKeyValueList] = {
+    
+    system.transact { implicit tx =>
+      for {
+        alloc <- system.getObjectAllocater(objectAllocaters(0))
+        rootNode <- alloc.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
+        root = TieredKeyValueList.Root(0, objectAllocaters, tierNodeSizes, keyOrdering, rootNode)
+        ins = Insert(treeKey, root.toArray(), tx.timestamp())
+        _=tx.append(kvos.pointer, Some(kvos.revision), List(KVRequirement(treeKey, tx.timestamp, TimestampRequirement.DoesNotExist)), List(ins))
+      } yield {
+        new SimpleMutableTieredKeyValueList(system, Left(kvos.pointer), treeKey, root.keyOrdering, Some(root))
+      }    
+    }
+  }
 }
 
 class SimpleMutableTieredKeyValueList(

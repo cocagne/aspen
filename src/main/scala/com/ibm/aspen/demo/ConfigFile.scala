@@ -45,18 +45,6 @@ storage-nodes:
          path:  /var/lib/aspen/node_a/bootstrap-0*/
 object ConfigFile {
   
-  case class Pool(name: String, width: Int, uuid: UUID)
-  
-  object Pool extends YObject[Pool] {
-    val name  = Required("name",  YString)
-    val width = Required("width", YInt)
-    val uuid  = Required("uuid",  YUUID)
-    
-    val attrs = name :: width :: uuid :: Nil
-    
-    def create(o: Object): Pool = Pool(name.get(o), width.get(o), uuid.get(o))
-  }
-  
   object ReplicationFormat extends YObject[IDA] {
     val width           = Required("width",            YInt)
     val writeThreshold  = Required("write-threshold",  YInt)
@@ -66,13 +54,47 @@ object ConfigFile {
     def create(o: Object): IDA = Replication(width.get(o), writeThreshold.get(o))
   }
   
+  val IDAOptions =  Map(("replication" -> ReplicationFormat))
+  
+  
+  abstract class MissedUpdateHandler
+  
+  case class PerStoreSet(allocaters: List[String], nodeSizes: List[Int]) extends MissedUpdateHandler
+  
+  object PerStoreSet extends YObject[MissedUpdateHandler] {
+    
+    val allocaters = Required("tier-allocaters",   YList(YString))
+    val nodeSizes = Required("tier-node-sizes",    YList(YInt))
+    
+    val attrs = allocaters :: nodeSizes :: Nil
+    
+    def create(o: Object): PerStoreSet = PerStoreSet(allocaters.get(o), nodeSizes.get(o))
+  }
+  
+  val MissedUpdateOptions = Map(("type" -> PerStoreSet))
+  
+  case class Pool(name: String, width: Int, uuid: UUID, missedUpdateStrategy: MissedUpdateHandler)
+  
+  object Pool extends YObject[Pool] {
+    val name                 = Required("name",  YString)
+    val width                = Required("width", YInt)
+    val uuid                 = Required("uuid",  YUUID)
+    val missedUpdateStrategy = Required("missed-update-strategy", Choice("type", MissedUpdateOptions))
+    
+    val attrs = name :: width :: uuid :: missedUpdateStrategy :: Nil
+    
+    def create(o: Object): Pool =  Pool(name.get(o), width.get(o), uuid.get(o), missedUpdateStrategy.get(o))
+  }
+  
+  
+  
   case class ObjectAllocater(name: String, pool: String, uuid: UUID, ida: IDA)
   
   object ObjectAllocater extends YObject[ObjectAllocater] {
     val name = Required("name", YString)
     val pool = Required("pool", YString)
     val uuid = Required("uuid", YUUID)
-    val ida  = Required("ida",  Choice("type", Map(("replication" -> ReplicationFormat))))
+    val ida  = Required("ida",  Choice("type", IDAOptions))
     
     val attrs = name :: pool :: uuid :: ida :: Nil
     
@@ -179,6 +201,20 @@ object ConfigFile {
       
       if (!zeroeduuid(allocaters("bootstrap-allocater").uuid))
         throw new FormatError("bootstrap-allocater must use a zeroed UUID")
+      
+      pools.values.foreach { p =>
+        p.missedUpdateStrategy match {
+          case pss: PerStoreSet => 
+            if (pss.allocaters.length == 0)
+              throw new FormatError(s"tier-allocaters attribute of pool ${p.name} must contain at least one object allocater name")
+            if (pss.nodeSizes.length == 0)
+              throw new FormatError(s"tier-node-sizes attribute of pool ${p.name} must contain at least one node size (in bytes)")
+            pss.allocaters.foreach { allocaterName =>
+              if (!allocaters.contains(allocaterName))
+                throw new FormatError(s"pool ${p.name} references unknown allocater ${allocaterName}")
+            }
+        }
+      }
       
       nodes.values.foreach { n =>
         n.stores.foreach { s =>

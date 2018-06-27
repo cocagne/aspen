@@ -20,6 +20,8 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.KeyValueUpdate.KVRequirement
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import scala.concurrent.Promise
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.transaction.TransactionDescription
 
 
 object TieredKeyValueListJoinFA {
@@ -58,23 +60,9 @@ object TieredKeyValueListJoinFA {
       targetTier: Int,
       left: KeyValueListPointer,
       removed: KeyValueListPointer,
-      keyOrdering: KeyOrdering) 
-}
-
-class TieredKeyValueListJoinFA(
-    val system: AspenSystem) extends FinalizationActionHandler {
-  
-  import TieredKeyValueListJoinFA._
-  
-  val typeUUID: UUID = FinalizationActionUUID
-  
-  def createAction(serializedActionData: Array[Byte]): FinalizationAction = {
-    new RemoveFromUpperTier( BaseCodec.decodeTieredKeyValueListJoinFA(serializedActionData) )
-  }
-  
-  class RemoveFromUpperTier(val c: Content) extends FinalizationAction {
-    
-    def completionDetected(): Unit = ()
+      keyOrdering: KeyOrdering)
+      
+  class RemoveFromUpperTier(val system: AspenSystem, val c: Content) extends FinalizationAction {
     
     def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       
@@ -130,5 +118,20 @@ class TieredKeyValueListJoinFA(
       
       p.future
     }    
+  }
+}
+
+class TieredKeyValueListJoinFA extends FinalizationActionHandler {
+  
+  import TieredKeyValueListJoinFA._
+  
+  val typeUUID: UUID = FinalizationActionUUID
+  
+  def createAction(
+      system: AspenSystem,
+      txd: TransactionDescription,
+      serializedActionData: Array[Byte], 
+      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+    new RemoveFromUpperTier(system, BaseCodec.decodeTieredKeyValueListJoinFA(serializedActionData) )
   }
 }
