@@ -68,7 +68,13 @@ class Transaction(
   
   def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
     
-    updateTimestamp()
+    // Proposal ID 1 is always sent by the client initiating the transaction. We don't want to update
+    // the timestamp for this since the client can't drive the transaction to completion and it'll 
+    // contiually re-transmit the request to work around connection issues. Prepares sent by stores,
+    // which will use a proposalId > 1 should up the the timestamp so we don't time out and also
+    // attempt to drive the transaction forward.
+    if (prepare.proposalId.number != 1)
+      updateTimestamp()
     
     val (response, acceptorState, originalDisposition, dataUpdates) = synchronized {
       if (localUpdates.isEmpty && optDataUpdates.isDefined)

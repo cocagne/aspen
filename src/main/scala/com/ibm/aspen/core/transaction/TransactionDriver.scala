@@ -155,11 +155,9 @@ abstract class TransactionDriver(
   def receiveTxResolved(msg: TxResolved): Unit = {}
   
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
-    
     finalizer.foreach { f =>
       f.updateCommittedPeer(msg.from)
     }
-    
   }
   
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 

@@ -71,7 +71,7 @@ object ConfigFile {
     def create(o: Object): PerStoreSet = PerStoreSet(allocaters.get(o), nodeSizes.get(o))
   }
   
-  val MissedUpdateOptions = Map(("type" -> PerStoreSet))
+  val MissedUpdateOptions = Map(("per-store-set" -> PerStoreSet))
   
   case class Pool(name: String, width: Int, uuid: UUID, missedUpdateStrategy: MissedUpdateHandler)
   
@@ -83,7 +83,7 @@ object ConfigFile {
     
     val attrs = name :: width :: uuid :: missedUpdateStrategy :: Nil
     
-    def create(o: Object): Pool =  Pool(name.get(o), width.get(o), uuid.get(o), missedUpdateStrategy.get(o))
+    def create(o: Object): Pool = Pool(name.get(o), width.get(o), uuid.get(o), missedUpdateStrategy.get(o))
   }
   
   

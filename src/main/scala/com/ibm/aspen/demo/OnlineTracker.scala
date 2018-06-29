@@ -60,10 +60,11 @@ class OnlineTracker(config: ConfigFile.Config) {
   def chooseDesignatedLeader(p: ObjectPointer): Byte = {
     var attempts = 0
     var online = false
-    var idx = rnd.nextInt(p.ida.width).asInstanceOf[Byte]
+    var idx = 0.asInstanceOf[Byte]
     
-    while(!online && attempts < p.ida.width) {
+    while(!online && attempts < p.ida.width * 2) {
       attempts += 1
+      idx = rnd.nextInt(p.ida.width).asInstanceOf[Byte]
       online = storeToHost(DataStoreID(p.poolUUID, idx)).online
     }
     

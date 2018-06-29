@@ -83,7 +83,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       val message = NetworkCodec.decode(p.prepare())
       
       val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
-      println(s"got prepare txid ${message.txd.transactionUUID} for objects: ${sb.toString()}")
+      println(s"got prepare txid ${message.txd.transactionUUID} Leader ${message.txd.designatedLeaderUID} for objects: ${sb.toString()}")
 
       val updateContent = if (bb.remaining() == 0) None else {
         
@@ -126,6 +126,11 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
     else if (p.resolved() != null) {
       val message = NetworkCodec.decode(p.resolved())
       println(s"got resolved for txid ${message.transactionUUID} committed = ${message.committed}")
+      t.foreach(receiver => receiver.receive(message, None))
+    }
+    else if (p.committed() != null) {
+      val message = NetworkCodec.decode(p.committed())
+      println(s"got committed for txid ${message.transactionUUID}")
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.finalized() != null) {
