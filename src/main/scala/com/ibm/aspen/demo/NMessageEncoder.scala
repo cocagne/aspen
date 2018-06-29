@@ -28,6 +28,7 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
+import com.ibm.aspen.core.transaction.TxCommitted
 
 object NMessageEncoder {
   
@@ -80,6 +81,16 @@ object NMessageEncoder {
     
         Message.startMessage(builder)
         Message.addResolved(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+        
+        builder.sizedByteArray()
+        
+      case m: TxCommitted =>
+        val o = NetworkCodec.encode(builder, m)
+    
+        Message.startMessage(builder)
+        Message.addCommitted(builder, o)
 
         Message.finishMessageBuffer(builder, Message.endMessage(builder))
         

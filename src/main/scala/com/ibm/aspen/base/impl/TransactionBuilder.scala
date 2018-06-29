@@ -53,6 +53,8 @@ class TransactionBuilder(
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   private [this] var notifyOnResolution = Set[DataStoreID]()
   private [this] var happensAfter: Option[HLCTimestamp] = None
+  private [this] var addMissedUpdateTrackingFA = true
+  private [this] var missedCommitDelayInMs = 1000
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]], HLCTimestamp) = synchronized {
     
@@ -71,6 +73,9 @@ class TransactionBuilder(
     val primaryObject = requirements.map(_.objectPointer).maxBy(ptr => ptr.ida)
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)
     val originatingClient = Some(clientId)
+    
+    if (addMissedUpdateTrackingFA)
+      finalizationActions = MissedUpdateFinalizationAction.createSerializedFA(missedCommitDelayInMs) :: finalizationActions
     
     val txd = TransactionDescription(transactionUUID, startTimestamp.asLong, primaryObject, designatedLeaderUID, 
                                      requirements, finalizationActions, originatingClient, notifyOnResolution.toList)
@@ -103,6 +108,14 @@ class TransactionBuilder(
     }
                                      
     (txd, updates, startTimestamp)
+  }
+  
+  def disableMissedUpdateTracking(): Unit = synchronized {
+    addMissedUpdateTrackingFA = false
+  }
+  
+  def setMissedCommitDelayInMs(msec: Int): Unit = synchronized {
+    missedCommitDelayInMs = msec
   }
   
   def append(objectPointer: ObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized {

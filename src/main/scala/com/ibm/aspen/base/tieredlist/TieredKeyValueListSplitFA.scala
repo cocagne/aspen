@@ -53,9 +53,9 @@ object TieredKeyValueListSplitFA {
       right: KeyValueListPointer,
       keyOrdering: KeyOrdering)
       
-  class InsertIntoUpperTier(val system: AspenSystem, val c: Content) extends FinalizationAction {
+  class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    val complete = system.retryStrategy.retryUntilSuccessful {
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
       def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
@@ -126,8 +126,7 @@ class TieredKeyValueListSplitFA extends FinalizationActionHandler {
   def createAction(
       system: AspenSystem,
       txd: TransactionDescription,
-      serializedActionData: Array[Byte], 
-      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+      serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
     new InsertIntoUpperTier(system, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData))
   }
 }

@@ -207,6 +207,9 @@ class Transaction(
   def receiveResolved(msg: TxResolved): Unit = synchronized {
     // May learn of successful commit from TransactionDriver rather than by way of Paxos
     onResolution(msg.committed)
+    
+    if (msg.committed)
+      messenger.send(TxCommitted(msg.from, store.storeId, txd.transactionUUID)) 
   }
   
   def receiveFinalized(msg: TxFinalized): Unit = synchronized {

@@ -24,7 +24,8 @@ object BaseImplTypeRegistry {
         new AllocationFinalizationAction,
         new TieredKeyValueListSplitFA,
         new TieredKeyValueListJoinFA,
-        PerStoreMissedUpdate
+        PerStoreMissedUpdate,
+        MissedUpdateFinalizationAction
     )
     
     class DirectRegistry extends TypeRegistry {

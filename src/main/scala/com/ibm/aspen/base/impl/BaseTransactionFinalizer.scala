@@ -16,13 +16,11 @@ class BaseTransactionFinalizer(val system: BasicAspenSystem)(implicit ec: Execut
   object factory extends TransactionFinalizer.Factory{
     def create(
         txd: TransactionDescription, 
-        acceptedPeers: Set[DataStoreID], 
-        messenger: StoreSideTransactionMessenger): TransactionFinalizer = new TxFinalizer(txd, acceptedPeers, messenger)
+        messenger: StoreSideTransactionMessenger): TransactionFinalizer = new TxFinalizer(txd, messenger)
   }
   
   protected class TxFinalizer(
       val txd: TransactionDescription, 
-      private var acceptedPeers: Set[DataStoreID], 
       val messenger: StoreSideTransactionMessenger) extends TransactionFinalizer {
     
     val falist = txd.finalizationActions.foldLeft(List[FinalizationAction]()) { (l, sfa) => 
@@ -31,15 +29,15 @@ class BaseTransactionFinalizer(val system: BasicAspenSystem)(implicit ec: Execut
           // Preceeding code should not allow this to occur
           assert(false, "Unknown Finalizers or deserialization problems must be caught before this point") 
           l
-        case Some(fah) => fah.createAction(system, txd, sfa.data, acceptedPeers) :: l
+        case Some(fah) => fah.createAction(system, txd, sfa.data) :: l
       }
     }
     
-    val complete: Future[Unit] = Future.sequence(falist.map(_.execute())).map(_=>())
+    val complete: Future[Unit] = Future.sequence(falist.map(_.complete)).map(_=>())
     
-    def updateAcceptedPeers(acceptedPeers: Set[DataStoreID]): Unit = falist.foreach { fa =>
+    def updateCommittedPeer(peer: DataStoreID): Unit = falist.foreach { fa =>
       fa match {
-        case ufah: UpdateableFinalizationAction => ufah.updateAcceptedPeers(acceptedPeers)
+        case ufah: UpdateableFinalizationAction => ufah.updateCommittedPeer(peer)
         case _ =>
       }
     }

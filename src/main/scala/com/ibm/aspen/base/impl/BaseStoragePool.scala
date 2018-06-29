@@ -25,6 +25,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.base.StorageHost
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.MissedUpdateStrategy
+import com.ibm.aspen.base.MissedUpdateHandler
 
 object BaseStoragePool {
   
@@ -102,6 +103,12 @@ class BaseStoragePool(
   }
   
   def getMissedUpdateStrategy(): MissedUpdateStrategy = missedUpdateStrategy
+  
+  def createMissedUpdateHandler(
+      pointer: ObjectPointer, 
+      missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
+    system.createMissedUpdateHandler(missedUpdateStrategy, pointer, missedStores)
+  }
 
 } // end BaseStoragePool
 

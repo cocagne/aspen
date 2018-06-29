@@ -120,6 +120,10 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     val objKey = Key(obj.uuid)
     
     system.transactUntilSuccessfulWithRecovery(onAttemptFailure _) { implicit tx =>
+      
+      // Prevent potentially infinite recursion
+      tx.disableMissedUpdateTracking()
+      
       for {
         tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
         node <- tl.fetchMutableNode(objKey)

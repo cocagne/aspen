@@ -51,6 +51,8 @@ sealed abstract class ObjectPointer(
   } else
     None
     
+  def hostingStores: List[DataStoreID] = storePointers.iterator.map(sp => DataStoreID(poolUUID, sp.poolIndex)).toList
+  
   def objectType: ObjectType.Value
     
   protected def addExtraToStringContent(sb: StringBuilder): Unit = {}

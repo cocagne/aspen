@@ -54,6 +54,11 @@ final case class TxResolved(
     transactionUUID: UUID,
     committed: Boolean) extends Message
     
+final case class TxCommitted(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID) extends Message
+    
 final case class TxFinalized(
     to: DataStoreID,
     from: DataStoreID,

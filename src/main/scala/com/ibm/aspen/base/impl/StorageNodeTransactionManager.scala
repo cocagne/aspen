@@ -29,6 +29,7 @@ import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.allocation.AllocationObjectStatus
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.transaction.TransactionStatus
+import com.ibm.aspen.core.transaction.TxCommitted
 
 
 class StorageNodeTransactionManager(
@@ -187,6 +188,9 @@ class StorageNodeTransactionManager(
           resultCache.put(m.transactionUUID, m.committed)
           getTransaction(m.transactionUUID).foreach( _.receiveResolved(m) )
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxResolved(m) )
+          
+        case m: TxCommitted =>
+          getTransactionDriver(m.transactionUUID).foreach( _.receiveTxCommitted(m) )
           
         case m: TxFinalized =>
           resultCache.put(m.transactionUUID, m.committed)

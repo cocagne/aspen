@@ -56,18 +56,17 @@ object TransactionDriverSuite {
     var cancelled = false
     var created = false
     var peers = Set[DataStoreID]()
-    
+
     override def cancel(): Unit = cancelled = true
     
     def complete: Future[Unit] = if (autoComplete) Future.successful(()) else Promise[Unit]().future
     
-    override def updateAcceptedPeers(acceptedPeers: Set[DataStoreID]): Unit = ()
-    
-    override def create(txd: TransactionDescription, acceptedPeers: Set[DataStoreID], messenger: StoreSideTransactionMessenger): TransactionFinalizer = {
+    override def create(txd: TransactionDescription, messenger: StoreSideTransactionMessenger): TransactionFinalizer = {
       created = true
-      peers = acceptedPeers
       this
     }
+    
+    override def updateCommittedPeer(peer: DataStoreID): Unit = synchronized { peers += peer }
   }
   
 }
@@ -385,7 +384,6 @@ class TransactionDriverSuite extends FunSuite with Matchers {
     driver.mayBeDiscarded should be (true)
     completed should be (true)
     finalizer.cancelled should be (true)
-    finalizer.peers should be (Set(ds0, ds1))
   }
   
   test("Simple AcceptResponse Handling - Ignore invalid acceptor") {

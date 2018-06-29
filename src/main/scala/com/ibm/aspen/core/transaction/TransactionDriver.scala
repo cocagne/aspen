@@ -7,6 +7,7 @@ import com.ibm.aspen.core.transaction.paxos.Proposer
 import com.ibm.aspen.core.transaction.paxos.Learner
 import com.ibm.aspen.core.objects.ObjectPointer
 import scala.concurrent.ExecutionContext
+import com.ibm.aspen.core.transaction.paxos.ProposalID
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
@@ -29,7 +30,6 @@ abstract class TransactionDriver(
   protected var finalized = false
   protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
   protected var acceptedPeers = Set[DataStoreID]()
-  protected var successfullyProcessedPeers = Set[DataStoreID]() // Stores the ids of all peers known to have successfully processed the committed transaction
   protected var finalizer: Option[TransactionFinalizer] = None
  
   protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
@@ -134,9 +134,8 @@ abstract class TransactionDriver(
             
             if (!alreadyResolved) {
               if (committed) {
-                successfullyProcessedPeers = acceptedPeers
-                
-                val f = finalizerFactory.create(txd, successfullyProcessedPeers, messenger)
+
+                val f = finalizerFactory.create(txd, messenger)
                 
                 f.complete foreach {
                   _ => onFinalized(committed) 
@@ -149,19 +148,19 @@ abstract class TransactionDriver(
           }
         }
         
-        finalizer.foreach { f =>
-          // All Accepted messages successfully received after the finalizer is created indicate that the store has
-          // successfully processed the transaction (Paxos guarantee). Update the successfullyProcessedPeers set and
-          // inform the finalizer if necessary
-          if (! successfullyProcessedPeers.contains(msg.from)) {
-            successfullyProcessedPeers += msg.from
-            f.updateAcceptedPeers(successfullyProcessedPeers)
-          }
-        }
+        
     }
   }
   
   def receiveTxResolved(msg: TxResolved): Unit = {}
+  
+  def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
+    
+    finalizer.foreach { f =>
+      f.updateCommittedPeer(msg.from)
+    }
+    
+  }
   
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
     finalizer.foreach( _.cancel() )

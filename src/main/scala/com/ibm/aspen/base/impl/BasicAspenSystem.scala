@@ -58,6 +58,9 @@ import com.ibm.aspen.base.FinalizationActionHandler
 import com.ibm.aspen.base.task.TaskGroupType
 import com.ibm.aspen.base.StorageHost
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.base.MissedUpdateStrategy
+import com.ibm.aspen.base.MissedUpdateHandler
+import com.ibm.aspen.base.MissedUpdateHandlerFactory
 
 
 object BasicAspenSystem {
@@ -273,6 +276,15 @@ class BasicAspenSystem(
     storagePoolFactory.createStoragePool(this, storagePoolDefinitionPointer)
   }
   
+  def createMissedUpdateHandler(
+      mus: MissedUpdateStrategy,
+      pointer: ObjectPointer, 
+      missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
+    typeRegistry.getTypeFactory[MissedUpdateHandlerFactory](mus.strategyUUID) match {
+      case None => throw new Exception(s"Invalid Missed Update Strategy ${mus.strategyUUID}")
+      case Some(f) => f.create(mus, this, pointer, missedStores)
+    }
+  }
   
   // TODO: Implement in terms of tree, allocater type registry, & save/restore
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.successful(new SinglePoolObjectAllocater(this, 

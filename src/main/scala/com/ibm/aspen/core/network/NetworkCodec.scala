@@ -36,6 +36,7 @@ import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TxResolved
+import com.ibm.aspen.core.transaction.TxCommitted
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
@@ -770,6 +771,25 @@ object NetworkCodec {
     val transactionUUID = decode(n.transactionUuid())
     
     TxResolved(to, from, transactionUUID, n.committed())
+  }
+  
+  
+  def encode(builder:FlatBufferBuilder, o:TxCommitted): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+    
+    P.TxCommitted.startTxCommitted(builder)
+    P.TxCommitted.addTo(builder, to)
+    P.TxCommitted.addFrom(builder, from)
+    P.TxCommitted.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxCommitted.endTxCommitted(builder)
+  }
+  def decode(n: P.TxCommitted): TxCommitted = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    
+    TxCommitted(to, from, transactionUUID)
   }
   
   

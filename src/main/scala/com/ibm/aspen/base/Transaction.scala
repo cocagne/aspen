@@ -65,6 +65,16 @@ trait Transaction {
   
   def result: Future[Unit]
   
+  /** Used by MissedUpdateFinalizationActions to prevent circular loops when marking objects as having missed update transactions.
+   *  This method should NOT be used for any other purposes.
+   * 
+   */
+  def disableMissedUpdateTracking(): Unit
+  
+  /** Sets the delay in Milliseconds after which peers will be marked as having missed the commit of the transaction
+   */
+  def setMissedCommitDelayInMs(msec: Int): Unit
+  
   /** Begins the transaction commit process and returns a Future to its completion. This is the same future as
    *  returned by 'result' 
    *  

@@ -30,5 +30,9 @@ trait StoragePool {
   
   def getMissedUpdateStrategy(): MissedUpdateStrategy
   
+  def createMissedUpdateHandler(
+      pointer: ObjectPointer, 
+      missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
+  
   def refresh()(implicit ec: ExecutionContext): Future[StoragePool]
 }

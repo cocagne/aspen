@@ -39,6 +39,16 @@ class BaseTransaction(
   private [this] val promise = Promise[Unit]
   private [this] var state: Either[HLCTimestamp, TransactionBuilder] = Right(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   
+  def disableMissedUpdateTracking(): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.disableMissedUpdateTracking()
+    case Left(_) => throw PostCommitTransactionModification()
+  }
+  
+  def setMissedCommitDelayInMs(msec: Int): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.setMissedCommitDelayInMs(msec)
+    case Left(_) => throw PostCommitTransactionModification()
+  }
+  
   def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { state } match {
     case Right(bldr) => bldr.append(objectPointer, requiredRevision, data)
     case Left(_) => throw PostCommitTransactionModification()

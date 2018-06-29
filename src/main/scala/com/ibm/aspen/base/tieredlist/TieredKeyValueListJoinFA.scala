@@ -62,9 +62,9 @@ object TieredKeyValueListJoinFA {
       removed: KeyValueListPointer,
       keyOrdering: KeyOrdering)
       
-  class RemoveFromUpperTier(val system: AspenSystem, val c: Content) extends FinalizationAction {
+  class RemoveFromUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    val complete = system.retryStrategy.retryUntilSuccessful {
       
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
@@ -130,8 +130,7 @@ class TieredKeyValueListJoinFA extends FinalizationActionHandler {
   def createAction(
       system: AspenSystem,
       txd: TransactionDescription,
-      serializedActionData: Array[Byte], 
-      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+      serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
     new RemoveFromUpperTier(system, BaseCodec.decodeTieredKeyValueListJoinFA(serializedActionData) )
   }
 }

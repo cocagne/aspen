@@ -10,58 +10,107 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
+import com.ibm.aspen.base.UpdateableFinalizationAction
+import java.nio.ByteBuffer
+import scala.concurrent.Promise
+import scala.concurrent.duration._
+import com.ibm.aspen.core.transaction.SerializedFinalizationAction
 
-object MissedUpdateFinalizationAction {
-  val MissedUpdateFinalizationActionUUID = UUID.fromString("368e7176-8fed-4c61-bb8c-d1554722c5d1")
+object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   
-  case class MissedUpdate(pointer: ObjectPointer, stores: List[Byte])
+  val typeUUID = UUID.fromString("368e7176-8fed-4c61-bb8c-d1554722c5d1")
   
-  def addAction(transaction: Transaction): Unit = transaction.addFinalizationAction(MissedUpdateFinalizationActionUUID)
+  private var pendingHandlers = Map[UUID, MissedUpdateHandler]()
   
-  class MissedUpdateHandler(
-      val system: AspenSystem, 
-      val txd: TransactionDescription, 
-      val successfullyUpdatedPeers: Set[DataStoreID]) extends FinalizationAction {
-    
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = {
-      val allObjects = txd.allReferencedObjectsSet
-      
-      val misses = allObjects.foldLeft(List[MissedUpdate]()) { (l, p) =>
-        val storeSet = p.storePointers.map(sp => DataStoreID(p.poolUUID, sp.poolIndex)).toSet
-        val misses = storeSet -- successfullyUpdatedPeers
-        
-        if (misses.isEmpty)
-          l
-        else
-          MissedUpdate(p, misses.map(storeId => storeId.poolIndex).toList) :: l
-      }
-      
-      if (misses.isEmpty)
-        Future.unit
-      else
-        logMisses(misses)
-    }
+  def addHandler(h: MissedUpdateHandler): Unit = synchronized { pendingHandlers += (h.txd.transactionUUID -> h) }
+  
+  def removeHandler(h: MissedUpdateHandler): Unit = synchronized { pendingHandlers -= h.txd.transactionUUID }
+  
+  val pollingTask = BackgroundTask.schedulePeriodic(Duration(250, MILLISECONDS), callNow = false) {
+    val pendingSnapshot = synchronized { pendingHandlers }
+    val now = System.nanoTime() / 1000
+    pendingSnapshot.values.foreach( _.checkTimeout(now) )
   }
-  
-  // 
-  def logMisses(misses: List[MissedUpdate])(implicit ec: ExecutionContext): Future[Unit] = Future.unit
-}
-
-class MissedUpdateFinalizationAction extends FinalizationActionHandler {
-  
-  import MissedUpdateFinalizationAction._
-  
-  val typeUUID: UUID = MissedUpdateFinalizationActionUUID
   
   override def createAction(
       system: AspenSystem, 
       txd: TransactionDescription,
-      serializedActionData: Array[Byte], 
-      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+      serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
 
-    val fa = BaseCodec.decodeFinalizationActionContent(serializedActionData)
+    val missedCommitDelayInMs = ByteBuffer.wrap(serializedActionData).getInt()
     
-    new MissedUpdateHandler(system, txd, successfullyUpdatedPeers)      
+    new MissedUpdateHandler(system, txd, missedCommitDelayInMs)      
   }
   
+  def createSerializedFA(missedCommitDelayInMs: Int): SerializedFinalizationAction = {
+    val arr = new Array[Byte](4)
+    val bb = ByteBuffer.wrap(arr)
+    bb.putInt(missedCommitDelayInMs)
+    SerializedFinalizationAction(typeUUID, arr)
+  }
+  
+  class MissedUpdateHandler(
+      val system: AspenSystem, 
+      val txd: TransactionDescription,
+      val missedCommitDelayInMs: Int)(implicit ec: ExecutionContext) extends UpdateableFinalizationAction {
+    
+    val promise = Promise[Unit]()
+    
+    val complete = promise.future
+    
+    val startTime = System.nanoTime() / 1000
+    
+    val allPeers = txd.allDataStores
+    val numPeers = allPeers.size
+    
+    private[this] var executing = false
+    private[this] var committedPeers = Set[DataStoreID]()
+    
+    addHandler(this)
+    
+    def updateCommittedPeer(peer: DataStoreID): Unit = synchronized {
+      if (!executing) {
+        committedPeers += peer
+        if (committedPeers.size == numPeers) {
+          executing = true
+          removeHandler(this)
+          promise.success(()) // All peers committed, no missed updates to log
+        }
+      }
+    }
+    
+    def checkTimeout(now: Long): Unit = synchronized {
+      if (!executing && now - startTime > missedCommitDelayInMs) {
+        executing = true
+        removeHandler(this)
+        markMissedPeers(allPeers &~ committedPeers)
+      }
+    }
+    
+    def markMissedPeers(missedStores: Set[DataStoreID]): Unit = {
+      
+      case class MissedUpdate(pointer: ObjectPointer, stores: List[Byte])
+      
+      def markObject(mu: MissedUpdate): Future[Unit] = {
+        for {
+          pool <- system.getStoragePool(mu.pointer.poolUUID)
+          muh = pool.createMissedUpdateHandler(mu.pointer, mu.stores)
+          _ <- muh.complete
+        } yield ()
+      }
+      
+      val misses = txd.allReferencedObjectsSet.foldLeft(List[MissedUpdate]()) { (l, ptr) =>
+        val ms = ptr.hostingStores.toSet.intersect(missedStores) 
+        
+        if (ms.isEmpty)
+          l
+        else 
+          MissedUpdate(ptr, ms.map(storeId => storeId.poolIndex).toList) :: l
+      }
+      
+      promise.completeWith(Future.sequence(misses.map(markObject(_))).map(_=>()))
+    }
+  }
 }
+
+

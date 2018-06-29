@@ -228,6 +228,12 @@ table TxResolved {
   committed: bool;
 }
 
+table TxCommitted {
+  to: DataStoreID;
+  from: DataStoreID;
+  transaction_uuid: UUID;
+}
+
 table TxFinalized {
   to: DataStoreID;
   from: DataStoreID;
@@ -380,6 +386,7 @@ table Message {
   accept: TxAccept;
   accept_response: TxAcceptResponse;
   resolved: TxResolved;
+  committed: TxCommitted;
   finalized: TxFinalized;
   heartbeat: TxHeartbeat;
   allocate: Allocate;

@@ -12,7 +12,7 @@ trait FinalizationAction {
    * completed by the execute logic, or completionDetected() is called (which will
    * occur if a peer completes the action and broadcasts the event to peers/clients)
    */
-  def execute()(implicit ec: ExecutionContext): Future[Unit]
+  val complete: Future[Unit]
   
   /** Called when we are explicitly informed that some other peer has completed the action */
   def completionDetected(): Unit = ()

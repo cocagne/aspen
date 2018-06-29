@@ -1,80 +1,19 @@
-  
-  In order to commit, thresh num stores across all objects must respond with Prepared(VoteCommit)
-  Actual Tx is done only on primary object so we'll receive only a subset of Accept messages
-  What we're really looking for is the Delayed Prepared(VoteCommit) messages, not delayed accept
-  Per-store tx resolution will ensure they eventually discover the right version of the object.
-  Need a bit more though..., VoteAbort doesn't mean the update was missed.
-  
-  Could add another message that is unconditionally broadcast "Committed" across all stores.
-  Missed update finalization delay takes this into account
-     - This would also allow the finalization delay to be tailored for each transaction, which
-       could be handy.
-  
-  
-  * Update Config File to use allocaters for pool error handler
-  
-  * Update TansactionManager to call checkMissedUpdates() on Tx drivers on a periodic basis.
-    Driver forwards this call to Finalizers?
-    could also add an optional missedUpdateDelay: Option[Duration] to each finalizer
-    Tx then takes the max delay and calls setFinalStores(set) with the result
-       -> This looks like a good approach
-     
-  * Add automatic FA addition
-
-  * Switch per-store-set config to take Tree args
-     - list of object allocater UUIDs
-     - list of tier node sizes
-
+ 
+  * Test Missed Update
   * object allocaters
-  * Object Update Error recovery/logging
   * Failed store rebuild
   
-  Missed Updates.
-      - Multiple Potential Strategies
-      - Configured on a per-pool basis
-      
-      * create PerStoreMissedUpdate
-          - has log miss method which is used by the FinalizationAction
-          - per-store key in Pool object is PerStoreMissedUpdateUUID + indexByte
-          
-        * on restore
-          - delete tx uses a revision lock on the being-restored object AND requirement that the key-value timestamp is
-            exactly equal to the expected value. Subsequent insertion will update to a new timestamp.
-          
-      
-      Per-store UUID Set:
-          - KeyValueList per store
-          - Used as a set of object UUIDs
-          - On missed update, blind insert into the list
-          - Multiple inserts for same object will simply get compacted
-          - Can point at alternate pool with custom IDA and use-case-optimized backing stores
-          - Impl as a standard MissedUpdateFinalizationAction
-              - Allows easy swap
-              - Semantics already match exactly
-              - Fully independent of per-pool failure marking approach/impl
-              - FA can lookup the Pool for each object
-                   - Then loads the FailedUpdateMarker for each pool,object
-                   - FA completes when each marker completes
-                       - Separate "micro-process" for each object
-                       - Separate Transactions (no need for additional contention) with retry mechanisms
-              - Two types of UpdateMarkers
-                   - SingleStoreMarker - updates on a per-store basis
-                   - MultiStoreMarker  - updates all missed stores for an object simultaneously 
-              - Place on Transaction interface? e.g: protected [aspen] disableFailedUpdateTracking() ?
-                   - Only MissedUpdateFinalizationAction calls the disable
-                   - MUFA process: 
-                       system.transactUntilSuccessful { tx =>
-                         tx.disableFailedUpdateTracking
-                         missedUpdateMarker.mark(obj)
-                       }
-                      
-                       
-          - We don't need recursive updates to these trees. They're used in a scanning-like manner anyway.
-              - Compactions will overwrite nodes anyway
-              - Could easily create daemon scanning agents
-      
-
 Basic Error Handling
+  * Missed Object Update
+      - Each pool has a configurable MissedUpdateStrategy
+      - PerStoreMissedUpdate
+         - Uses a TieredList to maintain a Set of object UUIDs that need repair
+      - Upon receipt of a TxResolved(committed) message (which is sent by the TxDriver when resolution is detected), each peer responds with a
+        TxCommitted.
+      - MissedUpdateFinalizationAction is added to each transaction unless explicitly disabled. Disabling is used only for transactions that mark
+        objects as missing updates. This prevents potentially infinite recursion.
+      - Default of 1 sec for detecting failed commits
+      
   * Read
       - SuperSimpleRetryingReadDriver
           Fixed delay between retries

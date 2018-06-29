@@ -32,9 +32,9 @@ object AllocationFinalizationAction {
   class AddToAllocationTree(
       val system: AspenSystem,
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
-      val newNodePointer:ObjectPointer) extends FinalizationAction {
+      val newNodePointer:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    def execute()(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    val complete = system.retryStrategy.retryUntilSuccessful {
       //
       // TODO: getStoragePool will forever fail if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
@@ -64,10 +64,9 @@ class AllocationFinalizationAction extends FinalizationActionHandler {
   override def createAction(
       system: AspenSystem, 
       txd: TransactionDescription,
-      serializedActionData: Array[Byte], 
-      successfullyUpdatedPeers: Set[DataStoreID]): FinalizationAction = {
+      serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
 
-    val fa = BaseCodec.decodeFinalizationActionContent(serializedActionData)
+    val fa = BaseCodec.decodeAllocationFinalizationActionContent(serializedActionData)
     
     new AddToAllocationTree(system, fa.storagePoolDefinitionPointer, fa.newNodePointer)      
   }

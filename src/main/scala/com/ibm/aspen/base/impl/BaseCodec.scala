@@ -40,7 +40,7 @@ object BaseCodec {
     NetworkCodec.byteBufferToArray(builder.dataBuffer())
   }
  
-  def decodeFinalizationActionContent(arr: Array[Byte]): FAContent = decode(P.AllocationFinalizationActionContent.getRootAsAllocationFinalizationActionContent(ByteBuffer.wrap(arr))) 
+  def decodeAllocationFinalizationActionContent(arr: Array[Byte]): FAContent = decode(P.AllocationFinalizationActionContent.getRootAsAllocationFinalizationActionContent(ByteBuffer.wrap(arr))) 
   
   def decode(n: P.AllocationFinalizationActionContent): FAContent = {
     val sp = NetworkCodec.decode(n.storagePoolDefinitionPointer()).asInstanceOf[KeyValueObjectPointer]

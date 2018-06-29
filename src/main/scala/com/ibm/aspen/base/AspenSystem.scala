@@ -59,6 +59,11 @@ trait AspenSystem extends ObjectReader {
   
   def getStorageHost(storeId: DataStoreID): Future[StorageHost]
   
+  def createMissedUpdateHandler(
+      mus: MissedUpdateStrategy,
+      pointer: ObjectPointer, 
+      missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
+  
   def transact[T](prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     val tx = newTransaction()
     
