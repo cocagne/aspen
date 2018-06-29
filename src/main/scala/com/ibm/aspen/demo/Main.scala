@@ -213,7 +213,11 @@ object Main {
     val node = cfg.nodes.get(nodeName).getOrElse(throw new ConfigError(s"Invalid node name $nodeName"))
     
     val crl = node.crl match {
-      case b: ConfigFile.RocksDB => new RocksDBCrashRecoveryLog(b.path) 
+      case b: ConfigFile.RocksDB => 
+        val crl = new RocksDBCrashRecoveryLog(b.path)
+        val finit = crl.initialize()
+        Await.result(finit, Duration(5000, MILLISECONDS))
+        crl
     }
     
     val stores = node.stores.map { s =>

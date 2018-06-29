@@ -94,7 +94,6 @@ class StorageNodeTransactionManager(
   }
   
   protected class StoreState(val store: DataStore, txRecoveryState: List[TransactionRecoveryState]) {
-    
     private[this] var transactionDrivers = Map[UUID, TransactionDriver]()
     private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs => 
       (trs.txd.transactionUUID -> Transaction(crl, messenger, onTransactionDiscarded _, store, trs.txd, trs.localUpdates))

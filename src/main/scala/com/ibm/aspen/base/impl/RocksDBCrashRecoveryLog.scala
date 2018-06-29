@@ -58,6 +58,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
   import RocksDBCrashRecoveryLog._
   
   def initialize(): Future[(List[TransactionRecoveryState], List[AllocationRecoveryState])] = synchronized {
+    
     var txData = Map[UUID, CRLCodec.TransactionData]()
     var txState = Map[UUID, CRLCodec.TransactionState]()
     
@@ -73,7 +74,7 @@ class RocksDBCrashRecoveryLog(dbPath:String)(implicit ec: ExecutionContext) exte
     }
     
     db.foreach((key, value) => {
-    
+      
       if (isAllocKey(key)) {
         val ars = CRLCodec.allocationFromByteArray(value)
         val lst = ars :: pendingAllocations.getOrElse(ars.allocationTransactionUUID, Nil)
