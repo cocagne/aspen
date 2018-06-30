@@ -5,9 +5,14 @@ import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectPointer
 
 trait MissedUpdateHandlerFactory extends TypeFactory {
-  def create(
+  def createHandler(
       mus: MissedUpdateStrategy,
       system: AspenSystem,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
+      
+  def createIterator(
+      mus: MissedUpdateStrategy,
+      system: AspenSystem,
+      storeId: DataStoreID)(implicit ec: ExecutionContext): MissedUpdateIterator
 }

@@ -6,6 +6,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import java.util.UUID
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -82,9 +83,10 @@ object DataObjectState {
 
 class KeyValueObjectState(
     override val pointer: KeyValueObjectPointer, 
-    revision:ObjectRevision, 
+    revision:ObjectRevision,
     refcount:ObjectRefcount, 
     timestamp: HLCTimestamp,
+    val updates: Set[UUID],
     val sizeOnStore: Int,
     val minimum: Option[Key],
     val maximum: Option[Key],
@@ -151,13 +153,14 @@ object KeyValueObjectState {
       revision:ObjectRevision, 
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
+      updates: Set[UUID],
       sizeOnStore: Int,
       minimum: Option[Key],
       maximum: Option[Key],
       left: Option[Array[Byte]],
       right: Option[Array[Byte]],
       contents: Map[Key, Value]): KeyValueObjectState = {
-    new KeyValueObjectState(pointer, revision, refcount, timestamp, sizeOnStore, minimum, maximum, left, right, contents)
+    new KeyValueObjectState(pointer, revision, refcount, timestamp, updates, sizeOnStore, minimum, maximum, left, right, contents)
   }
   
   def cmp(a: Option[Array[Byte]], b: Option[Array[Byte]]): Boolean = (a,b) match {

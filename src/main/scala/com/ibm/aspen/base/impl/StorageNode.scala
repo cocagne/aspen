@@ -41,6 +41,8 @@ import com.ibm.aspen.core.network.StoreSideNetwork
 import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
 import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
+import scala.concurrent.duration._
+import com.ibm.aspen.base.AspenSystem
 
 /** Represents a storage node that hosts multiple DataStore instances.
  *  
@@ -50,9 +52,12 @@ import com.ibm.aspen.core.allocation.AllocationStatusReply
  * 
  */
 class StorageNode(
+    val system: AspenSystem,
     val crl: CrashRecoveryLog,
     val net: StoreSideNetwork,
     )(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver with StoreSideAllocationMessageReceiver {
+  
+  private[this] var stores = Map[DataStoreID, DataStore]()
   
   val readManager = new StorageNodeReadManager(net.readHandler)
   
@@ -68,7 +73,13 @@ class StorageNode(
     transactionManager: StorageNodeTransactionManager,
     allocationManager: StorageNodeAllocationManager) 
     
+  private[this] val missedUpdatePoller = BackgroundTask.schedulePeriodic(Duration(5, SECONDS), callNow=false) {
+    val ssnap = synchronized { stores }
+    ssnap.values.foreach( _.pollAndRepairMissedUpdates(system) )
+  }
+    
   def shutdown(): Future[Unit] = synchronized {
+    missedUpdatePoller.cancel()
     recoveredOption match {
       case None => Future.successful(())
       case Some(r) => 
@@ -130,6 +141,9 @@ class StorageNode(
       recovered foreach { r =>
         r.transactionManager.addStore(store)
         r.allocationManager.addStore(store)
+      }
+      synchronized {
+        stores += (store.storeId -> store)
       }
       store
     }

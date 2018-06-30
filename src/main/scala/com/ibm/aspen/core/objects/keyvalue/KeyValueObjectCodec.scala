@@ -38,7 +38,8 @@ object KeyValueObjectCodec {
   
   def decode(
       pointer: KeyValueObjectPointer, 
-      revision:ObjectRevision, 
+      revision:ObjectRevision,
+      updates: Set[UUID],
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
       sizeOnStore: Int,
@@ -75,7 +76,7 @@ object KeyValueObjectCodec {
         contents += (key -> kv)
       }
       
-      new KeyValueObjectState(pointer, revision, refcount, timestamp, sizeOnStore, minimum, maximum, left, right, contents)
+      new KeyValueObjectState(pointer, revision, refcount, timestamp, updates, sizeOnStore, minimum, maximum, left, right, contents)
     } catch {
       case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }
@@ -87,8 +88,11 @@ object KeyValueObjectCodec {
    * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
    * generate a full-state dump of the object and should be used in an overwrite transaction
    * that sets the state of the object to this single value.
+   * 
+   * If updates are provided, empty updates with those UUIDs will be inserted (used for rebuilding
+   * out-of-date objects)
    */
-  def encode(ida: IDA, kvos: KeyValueObjectState): Array[DataBuffer] = {
+  def encode(ida: IDA, kvos: KeyValueObjectState, updates: Set[UUID] = Set()): Array[DataBuffer] = {
     var ops: List[KeyValueOperation] = Nil
     
     kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
@@ -100,7 +104,7 @@ object KeyValueObjectCodec {
       ops = new Insert(kv.key.bytes, kv.value, kv.timestamp) :: ops
     }
     
-    KeyValueObjectCodec.encodeUpdate(ida, ops)
+    KeyValueObjectCodec.encodeUpdate(ida, ops, updates)
   }
   
   /** Used on a DataStore to return a subset of the local key-value object state. */
@@ -142,11 +146,14 @@ object KeyValueObjectCodec {
    * may use this method as well to generate a single update containing the full
    * content of the object.
    */
-  def encodeUpdate(ida: IDA, ops: List[KeyValueOperation]): Array[DataBuffer] = {
+  def encodeUpdate(ida: IDA, ops: List[KeyValueOperation], updates: Set[UUID] = Set()): Array[DataBuffer] = {
     
     val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
     val lenVarInt = Varint.getUnsignedIntEncodingLength(encodedSize)
-    val updateUUID = UUID.randomUUID()
+    val (updateUUID, extraUpdates) = if (updates.isEmpty) (UUID.randomUUID(), Nil) else {
+      val ul = updates.toList
+      (ul.head, ul.tail)
+    }
     
     val bbArray = new Array[ByteBuffer](ida.width)
     
@@ -154,8 +161,14 @@ object KeyValueObjectCodec {
       case _: Replication =>
         // Special-case replication to take advantage of the fact that a single buffer 
         // can be shared across all stores
-        val bb = ByteBuffer.allocate(16 + lenVarInt + encodedSize)
-          
+        val bb = ByteBuffer.allocate(16 + lenVarInt + encodedSize + (extraUpdates.size * (16+Varint.getUnsignedIntEncodingLength(0))))
+        
+        extraUpdates.foreach { uuid =>
+          bb.putLong(uuid.getMostSignificantBits)
+          bb.putLong(uuid.getLeastSignificantBits)
+          Varint.putUnsignedInt(bb, 0)
+        }
+        
         bb.putLong(updateUUID.getMostSignificantBits)
         bb.putLong(updateUUID.getLeastSignificantBits)
         Varint.putUnsignedInt(bb, encodedSize)
@@ -182,5 +195,23 @@ object KeyValueObjectCodec {
     }
     
     bbArray.map(DataBuffer(_))
+  }
+  
+  def getUpdates(db: DataBuffer): Set[UUID] = {
+    val bb = db.asReadOnlyBuffer()
+      
+    var updates = Set[UUID]()
+    
+    while (bb.remaining() > 0) {
+      val a = bb.getLong() // Update UUID mostSignificantBits
+      val b = bb.getLong() // Update UUID leastSignificantBits
+      updates += new UUID(a,b) 
+      
+      val updateSize = Varint.getUnsignedInt(bb)
+      
+      bb.position(bb.position + updateSize)
+    }
+    
+    updates
   }
 }

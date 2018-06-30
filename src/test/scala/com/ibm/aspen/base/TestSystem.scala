@@ -129,7 +129,7 @@ class TestSystem(
         userTypeRegistry = Some(userTypeRegistry)
         )
     
-    val storageNode = new StorageNode(crl, new net.SNet)
+    val storageNode = new StorageNode(sys, crl, new net.SNet)
     
     object dsFactory extends DataStore.Factory {
 

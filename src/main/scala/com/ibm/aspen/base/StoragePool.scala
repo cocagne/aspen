@@ -33,6 +33,8 @@ trait StoragePool {
   def createMissedUpdateHandler(
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
+      
+  def createMissedUpdateIterator(poolIndex: Byte)(implicit ec: ExecutionContext): MissedUpdateIterator
   
   def refresh()(implicit ec: ExecutionContext): Future[StoragePool]
 }

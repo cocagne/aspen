@@ -22,6 +22,10 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.base.MissedUpdateHandler
 import scala.concurrent.Promise
+import com.ibm.aspen.base.MissedUpdateIterator
+import com.ibm.aspen.util.byte2uuid
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 
 /**
  *  Strategy: Store in the pool definition a MutableTieredKeyValueList for each store that contains the UUIDs of
@@ -107,10 +111,53 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     }
   }
   
+  class MUIterator(
+      val system: AspenSystem, 
+      val storeId: DataStoreID)(implicit ec: ExecutionContext) extends MissedUpdateIterator {
+    
+    private[this] var uuids: List[(UUID, HLCTimestamp)] = Nil
+    private[this] var fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
+    
+    val ftree = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex)
+    
+    def objectUUID: Option[UUID] = synchronized { 
+      if (uuids.isEmpty) None else Some(uuids.head._1) 
+    }
+    
+    def fetchNext()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+      if (uuids.isEmpty) {
+        fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
+        fnode map { node => synchronized {
+          uuids = node.kvos.contents.valuesIterator.map(v => (byte2uuid(v.key.bytes), v.timestamp)).toList
+        }}
+      } else {
+        uuids = uuids.tail
+        Future.unit
+      }
+    }
+    
+    def markRepaired()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+      if (uuids.isEmpty)
+        Future.unit
+      else {
+        system.transact { implicit tx =>
+          for {
+            node <- fnode
+            key = Key(uuids.head._1)
+            reqs = List(KeyValueUpdate.KVRequirement(key, uuids.head._2, KeyValueUpdate.TimestampRequirement.Equals))
+            _ <- node.prepreUpdateTransaction(Nil, List(key), reqs)
+          } yield()
+        }
+      }
+    }
+  }
+  
   def markMissedObject(
       system: AspenSystem, 
       obj: ObjectPointer, 
       storeIndex: Byte)(implicit ec: ExecutionContext): Future[Unit] = {
+    
+    println(s"**** MARKING MISSED UPDATE **** ${obj.uuid} for store ${storeIndex}")
     
     // Fail if the pool object has been deleted
     def onAttemptFailure(t: Throwable): Future[Unit] = t match {
@@ -132,22 +179,23 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     }
   }
   
-  def create(
+  def createHandler(
       mus: MissedUpdateStrategy, 
       system: AspenSystem,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
     return new MissedUpdateHandler {
-      val promise = Promise[Unit]()
-      val complete: Future[Unit] = promise.future
       
-      def execute(): Unit = {
-        val f = Future.sequence( missedStores.map(storeIdx => markMissedObject(system, pointer, storeIdx)) )
-        
-        promise.completeWith(f.map(_=>()))
+      def execute(): Future[Unit] = {
+        Future.sequence( missedStores.map(storeIdx => markMissedObject(system, pointer, storeIdx)) ).map(_=>())
       }
     }
-    
   }
+  
+  def createIterator(
+      mus: MissedUpdateStrategy,
+      system: AspenSystem,
+      storeId: DataStoreID)(implicit ec: ExecutionContext): MissedUpdateIterator = new MUIterator(system, storeId)
+  
 }
 

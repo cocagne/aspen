@@ -95,7 +95,7 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
         for {
           pool <- system.getStoragePool(mu.pointer.poolUUID)
           muh = pool.createMissedUpdateHandler(mu.pointer, mu.stores)
-          _ <- muh.complete
+          _ <- muh.execute()
         } yield ()
       }
       

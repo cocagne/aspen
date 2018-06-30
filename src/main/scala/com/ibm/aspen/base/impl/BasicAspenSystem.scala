@@ -61,6 +61,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.base.MissedUpdateHandler
 import com.ibm.aspen.base.MissedUpdateHandlerFactory
+import com.ibm.aspen.base.MissedUpdateIterator
 
 
 object BasicAspenSystem {
@@ -282,7 +283,16 @@ class BasicAspenSystem(
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
     typeRegistry.getTypeFactory[MissedUpdateHandlerFactory](mus.strategyUUID) match {
       case None => throw new Exception(s"Invalid Missed Update Strategy ${mus.strategyUUID}")
-      case Some(f) => f.create(mus, this, pointer, missedStores)
+      case Some(f) => f.createHandler(mus, this, pointer, missedStores)
+    }
+  }
+  
+  def createMissedUpdateIterator(
+      mus: MissedUpdateStrategy, 
+      storeId: DataStoreID)(implicit ec: ExecutionContext): MissedUpdateIterator = {
+    typeRegistry.getTypeFactory[MissedUpdateHandlerFactory](mus.strategyUUID) match {
+      case None => throw new Exception(s"Invalid Missed Update Strategy ${mus.strategyUUID}")
+      case Some(f) => f.createIterator(mus, this, storeId)
     }
   }
   

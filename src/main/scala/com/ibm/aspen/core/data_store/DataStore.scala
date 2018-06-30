@@ -20,6 +20,7 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.allocation.AllocationOptions
+import com.ibm.aspen.base.AspenSystem
 
 object DataStore {
   trait Factory {
@@ -130,5 +131,9 @@ trait DataStore {
    * 
    */
   def discardTransaction(txd: TransactionDescription): Unit
+  
+  
+  /** Called to check for and repair objects that missed updates */
+  def pollAndRepairMissedUpdates(system: AspenSystem): Unit
 }
 

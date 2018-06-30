@@ -33,6 +33,18 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.transaction.RevisionLock
 import com.ibm.aspen.core.allocation.AllocationOptions
+import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.objects.ObjectState
+import com.ibm.aspen.core.read.FatalReadError
+import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.objects.MetadataObjectState
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.base.StoragePool
+import com.ibm.aspen.base.MissedUpdateIterator
+import scala.util.Failure
+import scala.util.Success
 
 object DataStoreFrontend {
   
@@ -67,6 +79,9 @@ class DataStoreFrontend(
   
   // maps Transaction UUIDs to the list of objects being allocated in that transaction
   private[this] var allocations = Map[UUID, List[MutableObject]]()
+  
+  private[this] var ofrepair: Option[Future[(StoragePool, MutableTieredKeyValueList)]] = None
+  private[this] var repairing = false
   
   override val initialized: Future[DataStore] = synchronized {
     
@@ -286,6 +301,161 @@ class DataStoreFrontend(
     lockedTransactions.get(txd.transactionUUID) foreach { st =>
       lockedTransactions -= txd.transactionUUID
       releaseLocks(st)
+    }
+  }
+  
+  def pollAndRepairMissedUpdates(system: AspenSystem): Unit = synchronized {
+    if (repairing)
+      return
+    else
+      repairing = true
+      
+    val frepair = ofrepair match { 
+      case Some(f) => f
+      case None => 
+        val f = for {
+          pool <- system.getStoragePool(storeId.poolUUID)
+          tree <- pool.getAllocationTree(system.retryStrategy)
+        } yield (pool, tree)
+        
+        ofrepair = Some(f)
+        
+        f
+    }
+    
+    for {
+      (pool, tree) <- frepair
+      iter = pool.createMissedUpdateIterator(storeId.poolIndex)
+      _ <- repairMissedUpdates(system, tree, iter)
+    } yield {
+      synchronized { repairing = false }
+    }
+  }
+  
+  private def repairMissedUpdates(system: AspenSystem, tree: MutableTieredKeyValueList, iter: MissedUpdateIterator): Future[Unit] = {
+    val promise = Promise[Unit]()
+    
+    def getObjectPointer(objectUUID: UUID): Future[Option[ObjectPointer]] = for {
+      ov <- tree.get(objectUUID)
+    } yield ov.map(v => ObjectPointer.fromArray(v.value))
+    
+    def next(): Unit = {
+      iter.fetchNext() foreach { _ =>
+        iter.objectUUID match {
+          case None => promise.success(())
+          
+          case Some(objectUUID) => 
+            println(s"Beginning repairs for object $objectUUID")
+            val frepair = getObjectPointer(objectUUID).flatMap { optr => optr match {
+              case None => throw new Exception(s"REPAIR ERROR: Failed to lookup object pointer for object $objectUUID")
+                
+              case Some(pointer) => repair(system, pointer).flatMap(_ => iter.markRepaired())
+            }}
+            
+            frepair onComplete {
+              case Success(_) =>
+                println(s"Completed repairs of $objectUUID")
+                next()
+              case Failure(t) => 
+                println(s"REPAIR ERROR: $t")
+                next() // Could be a transient error. 
+            }
+        }
+      }
+    }
+    
+    next()
+    
+    promise.future
+  }
+  
+  private def repair(system: AspenSystem, pointer: ObjectPointer): Future[Unit] =  {
+  
+    val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
+    
+    val foobj = system.readObject(pointer).map(Some(_)).recover{ case _: FatalReadError => None }
+    
+    val repairUUID = UUID.randomUUID()
+    
+    val folocal = synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadMetadata() } map { e => e match {
+      case Left(err) => None
+      case Right(obj) => Some(obj)
+    }}
+    
+    def isAllocated(): Future[Boolean] = {
+      val key = Key(pointer.uuid)
+      for {
+        pool <- system.getStoragePool(pointer.poolUUID)
+        tree <- pool.getAllocationTree(system.retryStrategy)
+        node <- tree.fetchMutableNode(key)
+      } yield node.kvos.contents.contains(key)
+    }
+    
+    def getLocalData(os: ObjectState): DataBuffer = os match {
+      case d: DataObjectState => pointer.ida.encode(d.data)(storeId.poolIndex)
+      case kvos: KeyValueObjectState => KeyValueObjectCodec.encode(kvos.pointer.ida, kvos, kvos.updates)(storeId.poolIndex)
+      case _: MetadataObjectState => DataBuffer.Empty // should not be possible
+    }
+    
+    def fix(oobj: Option[ObjectState], olocal: Option[MutableObject]): Future[Unit] = (oobj, olocal) match {
+      
+      case (None, None) => isAllocated() map { allocated =>
+        if (allocated)
+          throw new Exception("Object is in an indeterminate state. Cannot repair yet")
+      }
+      
+      case (None, Some(mo)) =>
+        isAllocated() map { allocated => synchronized {
+          if (allocated)
+            throw new Exception("Object not fully deleted. Cannot repair yet")
+          else if (!mo.locks.isEmpty)
+            throw new Exception("Object locked. Cannot repair yet")
+          else {
+            println(s"Reparing missed delete for object ${pointer.uuid}")
+            backend.deleteObject(objectId)
+          }
+        }}
+        
+      case (Some(os), None) => synchronized {
+        val metadata = ObjectMetadata(os.revision, os.refcount, os.timestamp)
+        val data = getLocalData(os)
+        println(s"Reparing missed allocation for object ${pointer.uuid}")
+        backend.putObject(objectId, metadata, data)
+      }
+      
+      case (Some(os), Some(mo)) => synchronized { 
+        val update = os match {
+          case d: DataObjectState => 
+            d.revision != mo.revision || d.refcount != mo.refcount
+            
+          case kvos: KeyValueObjectState => 
+            kvos.revision != mo.revision || kvos.refcount != mo.refcount || KeyValueObjectCodec.getUpdates(mo.data) != kvos.updates
+            
+          case _: MetadataObjectState => true // Should not be possible
+        }
+        
+        if (update) {
+          mo.revision = os.revision
+          mo.refcount = os.refcount
+          mo.timestamp = os.timestamp
+          mo.data = getLocalData(os)
+          mo match {
+            case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
+            case _ =>
+          }
+          println(s"Reparing missed update for object ${pointer.uuid}")
+          mo.commitBoth()
+        } else
+          Future.unit
+      }
+    }
+    
+    for {
+      oobj <- foobj
+      olocal <- folocal
+      _ <- fix(oobj, olocal)
+    } yield {
+      olocal.foreach(mo => synchronized { mo.completeOperation(repairUUID) })
     }
   }
   

@@ -177,7 +177,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     val ts = HLCTimestamp.now
     
     val min = Key(List[Byte](1,2,3,4).toArray)
-    val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, 5, Some(min), None, None, None, Map())
+    val kvos = new KeyValueObjectState(kvptr, nrev2, ref, ts, Set(), 5, Some(min), None, None, None, Map())
     
     val enc = KeyValueObjectCodec.encode(ida, kvos)
     

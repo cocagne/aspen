@@ -100,8 +100,10 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
+        //println(s"STORE READ ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision} set $updateSet")
+        
         val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
-        //println(s"read ok obj ${objectPointer.uuid} rev ${cs.revision} from store ${response.fromStore}")
+        
         storeStates += (response.fromStore -> ss)
         
         if (errors.contains(response.fromStore))
@@ -225,19 +227,20 @@ class BaseReadDriver(
     val (revision, refcount, timestamp, locks) = getMetadata
 
     val sizeOnStore = storeStates.head._2.sizeOnStore
+    val updates = storeStates.head._2.revision._2
     
     def decodePartialRead(): ObjectState = {
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState.decodePartialRead(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, sizeOnStore, kvosList)
+      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, updates, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     def decodeFullRead(): ObjectState = {
       val kvosList = storeStates.valuesIterator.filter( ss => ss.objectData.isDefined ).foldLeft(List[KeyValueObjectStoreState]()) { (l, ss) => 
         KeyValueObjectStoreState(ss.storeId.poolIndex, ss.objectData.get) :: l 
       }
-      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, sizeOnStore, kvosList)
+      KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, updates, refcount, timestamp, sizeOnStore, kvosList)
     }
     
     val objectState = readType match {

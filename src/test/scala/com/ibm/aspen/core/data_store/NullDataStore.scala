@@ -17,6 +17,7 @@ import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.allocation.AllocationOptions
+import com.ibm.aspen.base.AspenSystem
 
 /* A do-nothing store that simply returns empty successes/failures. Use this as a base class for 
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
@@ -63,6 +64,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = Future.successful(())
   
   def discardTransaction(txd: TransactionDescription): Unit = ()
+  
+  def pollAndRepairMissedUpdates(system: AspenSystem): Unit = ()
 }
 
 object NullDataStore {

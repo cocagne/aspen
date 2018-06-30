@@ -261,7 +261,7 @@ object Main {
         userTypeRegistry = None
         )
     
-    val storageNode = new StorageNode(crl, nodeNet)
+    val storageNode = new StorageNode(sys, crl, nodeNet)
     
     object dsFactory extends DataStore.Factory {
 

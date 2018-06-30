@@ -8,8 +8,16 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.objects.ObjectState
 
 trait ObjectReader {
+  
+  def readObject(pointer: ObjectPointer): Future[ObjectState] = pointer match {
+    case dp: DataObjectPointer => readObject(dp)
+    case kvp: KeyValueObjectPointer => readObject(kvp)
+  }
+  
   /** Reads and returns the current state of the object. No caches are used */
   def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[DataObjectState]
   

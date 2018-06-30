@@ -63,6 +63,10 @@ trait AspenSystem extends ObjectReader {
       mus: MissedUpdateStrategy,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
+      
+  def createMissedUpdateIterator(
+      mus: MissedUpdateStrategy, 
+      storeId: DataStoreID)(implicit ec: ExecutionContext): MissedUpdateIterator
   
   def transact[T](prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     val tx = newTransaction()

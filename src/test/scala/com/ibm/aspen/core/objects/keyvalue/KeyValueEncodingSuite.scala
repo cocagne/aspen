@@ -49,19 +49,19 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
     
     val storeStates = enc.zipWithIndex.map( t => KeyValueObjectStoreState(t._2.asInstanceOf[Byte], t._1) ).toList
     
-    KeyValueObjectCodec.decode(ptr, rev, ref, ts, sz, storeStates)
+    KeyValueObjectCodec.decode(ptr, rev, Set(), ref, ts, sz, storeStates)
   }
   
   test("Simple Encoding Empty State") {
     
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, sz, None, None, None, None, Map())
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, None, None, None, None, Map())
     
     encdec(kvos) should be (kvos)
   }
   
   test("Simple Encoding Optional State") {
     
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, sz, Some(Key(d0)), Some(Key(d1)), Some(d2), Some(d3), Map())
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, Some(Key(d0)), Some(Key(d1)), Some(d2), Some(d3), Map())
 
     encdec(kvos) should be (kvos)
   }
@@ -70,7 +70,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
     val k0 = Key(d0)
     val v0 = Value(k0, d1, ts)
    
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, sz, None, None, None, None, Map( (k0->v0) ))
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, None, None, None, None, Map( (k0->v0) ))
     
     encdec(kvos) should be (kvos)
   }
@@ -82,7 +82,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
     val k1 = Key(d1)
     val v1 = Value(k1, d2, ts)
     
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, sz, None, None, None, None, Map( (k1->v1), (k0->v0) ))
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, None, None, None, None, Map( (k1->v1), (k0->v0) ))
     
     encdec(kvos) should be (kvos)
   }
@@ -97,7 +97,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
     val k2 = Key(d3)
     val v2 = Value(k2, d3, ts)
     
-    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, sz, None, None, None, None, Map( (k1->v1), (k2->v2) ))
+    val kvos = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, None, None, None, None, Map( (k1->v1), (k2->v2) ))
         
     val ops: List[KeyValueOperation] = List(new Delete(d1), new Insert(d0, d1, ts), new SetLeft(d3))
     
@@ -114,9 +114,9 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
     
     val storeStates = conjoined.zipWithIndex.map( t => KeyValueObjectStoreState(t._2.asInstanceOf[Byte], t._1) ).toList
     
-    val dec = KeyValueObjectCodec.decode(ptr, rev, ref, ts, sz, storeStates)
+    val dec = KeyValueObjectCodec.decode(ptr, rev, Set(), ref, ts, sz, storeStates)
     
-    val expected = new KeyValueObjectState(ptr, rev, ref, ts, sz, None, None, Some(d3), None, Map( (k0->v0), (k2->v2) ))
+    val expected = new KeyValueObjectState(ptr, rev, ref, ts, Set(), sz, None, None, Some(d3), None, Map( (k0->v0), (k2->v2) ))
     
     dec should be (expected)
   }

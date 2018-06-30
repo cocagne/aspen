@@ -228,7 +228,7 @@ object KeyValueList {
       case _ => m
     }}
     
-    new KeyValueObjectState(kvos.pointer, kvos.revision, kvos.refcount, kvos.timestamp, newSizeOnStore, 
+    new KeyValueObjectState(kvos.pointer, kvos.revision, kvos.refcount, kvos.timestamp, kvos.updates, newSizeOnStore, 
         kvos.minimum, maximum, kvos.left, right, newContents)
   }
    
@@ -284,7 +284,7 @@ object KeyValueList {
       
       onSplit(left, right)
       
-      new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, newSizeOnStore, 
+      new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, Set(), newSizeOnStore, 
         kvos.minimum, Some(rightMin), kvos.left, Some(rnpArr), contents)
     }
   }
@@ -314,7 +314,7 @@ object KeyValueList {
         case None => 
           tx.overwrite(emptyKvos.pointer, emptyKvos.revision, requirements, ops)
           val newSizeOnStore = KeyValueObjectCodec.calculateEncodedSize(emptyKvos.pointer.ida, ops)
-          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, newSizeOnStore, 
+          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, Set(), newSizeOnStore, 
             emptyKvos.minimum, None, emptyKvos.left, None, Map())
           
         case Some(rkvos) =>
@@ -329,7 +329,7 @@ object KeyValueList {
           
           onJoin(KeyValueListPointer(emptyKvos), KeyValueListPointer(rkvos))
           
-          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, newSizeOnStore, 
+          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, Set(), newSizeOnStore, 
             emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, Map())
       }
     }

@@ -1,7 +1,21 @@
  
-  * Test Missed Update
+ MissedUpdateRepair
+ 
+ * Opportunistic Rebuild
+    - If Read sees stores with old revisions and timestamp is more than 5 sec old,
+      Send an OpportunisticRebuild message
+        - includes out-of-date revision
+        - includes current revision, refcount, timestamp, and slice content
+    - Neatly solves the problem of not logging errors on error-tree insertion 
+        - We'll be constantly scanning these trees for repair
+  
   * object allocaters
   * Failed store rebuild
+  
+  ** Missed Object Deletions
+    - Need special handling of the pointer in the allocation tree
+       - only UUID is stored in error list by default. We probably ought to encode the localPointer in the value for deleted objects
+  
   
 Basic Error Handling
   * Missed Object Update
