@@ -109,7 +109,8 @@ class TestNetwork {
     def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
     
     def send(toStore: DataStoreID, message: allocation.Allocate): Unit = get(toStore).foreach(sn => sn.a.foreach(a => a.receive(message)))
-    def send(toStore: DataStoreID, message: read.Read): Unit = get(toStore).foreach(sn => sn.r.foreach(r=> r.receive(message)))
+    def send(message: read.Read): Unit = get(message.toStore).foreach(sn => sn.r.foreach(r=> r.receive(message)))
+    def send(message: read.OpportunisticRebuild): Unit = get(message.toStore).foreach(sn => sn.r.foreach(r=> r.receive(message)))
     def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = get(message.to).foreach(sn => {
       val oarr = if (updateContent.isEmpty) None else Some(updateContent)
       sn.t.foreach(t => t.receive(message, oarr))

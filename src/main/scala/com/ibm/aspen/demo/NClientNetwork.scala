@@ -17,6 +17,7 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.read.OpportunisticRebuild
 
 class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork 
     with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler {
@@ -96,10 +97,16 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
     stores(toStore).send(msg)
   }
   
-  def send(toStore: DataStoreID, message: Read): Unit  = {
+  def send(message: Read): Unit  = {
     val msg = encodeMessage(message)
     
-    stores(toStore).send(msg)
+    stores(message.toStore).send(msg)
+  }
+  
+  def send(message: OpportunisticRebuild): Unit  = {
+    val msg = encodeMessage(message)
+    
+    stores(message.toStore).send(msg)
   }
   
   def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = {

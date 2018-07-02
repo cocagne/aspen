@@ -53,6 +53,15 @@ sealed abstract class ObjectPointer(
     
   def hostingStores: List[DataStoreID] = storePointers.iterator.map(sp => DataStoreID(poolUUID, sp.poolIndex)).toList
   
+  def getEncodedDataIndexForStore(storeId: DataStoreID): Option[Int] = {
+    if (storeId.poolUUID != poolUUID)
+      return None
+    for (i <- (0 until storePointers.size))
+      if (storePointers(i).poolIndex == storeId.poolIndex)
+        return Some(i)
+    return None
+  }
+  
   def objectType: ObjectType.Value
     
   protected def addExtraToStringContent(sb: StringBuilder): Unit = {}

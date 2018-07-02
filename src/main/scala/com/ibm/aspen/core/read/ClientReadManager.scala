@@ -10,16 +10,44 @@ import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.Lock
+import scala.concurrent.duration._
+import com.ibm.aspen.base.impl.BackgroundTask
 
 class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
+  private[this] var completionTimes = Map[UUID, (Long, ReadDriver)]()
+  
+  val pruneStaleReadsTask = BackgroundTask.schedulePeriodic(Duration(1, SECONDS), callNow=false) {
+    val completionSnap = synchronized { completionTimes }
+    val now = System.nanoTime()/1000000
+    val prune = completionSnap.filter( t => (now - t._2._1) > t._2._2.opportunisticRebuildDelay.toMillis )
+    if (!prune.isEmpty) { synchronized {
+      prune.foreach { t =>
+        completionTimes -= t._1
+        outstandingReads -= t._1
+      }
+    }}
+  }
   
   def receive(m: ReadResponse): Unit = { 
     synchronized { outstandingReads.get(m.readUUID) } foreach {
-      driver => driver.receiveReadResponse(m)
-    }  
-  }
+      driver =>
+        val wasCompleted = driver.readResult.isCompleted
+        val allResponded = driver.receiveReadResponse(m)
+        val isCompleted = driver.readResult.isCompleted
+        
+        if (isCompleted) { synchronized {
+          if (allResponded) {
+            completionTimes -= m.readUUID
+            outstandingReads -= m.readUUID
+          }
+          else if (!wasCompleted)
+            completionTimes += (m.readUUID -> (System.nanoTime()/1000000, driver))
+        }}
+    }
+  }  
+  
   
   def shutdown(): Unit = {
     outstandingReads.foreach( t => t._2.shutdown() )
@@ -45,11 +73,7 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
     synchronized { outstandingReads += (readUUID -> driver) }
     
     driver.begin()
-    
-    driver.readResult onComplete {
-      case _ => synchronized { outstandingReads -= readUUID }
-    }
-    
+
     driver.readResult
   }
 }

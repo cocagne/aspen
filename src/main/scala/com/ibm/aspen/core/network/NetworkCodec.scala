@@ -34,6 +34,7 @@ import com.ibm.aspen.core.allocation.AllocationErrors
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
+import com.ibm.aspen.core.read.OpportunisticRebuild
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxCommitted
@@ -1172,4 +1173,60 @@ object NetworkCodec {
     ReadResponse(fromStore, readUUID, result)
   }
   
+  
+  def encode(builder:FlatBufferBuilder, o:OpportunisticRebuild): Int = {
+    val toStore = encode(builder, o.toStore)
+    val clientData = P.Read.createFromClientVector(builder, o.fromClient.serialized)
+    val optr = encode(builder, o.objectPointer)
+    builder.createUnintializedVector(1, o.newData.size, 1).put(o.newData.asReadOnlyBuffer())
+    val newData = builder.endVector()
+    val oldUpdateSet = if( o.oldUpdateSet.isEmpty )
+      -1
+    else {
+      //val storePointers = P.ObjectPointer.createStorePointersVector(builder, o.storePointers.map(sp => encode(builder, sp)))
+      P.OpportunisticRebuild.startOldUpdateSetVector(builder, o.oldUpdateSet.size)
+      o.oldUpdateSet.foreach { uuid => encode(builder, uuid) }
+      builder.endVector()
+    }
+    
+    P.OpportunisticRebuild.startOpportunisticRebuild(builder)
+    P.OpportunisticRebuild.addToStore(builder, toStore)
+    P.OpportunisticRebuild.addFromClient(builder, clientData)
+    P.OpportunisticRebuild.addObjectPointer(builder, optr)
+    P.OpportunisticRebuild.addOldRevision(builder, encodeObjectRevision(builder, o.oldRevision))
+    P.OpportunisticRebuild.addOldRefcount(builder, encode(builder, o.oldRefcount))
+    if (oldUpdateSet != -1) P.OpportunisticRebuild.addOldUpdateSet(builder, oldUpdateSet)
+    P.OpportunisticRebuild.addNewRevision(builder, encodeObjectRevision(builder, o.newRevision))
+    P.OpportunisticRebuild.addNewRefcount(builder, encode(builder, o.newRefcount))
+    P.OpportunisticRebuild.addNewTimestamp(builder, o.newTimestamp.asLong)
+    P.OpportunisticRebuild.addNewData(builder, newData)
+    P.OpportunisticRebuild.endOpportunisticRebuild(builder)
+  }
+  
+  def decode(n: P.OpportunisticRebuild): OpportunisticRebuild = {
+    val toStore = decode(n.toStore())
+    val fromClient = new Array[Byte](n.fromClientLength())
+    n.fromClientAsByteBuffer().get(fromClient)
+    val objectPointer = decode(n.objectPointer())
+    val oldRevision = decode(n.oldRevision())
+    val oldRefcount = decode(n.oldRefcount())
+    val oldUpdateSet = if (n.oldUpdateSetLength() <= 0) Set[UUID]() else {
+      var up = Set[UUID]()
+      for (i <- 0 until n.oldUpdateSetLength())
+        up += decode(n.oldUpdateSet(i))
+      up
+    }
+    val newRevision = decode(n.newRevision())
+    val newRefcount = decode(n.newRefcount())
+    val newTimestamp = HLCTimestamp(n.newTimestamp())
+    
+    val buff = ByteBuffer.allocateDirect(n.newDataLength())
+    buff.put(n.newDataAsByteBuffer())
+    buff.position(0)
+    
+    val newData = DataBuffer(buff)
+    
+    OpportunisticRebuild(toStore, ClientID(fromClient), objectPointer, oldRevision, oldRefcount, 
+        oldUpdateSet, newRevision, newRefcount, newTimestamp, newData)
+  }
 }

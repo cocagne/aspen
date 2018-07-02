@@ -78,7 +78,11 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
     bb.limit(origLimit)
     bb.position(4 + msgLen) // reposition to encoded data
     
-    if (p.prepare() != null) {
+    if (p.read() != null) {
+      val message = NetworkCodec.decode(p.read())
+      r.foreach(receiver => receiver.receive(message))
+    }
+    else if (p.prepare() != null) {
       //println("got prepare")
       val message = NetworkCodec.decode(p.prepare())
       
@@ -155,8 +159,8 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       val message = NetworkCodec.decode(p.allocateStatusResponse())
       a.foreach(receiver => receiver.receive(message))
     }
-    else if (p.read() != null) {
-      val message = NetworkCodec.decode(p.read())
+    else if (p.opportunisticRebuild() != null) {
+      val message = NetworkCodec.decode(p.opportunisticRebuild())
       r.foreach(receiver => receiver.receive(message))
     }
     else {

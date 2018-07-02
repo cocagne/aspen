@@ -28,6 +28,18 @@ final case class ReadResponse(
     readUUID: UUID,
     result: Either[ObjectReadError.Value, ReadResponse.CurrentState]) extends Message
     
+final case class OpportunisticRebuild(
+    toStore: DataStoreID,
+    fromClient: ClientID,
+    objectPointer: ObjectPointer,
+    oldRevision: ObjectRevision,
+    oldRefcount: ObjectRefcount,
+    oldUpdateSet: Set[UUID],
+    newRevision: ObjectRevision,
+    newRefcount: ObjectRefcount,
+    newTimestamp: HLCTimestamp,
+    newData: DataBuffer) extends Message
+    
 object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,

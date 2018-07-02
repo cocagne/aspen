@@ -45,6 +45,7 @@ import com.ibm.aspen.base.StoragePool
 import com.ibm.aspen.base.MissedUpdateIterator
 import scala.util.Failure
 import scala.util.Success
+import com.ibm.aspen.core.read.OpportunisticRebuild
 
 object DataStoreFrontend {
   
@@ -180,7 +181,7 @@ class DataStoreFrontend(
             val fcommitted = mo.commitBoth()
             
             fcommitted onComplete {
-              case _ => mo.completeOperation(ars.allocationTransactionUUID)
+              case _ => synchronized { mo.completeOperation(ars.allocationTransactionUUID) }
             }
             
             fcommitted
@@ -305,6 +306,7 @@ class DataStoreFrontend(
   }
   
   def pollAndRepairMissedUpdates(system: AspenSystem): Unit = synchronized {
+    
     if (repairing)
       return
     else
@@ -369,6 +371,48 @@ class DataStoreFrontend(
     promise.future
   }
   
+  def opportunisticRebuild(message: OpportunisticRebuild): Unit = {
+    println(s"Opportunistic rebuild for object ${message.objectPointer.uuid}")
+    val pointer = message.objectPointer
+    val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
+    val repairUUID = UUID.randomUUID()
+    
+    val metadata = ObjectMetadata(message.newRevision, message.newRefcount, message.newTimestamp)
+    val data = message.newData
+    
+    synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
+      case Left(err) => synchronized {
+        backend.putObject(objectId, metadata, data)
+      }
+      case Right(mo) => synchronized {
+
+        val update = mo match {
+          case d: MutableDataObject => 
+            d.revision == message.oldRevision && d.refcount == message.oldRefcount
+            
+          case k: MutableKeyValueObject => 
+            k.revision == message.oldRevision && k.refcount == message.oldRefcount && KeyValueObjectCodec.getUpdateSet(k.data) == message.oldUpdateSet
+        }
+        
+        if (update) {
+          mo.revision = metadata.revision
+          mo.refcount = metadata.refcount
+          mo.timestamp = metadata.timestamp
+          mo.data = data
+          mo match {
+            case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
+            case _ =>
+          }
+          
+          mo.commitBoth() onComplete { 
+            case _ => synchronized { mo.completeOperation(repairUUID) } 
+          }
+        } else
+          mo.completeOperation(repairUUID)
+      }
+    }} 
+  }
+  
   private def repair(system: AspenSystem, pointer: ObjectPointer): Future[Unit] =  {
   
     val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
@@ -377,7 +421,7 @@ class DataStoreFrontend(
     
     val repairUUID = UUID.randomUUID()
     
-    val folocal = synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadMetadata() } map { e => e match {
+    val folocal = synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
       case Left(err) => None
       case Right(obj) => Some(obj)
     }}
@@ -391,10 +435,14 @@ class DataStoreFrontend(
       } yield node.kvos.contents.contains(key)
     }
     
-    def getLocalData(os: ObjectState): DataBuffer = os match {
-      case d: DataObjectState => pointer.ida.encode(d.data)(storeId.poolIndex)
-      case kvos: KeyValueObjectState => KeyValueObjectCodec.encode(kvos.pointer.ida, kvos, kvos.updates)(storeId.poolIndex)
-      case _: MetadataObjectState => DataBuffer.Empty // should not be possible
+    def getLocalData(os: ObjectState): DataBuffer = {
+      os.getRebuildDataForStore(storeId) match {
+        case None => 
+          println(s"ERROR Attempted to rebuild pointer on non-hosting store")
+          throw new Exception("Attempted rebuild on non hosting store")
+          
+        case Some(data) => data
+      }
     }
     
     def fix(oobj: Option[ObjectState], olocal: Option[MutableObject]): Future[Unit] = (oobj, olocal) match {
@@ -429,7 +477,7 @@ class DataStoreFrontend(
             d.revision != mo.revision || d.refcount != mo.refcount
             
           case kvos: KeyValueObjectState => 
-            kvos.revision != mo.revision || kvos.refcount != mo.refcount || KeyValueObjectCodec.getUpdates(mo.data) != kvos.updates
+            kvos.revision != mo.revision || kvos.refcount != mo.refcount || KeyValueObjectCodec.getUpdateSet(mo.data) != kvos.updates
             
           case _: MetadataObjectState => true // Should not be possible
         }

@@ -32,6 +32,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.core.read.KeyRange
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
+import com.ibm.aspen.core.read.OpportunisticRebuild
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -42,6 +43,10 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
   def hostedStores: List[DataStore] = synchronized { stores.values.toList }
   
   def addStore(store: DataStore): Unit = synchronized { stores += (store.storeId -> store) }
+  
+  def receive(message: OpportunisticRebuild): Unit = getStore(message.toStore).foreach { store => 
+    store.opportunisticRebuild(message)
+  }
       
   def receive(message: Read): Unit = getStore(message.toStore).foreach { store => 
 

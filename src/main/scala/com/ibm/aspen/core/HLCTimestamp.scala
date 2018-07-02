@@ -1,9 +1,12 @@
 package com.ibm.aspen.core
 
+import scala.concurrent.duration._
+
 final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
   def asLong: Long = longValue
   def wallTime: Long = longValue >> 16
   def logical: Byte = (longValue & 0xFFFFL).asInstanceOf[Byte]
+  def asDuration: Duration = Duration(asLong, MILLISECONDS)
   
   def compareTo(t: HLCTimestamp): Long = {
     val pdelta = wallTime - t.wallTime
@@ -12,6 +15,10 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
     else
       pdelta
   }
+  
+  def -(rhs: HLCTimestamp): Duration = this.asDuration - rhs.asDuration
+  def >(rhs: HLCTimestamp): Boolean = compareTo(rhs) > 0
+  def <(rhs: HLCTimestamp): Boolean = compareTo(rhs) < 0
   
   override def toString(): String = s"HLCTimestamp($longValue)"
 }

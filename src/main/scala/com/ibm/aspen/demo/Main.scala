@@ -164,12 +164,13 @@ object Main {
     
     val prepareRetransmitDelay = Duration(1, SECONDS)
     val allocationRetransmitDelay = Duration(1, SECONDS)
+    val opportunisticRebuildDelay = Duration(3, SECONDS)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,
@@ -245,12 +246,13 @@ object Main {
     
     val prepareRetransmitDelay = Duration(1, SECONDS)
     val allocationRetransmitDelay = Duration(1, SECONDS)
+    val opportunisticRebuildDelay = Duration(3, SECONDS)
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
         net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,

@@ -25,13 +25,17 @@ import com.ibm.aspen.core.objects.MetadataObjectState
 import com.ibm.aspen.core.ida.IDAError
 import com.ibm.aspen.core.data_store
 import com.ibm.aspen.core.data_store.ObjectReadError
+import scala.concurrent.duration._
+import com.ibm.aspen.core.objects.KeyValueObjectState
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val readType: ReadType,
     val retrieveLockedTransaction: Boolean, 
-    val readUUID:UUID)(implicit ec: ExecutionContext) extends ReadDriver {
+    val readUUID:UUID,
+    val opportunisticRebuildDelay: Duration = BaseReadDriver.DefaultOpportunisticRebuildDelay
+    )(implicit ec: ExecutionContext) extends ReadDriver {
   
   import BaseReadDriver._
   
@@ -49,6 +53,8 @@ class BaseReadDriver(
   protected var storeStates = Map[DataStoreID, StoreState]()
   protected var errors = Map[DataStoreID, ObjectReadError.Value]()
   
+  protected var restoredObject: Option[ObjectState] = None
+  
   def readResult = promise.future
   
   def begin() = sendReadRequests()
@@ -56,7 +62,7 @@ class BaseReadDriver(
   def shutdown(): Unit = {}
   
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
-  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send(dataStoreId, 
+  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send( 
       Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType, retrieveLockedTransaction))
       
   def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
@@ -73,10 +79,30 @@ class BaseReadDriver(
     })
   }
   
-  def receiveReadResponse(response:ReadResponse): Unit = synchronized {
-    if (promise.isCompleted)
-      return // Already done
+  def opportunisticRebuild(objectState: ObjectState, storeId: DataStoreID, ss: StoreState): Unit = {
+    
+    val repair = objectState match {
+      case d: DataObjectState => d.timestamp > ss.timestamp && d.revision != ss.revision._1 || d.refcount != ss.refcount
+      case k: KeyValueObjectState => k.timestamp > ss.timestamp && k.revision != ss.revision._1 || k.updates != ss.revision._2 || k.refcount != ss.refcount
+      case m: MetadataObjectState => false
+    }
+    
+    if (repair && objectState.timestamp > ss.timestamp && objectState.timestamp - ss.timestamp > opportunisticRebuildDelay) {
+      println(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
       
+      val arrIdx = objectPointer.getEncodedDataIndexForStore(storeId).get
+      val data = objectState.getRebuildDataForStore(storeId).get
+      
+      val msg = OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, 
+                  ss.revision._1, ss.refcount, ss.revision._2,
+                  objectState.revision, objectState.refcount, objectState.timestamp, data)
+                  
+      clientMessenger.send(msg)
+    }
+  }
+  
+  def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
+    
     def addError(err: ObjectReadError.Value): Unit = {
       //println(s"read error ${objectPointer.uuid}: $err from store ${response.fromStore}")
       errors += (response.fromStore -> err)
@@ -104,6 +130,10 @@ class BaseReadDriver(
         
         val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
         
+        restoredObject.foreach { objectState =>
+          opportunisticRebuild(objectState, response.fromStore, ss)
+        }
+        
         storeStates += (response.fromStore -> ss)
         
         if (errors.contains(response.fromStore))
@@ -117,20 +147,24 @@ class BaseReadDriver(
       }
     }
     
-    if (errors.size + storeStates.size >= objectPointer.ida.consistentRestoreThreshold && 
-        errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold) {
-      // We've received a consistentRestoreThreshold number of responses and enough of them are Fatal read errors that
-      // there is no chance of ever succeeding. 
-      val (invalidCount, corruptCount) = errors.values.foldLeft((0,0)) { (t, e) => e match {
-        case ObjectReadError.ObjectMismatch      => (t._1+1, t._2)
-        case ObjectReadError.InvalidLocalPointer => (t._1+1, t._2)
-        case ObjectReadError.CorruptedObject     => (t._1, t._2+1)
-      }}
-      val err = if (invalidCount >= corruptCount) new InvalidObject(objectPointer) else new CorruptedObject(objectPointer)
-      promise.success(Left(err))
+    if (! promise.isCompleted) {
+      if (errors.size + storeStates.size >= objectPointer.ida.consistentRestoreThreshold && 
+          errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold) {
+        // We've received a consistentRestoreThreshold number of responses and enough of them are Fatal read errors that
+        // there is no chance of ever succeeding. 
+        val (invalidCount, corruptCount) = errors.values.foldLeft((0,0)) { (t, e) => e match {
+          case ObjectReadError.ObjectMismatch      => (t._1+1, t._2)
+          case ObjectReadError.InvalidLocalPointer => (t._1+1, t._2)
+          case ObjectReadError.CorruptedObject     => (t._1, t._2+1)
+        }}
+        val err = if (invalidCount >= corruptCount) new InvalidObject(objectPointer) else new CorruptedObject(objectPointer)
+        promise.success(Left(err))
+      }
+      else if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold)
+        checkComplete()
     }
-    else if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold)
-      checkComplete()
+    
+    errors.size + storeStates.size == objectPointer.ida.width
   }
     
   /** Checks the set of received responses to see if a consistent read has been achieved and initiates
@@ -142,7 +176,9 @@ class BaseReadDriver(
    * this process until a single (ObjectRevision, Set[UUID]) reaches the consistentRestoreThreshold.
    */
   private def checkComplete(): Unit = { 
-      
+    
+    var opportunisticRebuildCandidates = Map[DataStoreID, StoreState]()
+    
     val revisionCounts = storeStates.values.foldLeft(Map[(ObjectRevision, Set[UUID]),Int]()) { (m, ss) =>
       m + (ss.revision -> (m.getOrElse(ss.revision, 0) + 1))
     }
@@ -162,6 +198,7 @@ class BaseReadDriver(
         
         if (pruneSet.contains(ss.revision)) {
           storeStates -= storeId
+          opportunisticRebuildCandidates += t
           sendReadRequest(storeId)
         }
       }
@@ -176,6 +213,14 @@ class BaseReadDriver(
         val objectState = objectPointer match {
           case op: DataObjectPointer     => restoreDataObject()
           case op: KeyValueObjectPointer => restoreKeyValueObject()
+        }
+        
+        restoredObject = Some(objectState._1)
+        
+        opportunisticRebuildCandidates.foreach { t =>
+          val os = objectState._1
+          val (storeId, ss) = t
+          opportunisticRebuild(os, storeId, ss)
         }
         
         promise.success(Right(objectState))
@@ -257,6 +302,8 @@ class BaseReadDriver(
 }
 
 object BaseReadDriver {
+  
+  val DefaultOpportunisticRebuildDelay = Duration(5, SECONDS)
   
   case class StoreState(
       storeId: DataStoreID,

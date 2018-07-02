@@ -29,6 +29,7 @@ import com.ibm.aspen.core.allocation.AllocateResponse
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.transaction.TxCommitted
+import com.ibm.aspen.core.read.OpportunisticRebuild
 
 object NMessageEncoder {
   
@@ -214,6 +215,16 @@ object NMessageEncoder {
     
         Message.startMessage(builder)
         Message.addReadResponse(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+        
+        builder.sizedByteArray()
+        
+      case m: OpportunisticRebuild =>
+        val o = NetworkCodec.encode(builder, m)
+    
+        Message.startMessage(builder)
+        Message.addOpportunisticRebuild(builder, o)
 
         Message.finishMessageBuffer(builder, Message.endMessage(builder))
         

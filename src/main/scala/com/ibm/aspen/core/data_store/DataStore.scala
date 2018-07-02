@@ -21,6 +21,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.allocation.AllocationOptions
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.read.OpportunisticRebuild
 
 object DataStore {
   trait Factory {
@@ -135,5 +136,10 @@ trait DataStore {
   
   /** Called to check for and repair objects that missed updates */
   def pollAndRepairMissedUpdates(system: AspenSystem): Unit
+  
+  /** Called when an OpportunisticRebuild message is sent by a reader that noticed this store has
+   *  missed an update to a hosted object
+   */
+  def opportunisticRebuild(message: OpportunisticRebuild): Unit
 }
 

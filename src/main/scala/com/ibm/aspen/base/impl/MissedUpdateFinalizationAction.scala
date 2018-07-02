@@ -28,7 +28,7 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   
   val pollingTask = BackgroundTask.schedulePeriodic(Duration(250, MILLISECONDS), callNow = false) {
     val pendingSnapshot = synchronized { pendingHandlers }
-    val now = System.nanoTime() / 1000
+    val now = System.nanoTime() / 1000000
     pendingSnapshot.values.foreach( _.checkTimeout(now) )
   }
   
@@ -58,7 +58,7 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
     
     val complete = promise.future
     
-    val startTime = System.nanoTime() / 1000
+    val startTime = System.nanoTime() / 1000000
     
     val allPeers = txd.allDataStores
     val numPeers = allPeers.size

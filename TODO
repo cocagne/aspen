@@ -1,16 +1,14 @@
  
- MissedUpdateRepair
- 
- * Opportunistic Rebuild
-    - If Read sees stores with old revisions and timestamp is more than 5 sec old,
-      Send an OpportunisticRebuild message
-        - includes out-of-date revision
-        - includes current revision, refcount, timestamp, and slice content
-    - Neatly solves the problem of not logging errors on error-tree insertion 
-        - We'll be constantly scanning these trees for repair
   
   * object allocaters
+    - re-use type registry. just register all w/ AllocaterFactory as the factory type
+    
+  * Add strict timestamp requirement to Tx Error checking
+    - TimestampError - transaction timestamp is behind that of the locally hosted object
+    
   * Failed store rebuild
+    - Always resume
+    - Each commit overwrites the checkpoint key (all zeroes)? 
   
   ** Missed Object Deletions
     - Need special handling of the pointer in the allocation tree
@@ -18,6 +16,17 @@
   
   
 Basic Error Handling
+  * Opportunistic Rebuild
+      - When reads successfully restore an object, they send an OpportunisticRebuild message to each store this is observed
+        to have a timestamp behind that of the restored version and revision/refcount/updateSet that does not match the restored object.
+        This message includes the old state of the object to compare against and the full rebuild data for the object. Upon receiving
+        this, the store verifies that the current state of the object matches the observed "behind" state and updates the local copy 
+        accordingly
+      - Successful reads persist in memory until either all stores are heard from or the opportunisticRebuildDelay has elapsed.
+        Messages received after the read has successfully restored the object and between either the timeout or all peers are
+        heard from will similarly be responded to with OpportunisticRebuild messages if the responding peer is observed to
+        be behind the restored version
+        
   * Missed Object Update
       - Each pool has a configurable MissedUpdateStrategy
       - PerStoreMissedUpdate

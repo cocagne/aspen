@@ -7,6 +7,8 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import java.util.UUID
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -15,6 +17,8 @@ sealed abstract class ObjectState(
     val timestamp: HLCTimestamp) {
   
   def canEqual(other: Any): Boolean
+  
+  def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer]
 }
 
 class MetadataObjectState(
@@ -36,6 +40,8 @@ class MetadataObjectState(
     val hashCodes = List(pointer.hashCode, revision.hashCode, refcount.hashCode, timestamp.hashCode)
     hashCodes.reduce( (a,b) => a ^ b )
   }
+  
+  def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer] = None
 }
 
 object MetadataObjectState {
@@ -68,6 +74,10 @@ class DataObjectState(
   override def hashCode: Int = {
     val hashCodes = List(pointer.hashCode, revision.hashCode, refcount.hashCode, timestamp.hashCode, data.hashCode)
     hashCodes.reduce( (a,b) => a ^ b )
+  }
+  
+  def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer] = pointer.getEncodedDataIndexForStore(storeId).map { idx => 
+    pointer.ida.encode(data)(idx)
   }
 }
 
@@ -144,6 +154,10 @@ class KeyValueObjectState(
       case Some(key) => com.ibm.aspen.util.arr2string(key.bytes)
     }
     s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: ${pk(minimum)}, max: ${pk(maximum)}, left: ${p(left)}, right: ${p(right)}, contents: ${contents}"
+  }
+  
+  def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer] = pointer.getEncodedDataIndexForStore(storeId).map { idx => 
+    KeyValueObjectCodec.encode(pointer.ida, this, updates)(idx)
   }
 }
 

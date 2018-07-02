@@ -314,6 +314,19 @@ table ReadResponse {
   locks: [Lock];
   readError: ObjectReadError;
 }
+    
+table OpportunisticRebuild {
+   toStore: DataStoreID;
+   fromClient: [byte];
+   objectPointer: ObjectPointer;
+   oldRevision: ObjectRevision;
+   oldRefcount: ObjectRefcount;
+   oldUpdateSet: [UUID];
+   newRevision: ObjectRevision;
+   newRefcount: ObjectRefcount;
+   newTimestamp: long;
+   newData: [byte];
+}
 
 //---------------------------------------------------------------------------
 //- Allocation Messages
@@ -395,6 +408,7 @@ table Message {
   allocateStatusResponse: AllocationStatusReply;
   read: Read;
   read_response: ReadResponse;
+  opportunisticRebuild: OpportunisticRebuild;
 }
 
 root_type Message;

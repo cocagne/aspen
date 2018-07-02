@@ -88,6 +88,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     // Fail if the pool object has been deleted
     def onAttemptFailure(t: Throwable): Future[Unit] = t match {
       case t: CorruptedObject => throw new StopRetrying(t)
+      case t => Future.unit
     }
     
     def getOrCreate(pool: StoragePool, kvos: KeyValueObjectState): Future[SimpleMutableTieredKeyValueList] = kvos.contents.get(treeKey) match {

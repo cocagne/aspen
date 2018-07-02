@@ -59,7 +59,9 @@ object BaseReadDriverSuite {
   class TMessenger extends ClientSideReadMessenger {
     var mlist = List[(DataStoreID,read.Message)]()
     
-    def send(toStore: DataStoreID, message: read.Read): Unit = mlist = (toStore, message) :: mlist
+    def send(message: read.Read): Unit = mlist = (message.toStore, message) :: mlist
+    
+    def send(message: read.OpportunisticRebuild): Unit = mlist = (message.toStore, message) :: mlist
     
     def clear() = mlist = Nil
     

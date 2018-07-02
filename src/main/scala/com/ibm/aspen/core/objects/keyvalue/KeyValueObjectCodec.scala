@@ -196,22 +196,4 @@ object KeyValueObjectCodec {
     
     bbArray.map(DataBuffer(_))
   }
-  
-  def getUpdates(db: DataBuffer): Set[UUID] = {
-    val bb = db.asReadOnlyBuffer()
-      
-    var updates = Set[UUID]()
-    
-    while (bb.remaining() > 0) {
-      val a = bb.getLong() // Update UUID mostSignificantBits
-      val b = bb.getLong() // Update UUID leastSignificantBits
-      updates += new UUID(a,b) 
-      
-      val updateSize = Varint.getUnsignedInt(bb)
-      
-      bb.position(bb.position + updateSize)
-    }
-    
-    updates
-  }
 }

@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.Lock
+import scala.concurrent.duration.Duration
 
 trait ReadDriver {
   def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]]
@@ -18,7 +19,10 @@ trait ReadDriver {
   /** Called to abandon the read. This calls should cancel all activity scheduled for the future */
   def shutdown(): Unit
   
-  def receiveReadResponse(response:ReadResponse): Unit
+  /** Returns True when all stores have been heard from */
+  def receiveReadResponse(response:ReadResponse): Boolean
+  
+  val opportunisticRebuildDelay: Duration
 }
 
 object ReadDriver {

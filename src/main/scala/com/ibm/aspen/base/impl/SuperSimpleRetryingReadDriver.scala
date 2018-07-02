@@ -10,13 +10,13 @@ import scala.concurrent.duration._
 import com.ibm.aspen.core.read.ReadDriver
 
 object SuperSimpleRetryingReadDriver {
-  def factory(ec: ExecutionContext)(
+  def factory(opportunisticRebuildDelay: Duration, ec: ExecutionContext)(
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID): ReadDriver = {
-    new SuperSimpleRetryingReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
+    new SuperSimpleRetryingReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay)(ec)
   }
 }
 
@@ -25,7 +25,9 @@ class SuperSimpleRetryingReadDriver(
     objectPointer: ObjectPointer,
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
-    readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)  {
+    readUUID:UUID,
+    opportunisticRebuildDelay: Duration)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
+        readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay)  {
   
   val retryTask = BackgroundTask.schedulePeriodic(period=Duration(250, MILLISECONDS), callNow=false)( sendReadRequests() )
   //println(s"Beginning read of object ${objectPointer.uuid}")
