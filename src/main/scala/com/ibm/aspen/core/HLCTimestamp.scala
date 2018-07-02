@@ -24,24 +24,41 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
 }
 
 object HLCTimestamp {
+  private[this] var last: HLCTimestamp = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
+  
+  def update(seen: HLCTimestamp): Unit = synchronized {
+    if (seen > last) 
+      last = seen
+  }
   
   def now: HLCTimestamp = HLCTimestamp()
   
   def apply(longValue: Long): HLCTimestamp = new HLCTimestamp(longValue)
   
-  def apply(): HLCTimestamp = new HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
-  
-  def happensAfter(ts: HLCTimestamp): HLCTimestamp = {
-    val now = HLCTimestamp()
+  def apply(): HLCTimestamp = synchronized {
+    val n = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
     
-    if (ts.wallTime == now.wallTime) 
-      HLCTimestamp(((now.wallTime << 16) | ts.logical) + 1)
-      
-    else if (now.wallTime < ts.wallTime)
-      HLCTimestamp(((ts.wallTime << 16) | ts.logical) + 1)
-      
+     if (n > last)
+      last = n
     else
-      now
+      last = HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
+    
+    last
   }
   
+  def happensAfter(ts: HLCTimestamp): HLCTimestamp = synchronized {
+    val n = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
+    
+    if (ts > last)
+      last = ts
+
+    val newTs = if (last.wallTime >= n.wallTime || last.logical > n.logical) 
+      HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
+    else
+      now
+      
+    last = newTs
+    
+    last
+  }
 }

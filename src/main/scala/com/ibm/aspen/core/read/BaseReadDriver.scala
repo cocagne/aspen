@@ -224,6 +224,8 @@ class BaseReadDriver(
         
         restoredObject = Some(objectState._1)
         
+        HLCTimestamp.update(objectState._1.timestamp)
+        
         opportunisticRebuildCandidates.foreach { t =>
           val os = objectState._1
           val (storeId, ss) = t
