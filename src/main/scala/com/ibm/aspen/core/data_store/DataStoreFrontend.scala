@@ -386,24 +386,35 @@ class DataStoreFrontend(
       }
       case Right(mo) => synchronized {
 
-        val update = mo match {
+        val (updateMeta, updateData) = mo match {
           case d: MutableDataObject => 
-            d.revision == message.oldRevision && d.refcount == message.oldRefcount
+            val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
+            (u, u)
             
-          case k: MutableKeyValueObject => 
-            k.revision == message.oldRevision && k.refcount == message.oldRefcount && KeyValueObjectCodec.getUpdateSet(k.data) == message.oldUpdateSet
+          case k: MutableKeyValueObject =>
+            val news = KeyValueObjectCodec.getUpdateSet(k.data) 
+            val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
+            
+            // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
+            // have. If we have received any updates outside this, we cannot overwrite our content
+            val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
+            
+            (meta, data)
         }
         
-        if (update) {
+        if (updateMeta) {
           mo.revision = metadata.revision
           mo.refcount = metadata.refcount
           mo.timestamp = metadata.timestamp
-          mo.data = data
-          mo match {
-            case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
-            case _ =>
-          }
           
+          if (updateData) {
+            mo.data = data
+            mo match {
+              case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
+              case _ =>
+            }
+          }
+
           mo.commitBoth() onComplete { 
             case _ => synchronized { mo.completeOperation(repairUUID) } 
           }

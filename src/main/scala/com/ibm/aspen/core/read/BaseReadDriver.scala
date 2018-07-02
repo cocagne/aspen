@@ -82,8 +82,15 @@ class BaseReadDriver(
   def opportunisticRebuild(objectState: ObjectState, storeId: DataStoreID, ss: StoreState): Unit = {
     
     val repair = objectState match {
-      case d: DataObjectState => d.timestamp > ss.timestamp && d.revision != ss.revision._1 || d.refcount != ss.refcount
-      case k: KeyValueObjectState => k.timestamp > ss.timestamp && k.revision != ss.revision._1 || k.updates != ss.revision._2 || k.refcount != ss.refcount
+      case d: DataObjectState => d.timestamp > ss.timestamp && (d.revision != ss.revision._1 || d.refcount != ss.refcount)
+      case k: KeyValueObjectState => 
+        val cmp = k.timestamp.compareTo(ss.timestamp)
+        if (cmp > 0)
+          true
+        else if(cmp == 0)
+          ((ss.revision._2 &~ k.updates).isEmpty && !(k.updates &~ ss.revision._2).isEmpty) || k.refcount != ss.refcount
+        else 
+          k.revision != ss.revision._1 || k.updates != ss.revision._2 || k.refcount != ss.refcount
       case m: MetadataObjectState => false
     }
     
