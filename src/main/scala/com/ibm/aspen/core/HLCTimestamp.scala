@@ -52,7 +52,7 @@ object HLCTimestamp {
     if (ts > last)
       last = ts
 
-    val newTs = if (last.wallTime >= n.wallTime || last.logical > n.logical) 
+    val newTs = if (last.wallTime >= n.wallTime && last.logical > n.logical) 
       HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
     else
       now
