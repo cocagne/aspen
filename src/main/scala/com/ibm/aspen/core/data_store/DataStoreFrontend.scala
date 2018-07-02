@@ -465,6 +465,11 @@ class DataStoreFrontend(
       case (None, None) => isAllocated() map { allocated =>
         if (allocated)
           throw new Exception("Object is in an indeterminate state. Cannot repair yet")
+        else {
+          // Delete local object state (if we have any)
+          println(s"Reparing missed delete for object ${entry.objectUUID}")
+          backend.deleteObject(objectId)
+        }
       }
       
       case (None, Some(mo)) =>
