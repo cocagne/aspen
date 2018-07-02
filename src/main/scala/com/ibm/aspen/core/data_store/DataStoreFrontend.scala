@@ -343,20 +343,17 @@ class DataStoreFrontend(
     
     def next(): Unit = {
       iter.fetchNext() foreach { _ =>
-        iter.objectUUID match {
+        iter.entry match {
           case None => promise.success(())
           
-          case Some(objectUUID) => 
-            println(s"Beginning repairs for object $objectUUID")
-            val frepair = getObjectPointer(objectUUID).flatMap { optr => optr match {
-              case None => throw new Exception(s"REPAIR ERROR: Failed to lookup object pointer for object $objectUUID")
-                
-              case Some(pointer) => repair(system, pointer).flatMap(_ => iter.markRepaired())
-            }}
+          case Some(entry) => 
+            println(s"Beginning repairs for object ${entry.objectUUID}")
+            val frepair = getObjectPointer(entry.objectUUID).flatMap { optr => repair(system, entry, optr).flatMap(_ => iter.markRepaired()) }
+            
             
             frepair onComplete {
               case Success(_) =>
-                println(s"Completed repairs of $objectUUID")
+                println(s"Completed repairs of ${entry.objectUUID}")
                 next()
               case Failure(t) => 
                 println(s"REPAIR ERROR: $t")
@@ -424,23 +421,30 @@ class DataStoreFrontend(
     }} 
   }
   
-  private def repair(system: AspenSystem, pointer: ObjectPointer): Future[Unit] =  {
+  private def repair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer]): Future[Unit] =  {
   
-    val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
+    val objectId = StoreObjectID(entry.objectUUID, entry.storePointer)
     
-    val foobj = system.readObject(pointer).map(Some(_)).recover{ case _: FatalReadError => None }
+    val foobj = opointer match {
+      case None => Future.successful(None)
+      case Some(pointer) => system.readObject(pointer).map(Some(_)).recover{ case _: FatalReadError => None }
+    }
     
     val repairUUID = UUID.randomUUID()
     
-    val folocal = synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
-      case Left(err) => None
-      case Right(obj) => Some(obj)
-    }}
+    val folocal = opointer match {
+      case None => Future.successful(None)
+      case Some(pointer) => synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
+        case Left(err) => None
+        case Right(obj) => Some(obj)
+      }}  
+    }
+      
     
     def isAllocated(): Future[Boolean] = {
-      val key = Key(pointer.uuid)
+      val key = Key(entry.objectUUID)
       for {
-        pool <- system.getStoragePool(pointer.poolUUID)
+        pool <- system.getStoragePool(storeId.poolUUID)
         tree <- pool.getAllocationTree(system.retryStrategy)
         node <- tree.fetchMutableNode(key)
       } yield node.kvos.contents.contains(key)
@@ -470,7 +474,7 @@ class DataStoreFrontend(
           else if (!mo.locks.isEmpty)
             throw new Exception("Object locked. Cannot repair yet")
           else {
-            println(s"Reparing missed delete for object ${pointer.uuid}")
+            println(s"Reparing missed delete for object ${entry.objectUUID}")
             backend.deleteObject(objectId)
           }
         }}
@@ -478,7 +482,7 @@ class DataStoreFrontend(
       case (Some(os), None) => synchronized {
         val metadata = ObjectMetadata(os.revision, os.refcount, os.timestamp)
         val data = getLocalData(os)
-        println(s"Reparing missed allocation for object ${pointer.uuid}")
+        println(s"Reparing missed allocation for object ${entry.objectUUID}")
         backend.putObject(objectId, metadata, data)
       }
       
@@ -502,7 +506,7 @@ class DataStoreFrontend(
             case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
             case _ =>
           }
-          println(s"Reparing missed update for object ${pointer.uuid}")
+          println(s"Reparing missed update for object ${entry.objectUUID}")
           mo.commitBoth()
         } else
           Future.unit

@@ -2,6 +2,16 @@ package com.ibm.aspen.core.objects
 
 import java.nio.ByteBuffer
 
+object StorePointer {
+  def decode(encoded: Array[Byte]): StorePointer = {
+    val data = new Array[Byte](encoded.length-1)
+    val bb = ByteBuffer.wrap(encoded)
+    val poolIndex = bb.get()
+    bb.get(data)
+    StorePointer(poolIndex, data)
+  }
+}
+
 final case class StorePointer(poolIndex: Byte, data: Array[Byte]) {
   
   override def toString(): String = {
@@ -15,6 +25,14 @@ final case class StorePointer(poolIndex: Byte, data: Array[Byte]) {
       s"($poolIndex,${ByteBuffer.wrap(data).getInt()})"
     else 
       super.toString()
+  }
+  
+  def encode(): Array[Byte] = {
+    val arr = new Array[Byte](1 + data.length)
+    val bb = ByteBuffer.wrap(arr)
+    bb.put(poolIndex)
+    bb.put(data)
+    arr
   }
   
   override def equals(other: Any): Boolean = other match {

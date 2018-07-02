@@ -1,19 +1,11 @@
  
+  * Failed store rebuild
+    - Always resume
+    - Each commit overwrites the checkpoint key (all zeroes)?
   
   * object allocaters
     - re-use type registry. just register all w/ AllocaterFactory as the factory type
-    
-  * Add strict timestamp requirement to Tx Error checking
-    - TimestampError - transaction timestamp is behind that of the locally hosted object
-    
-  * Failed store rebuild
-    - Always resume
-    - Each commit overwrites the checkpoint key (all zeroes)? 
-  
-  ** Missed Object Deletions
-    - Need special handling of the pointer in the allocation tree
-       - only UUID is stored in error list by default. We probably ought to encode the localPointer in the value for deleted objects
-  
+ 
   
 Basic Error Handling
   * Opportunistic Rebuild

@@ -26,6 +26,7 @@ import com.ibm.aspen.base.MissedUpdateIterator
 import com.ibm.aspen.util.byte2uuid
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.objects.StorePointer
 
 /**
  *  Strategy: Store in the pool definition a MutableTieredKeyValueList for each store that contains the UUIDs of
@@ -116,36 +117,38 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       val system: AspenSystem, 
       val storeId: DataStoreID)(implicit ec: ExecutionContext) extends MissedUpdateIterator {
     
-    private[this] var uuids: List[(UUID, HLCTimestamp)] = Nil
+    import MissedUpdateIterator.Entry
+    
+    private[this] var entries: List[Entry] = Nil
     private[this] var fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
     
     val ftree = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex)
     
-    def objectUUID: Option[UUID] = synchronized { 
-      if (uuids.isEmpty) None else Some(uuids.head._1) 
+    def entry: Option[Entry] = synchronized { 
+      if (entries.isEmpty) None else Some(entries.head) 
     }
     
     def fetchNext()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-      if (uuids.isEmpty) {
+      if (entries.isEmpty) {
         fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
         fnode map { node => synchronized {
-          uuids = node.kvos.contents.valuesIterator.map(v => (byte2uuid(v.key.bytes), v.timestamp)).toList
+          entries = node.kvos.contents.valuesIterator.map(v => Entry(byte2uuid(v.key.bytes), StorePointer.decode(v.value), v.timestamp)).toList
         }}
       } else {
-        uuids = uuids.tail
+        entries = entries.tail
         Future.unit
       }
     }
     
     def markRepaired()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-      if (uuids.isEmpty)
+      if (entries.isEmpty)
         Future.unit
       else {
         system.transact { implicit tx =>
           for {
             node <- fnode
-            key = Key(uuids.head._1)
-            reqs = List(KeyValueUpdate.KVRequirement(key, uuids.head._2, KeyValueUpdate.TimestampRequirement.Equals))
+            key = Key(entries.head.objectUUID)
+            reqs = List(KeyValueUpdate.KVRequirement(key, entries.head.timestamp, KeyValueUpdate.TimestampRequirement.Equals))
             _ <- node.prepreUpdateTransaction(Nil, List(key), reqs)
           } yield()
         }
@@ -172,10 +175,12 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       // Prevent potentially infinite recursion
       tx.disableMissedUpdateTracking()
       
+      val value = obj.getStorePointer(DataStoreID(obj.poolUUID, storeIndex)).get.encode()
+      
       for {
         tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
         node <- tl.fetchMutableNode(objKey)
-        prep <- node.prepreUpdateTransaction(List((objKey -> new Array[Byte](0))), Nil, Nil)
+        prep <- node.prepreUpdateTransaction(List((objKey -> value)), Nil, Nil)
       } yield ()
     }
   }
