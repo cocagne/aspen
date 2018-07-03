@@ -27,6 +27,8 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.base.MissedUpdateHandler
 import com.ibm.aspen.base.MissedUpdateIterator
+import com.ibm.aspen.base.AllocatedObjectsIterator
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListIterator
 
 object BaseStoragePool {
   
@@ -69,6 +71,9 @@ object BaseStoragePool {
       } 
     }
   }
+  
+  
+  
 }
 
 class BaseStoragePool(
@@ -101,6 +106,21 @@ class BaseStoragePool(
   
   override def getAllocationTree(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = {
     Future.successful(new SimpleMutableTieredKeyValueList(system, Left(poolDefinitionPointer), AllocationTreeKey, ByteArrayKeyOrdering))
+  }
+  
+  override def getAllocatedObjectsIterator()(implicit ec: ExecutionContext): Future[AllocatedObjectsIterator] = {
+    getAllocationTree(system.retryStrategy).map { tree => 
+      new AllocatedObjectsIterator {
+        import AllocatedObjectsIterator._
+        
+        val iter = new TieredKeyValueListIterator(system, tree)
+        
+        def fetchNext()(implicit ec: ExecutionContext): Future[Option[AllocatedObject]] = iter.next().map { o => o match {
+          case None => None
+          case Some(v) => Some(AllocatedObject(ObjectPointer(v.value), v.timestamp))
+        }}
+      }
+    }
   }
   
   def getMissedUpdateStrategy(): MissedUpdateStrategy = missedUpdateStrategy

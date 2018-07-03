@@ -18,6 +18,8 @@ trait StoragePool {
   
   def getAllocationTree(retryStrategy: RetryStrategy)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList]
   
+  def getAllocatedObjectsIterator()(implicit ec: ExecutionContext): Future[AllocatedObjectsIterator]
+  
   /** The entries of this array describe which storage host that currently owns store with the corresponding index */
   def storageHosts: Array[StorageHost]
   

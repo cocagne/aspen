@@ -94,6 +94,8 @@ object ObjectPointer {
   protected val DataObjectPointerCode: Byte = 0
   protected val KeyValueObjectPointerCode: Byte = 1
   
+  def apply(arr: Array[Byte]): ObjectPointer = fromArray(arr)
+  
   val EmptyArray = new Array[Byte](0)
   
   def bytesNeededForBits(numBits: Int): Int = if (numBits <= 8) 1 else {

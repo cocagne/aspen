@@ -37,6 +37,12 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
   def destroy(prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit]
   
   class MutableNode(val kvos: KeyValueObjectState) {
+    
+    def fetchRight()(implicit ec: ExecutionContext): Future[Option[MutableNode]] = kvos.right match {
+      case None => Future.successful(None)
+      case Some(ptr) => system.readObject(KeyValueObjectPointer(ptr)).map(kvos => Some(new MutableNode(kvos)))
+    }
+    
     def prepreUpdateTransaction(
       inserts: List[(Key, Array[Byte])],
       deletes: List[Key],
