@@ -427,7 +427,7 @@ class DataStoreFrontend(
     
     val foobj = opointer match {
       case None => Future.successful(None)
-      case Some(pointer) => system.readObject(pointer).map(Some(_)).recover{ case _: FatalReadError => None }
+      case Some(pointer) => system.readObject(pointer, disableOpportunisticRebuild=true).map(Some(_)).recover{ case _: FatalReadError => None }
     }
     
     val repairUUID = UUID.randomUUID()

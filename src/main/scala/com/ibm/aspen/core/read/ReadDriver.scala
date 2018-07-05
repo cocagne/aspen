@@ -33,7 +33,8 @@ object ReadDriver {
    *          objectPointer: ObjectPointer,
    *          readType: ReadType,
    *          retrieveLockedTransaction: Boolean,
-   * ,        readUUID:UUID)
+   * ,        readUUID:UUID,
+   *          disableOpportunisticRebuild: Boolean)
    */
-  type Factory = (ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID) => ReadDriver
+  type Factory = (ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
 }

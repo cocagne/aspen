@@ -1,4 +1,8 @@
-  
+ 
+  * Track active rebuilds and ignore duplicate opportunistic rebuild messages
+     * Map to future?
+     * rebuild must be primary for error list updating. Maybe opportunistic Map to future. Rebuild of same object UUID waits for opportune to finish?
+     
   * object allocaters
     - re-use type registry. just register all w/ AllocaterFactory as the factory type
     

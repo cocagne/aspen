@@ -15,8 +15,9 @@ object SuperSimpleRetryingReadDriver {
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
-      readUUID:UUID): ReadDriver = {
-    new SuperSimpleRetryingReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay)(ec)
+      readUUID:UUID,
+      disableOpportunisticRebuild: Boolean): ReadDriver = {
+    new SuperSimpleRetryingReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)(ec)
   }
 }
 
@@ -26,8 +27,9 @@ class SuperSimpleRetryingReadDriver(
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID,
-    opportunisticRebuildDelay: Duration)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
-        readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay)  {
+    opportunisticRebuildDelay: Duration,
+    disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
+        readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)  {
   
   val retryTask = BackgroundTask.schedulePeriodic(period=Duration(250, MILLISECONDS), callNow=false)( sendReadRequests() )
   //println(s"Beginning read of object ${objectPointer.uuid}")

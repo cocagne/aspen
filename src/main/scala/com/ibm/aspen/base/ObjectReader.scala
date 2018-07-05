@@ -13,22 +13,22 @@ import com.ibm.aspen.core.objects.ObjectState
 
 trait ObjectReader {
   
-  def readObject(pointer: ObjectPointer): Future[ObjectState] = pointer match {
-    case dp: DataObjectPointer => readObject(dp)
-    case kvp: KeyValueObjectPointer => readObject(kvp)
+  def readObject(pointer: ObjectPointer, disableOpportunisticRebuild:Boolean = false): Future[ObjectState] = pointer match {
+    case dp: DataObjectPointer => readObject(dp, None, disableOpportunisticRebuild)
+    case kvp: KeyValueObjectPointer => readObject(kvp, None, disableOpportunisticRebuild)
   }
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[DataObjectState]
+  def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory], disableOpportunisticRebuild:Boolean): Future[DataObjectState]
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:DataObjectPointer): Future[DataObjectState] = readObject(pointer, None)
+  def readObject(pointer:DataObjectPointer): Future[DataObjectState] = readObject(pointer, None, false)
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory]): Future[KeyValueObjectState]
+  def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory], disableOpportunisticRebuild:Boolean): Future[KeyValueObjectState]
   
   /** Reads and returns the current state of the object. No caches are used */
-  def readObject(pointer:KeyValueObjectPointer): Future[KeyValueObjectState] = readObject(pointer, None)
+  def readObject(pointer:KeyValueObjectPointer): Future[KeyValueObjectState] = readObject(pointer, None, false)
   
   def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState]
   

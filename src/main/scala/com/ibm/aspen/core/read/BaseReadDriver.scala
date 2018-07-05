@@ -34,7 +34,8 @@ class BaseReadDriver(
     val readType: ReadType,
     val retrieveLockedTransaction: Boolean, 
     val readUUID:UUID,
-    val opportunisticRebuildDelay: Duration = BaseReadDriver.DefaultOpportunisticRebuildDelay
+    val opportunisticRebuildDelay: Duration = BaseReadDriver.DefaultOpportunisticRebuildDelay,
+    val disableOpportunisticRebuild: Boolean = false
     )(implicit ec: ExecutionContext) extends ReadDriver {
   
   import BaseReadDriver._
@@ -80,7 +81,9 @@ class BaseReadDriver(
   }
   
   def opportunisticRebuild(objectState: ObjectState, storeId: DataStoreID, ss: StoreState): Unit = {
-    
+    if (disableOpportunisticRebuild)
+      return // skip if disabled
+      
     val repair = objectState match {
       case d: DataObjectState => d.timestamp > ss.timestamp && (d.revision != ss.revision._1 || d.refcount != ss.refcount)
       case k: KeyValueObjectState => 
@@ -329,7 +332,8 @@ object BaseReadDriver {
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
-      readUUID:UUID): ReadDriver = {
+      readUUID:UUID,
+      disableOpportunisticRebuild: Boolean): ReadDriver = {
     new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
   }
 }
