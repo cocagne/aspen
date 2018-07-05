@@ -1,18 +1,3 @@
-  * Bootstrap command
-    - Start with iterating over all allocated object and printing them to the screen
-    - Can rebuild to a dir without deleting the old dir
-    - will need to do rebuild on a system without errors (where all objects can be read)
-  
-  * Consistent iteration over all KV pairs in a TieredList
-    - Basic problem is that a join could occur after a node has been read.
-    - Key is that once we've processed all kv pairs in a node, we'll never need to look *behind* the largest processed key
-    - If Join occurs, the 'next' node will result in a read error due to it having been deleted. If this occurs, re-read
-      the current node and process all keys above the last processed. If re-read fails, use the tree to seek to the owner of
-      the highest processed key. Process all keys beyond this then fetch the next node. Repeat till right pointer is null
- 
-  * Failed store rebuild
-    - Always resume
-    - Each commit overwrites the checkpoint key (all zeroes)?
     
   * Fix PerStoreMissedUpdate MissedUpdateIterator
     - Currently only uses the root node. If root fills with unrepairable objects, it'll never move forward

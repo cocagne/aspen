@@ -85,6 +85,7 @@ class BaseReadDriver(
       case d: DataObjectState => d.timestamp > ss.timestamp && (d.revision != ss.revision._1 || d.refcount != ss.refcount)
       case k: KeyValueObjectState => 
         val cmp = k.timestamp.compareTo(ss.timestamp)
+        //println(s"Opportunistic rebuild check ${objectState.pointer.uuid}: ts cmp $cmp, ${(ss.revision._2 &~ k.updates).isEmpty}, ${!(k.updates &~ ss.revision._2).isEmpty}")
         if (cmp > 0)
           true
         else if(cmp == 0)
@@ -154,7 +155,7 @@ class BaseReadDriver(
       }
     }
     
-    if (! promise.isCompleted) {
+    if (!promise.isCompleted) {
       if (errors.size + storeStates.size >= objectPointer.ida.consistentRestoreThreshold && 
           errors.size >= objectPointer.ida.width - objectPointer.ida.restoreThreshold) {
         // We've received a consistentRestoreThreshold number of responses and enough of them are Fatal read errors that

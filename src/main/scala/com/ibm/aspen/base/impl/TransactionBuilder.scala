@@ -52,16 +52,11 @@ class TransactionBuilder(
   
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   private [this] var notifyOnResolution = Set[DataStoreID]()
-  private [this] var happensAfter: Option[HLCTimestamp] = None
   private [this] var addMissedUpdateTrackingFA = true
   private [this] var missedCommitDelayInMs = 1000
+  private [this] var startTimestamp = HLCTimestamp.now
   
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]], HLCTimestamp) = synchronized {
-    
-    val startTimestamp = happensAfter match {
-      case Some(ts) => HLCTimestamp.happensAfter(ts)
-      case None => HLCTimestamp.now
-    }
     
     keyValueUpdates.valuesIterator.foreach { kvu =>
       requirements = KeyValueUpdate(kvu.pointer, kvu.updateType, kvu.requiredRevision, kvu.requirements, startTimestamp) :: requirements
@@ -208,18 +203,10 @@ class TransactionBuilder(
   } 
   
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit = synchronized {
-    happensAfter match {
-      case Some(ts) => if (timestamp.compareTo(ts) > 0) happensAfter = Some(timestamp)
-      case None => happensAfter = Some(timestamp)
-    }
+    if (timestamp.compareTo(startTimestamp) >= 0) startTimestamp = HLCTimestamp.happensAfter(timestamp)
   }
   
-  def timestamp(): HLCTimestamp = synchronized {
-    happensAfter match {
-      case Some(ts) => HLCTimestamp.happensAfter(ts)
-      case None => HLCTimestamp.now
-    }
-  }
+  def timestamp(): HLCTimestamp = synchronized { startTimestamp }
   
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized {
     finalizationActions = SerializedFinalizationAction(finalizationActionUUID, serializedContent) :: finalizationActions

@@ -53,8 +53,9 @@ abstract class TransactionDriver(
     if (msg.proposalId != proposer.currentProposalId)
       return
       
-    //if (!msg.errors.isEmpty)
-    //  println(s"TX ERRORS: ${msg.errors}")
+//    if (!msg.errors.isEmpty) {
+//      msg.errors.foreach( err => println(s"C  ${msg.from.poolIndex} TxErr ${txd.transactionUUID} $err") )
+//    }
       
     msg.response match {
       case Left(nack) => 

@@ -39,6 +39,7 @@ class TieredKeyValueListIterator(
   private[this] var done = false
   
   private def loadCurrentNode(kvos: KeyValueObjectState): Unit = synchronized {
+    
     currentNode = Some(kvos)
     
     if (kvos.right.isEmpty)
@@ -46,7 +47,7 @@ class TieredKeyValueListIterator(
       
     // filter out all keys less than the highestProcessedKey, convert to list, and sort
     valueList = kvos.contents.values.
-                filter(v => tree.keyOrdering.compare(v.key, highestProcessedKey) <= 0).
+                filter(v => tree.keyOrdering.compare(v.key, highestProcessedKey) > 0).
                 toList.
                 sortWith( (a,b) => tree.keyOrdering.compare(a.key,b.key) < 0 )
     

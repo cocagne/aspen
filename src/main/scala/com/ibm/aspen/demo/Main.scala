@@ -52,6 +52,11 @@ import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
 import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingAllocationDriver
 import com.ibm.aspen.base.impl.PerStoreMissedUpdate
+import com.ibm.aspen.base.AllocatedObjectsIterator
+import scala.concurrent.Promise
+import com.ibm.aspen.core.objects.DataObjectState
+import com.ibm.aspen.core.data_store.ObjectMetadata
+import com.ibm.aspen.core.data_store.StoreObjectID
 
 object Main {
   
@@ -95,6 +100,29 @@ object Main {
             arg[Int]("<port>").text("Storage Node Name").action((x,c) => c.copy(port=x))
         )
         
+       cmd("rebuild").text("Rebuilds a store").
+         action( (_,c) => c.copy(mode="rebuild")).
+        children(
+            arg[File]("<config-file>").text("Configuration File").
+              action( (x, c) => c.copy(configFile=x)).
+              validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
+            
+            arg[String]("<store-name>").text("Data Store Name. Format is \"pool-name:storeNumber\"").
+              action((x,c) => c.copy(nodeName=x)).
+              validate { x => 
+                val arr = x.split(":")
+                if (arr.length == 2) {
+                  try {
+                    Integer.parseInt(arr(1))
+                    success
+                  } catch {
+                    case t: Throwable => failure("Store name must match the format \"pool-name:storeNumber\"")
+                  }
+                }
+                else failure("Store name must match the format \"pool-name:storeNumber\"")
+              }
+       )
+        
       checkConfig( c => if (c.mode == "") failure("Invalid command") else success )
     }
     
@@ -103,11 +131,12 @@ object Main {
         println(s"Successful config: $cfg")
         try {
           val config = ConfigFile.loadConfig(cfg.configFile)
-          println(s"Config file: $config")
+          //println(s"Config file: $config")
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
             case "cumulofs" => cumulofs(config)
+            case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
           case e: YamlFormat.FormatError => println(s"Error loading config file: $e")
@@ -115,6 +144,34 @@ object Main {
         }
       case None =>
     }
+  }
+  
+  def createSystem(cfg: ConfigFile.Config, onnet: Option[NettyNetwork]=None): BasicAspenSystem = {
+    val radiclePointer = cfg.oradicle.getOrElse(throw new ConfigError("Radicle Pointer is missing from the config file!"))
+    
+    val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
+
+    val nnet = onnet.getOrElse(new NettyNetwork(cfg))
+    val cliNet = nnet.createClientNetwork()
+    
+    val prepareRetransmitDelay = Duration(1, SECONDS)
+    val allocationRetransmitDelay = Duration(1, SECONDS)
+    val opportunisticRebuildDelay = Duration(3, SECONDS)
+    
+    new BasicAspenSystem(
+        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
+        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
+        net = cliNet,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
+        defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
+        defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
+        transactionFactory = BaseTransaction.Factory,
+        storagePoolFactory = BaseStoragePool.Factory,
+        bootstrapPoolIDA = bootstrapPoolIDA,
+        radiclePointer = radiclePointer,
+        retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
+        userTypeRegistry = Some(CumuloFSTypeRegistry)
+        )
   }
   
   def initializeCumulofs(sys: BasicAspenSystem, numIndexNodeSegments: Int = 100, fileSegmentSize:Int=1024*1024): Future[FileSystem] = {
@@ -155,31 +212,7 @@ object Main {
   
   def cumulofs(cfg: ConfigFile.Config): Unit = {
     
-    val radiclePointer = cfg.oradicle.getOrElse(throw new ConfigError("Radicle Pointer is missing from the config file!"))
-    
-    val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
-
-    val nnet = new NettyNetwork(cfg)
-    val cliNet = nnet.createClientNetwork()
-    
-    val prepareRetransmitDelay = Duration(1, SECONDS)
-    val allocationRetransmitDelay = Duration(1, SECONDS)
-    val opportunisticRebuildDelay = Duration(3, SECONDS)
-    
-    val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
-        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
-        net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
-        defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
-        defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
-        transactionFactory = BaseTransaction.Factory,
-        storagePoolFactory = BaseStoragePool.Factory,
-        bootstrapPoolIDA = bootstrapPoolIDA,
-        radiclePointer = radiclePointer,
-        retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
-        userTypeRegistry = Some(CumuloFSTypeRegistry)
-        )
+    val sys = createSystem(cfg)
     
     val f = initializeCumulofs(sys)
     
@@ -207,10 +240,76 @@ object Main {
     Thread.sleep(99999999)
   }
   
+  def rebuild(storeName: String, cfg: ConfigFile.Config): Unit = {
+    println(s"Rebuilding $storeName")
+    
+    val arr = storeName.split(":")
+                
+    val poolName = arr(0)
+    val storeNumber = Integer.parseInt(arr(1))
+    
+    var o: Option[(ConfigFile.StorageNode, ConfigFile.DataStore)] = None
+    
+    cfg.nodes.values.foreach { n =>
+      n.stores.foreach { s =>
+        if (s.pool == poolName && s.store == storeNumber)
+          o = Some((n, s))
+      }
+    }
+    
+    o match {
+      case None => println(s"Store not found: $storeName")
+      
+      case Some((node, store)) =>
+        val pool = cfg.pools(store.pool)
+        
+        val dataStoreId = DataStoreID(pool.uuid, store.store.asInstanceOf[Byte])
+      
+        
+        val backend = store.backend match {
+          case b: ConfigFile.RocksDB =>
+            println(s"Creating data store $dataStoreId. Path ${b.path}")
+            new RocksDBDataStoreBackend(b.path) 
+        }
+        
+        val sys = createSystem(cfg)
+        
+        val pcomplete = Promise[Unit]()
+        
+        def doRebuild(iter: AllocatedObjectsIterator): Unit = {
+          
+          iter.fetchNext().foreach { o => o match {
+            case None =>
+              println(s"Done!!")
+              pcomplete.success(())
+            
+            case Some(ao) => sys.readObject(ao.pointer) foreach { o => 
+              val md = ObjectMetadata(o.revision, o.refcount, o.timestamp)
+              val data = o.getRebuildDataForStore(dataStoreId).get
+              val objectId = StoreObjectID(ao.pointer.uuid, ao.pointer.getStorePointer(dataStoreId).get)
+              println(s"Restoring object $md with data length ${data.size}")
+              //doRebuild(iter)
+              backend.putObject(objectId, md, data).foreach(_ => doRebuild(iter))
+            }
+          }}
+        }
+        
+        println(s"Beginning rebuild of $node, $store")
+        
+        val f = for {
+          spool <- sys.getStoragePool(pool.uuid)
+          _=println(s"Getting AllocatedObjectsIterator")
+          iter <- spool.getAllocatedObjectsIterator()
+          _=doRebuild(iter)
+          _<-pcomplete.future
+        } yield ()
+        
+        Await.result(f, Duration(5000, MILLISECONDS))   
+    }
+  }
+  
   def node(nodeName: String, cfg: ConfigFile.Config): Unit = {
 
-    val radiclePointer = cfg.oradicle.getOrElse(throw new ConfigError("Radicle Pointer is missing from the config file!"))
-    
     val node = cfg.nodes.get(nodeName).getOrElse(throw new ConfigError(s"Invalid node name $nodeName"))
     
     val crl = node.crl match {
@@ -236,32 +335,11 @@ object Main {
       (dataStoreId -> new DataStoreFrontend(dataStoreId, backend, txrs, allocrs))
     }.toMap
     
-    val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
-    
-    val clientId = ClientID(UUID.randomUUID())
-    
     val nnet = new NettyNetwork(cfg)
+    
+    val sys = createSystem(cfg, Some(nnet))
+    
     val nodeNet = nnet.createStoreNetwork(nodeName)
-    val cliNet = nnet.createClientNetwork()
-    
-    val prepareRetransmitDelay = Duration(1, SECONDS)
-    val allocationRetransmitDelay = Duration(1, SECONDS)
-    val opportunisticRebuildDelay = Duration(3, SECONDS)
-    
-    val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
-        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
-        net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
-        defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
-        defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
-        transactionFactory = BaseTransaction.Factory,
-        storagePoolFactory = BaseStoragePool.Factory,
-        bootstrapPoolIDA = bootstrapPoolIDA,
-        radiclePointer = radiclePointer,
-        retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
-        userTypeRegistry = None
-        )
     
     val storageNode = new StorageNode(sys, crl, nodeNet)
     

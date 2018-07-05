@@ -6,7 +6,7 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
   def asLong: Long = longValue
   def wallTime: Long = longValue >> 16
   def logical: Byte = (longValue & 0xFFFFL).asInstanceOf[Byte]
-  def asDuration: Duration = Duration(asLong, MILLISECONDS)
+  def asDuration: Duration = Duration(wallTime, MILLISECONDS)
   
   def compareTo(t: HLCTimestamp): Long = {
     val pdelta = wallTime - t.wallTime
@@ -24,7 +24,10 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
 }
 
 object HLCTimestamp {
-  private[this] var last: HLCTimestamp = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
+  
+  private def getWallTime(): Long = System.currentTimeMillis() << 16
+  
+  private[this] var last: HLCTimestamp = HLCTimestamp(getWallTime)
   
   def update(seen: HLCTimestamp): Unit = synchronized {
     if (seen > last) 
@@ -36,7 +39,7 @@ object HLCTimestamp {
   def apply(longValue: Long): HLCTimestamp = new HLCTimestamp(longValue)
   
   def apply(): HLCTimestamp = synchronized {
-    val n = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
+    val n = HLCTimestamp(getWallTime)
     
      if (n > last)
       last = n
@@ -47,7 +50,7 @@ object HLCTimestamp {
   }
   
   def happensAfter(ts: HLCTimestamp): HLCTimestamp = synchronized {
-    val n = HLCTimestamp(System.currentTimeMillis() & 0xFFFFFFFFFFFF0000L)
+    val n = HLCTimestamp(getWallTime)
     
     if (ts > last)
       last = ts

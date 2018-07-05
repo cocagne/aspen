@@ -878,7 +878,10 @@ class DataStoreFrontend(
             
         }
       }
-      
+      /*
+      if (!errors.isEmpty) {
+        errors.foreach( err => println(s"   ${storeId.poolIndex} TxErr ${txd.transactionUUID} $err") )
+      }*/
       errors
     }
       
