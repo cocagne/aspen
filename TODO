@@ -1,9 +1,8 @@
-    
-  * Fix PerStoreMissedUpdate MissedUpdateIterator
-    - Currently only uses the root node. If root fills with unrepairable objects, it'll never move forward
   
   * object allocaters
     - re-use type registry. just register all w/ AllocaterFactory as the factory type
+    
+  * Simplify KeyValueRequirement handling
  
   
 Basic Error Handling

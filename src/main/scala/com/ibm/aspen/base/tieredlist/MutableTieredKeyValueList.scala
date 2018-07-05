@@ -11,6 +11,7 @@ import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 
 trait MutableTieredKeyValueList extends TieredKeyValueList {
   
@@ -38,10 +39,16 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
   
   class MutableNode(val kvos: KeyValueObjectState) {
     
+    def ordering: KeyOrdering = keyOrdering
+    
+    /** Note that this future will fail if the right node node has been deleted */
     def fetchRight()(implicit ec: ExecutionContext): Future[Option[MutableNode]] = kvos.right match {
       case None => Future.successful(None)
       case Some(ptr) => system.readObject(KeyValueObjectPointer(ptr)).map(kvos => Some(new MutableNode(kvos)))
     }
+    
+    /** Note that this future will fail if the node has been deleted */
+    def refresh()(implicit ec: ExecutionContext): Future[MutableNode] = system.readObject(kvos.pointer).map(kv => new MutableNode(kv))
     
     def prepreUpdateTransaction(
       inserts: List[(Key, Array[Byte])],

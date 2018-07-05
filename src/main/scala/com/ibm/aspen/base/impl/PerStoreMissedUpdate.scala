@@ -121,22 +121,60 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     
     private[this] var entries: List[Entry] = Nil
     private[this] var fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
+    private[this] var done = false
+    
+    private def setDone(): Unit = done = true
     
     val ftree = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex)
+    
+    private trait NodeIter {
+      def next(): Future[List[Entry]]
+    }
+    
+    private val fiter = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).map { tree =>
+      new NodeIter { 
+        var fnode = tree.fetchMutableNode(Key.AbsoluteMinimum)
+        var highestKey = Key.AbsoluteMinimum
+        
+        def load(kvos: KeyValueObjectState): List[Entry] = {
+          val entries = kvos.contents.valuesIterator.map(v => Entry(byte2uuid(v.key.bytes), StorePointer.decode(v.value), v.timestamp)).
+            toList.filter( e => tree.keyOrdering.compare(e.objectUUID, highestKey) > 0 ).
+            sortWith((a,b) => tree.keyOrdering.compare(a.objectUUID, b.objectUUID) < 0)
+          if (!entries.isEmpty)
+            highestKey = entries.last.objectUUID
+          entries
+        }
+        
+        def next(): Future[List[Entry]] = fnode.flatMap { node => synchronized {
+          val l = load(node.kvos)
+          if (l.isEmpty) {
+            node.kvos.right match {
+              case None =>
+                setDone() 
+                Future.successful(List())
+              case Some(rp) => 
+                fnode = node.fetchRight().map(_.get).recoverWith { case _ => tree.fetchMutableNode(highestKey) }
+                next()
+            }
+          } else
+            Future.successful(l)
+        }}
+      }
+    }
     
     def entry: Option[Entry] = synchronized { 
       if (entries.isEmpty) None else Some(entries.head) 
     }
     
     def fetchNext()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-      if (entries.isEmpty) {
-        fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
-        fnode map { node => synchronized {
-          entries = node.kvos.contents.valuesIterator.map(v => Entry(byte2uuid(v.key.bytes), StorePointer.decode(v.value), v.timestamp)).toList
-        }}
-      } else {
-        entries = entries.tail
+      if (done)
         Future.unit
+      else {
+        fiter.flatMap { iter =>
+          iter.next().map { newEntries =>
+            entries = newEntries
+          }
+        }
       }
     }
     
