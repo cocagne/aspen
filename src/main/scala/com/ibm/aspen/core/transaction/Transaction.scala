@@ -55,6 +55,7 @@ class Transaction(
     case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
   }
   private[this] var resolved = false
+  private[this] var discarded = false
   
   private[this] var heartbeatTimestamp: Long = 0
  
@@ -98,9 +99,15 @@ class Transaction(
             
       case Right(promise) =>
         
-        store.lockTransaction(txd, dataUpdates).foreach { errors =>
+        store.lockTransaction(txd, dataUpdates).foreach { errors => synchronized {
           
-          val recoveryState = synchronized {
+          if (discarded) {
+            // It's possible for a slow load & lock operation to return long after the transaction has completed
+            // and been discarded. If so, we'll simply ignore the message and release the lock if it was acquired.
+            if (errors.isEmpty)
+              store.discardTransaction(txd)
+            
+          } else {
             
             txdisposition = txdisposition match {
               
@@ -117,29 +124,30 @@ class Transaction(
               // Once we've voted to commit, we're committed to committing :-)
               case TransactionDisposition.VoteCommit => TransactionDisposition.VoteCommit
             }
-            
-            TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
-          }
-
-          val response = TxPrepareResponse(
-              prepare.from,
-              store.storeId, 
-              txd.transactionUUID, 
-              Right(TxPrepareResponse.Promise(recoveryState.paxosAcceptorState.accepted)),
-              prepare.proposalId,
-              recoveryState.disposition,
-              errors.map(createUpdateErrorResponse))
               
-          // Note: Saving the state can fail and in that event we cannot send the message since it would violate the
-          //       Paxos safety requirements. Logging the failure here probably isn't a good idea as it is likely 
-          //       that the node will be in this state for a significant period of time. Leave it to the 
-          //       CrashRecoveryLog to do the appropriate logging. In the mean time, we should still do
-          //       everything normally. We'll just be a non-voting Transaction participant
-          crl.saveTransactionRecoveryState(recoveryState).foreach { _ => 
-            messenger.send(response)
-            txd.originatingClient.foreach( client => messenger.send(client, response) )
+            val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
+            
+  
+            val response = TxPrepareResponse(
+                prepare.from,
+                store.storeId, 
+                txd.transactionUUID, 
+                Right(TxPrepareResponse.Promise(recoveryState.paxosAcceptorState.accepted)),
+                prepare.proposalId,
+                recoveryState.disposition,
+                errors.map(createUpdateErrorResponse))
+            
+            // Note: Saving the state can fail and in that event we cannot send the message since it would violate the
+            //       Paxos safety requirements. Logging the failure here probably isn't a good idea as it is likely 
+            //       that the node will be in this state for a significant period of time. Leave it to the 
+            //       CrashRecoveryLog to do the appropriate logging. In the mean time, we should still do
+            //       everything normally. We'll just be a non-voting Transaction participant
+            crl.saveTransactionRecoveryState(recoveryState).foreach { _ => 
+              messenger.send(response)
+              txd.originatingClient.foreach( client => messenger.send(client, response) )
+            }
           }
-        }
+        }}
     }
   }
 
@@ -177,10 +185,14 @@ class Transaction(
             msg.proposalId,
             Right(TxAcceptResponse.Accepted(accept.proposalValue)))
             
-        // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
-        crl.saveTransactionRecoveryState(recoveryState).foreach{ _ => 
-          messenger.send(response)
-          txd.originatingClient.foreach( client => messenger.send(client, response) )
+        synchronized {
+          if (!discarded) {
+            // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
+            crl.saveTransactionRecoveryState(recoveryState).foreach{ _ => 
+              messenger.send(response)
+              txd.originatingClient.foreach( client => messenger.send(client, response) )
+            }
+          }
         }
     }
   }
@@ -228,6 +240,7 @@ class Transaction(
   }
   
   private[this] def discardTransactionState(): Unit = {
+    discarded = true
     crl.discardTransactionState(store.storeId, txd)
     store.discardTransaction(txd)
     onDiscard(this)
