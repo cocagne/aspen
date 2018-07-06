@@ -227,34 +227,36 @@ class FuseInterface(
   }
   
   override def read(request: ReadRequest, response: Response[DataReply]): Unit = synchronized {
+    println(s"Handling Read Reqeust: $request")
     fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
-      case Some(file) => file.debugRead().onComplete { 
+      case Some(file) => file.read(request.offset, request.size.asInstanceOf[Int]).onComplete { 
         case Failure(cause) => response.error(LinuxAPI.EIO)
-        case Success(data) =>
-          val bb = ByteBuffer.wrap(data)
-          if (request.offset > bb.limit())
-            response.error(LinuxAPI.EIO)
-          else {
-            bb.position(request.offset.asInstanceOf[Int])
-            response.ok(DataReply(bb))
-          }
+        case Success(odata) => odata match {
+          case None => response.error(LinuxAPI.EIO)
+          case Some(db) => response.ok(DataReply(db))
+        }
       }
     }
   }
   
   override def write(request: WriteRequest, response: Response[WriteReply]): Unit = synchronized {
+    println(s"Handling write request for ${request.data.remaining()} bytes")
     fileHandles.get(request.fileHandle) match {
-      case None => response.error(LinuxAPI.EINVAL)
-      case Some(file) => file.write(request.offset, DataBuffer(request.data)).onComplete { 
-        case Failure(cause) => response.error(LinuxAPI.EIO)
-        case Success(data) => response.ok(new WriteReply(request.size))
-      }
+      case None =>
+        println(s"File handle not found!")
+        response.error(LinuxAPI.EINVAL)
+      case Some(file) =>
+        println(s"Writing ${request.data.remaining()}")
+        file.write(request.offset, DataBuffer(request.data)).onComplete { 
+          case Failure(cause) => response.error(LinuxAPI.EIO)
+          case Success(data) => response.ok(new WriteReply(request.size))
+        }
     }
   }
   
   override def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = synchronized {
-    println(s"** Setattr: $request")
+    println(s"** Setattr request handler: $request")
     
     // Check to see if we have an open file first. Fetch directly otherwise
     val ffile =  openFiles.get(request.inode) match {

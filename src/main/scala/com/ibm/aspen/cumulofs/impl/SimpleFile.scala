@@ -91,6 +91,24 @@ class SimpleFile(
       rfill(0).map(_ => arr)
     }
   }
+  
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
+    val bb = ByteBuffer.allocate(nbytes)
+    index.getIndexNodeForOffset(offset + nbytes).flatMap { onode => onode match {
+      case None => Future.successful(None)
+      case Some(node) => node.getSegmentsForRange(offset, nbytes).flatMap { segments =>
+        Future.sequence(segments.map(s => fs.system.readObject(s.pointer))).map { objs =>
+          objs.foreach { o =>
+            val d = if (bb.remaining() < o.data.size) o.data.slice(0, bb.remaining()) else o.data
+            if (bb.remaining() > 0)
+              bb.put(d.asReadOnlyBuffer())
+          }
+          bb.flip()
+          Some(DataBuffer(bb))
+        }
+      }
+    }}
+  }
 
   private[this] def enqueueWriteOp(op: ContiguousWriteOperation)(implicit ec: ExecutionContext): Unit = {
     queuedWriteOpsCount += 1

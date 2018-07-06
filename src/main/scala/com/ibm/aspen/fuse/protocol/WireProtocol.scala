@@ -205,18 +205,20 @@ class WireProtocol private (
   def replyOk(unique: Long, reply: Reply): Unit = WireProtocol.replyOk(write_channel, protocolVersion, unique, reply)
   
   private def readAtLeast(bb: ByteBuffer, numBytes: Int): ByteBuffer = {
+    //println(s"readAtLeast ${numBytes}. Currently have ${bb.remaining()}. pos = ${bb.position}. lim = ${bb.limit} cap = ${bb.capacity()}")
     val startPos = bb.position()
-    val dataEnd = if (bb.limit == bb.capacity()) 0 else bb.limit
-
-    val endPos = dataEnd + numBytes
+    val initialData = if (bb.limit == bb.capacity()) 0 else bb.limit
     
-    if (dataEnd - startPos >= numBytes)
+    if (initialData >= numBytes)
       return bb // Already have enough data
     
-    bb.position(dataEnd)
+    val endPos = startPos + (numBytes - initialData)
+    
+    bb.position(startPos + initialData)
     bb.limit(bb.capacity())
 
     while (bb.position < endPos) { 
+      //println(s"** Reading more. bb.position = ${bb.position}. Needs to be $endPos")
       if (read_channel.read(bb) < 0)
         throw new LostConnection
     }
@@ -246,11 +248,13 @@ class WireProtocol private (
       readAtLeast(bb, RequestHeader.HeaderSize)
         
       val header = new RequestHeader(bb)
-      println(s"Got Request: $header")
+      
       val mlen = header.len - RequestHeader.HeaderSize
       
-      if (bb.remaining() < mlen)
+      println(s"Got Request: $header")
+      if (bb.remaining() < mlen) {
         readAtLeast(bb, mlen)
+      }
         
       if (bb.remaining() == mlen)
         readBuffer = None

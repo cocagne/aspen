@@ -33,7 +33,6 @@ class WriteRequest(
 object WriteRequest extends RequestFactory {
   
   override def apply(protocolVersion: ProtocolVersion, header:RequestHeader, bb:ByteBuffer): WriteRequest =  {
-
     val fileHandle = bb.getLong()
     val offset     = bb.getLong()
     val size       = uint32(bb.getInt())
@@ -48,8 +47,6 @@ object WriteRequest extends RequestFactory {
     }
     
     val data = bb.slice().asReadOnlyBuffer()
-    
-    println(s"*** Write Request data size is ${data.remaining()} should be $size")
     
     new WriteRequest(header, fileHandle, offset, size, writeFlags, lockOwner, flags, data)
   }
