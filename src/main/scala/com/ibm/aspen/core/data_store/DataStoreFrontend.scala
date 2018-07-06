@@ -83,6 +83,7 @@ class DataStoreFrontend(
   
   private[this] var ofrepair: Option[Future[(StoragePool, MutableTieredKeyValueList)]] = None
   private[this] var repairing = false
+  private[this] var activeRebuilds = Map[UUID, Future[Unit]]()
   
   override val initialized: Future[DataStore] = synchronized {
     
@@ -368,61 +369,81 @@ class DataStoreFrontend(
     promise.future
   }
   
-  def opportunisticRebuild(message: OpportunisticRebuild): Unit = {
-    println(s"Opportunistic rebuild for object ${message.objectPointer.uuid}")
-    val pointer = message.objectPointer
-    val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
-    val repairUUID = UUID.randomUUID()
-    
-    val metadata = ObjectMetadata(message.newRevision, message.newRefcount, message.newTimestamp)
-    val data = message.newData
-    
-    synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
-      case Left(err) => synchronized {
-        backend.putObject(objectId, metadata, data)
-      }
-      case Right(mo) => synchronized {
-
-        val (updateMeta, updateData) = mo match {
-          case d: MutableDataObject => 
-            val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
-            (u, u)
-            
-          case k: MutableKeyValueObject =>
-            val news = KeyValueObjectCodec.getUpdateSet(k.data) 
-            val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
-            
-            // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
-            // have. If we have received any updates outside this, we cannot overwrite our content
-            val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
-            
-            (meta, data)
-        }
+  def opportunisticRebuild(message: OpportunisticRebuild): Unit = synchronized { 
+    activeRebuilds.get(message.objectPointer.uuid) match {
+      case Some(_) => // Ignore duplicate message
+      case None =>
         
-        if (updateMeta) {
-          mo.revision = metadata.revision
-          mo.refcount = metadata.refcount
-          mo.timestamp = metadata.timestamp
+        println(s"Opportunistic rebuild for object ${message.objectPointer.uuid}")
+        val pointer = message.objectPointer
+        val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
+        val repairUUID = UUID.randomUUID()
+        
+        val metadata = ObjectMetadata(message.newRevision, message.newRefcount, message.newTimestamp)
+        val data = message.newData
+        
+        val pcomplete = Promise[Unit]()
+        
+        activeRebuilds += (pointer.uuid -> pcomplete.future)
+        
+        pcomplete.future.onComplete { case _ => synchronized {
+          activeRebuilds -= pointer.uuid
+        }}
+        
+        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map { e => e match {
+          case Left(err) => synchronized {
+            backend.putObject(objectId, metadata, data) onComplete { case _ => pcomplete.success(()) }
+          }
           
-          if (updateData) {
-            mo.data = data
-            mo match {
-              case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
-              case _ =>
+          case Right(mo) => synchronized {
+            
+            def complete(): Unit = synchronized {
+              mo.completeOperation(repairUUID)
+              pcomplete.success(())
             }
+            
+            val (updateMeta, updateData) = mo match {
+              case d: MutableDataObject => 
+                val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
+                (u, u)
+                
+              case k: MutableKeyValueObject =>
+                val news = KeyValueObjectCodec.getUpdateSet(k.data) 
+                val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
+                
+                // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
+                // have. If we have received any updates outside this, we cannot overwrite our content
+                val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
+                
+                (meta, data)
+            }
+            
+            if (updateMeta) {
+              mo.revision = metadata.revision
+              mo.refcount = metadata.refcount
+              mo.timestamp = metadata.timestamp
+              
+              if (updateData) {
+                mo.data = data
+                mo match {
+                  case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
+                  case _ =>
+                }
+              }
+    
+              mo.commitBoth() onComplete { 
+                case _ => complete()
+              }
+            } else
+              complete()
           }
-
-          mo.commitBoth() onComplete { 
-            case _ => synchronized { mo.completeOperation(repairUUID) } 
-          }
-        } else
-          mo.completeOperation(repairUUID)
-      }
-    }} 
+        }}
+    }
   }
   
   private def repair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer]): Future[Unit] =  {
-  
+    val pcomplete = Promise[Unit]()
+    
     val objectId = StoreObjectID(entry.objectUUID, entry.storePointer)
     
     val foobj = opointer match {
@@ -440,6 +461,21 @@ class DataStoreFrontend(
       }}  
     }
       
+    def acquireRepairLock(): Future[Unit] = {
+      val p = Promise[Unit]()
+      
+      def trylock(): Unit = synchronized {
+        activeRebuilds.get(entry.objectUUID) match {
+          case Some(f) => f onComplete { case _ => trylock() }
+          case None => 
+            activeRebuilds += (entry.objectUUID -> pcomplete.future)
+            p.success(())
+        }
+      }
+      
+      trylock()
+      p.future
+    }
     
     def isAllocated(): Future[Boolean] = {
       val key = Key(entry.objectUUID)
@@ -518,13 +554,18 @@ class DataStoreFrontend(
       }
     }
     
-    for {
+    val fcomplete = for {
+      _ <- acquireRepairLock()
       oobj <- foobj
       olocal <- folocal
       _ <- fix(oobj, olocal)
     } yield {
       olocal.foreach(mo => synchronized { mo.completeOperation(repairUUID) })
     }
+    
+    pcomplete.completeWith(fcomplete)
+    
+    pcomplete.future
   }
   
   // NOTE - The synchronized blocks CANNOT be used within this class. They would lock the StoreTransaction
