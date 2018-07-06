@@ -25,7 +25,8 @@ object BaseImplTypeRegistry {
         new TieredKeyValueListSplitFA,
         new TieredKeyValueListJoinFA,
         PerStoreMissedUpdate,
-        MissedUpdateFinalizationAction
+        MissedUpdateFinalizationAction,
+        new BootstrapPoolObjectAllocaterFactory(system.bootstrapPoolIDA)
     )
     
     class DirectRegistry extends TypeRegistry {

@@ -14,9 +14,10 @@ import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import java.nio.ByteBuffer
+import com.ibm.aspen.base.AspenSystem
 
 class SinglePoolObjectAllocater(
-    val system: BasicAspenSystem,
+    val system: AspenSystem,
     val allocaterUUID: UUID,
     val poolUUID: UUID,
     val maxObjectSize: Option[Int],

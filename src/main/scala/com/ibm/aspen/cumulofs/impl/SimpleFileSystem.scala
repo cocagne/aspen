@@ -90,7 +90,6 @@ class SimpleFileSystem private (
   val dataTableAllocaters: Array[UUID]      = decodeUUIDArray(rootKvos.contents(FileSystem.DataTableAllocatersArrayKey).value) 
   val dataTableSizes: Array[Int]            = decodeIntArray(rootKvos.contents(FileSystem.DataTableSizesKey).value)
   val inodeAllocater: UUID                  = byte2uuid(rootKvos.contents(FileSystem.InodeAllocaterKey).value)
-  
   val defaultSegmentSize: Int = com.ibm.aspen.cumulofs.arr2int(rootKvos.contents(FileSystem.DefaultFileSegmentSizeKey).value)
       
   private lazy val fdefaultSegmentAllocater = system.getObjectAllocater(byte2uuid(rootKvos.contents(FileSystem.DefaultFileSegmentAllocationPoolKey).value))

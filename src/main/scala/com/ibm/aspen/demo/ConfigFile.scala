@@ -88,17 +88,18 @@ object ConfigFile {
   
   
   
-  case class ObjectAllocater(name: String, pool: String, uuid: UUID, ida: IDA)
+  case class ObjectAllocater(name: String, pool: String, uuid: UUID, ida: IDA, maxObjectSize: Option[Int])
   
   object ObjectAllocater extends YObject[ObjectAllocater] {
-    val name = Required("name", YString)
-    val pool = Required("pool", YString)
-    val uuid = Required("uuid", YUUID)
-    val ida  = Required("ida",  Choice("type", IDAOptions))
+    val name          = Required("name", YString)
+    val pool          = Required("pool", YString)
+    val uuid          = Required("uuid", YUUID)
+    val ida           = Required("ida",  Choice("type", IDAOptions))
+    val maxObjectSize = Optional("max-object-size", YInt)
     
-    val attrs = name :: pool :: uuid :: ida :: Nil
+    val attrs = name :: pool :: uuid :: ida :: maxObjectSize :: Nil
     
-    def create(o: Object): ObjectAllocater = ObjectAllocater(name.get(o), pool.get(o), uuid.get(o), ida.get(o))
+    def create(o: Object): ObjectAllocater = ObjectAllocater(name.get(o), pool.get(o), uuid.get(o), ida.get(o), maxObjectSize.get(o))
   }
   
   sealed abstract class StorageBackend
@@ -201,6 +202,11 @@ object ConfigFile {
       
       if (!zeroeduuid(allocaters("bootstrap-allocater").uuid))
         throw new FormatError("bootstrap-allocater must use a zeroed UUID")
+      
+      allocaters.values.foreach { a =>
+        if (!pools.contains(a.pool))
+          throw new FormatError(s"Allocater ${a.name} references unknown pool ${a.pool}")
+      }
       
       pools.values.foreach { p =>
         p.missedUpdateStrategy match {

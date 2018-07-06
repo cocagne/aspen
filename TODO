@@ -1,7 +1,12 @@
- 
+Next Steps
      
-  * object allocaters
-    - re-use type registry. just register all w/ AllocaterFactory as the factory type
+  * Improve CumuloFS feature set
+      - Need the basics working well
+      
+  * Add CumuloFS config to ConfigFile
+  * Add CumuloFS client ids, require client ID to launch client
+  
+  * Switch to TieredKeyValueListAllocater?
     
   * Simplify KeyValueRequirement handling
  

@@ -108,7 +108,7 @@ object FileSystem {
   }
   
   def getInodeAllocater(rootKvos: KeyValueObjectState): UUID = {
-    byte2uuid(rootKvos.contents(LocalTaskGroupsTreeKey).value)
+    byte2uuid(rootKvos.contents(InodeAllocaterKey).value)
   }
   
   /** Creates a new CumuloFS file system as part of the supplied Transaction.
@@ -131,8 +131,8 @@ object FileSystem {
       directoryTableSizes: Array[Int],
       dataTableAllocaters: Array[UUID],      // For File Data Tiered List
       dataTableSizes: Array[Int],
-      defaultAllocationPool: UUID,
-      defaultFileSegmentSize: Int
+      fileSegmentAllocationPool: UUID,
+      fileSegmentSize: Int
       )(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
     
     import FileMode._
@@ -164,8 +164,8 @@ object FileSystem {
           (DataTableAllocatersArrayKey,         encodeUUIDArray(dataTableAllocaters)),
           (DataTableSizesKey,                   encodeIntArray(dataTableSizes)),
           (LocalTaskGroupsTreeKey,              lgtgRoot.toArray),
-          (DefaultFileSegmentAllocationPoolKey, uuid2byte(defaultAllocationPool)),
-          (DefaultFileSegmentSizeKey,           int2arr(defaultFileSegmentSize)))
+          (DefaultFileSegmentAllocationPoolKey, uuid2byte(fileSegmentAllocationPool)),
+          (DefaultFileSegmentSizeKey,           int2arr(fileSegmentSize)))
       
       fsObjContent = KeyValueOperation.insertOperations(icontent, tx.timestamp())
       

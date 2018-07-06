@@ -57,6 +57,13 @@ import scala.concurrent.Promise
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.data_store.ObjectMetadata
 import com.ibm.aspen.core.data_store.StoreObjectID
+import com.ibm.aspen.base.ObjectAllocaterFactory
+import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.ObjectAllocater
+import com.ibm.aspen.base.impl.SinglePoolObjectAllocater
+import com.ibm.aspen.base.AggregateTypeRegistry
+import com.ibm.aspen.base.TypeFactory
+import com.ibm.aspen.base.TypeRegistry
 
 object Main {
   
@@ -158,6 +165,29 @@ object Main {
     val allocationRetransmitDelay = Duration(1, SECONDS)
     val opportunisticRebuildDelay = Duration(3, SECONDS)
     
+    val allocaterFactories = cfg.allocaters.values.foldLeft(Map[UUID,TypeFactory]()){ (m, a) => 
+      m + (a.uuid -> new ObjectAllocaterFactory {
+        val typeUUID = a.uuid
+        def create(system: AspenSystem)(implicit ec: ExecutionContext): Future[ObjectAllocater] = {
+          Future.successful(new SinglePoolObjectAllocater(system, a.uuid, cfg.pools(a.pool).uuid, a.maxObjectSize, a.ida))
+        }
+      })
+    }
+    
+    val allocaterRegistry = new TypeRegistry {
+      def getTypeFactory[T <: TypeFactory](typeUUID: UUID): Option[T] = allocaterFactories.get(typeUUID) match {
+        case None => None
+        case Some(t) => 
+          try {
+            Some(t.asInstanceOf[T])
+          } catch {
+            case e: ClassCastException => None
+          }
+      }
+    }
+    
+    val typeRegistry = new AggregateTypeRegistry(CumuloFSTypeRegistry :: allocaterRegistry :: Nil)
+    
     new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
@@ -170,7 +200,7 @@ object Main {
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
-        userTypeRegistry = Some(CumuloFSTypeRegistry)
+        userTypeRegistry = Some(typeRegistry)
         )
   }
   

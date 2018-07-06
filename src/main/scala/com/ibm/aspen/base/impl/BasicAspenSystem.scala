@@ -62,6 +62,7 @@ import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.base.MissedUpdateHandler
 import com.ibm.aspen.base.MissedUpdateHandlerFactory
 import com.ibm.aspen.base.MissedUpdateIterator
+import com.ibm.aspen.base.ObjectAllocaterFactory
 
 
 object BasicAspenSystem {
@@ -299,6 +300,17 @@ class BasicAspenSystem(
   }
   
   // TODO: Implement in terms of tree, allocater type registry, & save/restore
-  def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.successful(new SinglePoolObjectAllocater(this, 
-      Bootstrap.BootstrapObjectAllocaterUUID, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA))
+  //def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = Future.successful(new SinglePoolObjectAllocater(this, 
+  //    Bootstrap.BootstrapObjectAllocaterUUID, Bootstrap.BootstrapStoragePoolUUID, None, bootstrapPoolIDA))
+      
+  def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater] = {
+    typeRegistry.getTypeFactory[ObjectAllocaterFactory](allocaterUUID) match {
+      case None =>
+        println(s"*************** Unknown Allocater UUID: $allocaterUUID")
+        com.ibm.aspen.util.printStack()
+        println("*********************************************************************")
+        Future.failed(new Exception(s"Unknown Object Allocater: ${allocaterUUID}"))
+      case Some(f) => f.create(this)
+    }
+  }
 }
