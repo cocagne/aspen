@@ -192,8 +192,6 @@ class WireProtocol private (
   
   import WireProtocol._
   
-  private var readBuffer: Option[ByteBuffer] = None
-  
   def unmount(): Unit = {
     read_channel.close()
     write_channel.close()
@@ -204,29 +202,64 @@ class WireProtocol private (
   
   def replyOk(unique: Long, reply: Reply): Unit = WireProtocol.replyOk(write_channel, protocolVersion, unique, reply)
   
-  private def readAtLeast(bb: ByteBuffer, numBytes: Int): ByteBuffer = {
-    //println(s"readAtLeast ${numBytes}. Currently have ${bb.remaining()}. pos = ${bb.position}. lim = ${bb.limit} cap = ${bb.capacity()}")
-    val startPos = bb.position()
-    val initialData = if (bb.limit == bb.capacity()) 0 else bb.limit
-    
-    if (initialData >= numBytes)
-      return bb // Already have enough data
-    
-    val endPos = startPos + (numBytes - initialData)
-    
-    bb.position(startPos + initialData)
-    bb.limit(bb.capacity())
-
-    while (bb.position < endPos) { 
-      //println(s"** Reading more. bb.position = ${bb.position}. Needs to be $endPos")
-      if (read_channel.read(bb) < 0)
-        throw new LostConnection
+  private[this] var rbuff: ByteBuffer = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
+  private[this] var altBuff: ByteBuffer = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
+  private[this] val nullBuffer = ByteBuffer.allocate(0).asReadOnlyBuffer()
+  
+  rbuff.order(ByteOrder.nativeOrder())
+  altBuff.order(ByteOrder.nativeOrder())
+  rbuff.limit(0)
+  altBuff.limit(0)
+  
+  /** Reads and returns a buffer of the requested size */
+  def read(nbytes: Int): ByteBuffer = synchronized {
+    // rbuff.position is always at the position of the next message to be read
+    if (nbytes == 0) 
+      nullBuffer
+    else {
+      println(s"Reading $nbytes. Pos ${rbuff.position} Remaining: ${rbuff.remaining()}")
+      
+      val (startPos, endPos) = if (rbuff.remaining() >= nbytes) {
+        val startPos = rbuff.position()
+        val endPos = rbuff.position + nbytes
+        rbuff.position(endPos)
+        (startPos, endPos)
+      } else {
+        
+        if (rbuff.position + nbytes > rbuff.capacity()) {
+          altBuff.position(0)
+          altBuff.limit(altBuff.capacity())
+          altBuff.put(rbuff)
+          val t = rbuff
+          rbuff = altBuff
+          altBuff = t
+        }
+        
+        val startPos = rbuff.position()
+        val endPos = rbuff.position + nbytes
+        
+        rbuff.limit(endPos)
+  
+        while (rbuff.position < endPos) { 
+          if (read_channel.read(rbuff) < 0)
+            throw new LostConnection
+        }
+        
+        rbuff.limit(rbuff.position)
+        rbuff.position(endPos)
+        
+        (startPos, endPos)
+      }
+      
+      val msg = rbuff.asReadOnlyBuffer()
+      msg.position(startPos)
+      msg.limit(endPos)
+      msg.order(ByteOrder.nativeOrder())
+      msg
     }
-    
-    bb.limit(bb.position)
-    bb.position(startPos)
-    bb
   }
+  
+  
     
   /** Reads and returns the next valid request.
    *  
@@ -244,84 +277,33 @@ class WireProtocol private (
   final def readNextRequest(): Request = synchronized {
     println("**** WAITING FOR REQUEST ****")
     
-    def readAtLeastOneMessage(bb: ByteBuffer): (ByteBuffer, RequestHeader) = {
-      readAtLeast(bb, RequestHeader.HeaderSize)
-        
-      val header = new RequestHeader(bb)
-      
-      val mlen = header.len - RequestHeader.HeaderSize
-      
-      println(s"Got Request: $header")
-      if (bb.remaining() < mlen) {
-        readAtLeast(bb, mlen)
-      }
-        
-      if (bb.remaining() == mlen)
-        readBuffer = None
-        
-      else if (bb.remaining() > mlen)
-        readBuffer = Some(bb) // Read too much. Resume processing this buffer next time
-      
-      (bb, header)
-    }
+    val hbb = read(RequestHeader.HeaderSize)
+    println(s"Read header size: ${hbb.remaining}. Position ${hbb.position} Lim ${hbb.limit} Cap ${hbb.capacity}")
+    val header = new RequestHeader(hbb)
+    println(s"Received Request: $header")
+    println(s"Reading data size: ${header.len - RequestHeader.HeaderSize}")
+    val data   = read(header.len - RequestHeader.HeaderSize)
+    println(s"Data Size: ${data.remaining}")
     
-    val (bb, header) = readBuffer match {
-      case None => 
-        val bb = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
-        readAtLeastOneMessage(bb)
-        
-      case Some(bb) =>
-        // Resume with data from previous read
-        
-        def realloc(): (ByteBuffer, RequestHeader) = {
-          val nbb = bufferManager.allocateDirectBuffer(ReadBufferSizeInKb)
-          nbb.put(bb)
-          nbb.limit(nbb.position)
-          nbb.position(0)
-          readAtLeastOneMessage(nbb)
-        }
-        
-        if (bb.remaining() < RequestHeader.HeaderSize) 
-          realloc()
-        else {
-          val startPos = bb.position
-          val header = new RequestHeader(bb)
-          val mlen = header.len - RequestHeader.HeaderSize
-          
-          if (bb.remaining() ==  mlen) {
-            // This is the last message in the buffer
-            readBuffer = None 
-            (bb, header)
-          }
-          else if (bb.remaining() >  mlen) {
-            // More than one message left in the buffer
-            (bb, header)
-          }
-          else {
-            // We don't have the full message. 
-            bb.position(startPos)
-            realloc()
-          }
-        }
-    }
+    
     
     header.opcode match {
       
-      case OpCode.FUSE_OPENDIR    => OpenDirRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_GETATTR    => GetAttrRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_READDIR    => ReadDirRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_RELEASE    => ReleaseRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_RELEASEDIR => ReleaseDirRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_LOOKUP     => LookupRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_OPEN       => OpenRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_READ       => ReadRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_WRITE      => WriteRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_SETATTR    => SetAttrRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_MKNOD      => MknodRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_RENAME     => RenameRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_MKDIR      => MkdirRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_UNLINK     => UnlinkRequest(protocolVersion, header, bb)
-      case OpCode.FUSE_FORGET     => ForgetRequest(protocolVersion, header, bb)
+      case OpCode.FUSE_OPENDIR    => OpenDirRequest(protocolVersion, header, data)
+      case OpCode.FUSE_GETATTR    => GetAttrRequest(protocolVersion, header, data)
+      case OpCode.FUSE_READDIR    => ReadDirRequest(protocolVersion, header, data)
+      case OpCode.FUSE_RELEASE    => ReleaseRequest(protocolVersion, header, data)
+      case OpCode.FUSE_RELEASEDIR => ReleaseDirRequest(protocolVersion, header, data)
+      case OpCode.FUSE_LOOKUP     => LookupRequest(protocolVersion, header, data)
+      case OpCode.FUSE_OPEN       => OpenRequest(protocolVersion, header, data)
+      case OpCode.FUSE_READ       => ReadRequest(protocolVersion, header, data)
+      case OpCode.FUSE_WRITE      => WriteRequest(protocolVersion, header, data)
+      case OpCode.FUSE_SETATTR    => SetAttrRequest(protocolVersion, header, data)
+      case OpCode.FUSE_MKNOD      => MknodRequest(protocolVersion, header, data)
+      case OpCode.FUSE_RENAME     => RenameRequest(protocolVersion, header, data)
+      case OpCode.FUSE_MKDIR      => MkdirRequest(protocolVersion, header, data)
+      case OpCode.FUSE_UNLINK     => UnlinkRequest(protocolVersion, header, data)
+      case OpCode.FUSE_FORGET     => ForgetRequest(protocolVersion, header, data)
       
       case _ => 
         replyError(header.unique, LinuxAPI.ENOSYS)
