@@ -109,6 +109,40 @@ class SimpleFile(
       }
     }}
   }
+  
+  class TruncationOperation(val offset: Long) extends SimpleBaseFile.FileOperation {
+    def attempt(curInode: Inode)(implicit tx: Transaction, ec: ExecutionContext): SimpleBaseFile.OpResult = synchronized {
+      println(s"*** PREPARING Truncation Operation")
+      val fprep = index.truncate(offset).map { oupdatedRoot =>
+        println("Truncation Prepared. Beginning Transaction Commit")
+        
+        val definite = curInode.content + 
+            (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(offset), tx.timestamp)) +
+            (Inode.MtimeKey -> Value(Inode.MtimeKey, Timespec.now.toArray, tx.timestamp))
+            
+        val updatedContent = oupdatedRoot match {
+          case Some(updatedRoot) => definite + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, updatedRoot.toArray(), tx.timestamp))
+          case None => definite
+        }
+      
+        tx.overwrite(curInode.pointer.pointer, curInode.revision, Nil, KeyValueOperation.contentToOps(updatedContent))
+        
+        (oupdatedRoot, updatedContent)
+      }
+      
+      val fstateUpdated = for {
+        (updatedRoot, updatedContent) <- fprep
+        _ <- tx.result
+      } yield {
+        index.reset(updatedRoot)
+        updatedContent
+      }
+      
+      SimpleBaseFile.OpResult(fprep.map(_=>()), fstateUpdated)
+    }
+  }
+  
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(new TruncationOperation(offset))
 
   private[this] def enqueueWriteOp(op: ContiguousWriteOperation)(implicit ec: ExecutionContext): Unit = {
     queuedWriteOpsCount += 1

@@ -88,30 +88,7 @@ object FileIndex {
     }
     override def toString(): String = s"$typeCode:$offset"
   }
-  object Entry {
-    
-    def decodeNodeContent(db: DataBuffer): DecodedNodeContent = {
-      var l: Option[LeftPointer] = None
-      var s = List[Segment]()
-      var r: Option[RightPointer] = None
-      
-      val bb = db.asReadOnlyBuffer()
-      while (bb.remaining() != 0) {
-        val typeCode = bb.get
-        
-        val offset = Varint.getUnsignedLong(bb)
-        val pointer = DataObjectPointer(bb)
-        
-        typeCode match {
-          case 0 => l = Some(new LeftPointer(offset, pointer))
-          case 1 => s = new Segment(offset, pointer) :: s
-          case 2 => r = Some(new RightPointer(offset, pointer))
-        }
-      }
-      
-      DecodedNodeContent(l, s.reverse.toArray, r)
-    }
-  }
+
   class LeftPointer(val offset: Long, val pointer: DataObjectPointer) extends Entry {
     override def typeCode: Byte = 0
   }
@@ -127,9 +104,6 @@ object FileIndex {
     
     val size = osize.getOrElse(encodedEntriesSize(oleft, segments, oright))
     
-    val lstr=oleft.map(_.toString).getOrElse("none")
-    val rstr=oright.map(_.toString).getOrElse("none")
-
     val arr = new Array[Byte](size)
     val bb = ByteBuffer.wrap(arr)
     oleft.foreach(_.encodeInto(bb))
@@ -138,10 +112,34 @@ object FileIndex {
     DataBuffer(arr)
   }
   
+  def getSegmentSizes(segments: List[Segment]): List[(Segment, Int)] = segments.map(s => (s, s.encodedSize))
+  
   def encodedEntriesSize(oleft: Option[LeftPointer], segments: List[(Segment, Int)], oright: Option[RightPointer]): Int = {
     oleft.map(_.encodedSize).getOrElse(0) + segments.foldLeft(0)( (sz, t) => t._2 + sz ) + oright.map(_.encodedSize).getOrElse(0)
   }
   
+  def decodeNodeContent(db: DataBuffer): DecodedNodeContent = {
+    var l: Option[LeftPointer] = None
+    var s = List[Segment]()
+    var r: Option[RightPointer] = None
+    
+    val bb = db.asReadOnlyBuffer()
+    while (bb.remaining() != 0) {
+      val typeCode = bb.get
+      
+      val offset = Varint.getUnsignedLong(bb)
+      val pointer = DataObjectPointer(bb)
+      
+      typeCode match {
+        case 0 => l = Some(new LeftPointer(offset, pointer))
+        case 1 => s = new Segment(offset, pointer) :: s
+        case 2 => r = Some(new RightPointer(offset, pointer))
+      }
+    }
+    
+    DecodedNodeContent(l, s.reverse.toArray, r)
+  }
+
   private[cumulofs] def destroyNodeSegment(node: IndexNode)(implicit ec: ExecutionContext): Future[IndexNode] = if (node.segments.isEmpty) Future.successful(node) else {
     val victim = node.segments.last
     
@@ -177,6 +175,53 @@ object FileIndex {
     Future.successful(node) 
   else {
     destroyNodeSegment(node).flatMap(newNode => destroyNodeSegments(newNode)) 
+  }
+  
+  private[cumulofs] def destroyTruncatedTree(
+      system: AspenSystem, 
+      tier: Int, 
+      root: DataObjectPointer)(implicit ec: ExecutionContext): Future[Unit] = {
+    println(s"destroyTruncatedTree tier $tier node id ${root.uuid}")
+    system.readObject(root).flatMap { dos =>
+      println(s"destroyTruncatedTree got node id ${root.uuid}")
+      val dnc = decodeNodeContent(dos.data)
+      val segments = dnc.segments.sortWith((a,b) => a.offset < b.offset).reverse
+      
+      val fl = segments.map { s => system.retryStrategy.retryUntilSuccessful {
+        
+        if (tier == 0) {
+          println(s"deleting tier 0 node: ${s.pointer.uuid}")
+          system.readObject(s.pointer).flatMap { sdos => 
+            implicit val tx = system.newTransaction()
+            tx.setRefcount(s.pointer, sdos.refcount, sdos.refcount.decrement())
+            tx.commit()
+          } recover {
+            case _: InvalidObject => () // already deleted
+            case t: Throwable => println(s"Unexpected error: $t")
+          }
+        } else {
+          println("RECURSING! ")
+          destroyTruncatedTree(system, tier-1, s.pointer)
+        }
+      }}
+      println(s"Segment Deletion Futures Created")
+      Future.sequence(fl.toList).flatMap { _ =>
+        // Delete self
+        println(s"Deleting root node ${root.uuid}")
+        system.retryStrategy.retryUntilSuccessful {
+          system.readObject(root).flatMap { sdos => 
+            implicit val tx = system.newTransaction()
+            tx.setRefcount(root, sdos.refcount, sdos.refcount.decrement())
+            tx.commit()
+          } recover {
+            case _: InvalidObject => () // already deleted
+            case t: Throwable => println(s"Unexpected error: $t")
+          }
+        }
+      }
+    } recover {
+      case _: InvalidObject => () // Already done!
+    }
   }
   
   
@@ -264,11 +309,71 @@ object FileIndex {
         seekTo(offset)
       else 
         seekTo(offset) flatMap { node => 
-          index.loadIndexNode(tier-1, getSegmentContainingOffset(offset).pointer) flatMap { lowerNode =>
+          index.loadIndexNode(tier-1, node.getSegmentContainingOffset(offset).pointer) flatMap { lowerNode =>
             lowerNode.fetchTier0Node(offset)
           }
         }
     }
+    /** Splits the index into two indicies at the specified offset and returns the root node of the index with updated
+     *  tail pointers and a pointer to the head of the index structure containing the to-be-deleted index and data nodes.
+     */
+    def prepareTruncation(root: Root, offset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[(Option[Root], DataObjectPointer)] = {
+      
+      def trace(node: IndexNode, path: List[IndexNode]): Future[List[IndexNode]] = {
+        if (tier == 0)
+          node.seekTo(offset).map(target => target :: path)
+        else 
+          node.seekTo(offset) flatMap { target => 
+            index.loadIndexNode(tier-1, target.getSegmentContainingOffset(offset).pointer) flatMap { lowerNode =>
+              trace(lowerNode, target :: path)
+            }
+          }
+      }
+      
+      def prepDataSegment(tier0: IndexNode): Future[Unit] = {
+        val s = tier0.getSegmentContainingOffset(offset)
+        index.fs.system.readObject(s.pointer) map { kvos =>
+          if (s.offset < offset && !(s.offset + kvos.data.size != offset))
+            tx.overwrite(s.pointer, kvos.revision, kvos.data.slice(0, (offset - s.offset).asInstanceOf[Int]))
+        }
+      }
+      
+      def splitIndexNode(node: IndexNode, splitBelow: Option[DataObjectPointer]): Future[DataObjectPointer] = {
+        val (skeep, sdiscard) = node.segments.toList.partition(s => s.offset < offset)
+        val rightSegments = splitBelow match {
+          case None => sdiscard
+          case Some(p) => new Segment(offset, p) :: sdiscard
+        }
+        
+        index.cache.dropNode(node)
+        tx.overwrite(nodePointer, revision, encodeEntries(leftPointer, getSegmentSizes(skeep), None, None))
+        
+        index.fs.getDataTableNodeAllocater(tier) flatMap { allocater =>
+          allocater.allocateDataObject(nodePointer, revision, encodeEntries(None, getSegmentSizes(rightSegments), rightPointer, None))
+        }
+      }
+      
+      def splitUp(path: List[IndexNode], lastSplitObject: DataObjectPointer): Future[DataObjectPointer] = {
+        if (path.isEmpty)
+          Future.successful(lastSplitObject)
+        else {
+          splitIndexNode(path.head, Some(lastSplitObject)) flatMap { splitObject =>
+            splitUp(path.tail, splitObject)
+          }
+        }
+      }
+      
+      for {
+        path <- trace(this, Nil)
+        _ <- prepDataSegment(path.head)
+        tier0split <- splitIndexNode(path.head, None)
+        truncatedRoot <- splitUp(path.tail, tier0split)
+      } yield {
+        val oroot = if (offset == 0) None else Some(Root(root.tier0head, path.map(_.nodePointer).toArray))
+        (oroot, truncatedRoot)
+      }
+    }
+    
     def seekTo(offset: Long)(implicit ec: ExecutionContext): Future[IndexNode] = {
       if (containsOffset(offset))
         Future.successful(this) 
@@ -415,7 +520,7 @@ class FileIndex(
         
         case None =>
           val fnode = fs.system.readObject(pointer) map { dos => 
-            val dnc = Entry.decodeNodeContent(dos.data)
+            val dnc = decodeNodeContent(dos.data)
             val node = IndexNode(tier, this, pointer, dnc.leftPointer, dnc.segments, dnc.rightPointer, dos.revision, dos.size, dos.timestamp)
             cache.putNode(node)
             node
@@ -501,6 +606,15 @@ class FileIndex(
     foRoot
   }
   
+  def reset(onewRoot: Option[Root])(implicit ec: ExecutionContext): Unit = synchronized {
+    ofTails = None
+    
+    foRoot = onewRoot match {
+      case None => Future.successful(None)
+      case Some(newRoot) => Future.successful(Some(newRoot))
+    }
+  }
+  
   def getDataTail()(implicit ec: ExecutionContext): Future[Option[DataTail]] = getTails() flatMap { tails =>
     if (tails.size == 0)
       Future.successful(None)
@@ -528,7 +642,7 @@ class FileIndex(
               tailStates.zipWithIndex.foreach { t =>
                 val (dos, tier) = t
                 
-                val dnc = Entry.decodeNodeContent(dos.data)
+                val dnc = decodeNodeContent(dos.data)
                 val node = IndexNode(tier, this, dos.pointer, dnc.leftPointer, dnc.segments, dnc.rightPointer, dos.revision, dos.size, dos.timestamp)
                 
                 cache.putNode(node)
@@ -785,5 +899,27 @@ class FileIndex(
     }
   }
   
-  
+  def truncate(offset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[Option[Root]] = {
+    
+    def prep(oroot: Option[Root], orootNode: Option[IndexNode]): Future[Option[Root]] = (oroot, orootNode) match {
+      case (None, _) => if (offset == 0) Future.successful(None) else Future.failed(new Exception("Holes are not yet supported"))
+      
+      case (Some(root), Some(rootNode)) =>
+        
+        for {
+          (newRoot, truncatedRoot) <- rootNode.prepareTruncation(root, offset)
+          _ <- DeleteTruncatedFileTask.prepare(fs, newRoot.tails.length-1, truncatedRoot)
+        } yield newRoot
+      
+      case (Some(root), _) => if (offset == 0) Future.successful(Some(root)) else Future.failed(new Exception("Holes are not yet supported"))
+      
+      case _ => Future.failed(new Exception("Unsupported file state for truncation"))
+    }
+    for {
+      _ <- refresh()
+      oroot <- foRoot
+      onode <- getRootIndexNode()
+      newRoot <- prep(oroot, onode)
+    } yield newRoot
+  }
 }

@@ -23,6 +23,14 @@ package object util {
     new UUID(msb, lsb)
   }
   
+  def int2byte(i: Int): Array[Byte] = {
+    val arr = new Array[Byte](4)
+    val bb = ByteBuffer.wrap(arr)
+    bb.putInt(i)
+    arr
+  }
+  def byte2int(arr: Array[Byte]): Int = ByteBuffer.wrap(arr).getInt()
+  
   def printStack(): Unit = {
     val e = new Exception("printing stack")
     val sw = new StringWriter()

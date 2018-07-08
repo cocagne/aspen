@@ -271,17 +271,39 @@ class FuseInterface(
         response.error(LinuxAPI.ENOENT)
         
       case Success(Some(file)) => 
-        
-        val ct = request.ctime.getOrElse(file.ctime)
-        val mt = request.mtime.getOrElse(file.mtime)
-        val at = request.atime.getOrElse(file.atime)
-        val mode = request.mode.getOrElse(file.mode)
-        val uid = request.newUID.getOrElse(file.uid)
-        val gid = request.newGID.getOrElse(file.gid)
-        
-        file.setattr(uid, gid, ct, mt, at, mode) onComplete {
-          case Failure(cause) => response.error(LinuxAPI.EIO)
-          case Success(_) => response.ok(new GetAttrReply(1, 0, stat(file)))
+        request.size match {
+          case Some(newSize) => 
+            file match {
+              case f: File =>
+                println(s"Setattr file size from ${f.size} to $newSize")
+                if (newSize > f.size)
+                  response.error(LinuxAPI.ENOSYS)
+                else if (newSize == f.size)
+                  response.ok(new GetAttrReply(1, 0, stat(f)))
+                else {
+                  f.truncate(newSize) onComplete {
+                    case Failure(cause) => response.error(LinuxAPI.EIO)
+                    case Success(_) =>
+                      println(s"Truncation Op Completed! Returning new stat with size: ${f.size}")
+                      response.ok(new GetAttrReply(1, 0, stat(f)))
+                  }
+                }
+                
+              case _ => response.error(LinuxAPI.ENOSYS)
+            }
+            
+          case None =>
+            val ct = request.ctime.getOrElse(file.ctime)
+            val mt = request.mtime.getOrElse(file.mtime)
+            val at = request.atime.getOrElse(file.atime)
+            val mode = request.mode.getOrElse(file.mode)
+            val uid = request.newUID.getOrElse(file.uid)
+            val gid = request.newGID.getOrElse(file.gid)
+            
+            file.setattr(uid, gid, ct, mt, at, mode) onComplete {
+              case Failure(cause) => response.error(LinuxAPI.EIO)
+              case Success(_) => response.ok(new GetAttrReply(1, 0, stat(file)))
+            }
         }
     }
   }

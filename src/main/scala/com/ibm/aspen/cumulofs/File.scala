@@ -17,5 +17,7 @@ trait File extends BaseFile {
   
   def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]]
   
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit]
+  
   def debugRead()(implicit ec: ExecutionContext): Future[Array[Byte]]
 }

@@ -1,4 +1,15 @@
 Next Steps
+   
+  * Haven't tested partial truncation yet or verified that all objects are actually deleted
+     
+  * Need Truncation + delete truncated data task
+  
+  Segment goes abstract
+    - DataSegment
+    - HoleSegment
+       - reads over holes just fill with zeroes
+       
+  * Need hole support (though this is less important)
      
   * Improve CumuloFS feature set
       - Need the basics working well
@@ -9,6 +20,8 @@ Next Steps
   * Switch to TieredKeyValueListAllocater?
     
   * Simplify KeyValueRequirement handling
+  
+  * Remove From Allocation Table on Tx set refcount to 0
  
   
 Basic Error Handling
