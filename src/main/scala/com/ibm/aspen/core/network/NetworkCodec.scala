@@ -1134,6 +1134,7 @@ object NetworkCodec {
         P.ReadResponse.addRefcount(builder, encode(builder, cs.refcount))
         P.ReadResponse.addTimestamp(builder, cs.timestamp.asLong)
         P.ReadResponse.addSizeOnStore(builder, cs.sizeOnStore)
+        P.ReadResponse.addHaveData(builder, cs.objectData.isDefined)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
         if (locks != -1) P.ReadResponse.addLocks(builder, locks)
         if (updates != -1) P.ReadResponse.addUpdates(builder, updates)
@@ -1150,9 +1151,10 @@ object NetworkCodec {
       val refcount = decode(n.refcount())
       val timestamp = HLCTimestamp(n.timestamp())
       val sizeOnStore = n.sizeOnStore()
-      val objectData = if (n.objectDataLength() <= 0) None else {
+      val objectData = if (!n.haveData()) None else {
         val buff = ByteBuffer.allocateDirect(n.objectDataLength())
-        buff.put(n.objectDataAsByteBuffer())
+        if (n.objectDataLength() > 0)
+          buff.put(n.objectDataAsByteBuffer())
         buff.position(0)
         Some(buff)
       }

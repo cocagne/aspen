@@ -174,16 +174,23 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
       
       fresult
     }
-    
+    var retryCount = 0
     fs.system.retryStrategy.retryUntilSuccessful(onCommitFailure _) {
-      attempt() map { t => synchronized {
-        val (newRevision, newTimestamp, updatedState, newRefcount) = t
-        //println(s"Updated Inode ${inode.pointer.pointer.uuid} revision ${inode.revision} to $newRevision")
-        updateInode(newRevision, newTimestamp, updatedState, newRefcount)
-        activeOp = None
-        op.promise.success(())
-        beginNextOp()
-      }}
+      retryCount += 1
+      if (retryCount < 5) {
+        
+        attempt() map { t => synchronized {
+          
+          val (newRevision, newTimestamp, updatedState, newRefcount) = t
+          //println(s"Updated Inode ${inode.pointer.pointer.uuid} revision ${inode.revision} to $newRevision")
+          updateInode(newRevision, newTimestamp, updatedState, newRefcount)
+          activeOp = None
+          op.promise.success(())
+          beginNextOp()
+        }}
+      } else {
+        Future.unit
+      }
     }.failed.foreach {
       // Propagate critical failures to the caller (attempted operation on deleted inode)
       cause => op.promise.failure(cause)

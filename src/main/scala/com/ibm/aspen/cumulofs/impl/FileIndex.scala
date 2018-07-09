@@ -608,7 +608,7 @@ class FileIndex(
   
   def reset(onewRoot: Option[Root])(implicit ec: ExecutionContext): Unit = synchronized {
     ofTails = None
-    
+    println(s" RESETTING INDEX ROOT TO $onewRoot")
     foRoot = onewRoot match {
       case None => Future.successful(None)
       case Some(newRoot) => Future.successful(Some(newRoot))
@@ -616,24 +616,32 @@ class FileIndex(
   }
   
   def getDataTail()(implicit ec: ExecutionContext): Future[Option[DataTail]] = getTails() flatMap { tails =>
+    println(s"GET TAILS SUCCESSFUL ${tails.size()}")
     if (tails.size == 0)
       Future.successful(None)
     else {
+      println("Getting item 0")
       val tailSegment = tails.get(0).tailSegment
-      
-      fs.system.readObject(tailSegment.pointer) map { dos => Some(DataTail(tailSegment.pointer, dos.revision, tailSegment.offset, dos.size)) }
+      println("Reading object")
+      fs.system.readObject(tailSegment.pointer) map { dos =>
+        println(s"Read the object of size ${dos.size}")
+        Some(DataTail(tailSegment.pointer, dos.revision, tailSegment.offset, dos.size)) 
+      }
     }
   }
   
   def getTails()(implicit ec: ExecutionContext): Future[Vector[IndexNode]] = synchronized {
+    println(s"getting tails with ofTails $ofTails and foRoot $foRoot")
     ofTails match {
       case Some(f) => f
       case None =>
         val ftails = foRoot flatMap { oroot => oroot match {
-          case None => Future.successful(new Vector[IndexNode](2,1))
+          case None =>
+            println(s"NO root. Returning default vector")
+            Future.successful(new Vector[IndexNode](2,1))
           
           case Some(root) => 
-      
+            println(s"Have root $root...")
             val fstate = Future.sequence(root.tails.map(fs.system.readObject(_)).toList)
               
             fstate map { tailStates =>

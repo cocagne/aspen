@@ -137,7 +137,7 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
-        //println(s"STORE READ ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision} set $updateSet")
+        //println(s"STORE READ ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision} set $updateSet.")
         
         val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
         
@@ -270,15 +270,22 @@ class BaseReadDriver(
       (t._1.poolIndex, t._2.objectData) :: l
     }
     
-    // If something goes wrong with the IDA, it'll throw an IDAError exception
-    val objectState = readType match {
-      case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp)
-      case _: FullObject => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments)) 
-      case _: ByteRange => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments))
-      case _ => throw new Exception("Invalid Read Type")
+    try {
+      // If something goes wrong with the IDA, it'll throw an IDAError exception
+      val objectState = readType match {
+        case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp)
+        case _: FullObject => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments)) 
+        case _: ByteRange => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, sizeOnStore, objectPointer.ida.restore(segments))
+        case _ => throw new Exception("Invalid Read Type")
+      }
+      (objectState, locks)
+    } catch {
+      case t: IDAError => 
+        println(s"IDA ERROR Segments: $segments")
+        throw t
     }
 
-    (objectState, locks)
+    
   }
   
   private def restoreKeyValueObject(): (ObjectState, Option[Map[DataStoreID, List[Lock]]]) = {

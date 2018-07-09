@@ -217,7 +217,7 @@ class WireProtocol private (
     if (nbytes == 0) 
       nullBuffer
     else {
-      println(s"Reading $nbytes. Pos ${rbuff.position} Remaining: ${rbuff.remaining()}")
+      //println(s"Reading $nbytes. Pos ${rbuff.position} Remaining: ${rbuff.remaining()}")
       
       val (startPos, endPos) = if (rbuff.remaining() >= nbytes) {
         val startPos = rbuff.position()
@@ -278,14 +278,12 @@ class WireProtocol private (
     println("**** WAITING FOR REQUEST ****")
     
     val hbb = read(RequestHeader.HeaderSize)
-    println(s"Read header size: ${hbb.remaining}. Position ${hbb.position} Lim ${hbb.limit} Cap ${hbb.capacity}")
+    //println(s"Read header size: ${hbb.remaining}. Position ${hbb.position} Lim ${hbb.limit} Cap ${hbb.capacity}")
     val header = new RequestHeader(hbb)
-    println(s"Received Request: $header")
-    println(s"Reading data size: ${header.len - RequestHeader.HeaderSize}")
+    //println(s"Received Request: $header")
+    //println(s"Reading data size: ${header.len - RequestHeader.HeaderSize}")
     val data   = read(header.len - RequestHeader.HeaderSize)
-    println(s"Data Size: ${data.remaining}")
-    
-    
+    //println(s"Data Size: ${data.remaining}")
     
     header.opcode match {
       
@@ -305,7 +303,8 @@ class WireProtocol private (
       case OpCode.FUSE_UNLINK     => UnlinkRequest(protocolVersion, header, data)
       case OpCode.FUSE_FORGET     => ForgetRequest(protocolVersion, header, data)
       
-      case _ => 
+      case _ =>
+        println(s"Unsupported Request: $header")
         replyError(header.unique, LinuxAPI.ENOSYS)
         readNextRequest()
     }

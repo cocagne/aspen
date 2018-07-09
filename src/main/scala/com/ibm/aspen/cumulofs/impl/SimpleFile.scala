@@ -72,6 +72,7 @@ class SimpleFile(
     dataTail match {
       case Some(odt) => Future.successful(odt)
       case None => index.getDataTail() map { odt => synchronized {
+        println(s"DATA TAIL IS $odt")
         dataTail = Some(odt)
         odt
       }}
@@ -94,27 +95,31 @@ class SimpleFile(
   
   def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
     val bb = ByteBuffer.allocate(nbytes)
-    index.getIndexNodeForOffset(offset + nbytes).flatMap { onode => onode match {
-      case None => Future.successful(None)
-      case Some(node) => node.getSegmentsForRange(offset, nbytes).flatMap { segments =>
-        Future.sequence(segments.map(s => fs.system.readObject(s.pointer))).map { objs =>
-          objs.foreach { o =>
-            val d = if (bb.remaining() < o.data.size) o.data.slice(0, bb.remaining()) else o.data
-            if (bb.remaining() > 0)
-              bb.put(d.asReadOnlyBuffer())
+    if (size == 0)
+      Future.successful(Some(bb))
+    else {
+      index.getIndexNodeForOffset(offset + nbytes).flatMap { onode => onode match {
+        case None => Future.successful(None)
+        case Some(node) => node.getSegmentsForRange(offset, nbytes).flatMap { segments =>
+          Future.sequence(segments.map(s => fs.system.readObject(s.pointer))).map { objs =>
+            objs.foreach { o =>
+              val d = if (bb.remaining() < o.data.size) o.data.slice(0, bb.remaining()) else o.data
+              if (bb.remaining() > 0)
+                bb.put(d.asReadOnlyBuffer())
+            }
+            bb.flip()
+            Some(DataBuffer(bb))
           }
-          bb.flip()
-          Some(DataBuffer(bb))
         }
-      }
-    }}
+      }}
+    }
   }
   
   class TruncationOperation(val offset: Long) extends SimpleBaseFile.FileOperation {
     def attempt(curInode: Inode)(implicit tx: Transaction, ec: ExecutionContext): SimpleBaseFile.OpResult = synchronized {
       println(s"*** PREPARING Truncation Operation")
       val fprep = index.truncate(offset).map { oupdatedRoot =>
-        println("Truncation Prepared. Beginning Transaction Commit")
+        println(s"Truncation Prepared. Beginning Transaction Commit with UPDATED ROOT: $oupdatedRoot")
         
         val definite = curInode.content + 
             (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(offset), tx.timestamp)) +
@@ -380,7 +385,7 @@ class SimpleFile(
       val pcomplete   = Promise[Map[Key,Value]]()
       val buffers     = rbuffers.reverse
       val nbytes      = rbufbytes
-      
+      println("BEGINNING write op")
       def allocSegments(
           odt: Option[FileIndex.DataTail],
           dataBufs: List[DataBuffer],
@@ -392,12 +397,14 @@ class SimpleFile(
       
       val fprep = for {
         odt <- getDataTail()
+        _=println("GOT TAIL")
         (remainingBufs, tailExtendedBytes) <- overwriteSegments(odt, buffers, nbytes)
+        _=println("GOT OVERWRITES")
         numAppendBytes = remainingBufs.foldLeft(0)( (sz, db) => sz + db.size )
         oupdate <- allocSegments(odt, remainingBufs, numAppendBytes)
       }
       yield {
-        
+        println("ALLOCATED")
         val (updatedContent, newDataTail, onewRoot, fstateUpdated) = oupdate match {
           case None =>
             val dt = odt.get
@@ -443,8 +450,11 @@ class SimpleFile(
         }
       }
       
-      fprep.failed.foreach(cause => pcomplete.failure(cause)) 
-     
+      fprep.failed.foreach { cause =>
+        println(s"WRITE FAILURE: $cause")
+        pcomplete.failure(cause) 
+      } 
+      println("*** GOT TO END ")
       SimpleBaseFile.OpResult(fprep, pcomplete.future)
     }
   }

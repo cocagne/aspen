@@ -75,7 +75,9 @@ class LowLevelFuseFilesystem(
   def reactorLoop(): Unit = while(true) handleNextRequest()
   
   def handleNextRequest(): Unit = {
-    wp.readNextRequest() match {
+    val req = wp.readNextRequest()
+    println(s"Received $req")
+    req match {
       case r: OpenDirRequest => opendir(r, new Response[OpenReply](wp, r.unique))
       case r: GetAttrRequest => getattr(r, new Response[GetAttrReply](wp, r.unique))
       case r: ReadDirRequest => readdir(r, new Response[ReadDirReply](wp, r.unique))

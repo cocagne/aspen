@@ -310,6 +310,7 @@ table ReadResponse {
   updates: [UUID];
   timestamp: long;
   sizeOnStore: int;
+  haveData: bool;
   objectData: [byte];
   locks: [Lock];
   readError: ObjectReadError;

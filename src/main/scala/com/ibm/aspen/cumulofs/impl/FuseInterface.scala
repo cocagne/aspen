@@ -104,7 +104,6 @@ class FuseInterface(
   var nextfd = 1L
   
   override def getattr(request: GetAttrRequest, response: Response[GetAttrReply]): Unit = {
-    println(s"getattr request for ${request.inode}")
     fs.lookup(request.inode) onComplete {
       case Failure(cause) => response.error(LinuxAPI.ENOENT)
       
@@ -117,7 +116,6 @@ class FuseInterface(
   }
    
   override def lookup(request: LookupRequest, response: Response[DirEntryReply]): Unit = {
-    println(s"Lookup request for ${request.name} in directory ${request.inode}")
     fs.lookup(request.inode) onComplete {
       case Failure(cause) =>
         println(s"Lookup failure0 :( $cause")
@@ -227,7 +225,6 @@ class FuseInterface(
   }
   
   override def read(request: ReadRequest, response: Response[DataReply]): Unit = synchronized {
-    println(s"Handling Read Reqeust: $request")
     fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
       case Some(file) => file.read(request.offset, request.size.asInstanceOf[Int]).onComplete { 
@@ -241,7 +238,6 @@ class FuseInterface(
   }
   
   override def write(request: WriteRequest, response: Response[WriteReply]): Unit = synchronized {
-    println(s"Handling write request for ${request.data.remaining()} bytes")
     fileHandles.get(request.fileHandle) match {
       case None =>
         println(s"File handle not found!")
@@ -249,15 +245,17 @@ class FuseInterface(
       case Some(file) =>
         println(s"Writing ${request.data.remaining()}")
         file.write(request.offset, DataBuffer(request.data)).onComplete { 
-          case Failure(cause) => response.error(LinuxAPI.EIO)
-          case Success(data) => response.ok(new WriteReply(request.size))
+          case Failure(cause) =>
+            println(s"Write request ERROR. Unique id ${request.unique}. Cause: $cause")
+            response.error(LinuxAPI.EIO)
+          case Success(data) =>
+            println(s"Write request complete. Unique id ${request.unique}")
+            response.ok(new WriteReply(request.size))
         }
     }
   }
   
   override def setattr(request: SetAttrRequest, response: Response[GetAttrReply]): Unit = synchronized {
-    println(s"** Setattr request handler: $request")
-    
     // Check to see if we have an open file first. Fetch directly otherwise
     val ffile =  openFiles.get(request.inode) match {
       case None => fs.lookup(request.inode)
@@ -449,7 +447,6 @@ class FuseInterface(
   
   
   override def readdir(request: ReadDirRequest, response: Response[ReadDirReply]): Unit = synchronized {
-    println(s"Reading Directory!")
     if (openDirs.contains(request.fileHandle)) {
       openDirs -= request.fileHandle
       
