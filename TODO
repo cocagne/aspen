@@ -1,5 +1,8 @@
 Next Steps
-   
+  
+  Redo the FileIndex - too complex
+  
+  
   * Haven't tested partial truncation yet or verified that all objects are actually deleted
      
   * Need Truncation + delete truncated data task
