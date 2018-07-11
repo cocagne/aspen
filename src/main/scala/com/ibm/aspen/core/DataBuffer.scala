@@ -56,4 +56,20 @@ object DataBuffer {
   implicit def apply(buf: ByteBuffer): DataBuffer = new DataBuffer(buf.asReadOnlyBuffer())
   implicit def apply(arr: Array[Byte]): DataBuffer = new DataBuffer(ByteBuffer.wrap(arr))
   implicit def db2bb(db: DataBuffer): ByteBuffer = db.asReadOnlyBuffer()
+  
+  def fill(bb: ByteBuffer, remaining: List[DataBuffer]): List[DataBuffer] = {
+    if (remaining.isEmpty || bb.remaining() == 0)
+      remaining
+    else {
+      val db = remaining.head
+      if (db.size < bb.remaining()) {
+        bb.put(db)
+        fill(bb, remaining.tail)
+      } else {
+        val nbytes = bb.remaining()
+        bb.put(db.slice(0, nbytes))
+        fill(bb, db.slice(nbytes) :: remaining.tail)
+      }
+    }
+  }
 }
