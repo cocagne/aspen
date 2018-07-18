@@ -1,18 +1,18 @@
 Next Steps
   
-  Redo the FileIndex - too complex
+  Impl & Test Truncation
   
+  Switch to FileHandle for read/write
+     - Share a single File instance to effectively share the current inode state
+     - Track buffered writes via Map[endOffset, PendingWrite]
+     - Track total buffered bytes. Return success immediately if buffered bytes is below a threshold
+     - Track currentWrites via var Queue[]
+          - Allows retry of head write on tx failure
+          - Allows flush to move all buffered writes to currentWrites
   
-  * Haven't tested partial truncation yet or verified that all objects are actually deleted
-     
-  * Need Truncation + delete truncated data task
+  Replace current file read/write/truncate support with FileHandles & IndexedFileContent
   
-  Segment goes abstract
-    - DataSegment
-    - HoleSegment
-       - reads over holes just fill with zeroes
-       
-  * Need hole support (though this is less important)
+  Remove FileIndex and all supporting/referencing code
      
   * Improve CumuloFS feature set
       - Need the basics working well

@@ -48,6 +48,8 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
     DataBuffer(bb)
   }
   
+  def split(offset: Int): (DataBuffer, DataBuffer) = (slice(0, offset), slice(offset))
+  
 }
 
 object DataBuffer {
@@ -57,18 +59,34 @@ object DataBuffer {
   implicit def apply(arr: Array[Byte]): DataBuffer = new DataBuffer(ByteBuffer.wrap(arr))
   implicit def db2bb(db: DataBuffer): ByteBuffer = db.asReadOnlyBuffer()
   
+  def zeroed(nbytes: Int): DataBuffer = if (nbytes == 0) Empty else DataBuffer(ByteBuffer.allocate(nbytes))
+  
+  def zeroed(nbytes: Long): DataBuffer = zeroed(nbytes.asInstanceOf[Int])
+  
+  def compact(maxSize: Long, buffers: List[DataBuffer]): (DataBuffer, List[DataBuffer]) = compact(maxSize.asInstanceOf[Int], buffers)
+  
+  def compact(maxSize: Int, buffers: List[DataBuffer]): (DataBuffer, List[DataBuffer]) = {
+    val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
+    val arr = new Array[Byte](if (nbytes <= maxSize) nbytes else maxSize)
+    val bb = ByteBuffer.wrap(arr)
+    val remaining = fill(bb, buffers)
+    (DataBuffer(arr), remaining)
+  }
+  
   def fill(bb: ByteBuffer, remaining: List[DataBuffer]): List[DataBuffer] = {
     if (remaining.isEmpty || bb.remaining() == 0)
       remaining
     else {
       val db = remaining.head
-      if (db.size < bb.remaining()) {
+      
+      if (db.size <= bb.remaining()) {
         bb.put(db)
         fill(bb, remaining.tail)
-      } else {
-        val nbytes = bb.remaining()
-        bb.put(db.slice(0, nbytes))
-        fill(bb, db.slice(nbytes) :: remaining.tail)
+      } 
+      else {
+        val (w, r) = db.split(bb.remaining())
+        bb.put(w)
+        fill(bb, r :: remaining.tail)
       }
     }
   }
