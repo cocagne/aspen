@@ -168,6 +168,7 @@ class LocalTaskGroup(
   
   protected var idleTasks = List[IdleTask]()
   protected var activeTasks = Map[Int, ActiveTask]()  
+  protected var noRemainingTasks: Option[Promise[Unit]] = None
   protected val idleTaskAllocater = new IdleTaskAllocater()
   
   initialTasks.foreach { rt => rt match {
@@ -221,12 +222,34 @@ class LocalTaskGroup(
     }
   }
   
+  def getAllTasksComplete(): Future[Unit] = synchronized { 
+    noRemainingTasks match {
+      case Some(p) => p.future
+      case None =>
+        if (activeTasks.isEmpty)
+          Future.unit
+        else {
+          val p = Promise[Unit]()
+          noRemainingTasks = Some(p)
+          p.future
+        }
+    }
+  }
+  
   protected def executeTask(at: ActiveTask): Unit = {
     activeTasks += (at.taskNumber -> at)
     at.task.resume()
     at.task.completed foreach { t => synchronized {
       activeTasks -= at.taskNumber
       idleTasks = IdleTask(at.taskNumber, at.taskPointer, t._1) :: idleTasks
+      if (activeTasks.isEmpty) {
+        noRemainingTasks match {
+          case None =>
+          case Some(p) => 
+            noRemainingTasks = None
+            p.success(())
+        }
+      }
     }}
   }
   

@@ -1,7 +1,5 @@
 Next Steps
   
-  Impl & Test Truncation
-  
   Switch to FileHandle for read/write
      - Share a single File instance to effectively share the current inode state
      - Track buffered writes via Map[endOffset, PendingWrite]

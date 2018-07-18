@@ -79,6 +79,12 @@ trait FileSystem {
   def getDataTableNodeSize(tierNumber: Int): Int
   
   def getDataTableNodeAllocater(tierNumber: Int): Future[ObjectAllocater]
+  
+  /** Returns a future to the completion of all currently active local tasks
+   *  
+   *  This is primarily intended for use in unit tests. 
+   */
+  def getLocalTasksCompleted(): Future[Unit]
 }
 
 object FileSystem {

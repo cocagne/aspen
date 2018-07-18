@@ -210,6 +210,25 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     }
   }
   
+  def truncate(inode: FileInode, endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
+    if (endOffset > inode.size) {
+     write(inode, endOffset - 1, List(DataBuffer(Array[Byte](0)))) 
+    }
+    else if (inode.size == endOffset) {
+      Future.successful(WriteStatus(inode.fileIndexRoot.map(DataObjectPointer(_)), 0, Nil, Future.unit))
+    } else {
+      for {
+        root <- getOrAllocateRoot(inode)
+        prep <- root.truncate(endOffset)
+      } yield {
+        val fcomplete = tx.result.map { _ =>
+          dropAllCachedNodes()
+        }
+        WriteStatus(Some(root.pointer), 0, Nil, fcomplete)
+      }
+    }
+  }
+  
   /** Specialized write method for adding to the end of a file */
   private def writeTail(
     inode: FileInode, 
@@ -273,7 +292,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
           invalidateCachedNodes(updatedNodes)
         }}
         
-        WriteStatus(newRoot.pointer, 0, Nil, fcomplete)
+        WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
       }
     }
     
@@ -283,6 +302,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
       fupdated <- begin(tailPath)
     } yield fupdated
   }
+  
   /** A single write operation cannot add content to two index nodes in the same transaction. When this
    *  condition is encountered, only the data going into the first index node will be written. The 
    *  remaining data will be returned in the future. Subsequent write operations will be needed to finish
@@ -370,7 +390,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
              (newRoot, updatedNodes) <- headPath.head.insert( allocated.map(t => t._1) )
            } yield {
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
-             WriteStatus(newRoot.pointer, 0, Nil, fcomplete)
+             WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
            }
          }
          else if (!entryContains(entries.head._1, offset)) {
@@ -401,13 +421,13 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
            } yield {
              val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, entries.head._1.offset, remaining, entries)
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
-             WriteStatus(newRoot.pointer, remainingOffset, remainingData, fcomplete)
+             WriteStatus(Some(newRoot.pointer), remainingOffset, remainingData, fcomplete)
            }
          } else {
            // Write begins in an allocated segment
            val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, offset, buffers, entries)
            
-           Future.successful(WriteStatus(headPath.last.pointer, remainingOffset, remainingData, tx.result))
+           Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, tx.result))
          }
        }
        
@@ -430,7 +450,7 @@ object IndexedFileContent {
   
   class CorruptedIndex extends FatalIndexError("Corrupted Index")
   
-  case class WriteStatus(newRoot: DataObjectPointer, remainingOffset: Long, remainingData: List[DataBuffer], writeComplete: Future[Unit])
+  case class WriteStatus(newRoot: Option[DataObjectPointer], remainingOffset: Long, remainingData: List[DataBuffer], writeComplete: Future[Unit])
   
   private case class Tail(offset: Long, pointer: DataObjectPointer, revision: ObjectRevision, size: Int)
  
@@ -506,6 +526,7 @@ object IndexedFileContent {
 
           val (tier, startOffset, maxOffset, entries) = IndexNode.decode(dos.data)
           
+          //println(s"Node ${nodePointer.uuid} tier ${tier} start $startOffset, max $maxOffset Lower Entries: ${entries.map(t => (t.offset -> t.pointer.uuid))}")
           // Delete lower entries
           val fl = entries.sortBy(e => e.offset).map { d =>
             system.retryStrategy.retryUntilSuccessful {
@@ -514,11 +535,12 @@ object IndexedFileContent {
               else {
                 system.readObject(d.pointer).flatMap { sdos => 
                   implicit val tx = system.newTransaction()
+                  //println(s"Deleting data node ${sdos.pointer.uuid}")
                   tx.setRefcount(sdos.pointer, sdos.refcount, sdos.refcount.decrement())
                   tx.commit()
                 } recover {
                   case _: InvalidObject => () // already deleted
-                  case t: Throwable => println(s"Unexpected error while deleting truncated data nodes: $t")
+                  case t: Throwable => println(s"Unexpected error while deleting truncated data node ${d.pointer.uuid}: $t")
                 }
               }
             }
@@ -526,7 +548,7 @@ object IndexedFileContent {
           
           // Delete self
           Future.sequence(fl.toList).flatMap { _ =>
-            println(s"Deleting index node ${nodePointer.uuid}")
+            //println(s"Deleting index node ${nodePointer.uuid}")
             system.retryStrategy.retryUntilSuccessful {
               system.readObject(nodePointer).flatMap { sdos => 
                 implicit val tx = system.newTransaction()
@@ -543,12 +565,12 @@ object IndexedFileContent {
         }
       }
       
-      println(s"******* STARTING FILE TRUNCATION TASK *****")
+      //println(s"******* STARTING FILE TRUNCATION TASK *****")
       system.retryStrategy.retryUntilSuccessful {
         rdelete(DataObjectPointer(state(RootPointerKey)))
       }.foreach { _ =>
         system.transactUntilSuccessful { tx =>
-          println(s"******* COMPLETED FILE TRUNCATION TASK *****")
+          //println(s"******* COMPLETED FILE TRUNCATION TASK *****")
           completeTask(tx)
           Future.unit
         }
@@ -602,11 +624,15 @@ object IndexedFileContent {
         path: List[IndexNode])(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
       
       val ftruncateData = path.head.getEntryForOffset(endOffset) match {
-        case Some(d) => path.head.index.read(d.pointer).map { dos =>
-          if (d.offset + dos.data.size > endOffset)
-            tx.overwrite(dos.pointer, dos.revision, dos.data.slice(0, (endOffset-d.offset).asInstanceOf[Int]))
-        }
-        case None => Future.failed(new CorruptedIndex)
+        case Some(d) => 
+          if (endOffset < d.offset + path.head.index.segmentSize) {
+            path.head.index.read(d.pointer).map { dos =>
+              if (d.offset + dos.data.size > endOffset)
+                tx.overwrite(dos.pointer, dos.revision, dos.data.slice(0, (endOffset-d.offset).asInstanceOf[Int]))
+            }
+          } else
+            Future.unit
+        case None => Future.unit
       }
       
       def rsplit(nodes: List[IndexNode], createdLowerNode: Option[DownPointer]): Future[DownPointer] = {
@@ -614,16 +640,18 @@ object IndexedFileContent {
           Future.successful(createdLowerNode.get)
         else {
           val node = nodes.head
-          val (keep, discard) = node.entries.partition(e => e.offset < endOffset)
+          val (keep, discard) = node.entries.partition(e => e.offset <= endOffset)
           val newEntries = createdLowerNode match {
             case None => discard.toList
-            case Some(e) => e :: discard.toList
+            case Some(e) => e :: discard.toList.filter(d => d.offset != e.offset) // replace original lower node with the new one
           }
           val updateContent = getEncodedNodeContent(node.tier, keep.toList, node.startOffset, None)
           val newContent = getEncodedNodeContent(node.tier, newEntries, endOffset, node.endOffset)
           
+          tx.overwrite(node.pointer, node.revision, updateContent)
+          
           node.index.allocateIndexNode(node.pointer, node.revision, tier=node.tier, content=newContent).flatMap { newPointer =>
-            rsplit(nodes.tail, Some(new DownPointer(endOffset, newPointer)))
+            rsplit(nodes.tail, Some(new DownPointer(node.startOffset, newPointer)))
           }
         }
       }

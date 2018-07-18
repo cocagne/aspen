@@ -9,6 +9,9 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.util.Varint
 import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.base.task.LocalTaskGroup
 
 object IndexedFileContentSuite {
   
@@ -32,17 +35,47 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
     
     val newSize = if (offset + nbytes > inode.size) offset + nbytes else inode.size
     
+    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Value] = {
+      val base = inode.content + 
+        (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newSize), tx.timestamp))
+      newRoot match {
+        case None => base
+        case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+      }
+    }
+    
     for { 
       ws <- ifc.write(inode, offset, lbytes.map(a => DataBuffer(a)))
-      newContent = inode.content + 
-        (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newSize), tx.timestamp)) +
-        (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, ws.newRoot.toArray, tx.timestamp)) 
+      newContent = getNewContent(ws.newRoot)
       _ = tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
       _ <- tx.commit()
       _ <- ws.writeComplete
     } yield {
       val adjustedSize = newSize - ws.remainingData.foldLeft(0)((sz, db) => sz + db.size)
-      (inode.update(tx.txRevision, tx.timestamp, adjustedSize, Some(ws.newRoot.toArray), inode.refcount), ws.remainingOffset, ws.remainingData)
+      (inode.update(tx.txRevision, tx.timestamp, adjustedSize, ws.newRoot.map(_.toArray), inode.refcount), ws.remainingOffset, ws.remainingData)
+    }
+  }
+  
+  def truncate(inode: FileInode, ifc: IndexedFileContent, offset: Long): Future[FileInode] = {
+    implicit val tx = sys.newTransaction()
+    
+    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Value] = {
+      val base = inode.content + 
+        (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(offset), tx.timestamp))
+      newRoot match {
+        case None => base
+        case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+      }
+    }
+    
+    for { 
+      ws <- ifc.truncate(inode, offset)
+      newContent = getNewContent(ws.newRoot)
+      _ = tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
+      _ <- tx.commit()
+      _ <- ws.writeComplete
+    } yield {
+      inode.update(tx.txRevision, tx.timestamp, offset, ws.newRoot.map(_.toArray), inode.refcount)
     }
   }
   
@@ -578,6 +611,86 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       a should be (w1)
       b should be (e1)
       c should be (e2)
+    }
+  }
+  
+  test("Truncate, single segment") {
+    implicit val tx = sys.newTransaction()
+    val w1 = Array[Byte](0,1,2,3)
+    val e  = Array[Byte](0,1,2)
+    for {
+      (fs, inode) <- boot()
+      ifc = new IndexedFileContent(fs, inode, Some(5), Some(500))
+      (inode2, _, _) <- write(inode, ifc, 0, w1)
+      a <- ifc.debugReadFully(inode2)
+      inode3 <- truncate(inode2, ifc, 3)
+      b <- ifc.debugReadFully(inode3)
+      _ <- fs.getLocalTasksCompleted()
+    } yield {
+      inode2.size should be (w1.length)
+      inode3.size should be (e.length)
+      a should be (w1)
+      b should be (e)
+    }
+  }
+  
+  test("Truncate, delete segment") {
+    implicit val tx = sys.newTransaction()
+    val w1 = Array[Byte](0,1,2,3,4,5,6,7)
+    val e  = Array[Byte](0,1,2)
+    for {
+      (fs, inode) <- boot()
+      ifc = new IndexedFileContent(fs, inode, Some(5), Some(500))
+      (inode2, _, _) <- write(inode, ifc, 0, w1)
+      a <- ifc.debugReadFully(inode2)
+      inode3 <- truncate(inode2, ifc, 3)
+      b <- ifc.debugReadFully(inode3)
+      _ <- fs.getLocalTasksCompleted()
+    } yield {
+      inode2.size should be (w1.length)
+      inode3.size should be (e.length)
+      a should be (w1)
+      b should be (e)
+    }
+  }
+  
+  test("Truncate, multi tier") {
+    implicit val tx = sys.newTransaction()
+    val w1 = Array[Byte](0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+    val e  = Array[Byte](0,1,2)
+    for {
+      (fs, inode) <- boot()
+      ifc = new IndexedFileContent(fs, inode, Some(5), Some(120))
+      (inode2, _, _) <- write(inode, ifc, 0, w1)
+      a <- ifc.debugReadFully(inode2)
+      inode3 <- truncate(inode2, ifc, 3)
+      b <- ifc.debugReadFully(inode3)
+      _ <- fs.getLocalTasksCompleted()
+    } yield {
+      inode2.size should be (w1.length)
+      inode3.size should be (e.length)
+      a should be (w1)
+      b should be (e)
+    }
+  }
+  
+  test("Truncate, multi tier to zero") {
+    implicit val tx = sys.newTransaction()
+    val w1 = Array[Byte](0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)
+    val e  = Array[Byte]()
+    for {
+      (fs, inode) <- boot()
+      ifc = new IndexedFileContent(fs, inode, Some(5), Some(120))
+      (inode2, _, _) <- write(inode, ifc, 0, w1)
+      a <- ifc.debugReadFully(inode2)
+      inode3 <- truncate(inode2, ifc, 0)
+      b <- ifc.debugReadFully(inode3)
+      _ <- fs.getLocalTasksCompleted()
+    } yield {
+      inode2.size should be (w1.length)
+      inode3.size should be (e.length)
+      a should be (w1)
+      b should be (e)
     }
   }
 }
