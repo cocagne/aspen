@@ -1,13 +1,5 @@
 Next Steps
   
-  Switch to FileHandle for read/write
-     - Share a single File instance to effectively share the current inode state
-     - Track buffered writes via Map[endOffset, PendingWrite]
-     - Track total buffered bytes. Return success immediately if buffered bytes is below a threshold
-     - Track currentWrites via var Queue[]
-          - Allows retry of head write on tx failure
-          - Allows flush to move all buffered writes to currentWrites
-  
   Replace current file read/write/truncate support with FileHandles & IndexedFileContent
   
   Remove FileIndex and all supporting/referencing code

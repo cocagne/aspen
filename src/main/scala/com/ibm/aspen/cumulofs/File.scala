@@ -7,7 +7,11 @@ import com.ibm.aspen.core.DataBuffer
 trait File extends BaseFile {
   val pointer: FilePointer
   
-  def size: Long
+  def currentInode: FileInode
+  
+  def refreshInode(newInode: Option[FileInode]=None)(implicit ec: ExecutionContext): Future[FileInode]
+  
+  def size: Long = currentInode.size
   
   def write(offset: Long, data: DataBuffer)(implicit ec: ExecutionContext): Future[Unit]
   def write(offset: Long, data: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] 

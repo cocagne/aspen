@@ -36,6 +36,20 @@ class SimpleFile(
   
   val pointer: FilePointer = inode.pointer
   
+  def currentInode: FileInode = synchronized { inode }
+  
+  def refreshInode(newInode: Option[FileInode]=None)(implicit ec: ExecutionContext): Future[FileInode] = newInode match {
+    case None =>
+      fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
+        inode = refreshedInode
+        inode
+      }}
+    case Some(i) => synchronized {
+      inode = i
+      Future.successful(i)
+    }
+  }
+  
   val index = new FileIndex(fs, cache, inode)
   
   private[this] var queuedAppendOpsCount = 0

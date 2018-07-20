@@ -3,19 +3,16 @@ package com.ibm.aspen.cumulofs
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import java.nio.ByteBuffer
+import com.ibm.aspen.core.DataBuffer
 
 trait FileHandle {
-  val pointer: FilePointer
-  val fs: FileSystem
+  val file: File
   
-  def getInode()(implicit ec: ExecutionContext): Future[FileInode] = {
-    fs.inodeLoader.load(pointer) map ( _.asInstanceOf[FileInode] )
-  }
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]]  
   
-  def size()(implicit ec: ExecutionContext): Future[Long]
-  def seek(offset: Long)(implicit ec: ExecutionContext): Future[Unit]
-  def tell()(implicit ec: ExecutionContext): Long
+  def write(offset: Long, buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit]
   
-  def read(size: Int, bb: ByteBuffer): Future[Unit]
-  def write(bb: ByteBuffer): Future[Unit]
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit]
+  
+  def flush()(implicit ec: ExecutionContext): Future[Unit]
 }
