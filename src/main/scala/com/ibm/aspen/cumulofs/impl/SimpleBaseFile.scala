@@ -95,20 +95,19 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
   private[this] val pendingOps = new java.util.concurrent.ConcurrentLinkedQueue[FileOperation]()
   private[this] var activeOp: Option[FileOperation] = None
   
-  protected def inode: Inode
-  protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit
+  protected def cachedInode: Inode
   
-  def mode: Int = synchronized { inode.mode }
-  def uid: Int = synchronized { inode.uid }
-  def gid: Int = synchronized { inode.gid }
-  def ctime: Timespec = synchronized { inode.ctime }
-  def mtime: Timespec = synchronized { inode.mtime }
-  def atime: Timespec = synchronized { inode.atime }
+  def mode: Int = synchronized { cachedInode.mode }
+  def uid: Int = synchronized { cachedInode.uid }
+  def gid: Int = synchronized { cachedInode.gid }
+  def ctime: Timespec = synchronized { cachedInode.ctime }
+  def mtime: Timespec = synchronized { cachedInode.mtime }
+  def atime: Timespec = synchronized { cachedInode.atime }
   
-  def linkCount: Int = synchronized { inode.refcount.count - 1 }
+  def linkCount: Int = synchronized { cachedInode.refcount.count - 1 }
  
   def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit] = {
-    val iptr = synchronized { inode.pointer }
+    val iptr = synchronized { cachedInode.pointer }
     enqueueOp(SetMode(pointer, newMode))
   }
   
@@ -160,7 +159,7 @@ abstract class SimpleBaseFile(val fs: FileSystem) extends BaseFile {
     def attempt(): Future[(ObjectRevision, HLCTimestamp, Map[Key,Value], Option[ObjectRefcount])] = {
       implicit val tx = fs.system.newTransaction()
       
-      val icopy = synchronized { inode }
+      val icopy = synchronized { cachedInode }
       
       val r = op.attempt(icopy)
       

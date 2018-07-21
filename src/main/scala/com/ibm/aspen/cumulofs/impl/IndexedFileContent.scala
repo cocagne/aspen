@@ -217,14 +217,20 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     else if (inode.size == endOffset) {
       Future.successful(WriteStatus(inode.fileIndexRoot.map(DataObjectPointer(_)), 0, Nil, Future.unit))
     } else {
+      def truncateOrDelete(root: IndexNode): Future[Option[DataObjectPointer]] = {
+        if (endOffset == 0)
+          prepareIndexDeletionTask(fs, root.pointer).map(_ => None)
+        else
+          root.truncate(endOffset).map(_ => Some(root.pointer))
+      }
       for {
         root <- getOrAllocateRoot(inode)
-        prep <- root.truncate(endOffset)
+        optr <- truncateOrDelete(root)
       } yield {
         val fcomplete = tx.result.map { _ =>
           dropAllCachedNodes()
         }
-        WriteStatus(Some(root.pointer), 0, Nil, fcomplete)
+        WriteStatus(optr, 0, Nil, fcomplete)
       }
     }
   }

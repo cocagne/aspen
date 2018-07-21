@@ -15,7 +15,7 @@ class SimpleFileLoader extends FileLoader {
       allocater <- falloc
       inode <- finode 
     } yield {
-     new SimpleFile(fs, FileIndex.NoCache, fs.defaultSegmentSize, allocater, inode) 
+     new SimpleFile(fs, inode) 
     }
   }
 }

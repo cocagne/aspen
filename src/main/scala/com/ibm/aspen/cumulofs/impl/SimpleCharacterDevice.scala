@@ -23,24 +23,24 @@ object SimpleCharacterDevice {
 }
 
 class SimpleCharacterDevice(
-    protected var inode: CharacterDeviceInode,
+    protected var cachedInode: CharacterDeviceInode,
     fs: FileSystem) extends SimpleBaseFile(fs) with CharacterDevice {
   
   import SimpleCharacterDevice._
   
-  val pointer: CharacterDevicePointer = inode.pointer
+  val pointer: CharacterDevicePointer = synchronized { cachedInode.pointer }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
+    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
+      cachedInode = refreshedInode
     }}
   }
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new CharacterDeviceInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+   cachedInode = new CharacterDeviceInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
-  def rdev: Int = { inode.rdev }
+  def rdev: Int = { cachedInode.rdev }
   
   def setrdev(newrdev: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetDeviceType(rdev))
    

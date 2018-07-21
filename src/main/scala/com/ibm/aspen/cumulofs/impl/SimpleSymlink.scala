@@ -21,26 +21,26 @@ object SimpleSymlink {
 }
 
 class SimpleSymlink(
-    protected var inode: SymlinkInode,
+    protected var cachedInode: SymlinkInode,
     fs: FileSystem) extends SimpleBaseFile(fs) with Symlink {
   
   import SimpleSymlink._
   
-  val pointer: SymlinkPointer = inode.pointer
+  val pointer: SymlinkPointer = synchronized { cachedInode.pointer }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
+    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
+      cachedInode = refreshedInode
     }}
   }
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new SymlinkInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+   cachedInode = new SymlinkInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
-  def size: Int = synchronized { inode.size }
+  def size: Int = synchronized { cachedInode.size }
   
-  def link: String = synchronized { inode.link }
+  def link: String = synchronized { cachedInode.link }
   
   def setLink(newLink: String)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetLink(newLink))
 }

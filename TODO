@@ -1,8 +1,6 @@
 Next Steps
   
-  Replace current file read/write/truncate support with FileHandles & IndexedFileContent
-  
-  Remove FileIndex and all supporting/referencing code
+  * Test new file content impl
      
   * Improve CumuloFS feature set
       - Need the basics working well

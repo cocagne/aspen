@@ -4,6 +4,10 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.Value
 
 trait BaseFile {
   val pointer: InodePointer
@@ -42,4 +46,6 @@ trait BaseFile {
   
   /** Frees all objects owned by the inode */
   def freeResources()(implicit ec: ExecutionContext): Future[Unit] = Future.unit
+  
+  def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit
 }

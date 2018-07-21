@@ -31,20 +31,20 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.cumulofs.BaseFile
 
 class SimpleDirectory(
-    protected var inode: DirectoryInode,
+    protected var cachedInode: DirectoryInode,
     fs: FileSystem) extends SimpleBaseFile(fs) with Directory {
   
-  val pointer: DirectoryPointer = inode.pointer
+  val pointer: DirectoryPointer = synchronized { cachedInode.pointer }
   
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new DirectoryInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+   cachedInode = new DirectoryInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
+    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
+      cachedInode = refreshedInode
     }}
   }
   

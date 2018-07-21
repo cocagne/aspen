@@ -19,6 +19,8 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.util.Varint
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.cumulofs.Inode
+import com.ibm.aspen.cumulofs.Timespec
 
 object SimpleFileHandle {
   
@@ -120,12 +122,12 @@ class SimpleFileHandle(
   
   import SimpleFileHandle._
   
-  val ifc = new IndexedFileContent(file.fs, file.currentInode)
+  val ifc = new IndexedFileContent(file.fs, file.inode)
   
   private[this] val writeQueue = new WriteQueue()
   private[this] var writeInProgress = false
   
-  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = ifc.read(file.currentInode, offset, nbytes)
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = ifc.read(file.inode, offset, nbytes)
   
   def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit] = synchronized {
     val fcomplete = writeQueue.enqueueTruncation(offset)
@@ -179,15 +181,15 @@ class SimpleFileHandle(
     // Fail only if the inode has been deleted or a corrupted object is encountered
     def onAttemptFailure(t: Throwable): Future[Unit] = t match { 
       case t: CorruptedObject => abort(t)
-      case _ => file.refreshInode().map(_ => ()).recover { case t: InvalidObject => abort(t) }
+      case _ => file.refresh().recover { case t: InvalidObject => abort(t) }
     }
     
     val ftx = file.fs.system.transactUntilSuccessfulWithRecovery(onAttemptFailure _) { implicit tx =>
       
-      ifc.truncate(file.currentInode, tr.newFileEnd) map { ws =>
-        val inode = file.currentInode
+      ifc.truncate(file.inode, tr.newFileEnd) map { ws =>
+        val inode = file.inode
         
-        val base = inode.content + 
+        val base = inode.content + Inode.setMtime(Timespec.now) +
           (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(tr.newFileEnd), tx.timestamp))
           
         val newContent = ws.newRoot match {
@@ -197,13 +199,14 @@ class SimpleFileHandle(
         
         tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
         
-        inode.update(tx.txRevision, tx.timestamp, tr.newFileEnd, ws.newRoot.map(_.toArray), inode.refcount)
+        (tx.txRevision, tx.timestamp, newContent)
       }
     }
     
-    ftx.foreach { updatedInode => 
+    ftx.foreach { t => 
       synchronized {
-        file.refreshInode(Some(updatedInode))
+        //updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit
+        file.updateInode(t._1, t._2, t._3, None)
         writeInProgress = false
         beginNextWrite()
       }
@@ -224,7 +227,7 @@ class SimpleFileHandle(
     // Fail only if the inode has been deleted or a corrupted object is encountered
     def onAttemptFailure(t: Throwable): Future[Unit] = t match { 
       case t: CorruptedObject => abort(t)
-      case _ => file.refreshInode().map(_ => ()).recover { case t: InvalidObject => abort(t) }
+      case _ => file.refresh().recover { case t: InvalidObject => abort(t) }
     }
     
     def writeSome(writeOffset: Long, writeBuffs: List[DataBuffer]): Unit = {
@@ -240,13 +243,13 @@ class SimpleFileHandle(
     
         val ftx = file.fs.system.transactUntilSuccessfulWithRecovery(onAttemptFailure _) { implicit tx =>
           
-          ifc.write(file.currentInode, writeOffset, writeBuffs).map { ws =>
-            val inode = file.currentInode
+          ifc.write(file.inode, writeOffset, writeBuffs).map { ws =>
+            val inode = file.inode
             val nwritten = totalBytes - bufferedSize(ws.remainingData)
             
             val newSize = if (writeOffset + nwritten > inode.size) writeOffset + nwritten else inode.size
             
-            val base = inode.content + 
+            val base = inode.content + Inode.setMtime(Timespec.now) + 
               (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newSize), tx.timestamp))
               
             val newContent = ws.newRoot match {
@@ -258,13 +261,13 @@ class SimpleFileHandle(
             
             val updatedInode = inode.update(tx.txRevision, tx.timestamp, newSize, ws.newRoot.map(_.toArray), inode.refcount)
             
-            (ws.remainingOffset, ws.remainingData, updatedInode)
+            (ws.remainingOffset, ws.remainingData, tx.txRevision, tx.timestamp, newContent)
           }
         }
         
         ftx.foreach { t =>
-          val (remainingOffset, remainingData, updatedInode) = t
-          file.refreshInode(Some(updatedInode))
+          val (remainingOffset, remainingData, rev, ts, newContent) = t
+          file.updateInode(rev, ts, newContent, None)
           writeSome(remainingOffset, remainingData)
         }
       }

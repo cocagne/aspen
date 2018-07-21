@@ -13,19 +13,19 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.ObjectRefcount
 
 class SimpleFIFO(
-    protected var inode: FIFOInode,
+    protected var cachedInode: FIFOInode,
     fs: FileSystem) extends SimpleBaseFile(fs) with FIFO {
   
-  val pointer: FIFOPointer = inode.pointer
+  val pointer: FIFOPointer = synchronized { cachedInode.pointer }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
+    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
+      cachedInode = refreshedInode
     }}
   }
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new FIFOInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+   cachedInode = new FIFOInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
 }

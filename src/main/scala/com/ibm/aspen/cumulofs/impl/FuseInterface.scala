@@ -45,6 +45,7 @@ import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
 import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
 import java.util.UUID
+import com.ibm.aspen.cumulofs.FileHandle
 
 object FuseInterface {
   def toFuseFileType(ft: CumuloFileType.Value): FuseFileType.Value = ft match {
@@ -98,8 +99,8 @@ class FuseInterface(
 {
   import FuseInterface._
   
-  var openFiles = Map[Long, File]()    // InodeNumber -> open file
-  var fileHandles = Map[Long, File]()  // FileHandle -> open file
+  var openFiles = Map[Long, File]()          // InodeNumber -> open file
+  var fileHandles = Map[Long, FileHandle]()  // FileHandle -> open file
   var openDirs = Set[Long]()
   var nextfd = 1L
   
@@ -214,7 +215,7 @@ class FuseInterface(
         response.error(LinuxAPI.ENOENT)
       case Success(Some(file: File)) => synchronized {
         openFiles += (file.pointer.number -> file)  
-        fileHandles += (fd -> file)
+        fileHandles += (fd -> new SimpleFileHandle(file, 0))
         response.ok(new OpenReply(fd, request.flags))
       }
       case Success(Some(other)) => 
@@ -227,11 +228,11 @@ class FuseInterface(
   override def read(request: ReadRequest, response: Response[DataReply]): Unit = synchronized {
     fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
-      case Some(file) => file.read(request.offset, request.size.asInstanceOf[Int]).onComplete { 
+      case Some(handle) => handle.read(request.offset, request.size.asInstanceOf[Int]).onComplete { 
         case Failure(cause) => response.error(LinuxAPI.EIO)
         case Success(odata) => odata match {
           case None => response.error(LinuxAPI.EIO)
-          case Some(db) => response.ok(DataReply(db))
+          case Some(db) => response.ok(DataReply(db.asReadOnlyBuffer()))
         }
       }
     }
@@ -242,9 +243,9 @@ class FuseInterface(
       case None =>
         println(s"File handle not found!")
         response.error(LinuxAPI.EINVAL)
-      case Some(file) =>
+      case Some(handle) =>
         println(s"Writing ${request.data.remaining()}")
-        file.write(request.offset, DataBuffer(request.data)).onComplete { 
+        handle.write(request.offset, List(DataBuffer(request.data))).onComplete { 
           case Failure(cause) =>
             println(s"Write request ERROR. Unique id ${request.unique}. Cause: $cause")
             response.error(LinuxAPI.EIO)
@@ -279,7 +280,7 @@ class FuseInterface(
                 else if (newSize == f.size)
                   response.ok(new GetAttrReply(1, 0, stat(f)))
                 else {
-                  f.truncate(newSize) onComplete {
+                  new SimpleFileHandle(f,0).truncate(newSize) onComplete {
                     case Failure(cause) => response.error(LinuxAPI.EIO)
                     case Success(_) =>
                       println(s"Truncation Op Completed! Returning new stat with size: ${f.size}")

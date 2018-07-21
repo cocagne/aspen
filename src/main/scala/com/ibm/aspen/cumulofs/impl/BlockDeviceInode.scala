@@ -22,24 +22,24 @@ object SimpleBlockDevice {
 }
 
 class SimpleBlockDevice(
-    protected var inode: BlockDeviceInode,
+    protected var cachedInode: BlockDeviceInode,
     fs: FileSystem) extends SimpleBaseFile(fs) with BlockDevice {
   
   import SimpleBlockDevice._
   
-  val pointer: BlockDevicePointer = inode.pointer
+  val pointer: BlockDevicePointer = synchronized { cachedInode.pointer }
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(inode.pointer).map { refreshedInode => synchronized {
-      inode = refreshedInode
+    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
+      cachedInode = refreshedInode
     }}
   }
   
-  override protected def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = {
-   inode = new BlockDeviceInode(inode.pointer, newRevision, newRefcount.getOrElse(inode.refcount), newTimestamp, updatedState)
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+   cachedInode = new BlockDeviceInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
-  def rdev: Int = { inode.rdev }
+  def rdev: Int = { cachedInode.rdev }
   
   def setrdev(newrdev: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetDeviceType(rdev))
    

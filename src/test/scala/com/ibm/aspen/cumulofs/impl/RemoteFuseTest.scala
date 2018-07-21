@@ -50,7 +50,7 @@ object RemoteFuseTest {
       newFilePointer <- rootDir.createFile("hello_world", mode=0x1A4, uid=1, gid=2)
       file <- fs.loadFile(newFilePointer)
       db = DataBuffer("CumuloFS Lives!!!!\n".getBytes(StandardCharsets.UTF_8))
-      _ <- file.append(db)
+      _ <- new SimpleFileHandle(file, 0).write(0, db)
       
     } yield fs 
   }
