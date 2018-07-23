@@ -26,17 +26,24 @@ lazy val root = (project in file(".")).
     resolvers += "mvnrepository" at "http://mvnrepository.com/artifact/",
 
     libraryDependencies ++= Seq(
-      "org.scalatest"       %% "scalatest"      % "3.0.4" % "test",
-      "com.github.blemale"  %% "scaffeine"      % "2.5.0" % "compile",
-      "org.rocksdb"         %  "rocksdbjni"     % "5.5.1",
-      "org.json4s"          %% "json4s-native"  % "3.6.0-M2",
-      "org.json4s"          %% "json4s-jackson" % "3.6.0-M2",
-      "org.xerial.snappy"   %  "snappy-java"    % "1.1.7.1",
-      "net.java.dev.jna"    %  "jna"            % "4.5.0",
-      "net.java.dev.jna"    %  "jna-platform"   % "4.5.0",
-      "org.yaml"            %  "snakeyaml"      % "1.21",
-      "com.github.scopt"    %% "scopt"          % "3.7.0",
-      "io.netty"            %  "netty-all"          % "4.1.25.Final",
+      "org.scalatest"                    %% "scalatest"               % "3.0.4" % "test",
+      "com.github.blemale"               %% "scaffeine"               % "2.5.0" % "compile",
+      "org.rocksdb"                      %  "rocksdbjni"              % "5.5.1",
+      "org.json4s"                       %% "json4s-native"           % "3.6.0-M2",
+      "org.json4s"                       %% "json4s-jackson"          % "3.6.0-M2",
+      "org.xerial.snappy"                %  "snappy-java"             % "1.1.7.1",
+      "net.java.dev.jna"                 %  "jna"                     % "4.5.0",
+      "net.java.dev.jna"                 %  "jna-platform"            % "4.5.0",
+      "org.yaml"                         %  "snakeyaml"               % "1.21",
+      "com.github.scopt"                 %% "scopt"                   % "3.7.0",
+      "io.netty"                         %  "netty-all"               % "4.1.25.Final",
+      "org.apache.logging.log4j"         %  "log4j-api"               % "2.11.0",
+      "org.apache.logging.log4j"         %  "log4j-core"              % "2.11.0",
+      "org.apache.logging.log4j"         %% "log4j-api-scala"         % "11.0",
+      "com.fasterxml.jackson.core"       %  "jackson-core"            % "2.9.4",
+      "com.fasterxml.jackson.core"       %  "jackson-databind"        % "2.9.4",
+      "com.fasterxml.jackson.dataformat" %  "jackson-dataformat-yaml" % "2.9.4",
+      "com.lmax"                         %  "disruptor"               % "3.3.7"
     )
   )
   

@@ -229,9 +229,13 @@ class FuseInterface(
     fileHandles.get(request.fileHandle) match {
       case None => response.error(LinuxAPI.EINVAL)
       case Some(handle) => handle.read(request.offset, request.size.asInstanceOf[Int]).onComplete { 
-        case Failure(cause) => response.error(LinuxAPI.EIO)
+        case Failure(cause) =>
+          println(s"*** READ ERROR: $cause")
+          response.error(LinuxAPI.EIO)
         case Success(odata) => odata match {
-          case None => response.error(LinuxAPI.EIO)
+          case None =>
+            println("ZERO BYTE READ")
+            response.ok(DataReply(ByteBuffer.allocate(0)))
           case Some(db) => response.ok(DataReply(db.asReadOnlyBuffer()))
         }
       }

@@ -31,9 +31,11 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
   
   private val inodePointer = inode.pointer
   
+  def refresh()(implicit ec: ExecutionContext): Future[Unit] = refreshRoot.map(_=>())
+  
   private def refreshRoot()(implicit ec: ExecutionContext): Future[IndexNode] = {
     
-    dropAllCachedNodes()
+    dropCache()
     
     fs.inodeLoader.load(inodePointer) flatMap { inode => 
       inode.fileIndexRoot() match {
@@ -47,7 +49,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
   private def getOrAllocateRoot(inode: FileInode)(implicit tx: Transaction, ec: ExecutionContext): Future[IndexNode] = {
     inode.fileIndexRoot match {
       case None =>
-        dropAllCachedNodes()
+        dropCache()
         
         val content = IndexNode.getEncodedNodeContent()
         
@@ -68,7 +70,10 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
   
   private val cache: Cache[UUID, IndexNode] = Scaffeine().maximumSize(50).build[UUID, IndexNode]()
   
-  private def dropAllCachedNodes(): Unit = cache.invalidateAll()
+  private def dropCache(): Unit = synchronized {
+    otail = None
+    cache.invalidateAll()
+  }
   
   private def invalidateCachedNodes(l: List[IndexNode]): Unit = l.foreach(n => cache.invalidate(n.uuid))
   
@@ -107,6 +112,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     inode.fileIndexRoot() match {
       case None => Future.successful(None)
       case Some(arr) =>
+        println(s"HAVE ROOT NODE: ${DataObjectPointer(arr).uuid}")
         val bb = ByteBuffer.allocate(nbytes)
         //println(s"Loading index")
         load(DataObjectPointer(arr)).flatMap { node =>
@@ -228,7 +234,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
         optr <- truncateOrDelete(root)
       } yield {
         val fcomplete = tx.result.map { _ =>
-          dropAllCachedNodes()
+          dropCache()
         }
         WriteStatus(optr, 0, Nil, fcomplete)
       }

@@ -181,7 +181,7 @@ class SimpleFileHandle(
     // Fail only if the inode has been deleted or a corrupted object is encountered
     def onAttemptFailure(t: Throwable): Future[Unit] = t match { 
       case t: CorruptedObject => abort(t)
-      case _ => file.refresh().recover { case t: InvalidObject => abort(t) }
+      case _ => file.refresh().flatMap(_ => ifc.refresh()).recover { case t: InvalidObject => abort(t) }
     }
     
     val ftx = file.fs.system.transactUntilSuccessfulWithRecovery(onAttemptFailure _) { implicit tx =>
@@ -193,7 +193,7 @@ class SimpleFileHandle(
           (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(tr.newFileEnd), tx.timestamp))
           
         val newContent = ws.newRoot match {
-          case None => base
+          case None => base - FileInode.FileIndexRootKey
           case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
         }
         
@@ -227,7 +227,7 @@ class SimpleFileHandle(
     // Fail only if the inode has been deleted or a corrupted object is encountered
     def onAttemptFailure(t: Throwable): Future[Unit] = t match { 
       case t: CorruptedObject => abort(t)
-      case _ => file.refresh().recover { case t: InvalidObject => abort(t) }
+      case _ => file.refresh().flatMap(_ => ifc.refresh()).recover { case t: InvalidObject => abort(t) }
     }
     
     def writeSome(writeOffset: Long, writeBuffs: List[DataBuffer]): Unit = {

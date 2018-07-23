@@ -950,7 +950,7 @@ object NetworkCodec {
     P.AllocationStatusReply.addTo(builder, to)
     P.AllocationStatusReply.addFrom(builder, from)
     P.AllocationStatusReply.addAllocationTransactionUuid(builder, encode(builder, o.allocationTransactionUUID))
-    P.AllocationStatusRequest.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
+    P.AllocationStatusReply.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
     o.transactionStatus.foreach { status =>
       P.AllocationStatusReply.addKnown(builder, 1)
       P.AllocationStatusReply.addTransactionStatus(builder, encodeTransactionStatus(status))  

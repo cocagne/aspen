@@ -6,6 +6,8 @@ import com.ibm.aspen.core.objects.ObjectPointer
 
 sealed abstract class ReadError(msg: String) extends Exception(msg) {
   val pointer: ObjectPointer
+  
+  override def toString(): String = s"${this.getClass.getSimpleName}(${pointer.getClass.getSimpleName}:${pointer.uuid})"
 }
 
 
