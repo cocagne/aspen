@@ -112,7 +112,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     inode.fileIndexRoot() match {
       case None => Future.successful(None)
       case Some(arr) =>
-        println(s"HAVE ROOT NODE: ${DataObjectPointer(arr).uuid}")
+        
         val bb = ByteBuffer.allocate(nbytes)
         //println(s"Loading index")
         load(DataObjectPointer(arr)).flatMap { node =>

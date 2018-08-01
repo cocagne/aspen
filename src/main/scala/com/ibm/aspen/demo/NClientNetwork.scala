@@ -74,7 +74,7 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
     }
     else if (p.resolved() != null) {
       val message = NetworkCodec.decode(p.resolved())
-      println(s"tx resolved ${message.transactionUUID} comitted = ${message.committed}")
+      
       t.foreach(receiver => receiver.receive(message))
     }
     else if (p.finalized() != null) {
@@ -113,7 +113,7 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
     val msg = encodeMessage(message, Some(updateContent))
     
     val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
-    println(s"Sending prepare txid ${message.txd.transactionUUID} for objects: ${sb.toString()}")
+    
     stores(message.to).send(msg)
   }
 }

@@ -136,18 +136,19 @@ object ConfigFile {
     def create(o: Object): Endpoint = Endpoint(host.get(o), port.get(o))
   }
   
-  case class StorageNode(name: String, uuid: UUID, endpoint: Endpoint, crl: StorageBackend, stores: List[DataStore])
+  case class StorageNode(name: String, uuid: UUID, endpoint: Endpoint, log4jConfigFile: File, crl: StorageBackend, stores: List[DataStore])
   
   object StorageNode extends YObject[StorageNode] {
-    val name     = Required("name",     YString)
-    val uuid     = Required("uuid",     YUUID)
-    val endpoint = Required("endpoint", Endpoint)
-    val crl      = Required("crl",      Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
-    val stores   = Required("stores",   YList(DataStore))
+    val name      = Required("name",         YString)
+    val uuid      = Required("uuid",         YUUID)
+    val endpoint  = Required("endpoint",     Endpoint)
+    val log4jConf = Required("log4j-config", YFile)
+    val crl       = Required("crl",          Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
+    val stores    = Required("stores",       YList(DataStore))
     
-    val attrs = name :: uuid :: endpoint :: crl :: stores :: Nil
+    val attrs = name :: uuid :: endpoint :: log4jConf :: crl :: stores :: Nil
     
-    def create(o: Object): StorageNode = StorageNode(name.get(o), uuid.get(o), endpoint.get(o), crl.get(o), stores.get(o))
+    def create(o: Object): StorageNode = StorageNode(name.get(o), uuid.get(o), endpoint.get(o), log4jConf.get(o), crl.get(o), stores.get(o))
   }
   
   object YStorePointer  extends YObject[StorePointer] {

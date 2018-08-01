@@ -73,7 +73,7 @@ class StorageNode(
     transactionManager: StorageNodeTransactionManager,
     allocationManager: StorageNodeAllocationManager) 
     
-  private[this] val missedUpdatePoller = BackgroundTask.schedulePeriodic(Duration(5, SECONDS), callNow=false) {
+  private[this] val missedUpdatePoller = BackgroundTask.schedulePeriodic(Duration(15, SECONDS), callNow=false) {
     val ssnap = synchronized { stores }
     ssnap.values.foreach( _.pollAndRepairMissedUpdates(system) )
   }

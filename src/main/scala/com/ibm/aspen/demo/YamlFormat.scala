@@ -1,6 +1,7 @@
 package com.ibm.aspen.demo
 
 import java.util.UUID
+import java.io.File
 
 object YamlFormat {
   
@@ -20,6 +21,17 @@ object YamlFormat {
   object YString extends Format[String] {
     override def format(o: Object): String = o match {
       case v: java.lang.String => v
+      case _ => throw new FormatError(s"String Required")
+    }
+  }
+  
+  object YFile extends Format[File] {
+    override def format(o: Object): File = o match {
+      case v: java.lang.String => 
+        val f = new File(v)
+        if (!f.exists())
+          throw new FormatError(s"File Not Found: $v")
+        f
       case _ => throw new FormatError(s"String Required")
     }
   }

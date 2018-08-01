@@ -1,5 +1,27 @@
+
+* KeyValue Read & Rebuild changes
+   - When reading, we need to support aggregate reads
+      - objects A&B have commit 1, B&C have commit 2, none of the objects will have the same set of revisions
+      - must change to getting a threshold of each update for reconstruction
+   - For rebuild, we just need to ensure that it's a superset only (prevents old read from corrupting the object)
+   
+* Full audit of flow for transaction start to finish
+   - Need to figure out how messages can be lost
+   - Should NEVER have transactions fail during unit test
+   ***** Double check synchronized blocks all the way through for message delivery
+   ***** "Miss" could happen if the Tx isn't created locally so messages can't be delivered
+
+* Add toggle that requires 100% message responses
+   - Look for hangups
+
+* Re-add the filter for not re-reading from stores that have already responded
+   - Add safety that drops read results after a while to prevent hard stalls
+
 Next Steps
-  
+
+  * Add DeleteFinalizationAction
+     - TransactionBuilder auto-adds finalizer when refcount is set to zero
+
   * Test new file content impl
      
   * Improve CumuloFS feature set
@@ -12,7 +34,6 @@ Next Steps
     
   * Simplify KeyValueRequirement handling
   
-  * Remove From Allocation Table on Tx set refcount to 0
  
   
 Basic Error Handling
@@ -72,7 +93,7 @@ Bootstrap Procedure:
     rm -r ~/temp/aspen/*
     ./target/pack/bin/demo bootstrap local/t.yaml
     emacs local/cfg.yaml
-    ./target/pack/bin/demo cumulofs local/cfg.yaml 192.168.227.4 1111
+    ./target/pack/bin/demo cumulofs local/cfg.yaml local/cumulofs-log4j.yaml 192.168.227.4 1111
     
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a

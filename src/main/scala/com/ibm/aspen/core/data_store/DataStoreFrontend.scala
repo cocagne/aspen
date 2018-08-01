@@ -46,6 +46,8 @@ import com.ibm.aspen.base.MissedUpdateIterator
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.core.read.OpportunisticRebuild
+import org.apache.logging.log4j.scala.Logging
+import org.apache.logging.log4j.LogManager
 
 object DataStoreFrontend {
   
@@ -68,6 +70,13 @@ class DataStoreFrontend(
   
   import DataStoreFrontend._
   
+  object log {
+    val rebuild = LogManager.getLogger(this.getClass.getName + ".rebuild")
+    val alloc  = LogManager.getLogger(this.getClass.getName + ".alloc")
+    val read  = LogManager.getLogger(this.getClass.getName + ".read")
+    val tx  = LogManager.getLogger(this.getClass.getName + ".tx")
+  }
+  
   override implicit val executionContext: ExecutionContext = backend.executionContext
   
   private[this] var objectLoader = new MutableObjectLoader(backend)
@@ -83,7 +92,8 @@ class DataStoreFrontend(
   
   private[this] var ofrepair: Option[Future[(StoragePool, MutableTieredKeyValueList)]] = None
   private[this] var repairing = false
-  private[this] var activeRebuilds = Map[UUID, Future[Unit]]()
+  private[this] var activeRebuilds = Set[UUID]()
+  private[this] var pendingRebuilds = Map[UUID, List[() => Unit]]()
   
   override val initialized: Future[DataStore] = synchronized {
     
@@ -139,6 +149,13 @@ class DataStoreFrontend(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
     
+    def otype(): String = options match {
+      case _: DataAllocationOptions => "Data"
+      case _: KeyValueAllocationOptions => "KeyValue"
+    }
+    
+    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for ${otype()} object $newObjectUUID")
+    
     val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), initialRefcount, timestamp)
         
     backend.allocateObject(newObjectUUID, md, objectData) map { e => e match {
@@ -166,6 +183,7 @@ class DataStoreFrontend(
   }
   
   def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = {
+    log.alloc.info(s"$storeId alloc tx ${ars.allocationTransactionUUID} resolved. Committed = $committed")
     allocationRecoveryComplete(ars, committed)
   }
     
@@ -197,7 +215,9 @@ class DataStoreFrontend(
   }
   
   override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
-    case None => Future.successful(Left(new InvalidLocalPointer))
+    case None =>
+      log.read.info(s"$storeId read INVALID object ${pointer.uuid}")
+      Future.successful(Left(new InvalidLocalPointer))
     
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
@@ -205,8 +225,11 @@ class DataStoreFrontend(
       synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
       } map { e => e match {
-        case Left(err) => Left(err)
+        case Left(err) =>
+          log.read.info(s"$storeId read object ${pointer.uuid}. Error $err")
+          Left(err)
         case Right(obj) => synchronized {
+          log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
           obj.completeOperation(readUUID)
           //println(s"getObject ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.data, obj.locks))
@@ -221,7 +244,9 @@ class DataStoreFrontend(
    *  getObject
    */
   override def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]] = pointer.getStorePointer(storeId) match {
-    case None => Future.successful(Left(new InvalidLocalPointer))
+    case None =>
+      log.read.info(s"$storeId readMeta INVALID object ${pointer.uuid}")
+      Future.successful(Left(new InvalidLocalPointer))
     
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
@@ -229,8 +254,11 @@ class DataStoreFrontend(
       synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
       } map { e => e match {
-        case Left(err) => Left(err)
+        case Left(err) =>
+          log.read.info(s"$storeId readMeta object ${pointer.uuid}. Error $err")
+          Left(err)
         case Right(obj) => synchronized {
+          log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
           obj.completeOperation(readUUID)
           //println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
           Right((obj.metadata, obj.locks))
@@ -240,7 +268,9 @@ class DataStoreFrontend(
   
  
   override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
-    case None => Future.successful(Left(new InvalidLocalPointer))
+    case None =>
+      log.read.info(s"$storeId readData INVALID object ${pointer.uuid}")
+      Future.successful(Left(new InvalidLocalPointer))
     
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
@@ -248,8 +278,11 @@ class DataStoreFrontend(
       synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadData()
       } map { e => e match {
-        case Left(err) => Left(err)
+        case Left(err) => 
+          log.read.info(s"$storeId readData object ${pointer.uuid}. Error $err")
+          Left(err)
         case Right(obj) => synchronized {
+          log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
           obj.completeOperation(readUUID)
           //println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
           Right((obj.data, obj.locks))
@@ -258,14 +291,20 @@ class DataStoreFrontend(
   }
   
   private[this] def tryLock(st: StoreTransaction): Unit = synchronized {
-    if (st.checkRequirementsAndLock())
-      lockedTransactions += (st.txd.transactionUUID -> st)
+    if (!lockedTransactions.contains(st.txd.transactionUUID)) {
+      if (st.checkRequirementsAndLock())
+        lockedTransactions += (st.txd.transactionUUID -> st)
+    }
   }
   
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
-    val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
-    st.objectsLoaded.foreach(_ => tryLock(st))
-    st.lockPromise.future
+    lockedTransactions.get(txd.transactionUUID) match {
+      case Some(st) => st.lockPromise.future
+      case None =>
+        val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
+        st.objectsLoaded.foreach(_ => tryLock(st))
+        st.lockPromise.future        
+    }
   }
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
@@ -300,6 +339,7 @@ class DataStoreFrontend(
   }
   
   def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
+    log.tx.info(s"$storeId tx: ${txd.transactionUUID} discarding transaction")
     lockedTransactions.get(txd.transactionUUID) foreach { st =>
       lockedTransactions -= txd.transactionUUID
       releaseLocks(st)
@@ -313,6 +353,8 @@ class DataStoreFrontend(
     else
       repairing = true
       
+    log.rebuild.info(s"$storeId beginning poll of error log for missed updates")
+    
     val frepair = ofrepair match { 
       case Some(f) => f
       case None => 
@@ -331,6 +373,7 @@ class DataStoreFrontend(
       iter = pool.createMissedUpdateIterator(storeId.poolIndex)
       _ <- repairMissedUpdates(system, tree, iter)
     } yield {
+      log.rebuild.info(s"$storeId completed poll of error log")
       synchronized { repairing = false }
     }
   }
@@ -343,21 +386,24 @@ class DataStoreFrontend(
     } yield ov.map(v => ObjectPointer.fromArray(v.value))
     
     def next(): Unit = {
+      log.rebuild.info(s"$storeId fetching next missed update entry")
       iter.fetchNext() foreach { _ =>
         iter.entry match {
-          case None => promise.success(())
+          case None =>
+            log.rebuild.info(s"$storeId missed update entries exhausted")
+            promise.success(())
           
-          case Some(entry) => 
-            println(s"Beginning repairs for object ${entry.objectUUID}")
-            val frepair = getObjectPointer(entry.objectUUID).flatMap { optr => repair(system, entry, optr).flatMap(_ => iter.markRepaired()) }
+          case Some(entry) =>
+            log.rebuild.info(s"$storeId found missed update for object ${entry.objectUUID}")
             
+            val frepair = getObjectPointer(entry.objectUUID).flatMap { optr => repair(system, entry, optr).flatMap(_ => iter.markRepaired()) }
             
             frepair onComplete {
               case Success(_) =>
-                println(s"Completed repairs of ${entry.objectUUID}")
                 next()
+                
               case Failure(t) => 
-                println(s"REPAIR ERROR: $t")
+                log.rebuild.error(s"$storeId failed to repair object ${entry.objectUUID}: $t")
                 next() // Could be a transient error. 
             }
         }
@@ -369,12 +415,28 @@ class DataStoreFrontend(
     promise.future
   }
   
+  
+  private def rebuildFinished(objectUUID: UUID): Unit = synchronized {
+    // Check to see if another rebuild for this object is pending. If so kick it off
+    activeRebuilds -= objectUUID
+    
+    pendingRebuilds.get(objectUUID).foreach { lst =>
+      val fn = lst.head
+      if (lst.tail.isEmpty)
+        pendingRebuilds -= objectUUID
+      else
+        pendingRebuilds += (objectUUID -> lst.tail)
+      fn()
+    }
+  }
+  
   def opportunisticRebuild(message: OpportunisticRebuild): Unit = synchronized { 
-    activeRebuilds.get(message.objectPointer.uuid) match {
-      case Some(_) => // Ignore duplicate message
-      case None =>
+    if (!activeRebuilds.contains(message.objectPointer.uuid)) {
         
-        println(s"Opportunistic rebuild for object ${message.objectPointer.uuid}")
+        log.rebuild.info(s"$storeId opportunistic rebuild beginning for ${message.objectPointer.shortString}")
+        
+        activeRebuilds += message.objectPointer.uuid
+        
         val pointer = message.objectPointer
         val objectId = StoreObjectID(pointer.uuid, pointer.getStorePointer(storeId).get)
         val repairUUID = UUID.randomUUID()
@@ -384,15 +446,22 @@ class DataStoreFrontend(
         
         val pcomplete = Promise[Unit]()
         
-        activeRebuilds += (pointer.uuid -> pcomplete.future)
-        
-        pcomplete.future.onComplete { case _ => synchronized {
-          activeRebuilds -= pointer.uuid
-        }}
+        pcomplete.future onComplete {
+          case Failure(err) =>
+            log.rebuild.error(s"$storeId opportunistic rebuild FAILED for ${message.objectPointer.shortString}: $err")
+            rebuildFinished(message.objectPointer.uuid)
+            
+          case Success(_) => 
+            log.rebuild.info(s"$storeId opportunistic rebuild successfully completed for ${message.objectPointer.shortString}")
+            rebuildFinished(message.objectPointer.uuid)
+        }
         
         objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map { e => e match {
           case Left(err) => synchronized {
-            backend.putObject(objectId, metadata, data) onComplete { case _ => pcomplete.success(()) }
+            log.rebuild.info(s"$storeId opportunistic rebuild for ${message.objectPointer.shortString}: Storing Missed allocation")
+            backend.putObject(objectId, metadata, data) onComplete { 
+              case _ => pcomplete.success(()) 
+            }
           }
           
           case Right(mo) => synchronized {
@@ -402,79 +471,96 @@ class DataStoreFrontend(
               pcomplete.success(())
             }
             
-            val (updateMeta, updateData) = mo match {
-              case d: MutableDataObject => 
-                val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
-                (u, u)
-                
-              case k: MutableKeyValueObject =>
-                val news = KeyValueObjectCodec.getUpdateSet(k.data) 
-                val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
-                
-                // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
-                // have. If we have received any updates outside this, we cannot overwrite our content
-                val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
-                
-                (meta, data)
-            }
-            
-            if (updateMeta) {
-              mo.revision = metadata.revision
-              mo.refcount = metadata.refcount
-              mo.timestamp = metadata.timestamp
-              
-              if (updateData) {
-                mo.data = data
-                mo match {
-                  case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
-                  case _ =>
-                }
-              }
-    
-              mo.commitBoth() onComplete { 
-                case _ => complete()
-              }
-            } else
+            if (!mo.locks.isEmpty) {
+              log.rebuild.info(s"$storeId opportunistic rebuild canceled for ${message.objectPointer.shortString}. Object is locked")
               complete()
+            }
+            else {
+              log.rebuild.info(s"$storeId opportunistic rebuild local state (${mo.revision},${mo.refcount}) rebuild from (${message.oldRevision}, ${message.oldRefcount}) to (${message.newRevision},${message.newRefcount})")
+              
+              val (updateMeta, updateData) = mo match {
+                case d: MutableDataObject => 
+                  val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
+                  (u, u)
+                  
+                case k: MutableKeyValueObject =>
+                  val news = KeyValueObjectCodec.getUpdateSet(k.data) 
+                  val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
+                  
+                  // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
+                  // have. If we have received any updates outside this, we cannot overwrite our content
+                  val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
+                  
+                  (meta, data)
+              }
+              
+              if (updateMeta) {
+                mo.revision = metadata.revision
+                mo.refcount = metadata.refcount
+                mo.timestamp = metadata.timestamp
+                
+                if (updateData) {
+                  mo.data = data
+                  mo match {
+                    case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
+                    case _ =>
+                  }
+                }
+      
+                mo.commitBoth() onComplete { 
+                  case _ => complete()
+                }
+              } else
+                complete()
+            }
           }
         }}
     }
   }
   
-  private def repair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer]): Future[Unit] =  {
+  private def repair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer]): Future[Unit] = synchronized {  
     val pcomplete = Promise[Unit]()
+    
+    if (activeRebuilds.contains(entry.objectUUID)) {
+      // Must wait for the current rebuild operation to complete. Queue for execution
+      def exec(): Unit = doRepair(system, entry, opointer, pcomplete)
+      val plist = exec _ :: pendingRebuilds.getOrElse(entry.objectUUID, Nil)
+      pendingRebuilds += (entry.objectUUID -> plist)
+    } else
+      doRepair(system, entry, opointer, pcomplete)
+      
+    pcomplete.future
+  }
+  
+  private def doRepair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer], pcomplete: Promise[Unit]): Unit = {
+    
+    log.rebuild.info(s"$storeId repair: beginning repair of missed update for object ${entry.objectUUID}")
+    
+    activeRebuilds += entry.objectUUID
     
     val objectId = StoreObjectID(entry.objectUUID, entry.storePointer)
     
     val foobj = opointer match {
       case None => Future.successful(None)
-      case Some(pointer) => system.readObject(pointer, disableOpportunisticRebuild=true).map(Some(_)).recover{ case _: FatalReadError => None }
+      case Some(pointer) =>
+        log.rebuild.info(s"$storeId repair: reading current state ${pointer.objectType} of object ${entry.objectUUID}")
+        system.readObject(pointer, disableOpportunisticRebuild=true).map(Some(_)).recover{ case _: FatalReadError => None }
     }
     
     val repairUUID = UUID.randomUUID()
     
     val folocal = opointer match {
       case None => Future.successful(None)
-      case Some(pointer) => synchronized { objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
-        case Left(err) => None
-        case Right(obj) => Some(obj)
+      case Some(pointer) => synchronized {
+        log.rebuild.info(s"$storeId repair: loading local state of object ${entry.objectUUID}")
+        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
+        case Left(err) =>
+          log.rebuild.info(s"$storeId repair: failed to get state of object ${entry.objectUUID}. Error: $err")
+          None
+        case Right(obj) =>
+          log.rebuild.info(s"$storeId repair: got local state of object ${entry.objectUUID}. Rev ${obj.revision} Ref ${obj.refcount}")
+          Some(obj)
       }}  
-    }
-      
-    def acquireRepairLock(): Future[Unit] = {
-      val p = Promise[Unit]()
-      
-      def trylock(): Unit = synchronized {
-        activeRebuilds.get(entry.objectUUID) match {
-          case Some(f) => f onComplete { case _ => trylock() }
-          case None => 
-            activeRebuilds += (entry.objectUUID -> pcomplete.future)
-            p.success(())
-        }
-      }
-      
-      trylock()
-      p.future
     }
     
     def isAllocated(): Future[Boolean] = {
@@ -489,7 +575,7 @@ class DataStoreFrontend(
     def getLocalData(os: ObjectState): DataBuffer = {
       os.getRebuildDataForStore(storeId) match {
         case None => 
-          println(s"ERROR Attempted to rebuild pointer on non-hosting store")
+          log.rebuild.error(s"$storeId repair: got local state of object ${entry.objectUUID}. Attempted to rebuild pointer on non-hosting store")
           throw new Exception("Attempted rebuild on non hosting store")
           
         case Some(data) => data
@@ -499,23 +585,29 @@ class DataStoreFrontend(
     def fix(oobj: Option[ObjectState], olocal: Option[MutableObject]): Future[Unit] = (oobj, olocal) match {
       
       case (None, None) => isAllocated() map { allocated =>
-        if (allocated)
+        if (allocated) {
+          log.rebuild.info(s"$storeId repair: Object is in an indeterminate state. Cannot yet repair object ${entry.objectUUID}")
           throw new Exception("Object is in an indeterminate state. Cannot repair yet")
+        }
         else {
           // Delete local object state (if we have any)
-          println(s"Reparing missed delete for object ${entry.objectUUID}")
+          log.rebuild.info(s"$storeId repair: Reparing missed delete for object ${entry.objectUUID}")
           backend.deleteObject(objectId)
         }
       }
       
       case (None, Some(mo)) =>
         isAllocated() map { allocated => synchronized {
-          if (allocated)
+          if (allocated) {
+            log.rebuild.info(s"$storeId repair: Object is not fully deleted. Cannot repair object ${entry.objectUUID}")
             throw new Exception("Object not fully deleted. Cannot repair yet")
-          else if (!mo.locks.isEmpty)
+          }
+          else if (!mo.locks.isEmpty) {
+            log.rebuild.info(s"$storeId repair: Object is locked. Cannot repair object ${entry.objectUUID}")
             throw new Exception("Object locked. Cannot repair yet")
+          } 
           else {
-            println(s"Reparing missed delete for object ${entry.objectUUID}")
+            log.rebuild.info(s"$storeId repair: Repairing missed delete for object ${entry.objectUUID}")
             backend.deleteObject(objectId)
           }
         }}
@@ -523,22 +615,29 @@ class DataStoreFrontend(
       case (Some(os), None) => synchronized {
         val metadata = ObjectMetadata(os.revision, os.refcount, os.timestamp)
         val data = getLocalData(os)
-        println(s"Reparing missed allocation for object ${entry.objectUUID}")
+        log.rebuild.info(s"$storeId repair: Repairing missed allocation for object ${entry.objectUUID}")
         backend.putObject(objectId, metadata, data)
       }
       
       case (Some(os), Some(mo)) => synchronized { 
+        
+        val basicUpdateRequired = os.timestamp > mo.timestamp && (os.revision != mo.revision || os.refcount != mo.refcount)
+        
         val update = os match {
-          case d: DataObjectState => 
-            d.revision != mo.revision || d.refcount != mo.refcount
+          case d: DataObjectState => basicUpdateRequired
             
-          case kvos: KeyValueObjectState => 
-            kvos.revision != mo.revision || kvos.refcount != mo.refcount || KeyValueObjectCodec.getUpdateSet(mo.data) != kvos.updates
+          case kvos: KeyValueObjectState => basicUpdateRequired || kvos.updates.size > KeyValueObjectCodec.getUpdateSet(mo.data).size
             
-          case _: MetadataObjectState => true // Should not be possible
+          case _: MetadataObjectState => basicUpdateRequired // Should not be possible
         }
         
         if (update) {
+          
+          if (!mo.locks.isEmpty)
+            throw new Exception("object is locked by a transaction")
+        
+          log.rebuild.info(s"$storeId repair: Repairing missed update for object ${entry.objectUUID}.")
+          
           mo.revision = os.revision
           mo.refcount = os.refcount
           mo.timestamp = os.timestamp
@@ -547,15 +646,15 @@ class DataStoreFrontend(
             case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
             case _ =>
           }
-          println(s"Reparing missed update for object ${entry.objectUUID}")
           mo.commitBoth()
-        } else
+        } else {
+          log.rebuild.info(s"$storeId repair: Object is up to date ${entry.objectUUID}.")
           Future.unit
+        }
       }
     }
     
     val fcomplete = for {
-      _ <- acquireRepairLock()
       oobj <- foobj
       olocal <- folocal
       _ <- fix(oobj, olocal)
@@ -565,7 +664,15 @@ class DataStoreFrontend(
     
     pcomplete.completeWith(fcomplete)
     
-    pcomplete.future
+    pcomplete.future.onComplete { 
+      case Failure(err) => 
+        log.rebuild.warn(s"$storeId repair: FAILD repair actions for object ${entry.objectUUID}: $err")
+        rebuildFinished(entry.objectUUID)
+        
+      case Success(_) => 
+        log.rebuild.info(s"$storeId repair: Completed repairs for ${entry.objectUUID}")
+        rebuildFinished(entry.objectUUID)
+    }
   }
   
   // NOTE - The synchronized blocks CANNOT be used within this class. They would lock the StoreTransaction
@@ -573,6 +680,8 @@ class DataStoreFrontend(
   //        one thread is accessing the store state. Instead, put the synchronization in the methods that
   //        use this class.
   class StoreTransaction(val txd: TransactionDescription, updateData: List[LocalUpdate]) {
+    
+    log.tx.info(s"$storeId tx: ${txd.transactionUUID} Beginning transaction")
     
     var locked = false
     var released = false
@@ -595,6 +704,8 @@ class DataStoreFrontend(
         m
     })
     
+    log.tx.info(s"$storeId tx: ${txd.transactionUUID} Local objects: ${objects.keys.toList}")
+    
     val requirements = txd.requirements.filter(r => objects.contains(r.objectPointer.uuid))
     
     val objectsLoaded = Future.sequence {
@@ -611,6 +722,8 @@ class DataStoreFrontend(
     }.map(_ => ())
     
     def commit(): Future[Unit] = {
+      
+      log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing")
       
       val timestamp = HLCTimestamp(txd.startTimestamp)
       
@@ -641,59 +754,72 @@ class DataStoreFrontend(
           // Before committing the updates associated with each transaction requirement, we must first ensure
           // that the requirement is met. We may be committing a transaction that we didn't vote to commit due
           // to a problem with one or more of the requirements. Commit the ones that match and skip those that
-          // do not. 
+          // do not. The repair process will eventually fix them.
           
-          requirement match {
-            case du: DataUpdate => if ( getRequirementErrors(du).isEmpty ) {
-              val data = dataUpdates(requirement.objectPointer.uuid)
-                  
-              du.operation match {
-                case DataUpdateOperation.Overwrite => cs.obj.data = data
-                case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
-              }
-              
-              cs.obj.revision = ObjectRevision(txd.transactionUUID)
-              cs.obj.timestamp = timestamp
-              cs.commitData = true
-              cs.commitMetadata = true
-            }
-  
-            case ru: RefcountUpdate => if ( getRequirementErrors(ru).isEmpty ) {
-              cs.obj.refcount = ru.newRefcount
-              cs.obj.timestamp = timestamp // TODO - Do we want to update the timestamp on refcount changes?
-              cs.commitMetadata = true
-              if (cs.obj.refcount.count == 0)
-                cs.deleteObject = true
-            } 
-              
-            case vb: VersionBump => if ( getRequirementErrors(vb).isEmpty ) {
-              cs.obj.revision = ObjectRevision(txd.transactionUUID)
-              cs.obj.timestamp = timestamp
-              cs.commitMetadata = true
-            }
-            
-            case _: RevisionLock => // Nothing to do
-            
-            case kv: KeyValueUpdate => if ( getRequirementErrors(kv).isEmpty ) {
-              val kvobj = cs.obj.asInstanceOf[MutableKeyValueObject]
-              val data = dataUpdates(requirement.objectPointer.uuid)
-              cs.commitData = true
-              
-              kv.requiredRevision.foreach { _ =>
+          val requirementErrors = getRequirementErrors(requirement)
+          
+          if (requirementErrors.isEmpty) {
+            requirement match {
+              case du: DataUpdate => 
+                val data = dataUpdates(requirement.objectPointer.uuid)
+                    
+                du.operation match {
+                  case DataUpdateOperation.Overwrite => cs.obj.data = data
+                  case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
+                }
+                
                 cs.obj.revision = ObjectRevision(txd.transactionUUID)
                 cs.obj.timestamp = timestamp
-                cs.commitMetadata = true 
-              }
+                cs.commitData = true
+                cs.commitMetadata = true
+                log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing DataUpdate ${du.operation} for object ${requirement.objectPointer.uuid}")
               
-              kv.updateType match {
-                case KeyValueUpdate.UpdateType.Overwrite =>
-                  cs.obj.data = data
-                  kvobj.dropKeyValueContent() // Object content will need to be parsed from the new data
-                  
-                case KeyValueUpdate.UpdateType.Append    => 
-                  cs.obj.data = appendDataBuffer(cs.obj.data, data)
-                  kvobj.updateKeyValueContent(data) // Updates the already-parsed data (if it's been parsed) with the new values
-              }
+              case ru: RefcountUpdate => 
+                cs.obj.refcount = ru.newRefcount
+                cs.obj.timestamp = timestamp // TODO - Do we want to update the timestamp on refcount changes?
+                cs.commitMetadata = true
+                if (cs.obj.refcount.count == 0) {
+                  cs.deleteObject = true
+                  log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing RefcountUpdate to ${ru.newRefcount} for object ${requirement.objectPointer.uuid}")
+                } else {
+                  log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing RefcountUpdate to DELETE object ${requirement.objectPointer.uuid}")
+                }
+              
+              case vb: VersionBump => 
+                cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                cs.obj.timestamp = timestamp
+                cs.commitMetadata = true
+                log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing VersionBump for object ${requirement.objectPointer.uuid}")
+              
+              case _: RevisionLock => // Nothing to do
+              
+              case kv: KeyValueUpdate =>
+                val kvobj = cs.obj.asInstanceOf[MutableKeyValueObject]
+                val data = dataUpdates(requirement.objectPointer.uuid)
+                cs.commitData = true
+                
+                kv.requiredRevision.foreach { _ =>
+                  cs.obj.revision = ObjectRevision(txd.transactionUUID)
+                  cs.obj.timestamp = timestamp
+                  cs.commitMetadata = true 
+                }
+                
+                log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing KeyValueUpdate ${kv.updateType} for object ${requirement.objectPointer.uuid}")
+                
+                kv.updateType match {
+                  case KeyValueUpdate.UpdateType.Overwrite =>
+                    cs.obj.data = data
+                    kvobj.dropKeyValueContent() // Object content will need to be parsed from the new data
+                    
+                  case KeyValueUpdate.UpdateType.Append    => 
+                    cs.obj.data = appendDataBuffer(cs.obj.data, data)
+                    kvobj.updateKeyValueContent(data) // Updates the already-parsed data (if it's been parsed) with the new values
+                }
+            }
+          } else {
+            if (log.tx.isWarnEnabled()) {
+              log.tx.warn(s"$storeId tx: ${txd.transactionUUID} SKIPPING commit for operation ${requirement.getClass.getSimpleName} on object ${requirement.objectPointer.uuid} due to errors:")
+              requirementErrors.foreach( err => log.tx.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
             }
           }
         }
@@ -720,6 +846,8 @@ class DataStoreFrontend(
     }
     
     def lockObjects(): Unit = {
+      log.tx.info(s"$storeId tx: ${txd.transactionUUID} Locking to transaction")
+      
       locked = true
       
       requirements foreach { r =>
@@ -751,6 +879,8 @@ class DataStoreFrontend(
       released = true
       
       if (locked) {
+        log.tx.info(s"$storeId tx: ${txd.transactionUUID} Unlocking from transaction")
+        
         requirements foreach { r =>
     
           val obj = objects(r.objectPointer.uuid)
@@ -919,10 +1049,7 @@ class DataStoreFrontend(
             
         }
       }
-      /*
-      if (!errors.isEmpty) {
-        errors.foreach( err => println(s"   ${storeId.poolIndex} TxErr ${txd.transactionUUID} $err") )
-      }*/
+      
       errors
     }
       
@@ -933,8 +1060,11 @@ class DataStoreFrontend(
       if (errors.isEmpty)
         lockObjects()
       else {
-        //println(s"**** ERRORS IN TRANSACTION ${txd.transactionUUID}")
-        //errors.foreach(err => println(s"   $err"))
+        
+        if (log.tx.isWarnEnabled()) {
+          log.tx.warn(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
+          errors.foreach( err => log.tx.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
+        }
         
         val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
           case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
@@ -958,7 +1088,8 @@ class DataStoreFrontend(
         }}
         
         if (probablyMissedCommitOfLockedTx) {
-          collisions.values.foreach { lockedTxUUID => 
+          collisions.values.foreach { lockedTxUUID =>
+            log.tx.info(s"$storeId tx: ${txd.transactionUUID} probably missed commit of locked transaction $lockedTxUUID. Delaying action")
             waitingForTransactions += lockedTxUUID
             delayedTransactions += (lockedTxUUID -> this)
           }

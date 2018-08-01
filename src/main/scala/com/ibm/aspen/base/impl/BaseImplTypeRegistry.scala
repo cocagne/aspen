@@ -22,6 +22,7 @@ object BaseImplTypeRegistry {
     
     val handlers = List(
         new AllocationFinalizationAction,
+        new DeleteFinalizationAction,
         new TieredKeyValueListSplitFA,
         new TieredKeyValueListJoinFA,
         PerStoreMissedUpdate,

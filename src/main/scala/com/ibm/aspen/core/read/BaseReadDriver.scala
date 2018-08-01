@@ -27,6 +27,7 @@ import com.ibm.aspen.core.data_store
 import com.ibm.aspen.core.data_store.ObjectReadError
 import scala.concurrent.duration._
 import com.ibm.aspen.core.objects.KeyValueObjectState
+import org.apache.logging.log4j.scala.Logging
 
 class BaseReadDriver(
     val clientMessenger: ClientSideReadMessenger,
@@ -36,7 +37,7 @@ class BaseReadDriver(
     val readUUID:UUID,
     val opportunisticRebuildDelay: Duration = BaseReadDriver.DefaultOpportunisticRebuildDelay,
     val disableOpportunisticRebuild: Boolean = false
-    )(implicit ec: ExecutionContext) extends ReadDriver {
+    )(implicit ec: ExecutionContext) extends ReadDriver with Logging {
   
   import BaseReadDriver._
   
@@ -55,6 +56,7 @@ class BaseReadDriver(
   protected var errors = Map[DataStoreID, ObjectReadError.Value]()
   
   protected var restoredObject: Option[ObjectState] = None
+  protected var retryCount = 0
   
   def readResult = promise.future
   
@@ -73,6 +75,8 @@ class BaseReadDriver(
       
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
+    logger.info(s"sending read requests for object ${objectPointer.uuid}.")
+    synchronized { retryCount += 1 }
     objectPointer.storePointers.foreach(sp => {
       val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
       if (!receivedReplyFrom(storeId))
@@ -99,7 +103,7 @@ class BaseReadDriver(
     }
     
     if (repair && objectState.timestamp > ss.timestamp && objectState.timestamp - ss.timestamp > opportunisticRebuildDelay) {
-      println(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
+      logger.info(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
       
       val arrIdx = objectPointer.getEncodedDataIndexForStore(storeId).get
       val data = objectState.getRebuildDataForStore(storeId).get
@@ -137,7 +141,8 @@ class BaseReadDriver(
           case _ => Set[UUID]() 
         }
         
-        //println(s"STORE READ ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision} set $updateSet.")
+        if (retryCount > 3)
+          logger.info(s"Read Response: ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision} set $updateSet.")
         
         val ss = StoreState(response.fromStore, (cs.revision, updateSet), cs.refcount, cs.timestamp, cs.sizeOnStore, cs.objectData, cs.locks)
         
@@ -242,7 +247,7 @@ class BaseReadDriver(
         case e: IDAError => promise.success(Left(new CorruptedIDA(objectPointer)))
         case e: ObjectEncodingError => promise.success(Left(new CorruptedContent(objectPointer)))
         case err: Throwable =>
-          println(s"*** This should never happen. Unexpected Exception: $err")
+          logger.error(s"Unexpected exception during object restoration: $err")
           com.ibm.aspen.util.printStack()
           promise.success(Left(new CorruptedObject(objectPointer)))
       }
@@ -281,7 +286,7 @@ class BaseReadDriver(
       (objectState, locks)
     } catch {
       case t: IDAError => 
-        println(s"IDA ERROR Segments: $segments")
+        logger.error(s"IDA ERROR Segments: $segments")
         throw t
     }
 

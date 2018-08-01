@@ -177,6 +177,9 @@ class TransactionBuilder(
     refcountUpdates += objectPointer
     requirements  = RefcountUpdate(objectPointer, requiredRefcount, refcount) :: requirements
     
+    if (refcount.count == 0)
+      finalizationActions = DeleteFinalizationAction.createSerializedFA(objectPointer) :: finalizationActions
+    
     refcount
   }
   

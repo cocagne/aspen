@@ -31,7 +31,7 @@ class SuperSimpleRetryingReadDriver(
     disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
         readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)  {
   
-  val retryTask = BackgroundTask.schedulePeriodic(period=Duration(250, MILLISECONDS), callNow=false)( sendReadRequests() )
+  val retryTask = BackgroundTask.schedulePeriodic(period=Duration(2000, MILLISECONDS), callNow=false)( sendReadRequests() )
   //println(s"Beginning read of object ${objectPointer.uuid}")
   readResult.onComplete {
     case _ => 

@@ -10,4 +10,6 @@ case class DataStoreID(poolUUID: UUID, poolIndex: Byte) {
   }
   
   override def hashCode: Int = poolUUID.hashCode() + poolIndex
+  
+  override def toString(): String = s"$poolUUID:$poolIndex"
 }

@@ -65,7 +65,9 @@ sealed abstract class ObjectPointer(
   def objectType: ObjectType.Value
     
   protected def addExtraToStringContent(sb: StringBuilder): Unit = {}
-    
+  
+  def shortString: String = s"${objectType}($uuid)"
+  
   override def toString(): String = {
     val sb = new StringBuilder
 

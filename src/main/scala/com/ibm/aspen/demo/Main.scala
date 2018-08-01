@@ -64,14 +64,23 @@ import com.ibm.aspen.base.impl.SinglePoolObjectAllocater
 import com.ibm.aspen.base.AggregateTypeRegistry
 import com.ibm.aspen.base.TypeFactory
 import com.ibm.aspen.base.TypeRegistry
+import org.apache.logging.log4j.scala.Logging
 
 object Main {
   
   val CumuloFSKey = Key("cumulofs")
   
-  case class Args(mode:String="", configFile:File=null, nodeName:String="", host:String="", port:Int=0)
+  case class Args(mode:String="", configFile:File=null, log4jConfigFile: File=null, nodeName:String="", host:String="", port:Int=0)
  
   class ConfigError(msg: String) extends Exception(msg)
+  
+  def setLog4jConfigFile(f: File): Unit = {
+    //System.setProperty("log4j2.debug", "true")
+    
+    // Set all loggers to Asynchronous Logging
+    System.setProperty("log4j2.contextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector")
+    System.setProperty("log4j2.configurationFile", s"file:${f.getAbsolutePath}")
+  }
   
   def main(args: Array[String]) {    
     val parser = new scopt.OptionParser[Args]("demo") {
@@ -98,9 +107,13 @@ object Main {
       cmd("cumulofs").text("Launches a CumuloFS server").
         action( (_,c) => c.copy(mode="cumulofs")).
         children(
-            arg[File]("<config-file>").text("Configuration File").
+            arg[File]("<config-file>").text("Aspen Configuration File").
               action( (x, c) => c.copy(configFile=x)).
               validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
+              
+            arg[File]("<log4j-config-file>").text("Log4j Configuration File").
+              action( (x, c) => c.copy(log4jConfigFile=x)).
+              validate( x => if (x.exists()) success else failure(s"Log4j Config file does not exist: $x")),
               
             arg[String]("<host>").text("Storage Node Name").action((x,c) => c.copy(host=x)),
             
@@ -142,7 +155,7 @@ object Main {
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
-            case "cumulofs" => cumulofs(config)
+            case "cumulofs" => cumulofs(cfg.log4jConfigFile, config)
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
@@ -240,7 +253,9 @@ object Main {
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
   }
   
-  def cumulofs(cfg: ConfigFile.Config): Unit = {
+  def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+    
+    setLog4jConfigFile(log4jConfigFile)
     
     val sys = createSystem(cfg)
     
@@ -339,8 +354,10 @@ object Main {
   }
   
   def node(nodeName: String, cfg: ConfigFile.Config): Unit = {
-
+    
     val node = cfg.nodes.get(nodeName).getOrElse(throw new ConfigError(s"Invalid node name $nodeName"))
+    
+    setLog4jConfigFile(node.log4jConfigFile)
     
     val crl = node.crl match {
       case b: ConfigFile.RocksDB => 

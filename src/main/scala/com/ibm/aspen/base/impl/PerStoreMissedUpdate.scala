@@ -170,10 +170,15 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       if (done)
         Future.unit
       else {
-        fiter.flatMap { iter =>
-          iter.next().map { newEntries =>
-            entries = newEntries
+        if (entries.isEmpty) {
+          fiter.flatMap { iter =>
+            iter.next().map { newEntries =>
+              entries = newEntries
+            }
           }
+        } else {
+          entries = entries.tail
+          Future.unit
         }
       }
     }

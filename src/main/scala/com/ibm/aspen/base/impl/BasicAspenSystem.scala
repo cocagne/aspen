@@ -63,6 +63,7 @@ import com.ibm.aspen.base.MissedUpdateHandler
 import com.ibm.aspen.base.MissedUpdateHandlerFactory
 import com.ibm.aspen.base.MissedUpdateIterator
 import com.ibm.aspen.base.ObjectAllocaterFactory
+import org.apache.logging.log4j.scala.Logging
 
 
 object BasicAspenSystem {
@@ -91,10 +92,12 @@ class BasicAspenSystem(
     val radiclePointer: KeyValueObjectPointer,
     val retryStrategy: RetryStrategy,
     userTypeRegistry: Option[TypeRegistry]
-    )(implicit ec: ExecutionContext) extends AspenSystem {
+    )(implicit ec: ExecutionContext) extends AspenSystem with Logging {
   
   import BasicAspenSystem._
   import Bootstrap._
+  
+  logger.debug("Constructing BasicAspenSystem")
   
   protected val readManager = new ClientReadManager(net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
