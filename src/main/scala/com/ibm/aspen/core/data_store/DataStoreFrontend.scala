@@ -81,11 +81,12 @@ class DataStoreFrontend(
   
   private[this] var objectLoader = new MutableObjectLoader(backend)
 
+  private[this] var activeTransactions = Map[UUID, StoreTransaction]()
   private[this] var lockedTransactions = Map[UUID, StoreTransaction]()
   
   // Maps UUIDs of locked transactions to unlocked transactions that have a good chance of
   // locking if they re-attempt the lock after the locked transactions complete.
-  private[this] var delayedTransactions = Map[UUID, StoreTransaction]()
+  private[this] var delayedTransactions = Map[UUID, Set[StoreTransaction]]()
   
   // maps Transaction UUIDs to the list of objects being allocated in that transaction
   private[this] var allocations = Map[UUID, List[MutableObject]]()
@@ -290,59 +291,55 @@ class DataStoreFrontend(
       }}
   }
   
-  private[this] def tryLock(st: StoreTransaction): Unit = synchronized {
-    if (!lockedTransactions.contains(st.txd.transactionUUID)) {
-      if (st.checkRequirementsAndLock())
-        lockedTransactions += (st.txd.transactionUUID -> st)
+  private[this] def getStoreTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): StoreTransaction = {
+    activeTransactions.get(txd.transactionUUID) match {
+      case Some(st) => st
+      case None => 
+        val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
+        activeTransactions += (txd.transactionUUID -> st)
+        st
     }
   }
   
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
-    lockedTransactions.get(txd.transactionUUID) match {
-      case Some(st) => st.lockPromise.future
-      case None =>
-        val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
-        st.objectsLoaded.foreach(_ => tryLock(st))
-        st.lockPromise.future        
-    }
-  }
-  
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
-    // We may not have locked to this transaction due to either discovering it late or by having one or more
-    // objects that didn't meet the transaction requirements. 
-    val st = lockedTransactions.get(txd.transactionUUID) match {
-      case Some(st) => st
-      case None => 
-        val st = new StoreTransaction(txd, localUpdates.getOrElse(Nil))
-        lockedTransactions += (txd.transactionUUID -> st)
-        st
-    }
+    val p = Promise[List[ObjectTransactionError]]()
     
-    st.objectsLoaded flatMap { _ => synchronized { 
-      val fcommit = st.commit()
-      
-      fcommit map { _ => synchronized {
-        releaseLocks(st)
-      }}
-    }}
+    val st = getStoreTransaction(txd, updateData)
+    
+    st.objectsLoaded.foreach(_ => st.checkRequirementsAndLock(Some(p)))
+    
+    p.future
   }
   
-  private[this] def releaseLocks(completedSt: StoreTransaction): Unit = {
-    val transactionUUID = completedSt.txd.transactionUUID
-    completedSt.releaseObjects()
-    delayedTransactions.get(transactionUUID).foreach { delayedSt =>
-      delayedTransactions -= transactionUUID
-      delayedSt.waitingForTransactions -= transactionUUID
-      if (delayedSt.waitingForTransactions.isEmpty)
-        tryLock(delayedSt)
+  private[this] def retryDelayedTransactions(completedTxUUID: UUID): Unit = {
+    delayedTransactions.get(completedTxUUID).foreach { delayedSet =>
+      delayedTransactions -= completedTxUUID
+      delayedSet.foreach( st => st.checkRequirementsAndLock(None) )
     }
+  }
+  
+  private[this] def releaseLocks(completedSt: StoreTransaction): Unit = synchronized {
+    completedSt.releaseObjects()
+    retryDelayedTransactions(completedSt.txd.transactionUUID)
   }
   
   def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
     log.tx.info(s"$storeId tx: ${txd.transactionUUID} discarding transaction")
-    lockedTransactions.get(txd.transactionUUID) foreach { st =>
-      lockedTransactions -= txd.transactionUUID
-      releaseLocks(st)
+    activeTransactions.get(txd.transactionUUID) match {
+      case None => retryDelayedTransactions(txd.transactionUUID)
+      case Some(st) => 
+        releaseLocks(st)
+        activeTransactions -= txd.transactionUUID
+    }
+  }
+  
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
+    val st = getStoreTransaction(txd, localUpdates)
+    
+    st.objectsLoaded flatMap { _ => 
+      synchronized { 
+        st.commit().map( _ => releaseLocks(st) )
+      }
     }
   }
   
@@ -684,13 +681,11 @@ class DataStoreFrontend(
     log.tx.info(s"$storeId tx: ${txd.transactionUUID} Beginning transaction")
     
     var locked = false
-    var released = false
-    
-    var waitingForTransactions = Set[UUID]()
-    
-    val lockPromise = Promise[List[ObjectTransactionError]]()
+    var committed = false
     
     val dataUpdates: Map[UUID, DataBuffer] = updateData.map(lu => (lu.objectUUID -> lu.data)).toMap
+    
+    var lockRequests = List[Promise[List[ObjectTransactionError]]]()
     
     // Filter Objects & Transaction Requirements down to just the set of objects hosted by this store
     
@@ -721,9 +716,12 @@ class DataStoreFrontend(
       
     }.map(_ => ())
     
-    def commit(): Future[Unit] = {
+    def commit(): Future[Unit] = if (committed) 
+      Future.unit
+    else {
       
       log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing")
+      committed = true
       
       val timestamp = HLCTimestamp(txd.startTimestamp)
       
@@ -845,10 +843,11 @@ class DataStoreFrontend(
       }}.map(_ => ())
     }
     
-    def lockObjects(): Unit = {
+    def lockObjects(): Unit = if (!committed && !locked) {
       log.tx.info(s"$storeId tx: ${txd.transactionUUID} Locking to transaction")
       
       locked = true
+      lockedTransactions += (txd.transactionUUID -> this)
       
       requirements foreach { r =>
     
@@ -873,42 +872,43 @@ class DataStoreFrontend(
             }
         }
       }
-    }
+      }
     
-    def releaseObjects(): Unit = if (!released) {
-      released = true
+    
+    def releaseObjects(): Unit = if (locked) {
+      locked = false
+    
+      log.tx.info(s"$storeId tx: ${txd.transactionUUID} Unlocking from transaction")
       
-      if (locked) {
-        log.tx.info(s"$storeId tx: ${txd.transactionUUID} Unlocking from transaction")
+      lockedTransactions -= txd.transactionUUID
+      
+      requirements foreach { r =>
+  
+        val obj = objects(r.objectPointer.uuid)
         
-        requirements foreach { r =>
-    
-          val obj = objects(r.objectPointer.uuid)
+        r match {
+          case du: DataUpdate     => obj.objectRevisionWriteLock = None
           
-          r match {
-            case du: DataUpdate     => obj.objectRevisionWriteLock = None
+          case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
+          
+          case vb: VersionBump    => obj.objectRevisionWriteLock = None
+          
+          case rl: RevisionLock => obj.objectRevisionReadLocks -= txd.transactionUUID
+          
+          case kv: KeyValueUpdate =>
+            val kvobj = obj.asInstanceOf[MutableKeyValueObject]
             
-            case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
-            
-            case vb: VersionBump    => obj.objectRevisionWriteLock = None
-            
-            case rl: RevisionLock => obj.objectRevisionReadLocks -= txd.transactionUUID
-            
-            case kv: KeyValueUpdate =>
-              val kvobj = obj.asInstanceOf[MutableKeyValueObject]
+            kv.requiredRevision match { 
+              case Some(_) => obj.objectRevisionWriteLock = None
               
-              kv.requiredRevision match { 
-                case Some(_) => obj.objectRevisionWriteLock = None
-                
-                case None => 
-                  kv.requirements.foreach { req => 
-                    kvobj.keyRevisionWriteLocks -= req.key
-                  }
-              }
-          }
+              case None => 
+                kv.requirements.foreach { req => 
+                  kvobj.keyRevisionWriteLocks -= req.key
+                }
+            }
         }
       }
-      
+    
       objects.valuesIterator foreach { obj =>
         obj.completeOperation(txd.transactionUUID)
       }
@@ -1054,52 +1054,67 @@ class DataStoreFrontend(
     }
       
     
-    def checkRequirementsAndLock(): Boolean = {
-      val errors = requirements.flatMap( requirement => getRequirementErrors(requirement) ) 
-      
-      if (errors.isEmpty)
-        lockObjects()
+    def checkRequirementsAndLock(op: Option[Promise[List[ObjectTransactionError]]]): Unit = {
+      if (locked)
+        op.foreach(p => p.success(Nil))
       else {
+        var waitingForTransactions = Set[UUID]()
         
-        if (log.tx.isWarnEnabled()) {
-          log.tx.warn(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
-          errors.foreach( err => log.tx.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
-        }
+        val errors = requirements.flatMap( requirement => getRequirementErrors(requirement) ) 
         
-        val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
-          case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
-          case _ => m
-        }}
-        
-        val mismatches = errors.foldLeft(Set[UUID]()) { (s, e) => e match {
-          case r: RevisionMismatch => s + r.objectPointer.uuid
-          case _ => s
-        }}
-        
-        val probablyMissedCommitOfLockedTx = errors.forall { e => e match {
-          case r: RevisionMismatch => collisions.get(r.objectPointer.uuid) match {
-            case None => false
-            case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
+        if (errors.isEmpty)
+          lockObjects()
+        else {
+          
+          if (log.tx.isWarnEnabled()) {
+            log.tx.warn(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
+            errors.foreach( err => log.tx.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
           }
           
-          case c: TransactionCollision => mismatches.contains(c.objectPointer.uuid) 
+          val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
+            case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
+            case _ => m
+          }}
           
-          case _ => false
-        }}
-        
-        if (probablyMissedCommitOfLockedTx) {
-          collisions.values.foreach { lockedTxUUID =>
-            log.tx.info(s"$storeId tx: ${txd.transactionUUID} probably missed commit of locked transaction $lockedTxUUID. Delaying action")
-            waitingForTransactions += lockedTxUUID
-            delayedTransactions += (lockedTxUUID -> this)
+          val mismatches = errors.foldLeft(Set[UUID]()) { (s, e) => e match {
+            case r: RevisionMismatch => s + r.objectPointer.uuid
+            case _ => s
+          }}
+          
+          val probablyMissedCommitOfLockedTx = errors.forall { e => e match {
+            case r: RevisionMismatch => collisions.get(r.objectPointer.uuid) match {
+              case None => false
+              case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
+            }
+            
+            case c: TransactionCollision => mismatches.contains(c.objectPointer.uuid) 
+            
+            case _ => false
+          }}
+          
+          if (probablyMissedCommitOfLockedTx) {
+            collisions.values.foreach { lockedTxUUID =>
+              val dset = delayedTransactions.getOrElse(lockedTxUUID, Set()) + this
+              
+              waitingForTransactions += lockedTxUUID
+              delayedTransactions += (lockedTxUUID -> dset)
+            }
+          }
+        }
+      
+        // limit pending requests to prevent memory explosion if one of the dependent transactions takes
+        // a very long time to complete
+        if (waitingForTransactions.isEmpty || lockRequests.size > 5) {
+          op.foreach(p => p.success(errors))
+          lockRequests.foreach(p => p.success(errors))
+          lockRequests = Nil
+        } else {
+          log.tx.info(s"$storeId tx: ${txd.transactionUUID} delaying action until transactions complete: ${waitingForTransactions}")
+          op.foreach { p =>
+            lockRequests = p :: lockRequests
           }
         }
       }
-    
-      if (waitingForTransactions.isEmpty)
-        lockPromise.success(errors)
-        
-      waitingForTransactions.isEmpty && errors.isEmpty
     }
   }
 }
