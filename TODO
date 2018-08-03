@@ -1,4 +1,33 @@
 
+* KeyValue Redesign
+   - Discard current 'updates' mechanism
+   - Each store tracks a series of (key,value,revision,timestamp)
+       - Appends just add to the end
+   - Stores are only required to store latest entry for a key
+   - Reads return only the last value for each key
+   
+   - Reads must achieve threshold on each KV pair independently
+   - Deletions are unrecoverable threshold failures
+   
+   - For apps that overwrite multiple keys, can save space by sharing (revision,timestamp)
+      - Similar to current 'update' scheme
+   
+
+* RACE CONDITION
+   - Client can see TX commits and issues read that reads OLD version
+       - stores haven't yet realized they should commit
+       
+   - Could fix this by reading current state plus VoteCommit state
+       - Look at current versions + vote commit state when restoring
+       
+   - This could be the source of transient failures. Commit + ReadOldVersion + commit ... VersionMismatch
+
+
+* KeyValue reads
+   - Threshold must be achieved for each kv pair independently
+   - 
+
+
 * KeyValue Read & Rebuild changes
    - When reading, we need to support aggregate reads
       - objects A&B have commit 1, B&C have commit 2, none of the objects will have the same set of revisions
