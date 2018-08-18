@@ -41,7 +41,7 @@ trait ObjectAllocater {
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,
       initialContent: Map[Key,Array[Byte]])(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer] = {
-    val ins = initialContent.foldLeft(List[KeyValueOperation]())( (l,x) => Insert(x._1, x._2, t.timestamp()) :: l )
+    val ins = initialContent.foldLeft(List[KeyValueOperation]())( (l,x) => Insert(x._1, x._2, None, None) :: l )
     allocateKeyValueObject(allocatingObject, allocatingObjectRevision, ins) 
   }
 }

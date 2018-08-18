@@ -16,184 +16,127 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
     
 object KeyValueObjectCodec {
   
-  def getUpdateSet(db: DataBuffer): Set[UUID] = {
-    var updates = Set[UUID]()
+  def getHigestRevisionCount(l: List[ObjectRevision]): (ObjectRevision, Int) = {
+    val m = l.foldLeft(Map[ObjectRevision, Int]()){ (m, r) => m.get(r) match { 
+      case Some(count) => m + (r -> (count + 1))
+      case None => m + (r -> 1)
+    }}
     
-    val bb = db.asReadOnlyBuffer()
-    
-    try {
-      while (bb.remaining() != 0) {
-        val msb = bb.getLong()
-        val lsb = bb.getLong()
-        val len = Varint.getUnsignedInt(bb)
-        bb.position( bb.position + len )
-        updates += new UUID(msb, lsb)
-      }
-    } catch {
-      case t: Throwable => throw new KeyValueObjectEncodingError(t)
-    }
-    
-    updates
+    m.foldLeft((ObjectRevision.Null, 0))( (x, t) => if (t._2 > x._2) t else x )
   }
   
+  def getRecoverableRevision(ida: IDA, l: List[ObjectRevision]): Option[ObjectRevision] = {
+    val (revision, count) = getHigestRevisionCount(l)
+    
+    if (count >= ida.consistentRestoreThreshold) Some(revision) else None
+  }
+  
+  /** Converts to Map[(item, count)] then selects the item with the highest count */
+  def getCurrentReplicatedValue[T](l: List[T]): T = {
+    val m = l.foldLeft(Map[T,Int]()) { (m, i) => m.get(i) match {
+      case None => m + (i -> 1)
+      case Some(c) => m + (i -> (c+1))
+    }}
+    m.foldLeft(m.head)((x,t) => if (t._2 > x._2) t else x)._1
+  }
+  
+  def getDecodeableRevision(
+      restoreThreshold: Int, 
+      l: List[(Int, ObjectRevision, HLCTimestamp, Array[Byte])]): Option[(ObjectRevision, HLCTimestamp, List[(Byte, Array[Byte])])] = {
+    l.foldLeft(Map[ObjectRevision,Int]()) { (m, i) => m.get(i._2) match {
+      case None => m + (i._2 -> 1)
+      case Some(c) => m + (i._2 -> (c+1))
+    }}.find(t => t._2 > restoreThreshold).map { t =>
+      val sub = l.filter(i => i._2 == t._1)
+      (t._1, sub.head._3, sub.map(i => (i._1.asInstanceOf[Byte], i._4)))
+    }
+  }
+  
+  def restore(
+      ida: IDA, 
+      l: List[(Int, ObjectRevision, HLCTimestamp, Array[Byte])]): Option[(ObjectRevision, HLCTimestamp, Array[Byte])] = {
+    getDecodeableRevision(ida.restoreThreshold, l).map { t =>
+      (t._1, t._2, ida.restoreArray(t._3))
+    }
+  }
+  
+  /** Returns True when either we have enough responses to restore the KVPair or it is impossible to restore the KVPair (deleted pair) */
+  def isRestorable(l: List[ObjectRevision], numResponses: Int, ida: IDA): Boolean = {
+    val potentialResponses = ida.width - numResponses
+    val (_, count) = getHigestRevisionCount(l)
+    count > ida.restoreThreshold || count + potentialResponses < ida.restoreThreshold
+  }
+  
+  def isRestorable(ida: IDA, storeStates: List[KeyValueObjectStoreState]): Boolean = {
+    val numResponses = storeStates.size
+    isRestorable(storeStates.filter(_.minimum.isDefined).map(_.minimum.get.revision), numResponses, ida) &&
+    isRestorable(storeStates.filter(_.maximum.isDefined).map(_.maximum.get.revision), numResponses, ida) &&
+    isRestorable(storeStates.filter(_.left.isDefined).map(_.left.get.revision), numResponses, ida) &&
+    isRestorable(storeStates.filter(_.right.isDefined).map(_.right.get.revision), numResponses, ida) && {
+      storeStates.foldLeft(Map[Key, List[ObjectRevision]]()) { (m, kvoss) =>
+        kvoss.idaEncodedContents.foldLeft(m) { (x, t) =>
+          val lst = x.get(t._1) match {
+            case None => t._2.revision :: Nil
+            case Some(l) => t._2.revision :: l
+          }
+          x + (t._1 -> lst)
+        }
+      }.forall(t => isRestorable(t._2, numResponses, ida))
+    }
+  }
+  
+  /** storeStates - List[(ida-encoding-index, store-state)]
+   */
   def decode(
       pointer: KeyValueObjectPointer, 
       revision:ObjectRevision,
-      updates: Set[UUID],
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
-      sizeOnStore: Int,
-      storeStates: List[KeyValueObjectStoreState]): KeyValueObjectState = {
+      readTimestamp: HLCTimestamp,
+      storeStates: List[(Int, KeyValueObjectStoreState)]): KeyValueObjectState = {
+    
+    val ida = pointer.ida
+    
     try {
-      val ida = pointer.ida
-      val minimum = storeStates.head.minimum
-      val maximum = storeStates.head.maximum
       
-      // All "left" and "right" must either be Some or None
-      val left = if (storeStates.head.idaEncodedLeft.isDefined) {
-        val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
-          val db = DataBuffer(ss.idaEncodedLeft.get)
-          (ss.idaEncodingIndex, Some(db)) :: l 
+      // Replicated value so whichever has the highest occurrence must be the current value
+      val minimum = getCurrentReplicatedValue(storeStates.map(_._2.minimum)).map(m => KeyValueObjectState.Min(m.key, m.revision, m.timestamp))
+      val maximum = getCurrentReplicatedValue(storeStates.map(_._2.maximum)).map(m => KeyValueObjectState.Max(m.key, m.revision, m.timestamp))
+      
+      val left = restore(ida, storeStates.filter(t => t._2.left.isDefined).map { t =>
+        val l = t._2.left.get
+        (t._1, l.revision, l.timestamp, l.idaEncodedContent)
+      }).map(t => KeyValueObjectState.Left(t._3, t._1, t._2))
+      
+      val right = restore(ida, storeStates.filter(t => t._2.right.isDefined).map { t =>
+        val r = t._2.right.get
+        (t._1, r.revision, r.timestamp, r.idaEncodedContent)
+      }).map(t => KeyValueObjectState.Right(t._3, t._1, t._2))
+      
+      val kvStates = storeStates.foldLeft(Map[Key, List[(Int, ObjectRevision, HLCTimestamp, Array[Byte])]]()) { (m, t) =>
+        val (idaIndex, kvoss) = t
+        kvoss.idaEncodedContents.foldLeft(m) { (x, t) => 
+          val li = (idaIndex, t._2.revision, t._2.timestamp, t._2.value)
+          val lst = x.get(t._1) match {
+            case None => li :: Nil
+            case Some(l) => li :: l
+          }
+          x + (t._1 -> lst)
         }
-        Some(ida.restoreToArray(segments))
-      } else
-        None
-      val right = if (storeStates.head.idaEncodedRight.isDefined) {
-        val segments = storeStates.foldLeft(List[(Byte,Option[DataBuffer])]()) { (l, ss) =>
-          val db = DataBuffer(ss.idaEncodedRight.get)
-          (ss.idaEncodingIndex, Some(db)) :: l 
-        }
-        Some(ida.restoreToArray(segments))
-      } else
-        None
-      
-      var contents = Map[Key, Value]()
-      
-      storeStates.head.idaEncodedContents.foreach { t =>
-        val (key, ekv) = t
-        val segments = storeStates.map( ss => (ss.idaEncodingIndex, Some(DataBuffer(ss.idaEncodedContents(key).value))) )
-        val kv = Value(key, ida.restoreToArray(segments), ekv.timestamp)
-        contents += (key -> kv)
       }
       
-      new KeyValueObjectState(pointer, revision, refcount, timestamp, updates, sizeOnStore, minimum, maximum, left, right, contents)
+      val contents = kvStates.foldLeft(Map[Key, Value]()) { (m, t) =>
+        val (key, lst) = t
+        restore(ida, lst) match {
+          case None => m
+          case Some(r) => m + (key -> Value(key, r._3, r._2, r._1))
+        }
+      }
+
+      new KeyValueObjectState(pointer, revision, refcount, timestamp, readTimestamp, minimum, maximum, left, right, contents)
     } catch {
       case t: Throwable => throw new KeyValueObjectEncodingError(t)
     }
   }
   
-  /** Encodes the state of a KeyValueObject for sending to DataStores.
-   *
-   * Data contained within the objects is a series of top-level "update blocks" which
-   * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
-   * generate a full-state dump of the object and should be used in an overwrite transaction
-   * that sets the state of the object to this single value.
-   * 
-   * If updates are provided, empty updates with those UUIDs will be inserted (used for rebuilding
-   * out-of-date objects)
-   */
-  def encode(ida: IDA, kvos: KeyValueObjectState, updates: Set[UUID] = Set()): Array[DataBuffer] = {
-    var ops: List[KeyValueOperation] = Nil
-    
-    kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-    kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-    kvos.left.foreach( arr => ops = new SetLeft(arr) :: ops )
-    kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
-    
-    kvos.contents.valuesIterator.foreach { kv =>
-      ops = new Insert(kv.key.bytes, kv.value, kv.timestamp) :: ops
-    }
-    
-    KeyValueObjectCodec.encodeUpdate(ida, ops, updates)
-  }
-  
-  /** Used on a DataStore to return a subset of the local key-value object state. */
-  def encodePartialRead(kvos: KeyValueObjectStoreState, includeMinMax: Boolean, kvlist: List[Value]): DataBuffer = {
-    var ops: List[KeyValueOperation] = Nil
-    
-    if (includeMinMax) {
-      kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-      kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-      kvos.idaEncodedLeft.foreach( arr => ops = new SetLeft(arr) :: ops )
-      kvos.idaEncodedRight.foreach( arr => ops = new SetRight(arr) :: ops )
-    }
-    
-    kvlist.foreach{ kv => 
-      ops = new Insert(kv.key.bytes, kv.value, kv.timestamp) :: ops 
-    }
-    
-    val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(Replication(1,1)) )
-    val bb = ByteBuffer.allocate(encodedSize)
-    ops.foreach(op => op.encodeReplicated(bb))
-        
-    bb.position(0)
-    DataBuffer(bb)
-  }
-  
-  /** Returns the number of bytes needed to store a list of KeyValueOperations using the provided IDA 
-   */
-  def calculateEncodedSize(ida: IDA, ops: List[KeyValueOperation]): Int = {
-    val encodedDataSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
-    val lenVarInt = Varint.getUnsignedIntEncodingLength(encodedDataSize)
-    16 + lenVarInt + encodedDataSize
-  }
-  
-  /** Encodes a list of updates to the state of a KeyValueObject for sending to DataStores.
-   *
-   * Data contained within the objects is a series of top-level "update blocks" which
-   * consist of <16-byte-update-uuid><varint-length><data>. This method is used to
-   * generate a incremental update to the state of an object. Overwrite transactions
-   * may use this method as well to generate a single update containing the full
-   * content of the object.
-   */
-  def encodeUpdate(ida: IDA, ops: List[KeyValueOperation], updates: Set[UUID] = Set()): Array[DataBuffer] = {
-    
-    val encodedSize = ops.foldLeft(0)( (accum, op) => accum + op.getEncodedLength(ida) )
-    val lenVarInt = Varint.getUnsignedIntEncodingLength(encodedSize)
-    val (updateUUID, extraUpdates) = if (updates.isEmpty) (UUID.randomUUID(), Nil) else {
-      val ul = updates.toList
-      (ul.head, ul.tail)
-    }
-    
-    val bbArray = new Array[ByteBuffer](ida.width)
-    
-    ida match {
-      case _: Replication =>
-        // Special-case replication to take advantage of the fact that a single buffer 
-        // can be shared across all stores
-        val bb = ByteBuffer.allocate(16 + lenVarInt + encodedSize + (extraUpdates.size * (16+Varint.getUnsignedIntEncodingLength(0))))
-        
-        extraUpdates.foreach { uuid =>
-          bb.putLong(uuid.getMostSignificantBits)
-          bb.putLong(uuid.getLeastSignificantBits)
-          Varint.putUnsignedInt(bb, 0)
-        }
-        
-        bb.putLong(updateUUID.getMostSignificantBits)
-        bb.putLong(updateUUID.getLeastSignificantBits)
-        Varint.putUnsignedInt(bb, encodedSize)
-        
-        ops.foreach(op => op.encodeReplicated(bb))
-        
-        bb.position(0)
-        
-        // Create read-only copies to ensure each buffer has an independent position & limit
-        for (i <- 0 until bbArray.size)
-          bbArray(i) = bb.asReadOnlyBuffer()
-        
-      case _ =>
-        for (i <- 0 until bbArray.size) {
-          bbArray(i) = ByteBuffer.allocate(16 + lenVarInt + encodedSize)
-          bbArray(i).putLong(updateUUID.getMostSignificantBits)
-          bbArray(i).putLong(updateUUID.getLeastSignificantBits)
-          Varint.putUnsignedInt(bbArray(i), encodedSize)
-        }
-        ops.foreach(op => op.encodeGenericIDA(ida, bbArray))
-        
-        for (i <- 0 until bbArray.size)
-          bbArray(i).position(0)
-    }
-    
-    bbArray.map(DataBuffer(_))
-  }
 }

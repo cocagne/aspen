@@ -247,7 +247,7 @@ class BasicAspenSystem(
       initialContent: List[KeyValueOperation],
       afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
     
-    val encoded = KeyValueObjectCodec.encodeUpdate(objectIDA, initialContent)
+    val encoded = KeyValueOperation.encode(initialContent, objectIDA)
     
     try {
       

@@ -9,12 +9,12 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.objects.keyvalue.Key
 import scala.concurrent.Future
+import scala.concurrent.Promise
 
 object MutableObject {
   val NullRevision = ObjectRevision(new UUID(0,0))
   val NullRefcount = ObjectRefcount(0,0)
   val NullTimestamp = HLCTimestamp(0)
-  val NullData = DataBuffer(ByteBuffer.allocate(0))
 }
 
 /** Represents the current in-memory state of the object. Changes are made here first and then flushed to disk.
@@ -26,7 +26,11 @@ object MutableObject {
  *  Instances of this class are maintained in memory until the set of operations referencing the object drops
  *  to zero or a read error is encountered.
  */
-abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID, loader: MutableObjectLoader) {
+abstract class MutableObject(
+    val objectId: StoreObjectID, 
+    initialOperation: UUID, 
+    loader: MutableObjectLoader, 
+    ostate: Option[(ObjectMetadata, DataBuffer)]) {
   
   import MutableObject._
   
@@ -35,7 +39,7 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
   var revision: ObjectRevision = NullRevision
   var refcount: ObjectRefcount = NullRefcount
   var timestamp: HLCTimestamp = NullTimestamp 
-  var data: DataBuffer = NullData
+  protected var dataBuffer: DataBuffer = DataBuffer.Empty
   var objectRevisionReadLocks: Map[UUID, TransactionDescription] = Map()
   var objectRevisionWriteLock: Option[TransactionDescription] = None
   var objectRefcountReadLocks: Map[UUID, TransactionDescription] = Map()
@@ -46,7 +50,29 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
   private[this] var fmeta: Option[Future[Either[ObjectReadError, MutableObject]]] = None
   private[this] var fdata: Option[Future[Either[ObjectReadError, MutableObject]]] = None
   
+  def data: DataBuffer = dataBuffer
+  
   def metadata = ObjectMetadata(revision, refcount, timestamp)
+  
+  ostate.foreach { t =>
+    val (meta, db) = t
+    revision = meta.revision
+    refcount = meta.refcount
+    timestamp = meta.timestamp
+    dataBuffer = db
+    val fright = Future.successful(Right(this))
+    fmeta = Some(fright)
+    fdata = Some(fright)
+  }
+  
+  protected def setRebuildState(meta: ObjectMetadata, content: DataBuffer): Unit = {
+    metadata = meta
+    dataBuffer = content
+    val p = Promise[Either[ObjectReadError, MutableObject]]()
+    p.success(Right(this))
+    fmeta = Some(p.future)
+    fdata = Some(p.future)
+  }
   
   def metadata_=(m: ObjectMetadata) {
     revision = m.revision
@@ -165,7 +191,7 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
           Left(err)
           
         case Right(data) =>
-          this.data = data
+          this.dataBuffer = data
           Right(this)
       }}
       fdata = Some(fd)
@@ -182,7 +208,7 @@ abstract class MutableObject(val objectId: StoreObjectID, initialOperation: UUID
           
         case Right((metadata, data)) =>
           this.metadata = metadata
-          this.data = data
+          this.dataBuffer = data
           Right(this)
       }}
       fmeta = Some(f)

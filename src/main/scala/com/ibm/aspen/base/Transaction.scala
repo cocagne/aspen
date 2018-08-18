@@ -25,15 +25,9 @@ trait Transaction {
   def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
   def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision
   
-  def append(
+  def update(
       pointer: KeyValueObjectPointer, 
       requiredRevision: Option[ObjectRevision],
-      requirements: List[KeyValueUpdate.KVRequirement],
-      operations: List[KeyValueOperation]): Unit
-      
-  def overwrite(
-      pointer: KeyValueObjectPointer, 
-      requiredRevision: ObjectRevision,
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit
       
@@ -49,9 +43,6 @@ trait Transaction {
   
   def ensureHappensAfter(timestamp: HLCTimestamp): Unit
   
-  /** Note, the result of this call changes depending on when it is called and what ensureHappensAfter() calls have been made */
-  def timestamp(): HLCTimestamp
-  
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit
   
   def addFinalizationAction(finalizationActionUUID: UUID): Unit
@@ -63,7 +54,7 @@ trait Transaction {
    */
   def invalidateTransaction(reason: Throwable): Unit
   
-  def result: Future[Unit]
+  def result: Future[HLCTimestamp]
   
   /** Used by MissedUpdateFinalizationActions to prevent circular loops when marking objects as having missed update transactions.
    *  This method should NOT be used for any other purposes.

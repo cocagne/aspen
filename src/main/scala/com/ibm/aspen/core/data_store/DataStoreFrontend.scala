@@ -49,26 +49,12 @@ import com.ibm.aspen.core.read.OpportunisticRebuild
 import org.apache.logging.log4j.scala.Logging
 import org.apache.logging.log4j.LogManager
 
-object DataStoreFrontend {
-  
-  def appendDataBuffer(src: DataBuffer, append: DataBuffer): DataBuffer = {
-    val buf = ByteBuffer.allocate( src.size + append.size )
-    buf.put(src.asReadOnlyBuffer())
-    buf.put(append.asReadOnlyBuffer())
-    buf.position(0)
-    DataBuffer(buf)
-  }
-  
-}
-
 class DataStoreFrontend(
     val storeId: DataStoreID,
     val backend: DataStoreBackend,
     transactionRecoveryStates: List[TransactionRecoveryState], 
     allocationRecoveryStates: List[AllocationRecoveryState]
     ) extends DataStore { 
-  
-  import DataStoreFrontend._
   
   object log {
     val rebuild = LogManager.getLogger(this.getClass.getName + ".rebuild")
@@ -475,35 +461,23 @@ class DataStoreFrontend(
             else {
               log.rebuild.info(s"$storeId opportunistic rebuild local state (${mo.revision},${mo.refcount}) rebuild from (${message.oldRevision}, ${message.oldRefcount}) to (${message.newRevision},${message.newRefcount})")
               
-              val (updateMeta, updateData) = mo match {
+              val commit = mo match {
                 case d: MutableDataObject => 
-                  val u = d.revision == message.oldRevision && d.refcount == message.oldRefcount
-                  (u, u)
+                  if(d.revision == message.oldRevision && d.refcount == message.oldRefcount) {
+                    d.restore(metadata, data)
+                    true
+                  } else
+                    false
                   
                 case k: MutableKeyValueObject =>
-                  val news = KeyValueObjectCodec.getUpdateSet(k.data) 
-                  val meta = k.revision == message.oldRevision && k.refcount == message.oldRefcount && news == message.oldUpdateSet
-                  
-                  // Only update data if the revision has changed OR the new update set is a strict superset of the updates we already
-                  // have. If we have received any updates outside this, we cannot overwrite our content
-                  val data = k.revision != message.newRevision || (KeyValueObjectCodec.getUpdateSet(mo.data) &~ news).isEmpty
-                  
-                  (meta, data)
+                  if (k.revision == message.oldRevision && k.refcount == message.oldRefcount && k.storeState.updateSet == message.oldUpdateSet) {
+                    k.restore(metadata, data)
+                    true
+                  } else
+                    false
               }
               
-              if (updateMeta) {
-                mo.revision = metadata.revision
-                mo.refcount = metadata.refcount
-                mo.timestamp = metadata.timestamp
-                
-                if (updateData) {
-                  mo.data = data
-                  mo match {
-                    case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
-                    case _ =>
-                  }
-                }
-      
+              if (commit) {
                 mo.commitBoth() onComplete { 
                   case _ => complete()
                 }
@@ -616,38 +590,36 @@ class DataStoreFrontend(
         backend.putObject(objectId, metadata, data)
       }
       
-      case (Some(os), Some(mo)) => synchronized { 
-        
-        val basicUpdateRequired = os.timestamp > mo.timestamp && (os.revision != mo.revision || os.refcount != mo.refcount)
-        
-        val update = os match {
-          case d: DataObjectState => basicUpdateRequired
-            
-          case kvos: KeyValueObjectState => basicUpdateRequired || kvos.updates.size > KeyValueObjectCodec.getUpdateSet(mo.data).size
-            
-          case _: MetadataObjectState => basicUpdateRequired // Should not be possible
-        }
-        
-        if (update) {
-          
-          if (!mo.locks.isEmpty)
-            throw new Exception("object is locked by a transaction")
-        
-          log.rebuild.info(s"$storeId repair: Repairing missed update for object ${entry.objectUUID}.")
-          
-          mo.revision = os.revision
-          mo.refcount = os.refcount
-          mo.timestamp = os.timestamp
-          mo.data = getLocalData(os)
-          mo match {
-            case kvobj: MutableKeyValueObject => kvobj.dropKeyValueContent()
-            case _ =>
-          }
+      case (Some(kvos: KeyValueObjectState), Some(mo: MutableKeyValueObject)) => synchronized { 
+        if (kvos.timestamp > mo.timestamp || kvos.lastUpdateTimestamp > mo.storeState.lastUpdateTimestamp) {
+          log.rebuild.info(s"$storeId repair: Repairing missed data update for object ${entry.objectUUID}.")
+          mo.restore(ObjectMetadata(kvos.revision, kvos.refcount, kvos.timestamp), getLocalData(kvos))
           mo.commitBoth()
-        } else {
-          log.rebuild.info(s"$storeId repair: Object is up to date ${entry.objectUUID}.")
+        } else if (kvos.refcount != mo.refcount) {
+          log.rebuild.info(s"$storeId repair: Repairing missed refcount update for object ${entry.objectUUID}.")
+          mo.refcount = kvos.refcount
+          mo.commitMetadata()
+        } else
           Future.unit
-        }
+      }
+      
+      case (Some(dos: DataObjectState), Some(mo: MutableDataObject)) => synchronized { 
+        if (dos.lastUpdateTimestamp > mo.timestamp) {
+          log.rebuild.info(s"$storeId repair: Repairing missed data update for object ${entry.objectUUID}.")
+          mo.restore(ObjectMetadata(dos.revision, dos.refcount, dos.timestamp), getLocalData(dos))
+          mo.commitBoth()
+        } else if (dos.refcount != mo.refcount) {
+          log.rebuild.info(s"$storeId repair: Repairing missed refcount update for object ${entry.objectUUID}.")
+          mo.refcount = dos.refcount
+          mo.commitMetadata()
+        } else
+          Future.unit
+        
+      }
+      
+      case _ => synchronized { 
+        log.rebuild.error(s"$storeId repair: Invalid Repair State for object ${entry.objectUUID}.")
+        Future.unit
       }
     }
     
@@ -762,8 +734,14 @@ class DataStoreFrontend(
                 val data = dataUpdates(requirement.objectPointer.uuid)
                     
                 du.operation match {
-                  case DataUpdateOperation.Overwrite => cs.obj.data = data
-                  case DataUpdateOperation.Append    => cs.obj.data = appendDataBuffer(cs.obj.data, data)
+                  case DataUpdateOperation.Overwrite => cs.obj match {
+                    case d: MutableDataObject => d.overwriteData(data)
+                    case kv: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Overwrite on key-value object ${requirement.objectPointer.uuid}")
+                  }
+                  case DataUpdateOperation.Append => cs.obj match {
+                    case d: MutableDataObject => d.appendData(data)
+                    case kv: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
+                  }
                 }
                 
                 cs.obj.revision = ObjectRevision(txd.transactionUUID)
@@ -802,16 +780,10 @@ class DataStoreFrontend(
                   cs.commitMetadata = true 
                 }
                 
-                log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing KeyValueUpdate ${kv.updateType} for object ${requirement.objectPointer.uuid}")
+                log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing KeyValue ${kv.updateType} for object ${requirement.objectPointer.uuid}")
                 
                 kv.updateType match {
-                  case KeyValueUpdate.UpdateType.Overwrite =>
-                    cs.obj.data = data
-                    kvobj.dropKeyValueContent() // Object content will need to be parsed from the new data
-                    
-                  case KeyValueUpdate.UpdateType.Append    => 
-                    cs.obj.data = appendDataBuffer(cs.obj.data, data)
-                    kvobj.updateKeyValueContent(data) // Updates the already-parsed data (if it's been parsed) with the new values
+                  case KeyValueUpdate.UpdateType.Update => kvobj.update(data, ObjectRevision(txd.transactionUUID), timestamp)
                 }
             }
           } else {
@@ -984,17 +956,18 @@ class DataStoreFrontend(
                   
                   case Some(data) =>
                     val haveSpace = kv.updateType match {
-                      case KeyValueUpdate.UpdateType.Overwrite =>
-                        val meetsSizeRequirement = requirement.objectPointer.size match {
-                          case None => true
-                          case Some(maxSize) => data.size <= maxSize
-                        }
-                        meetsSizeRequirement && backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
+                      case KeyValueUpdate.UpdateType.Update =>
                         
-                      case KeyValueUpdate.UpdateType.Append    => 
                         val meetsSizeRequirement = requirement.objectPointer.size match {
                           case None => true
-                          case Some(maxSize) => (obj.data.size + data.size) <= maxSize
+                          case Some(maxSize) => 
+                            val kvoss = obj.asInstanceOf[MutableKeyValueObject].storeState
+    
+                            val (partialKvoss, deletes) = KeyValueObjectStoreState.decodeOps(data, ObjectRevision(txd.transactionUUID), HLCTimestamp(txd.startTimestamp))
+                            
+                            val requiredSize = KeyValueObjectStoreState.encodedSize(kvoss.update(partialKvoss, deletes))
+                            
+                            requiredSize <= maxSize
                         }
                         meetsSizeRequirement && backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
                     }
@@ -1004,8 +977,9 @@ class DataStoreFrontend(
                 }
                 
                 if (!kv.requirements.isEmpty) {
-                  kvobj.parseKeyValueContent()
-                
+                  
+                  val kvoss = kvobj.storeState
+                  
                   val objectLocked = kvobj.objectRevisionWriteLock match {
                     case None => false
                     case Some(lockedTxd) => lockedTxd.transactionUUID != txd.transactionUUID
@@ -1015,7 +989,7 @@ class DataStoreFrontend(
                     err(TransactionCollision(obj, kvobj.objectRevisionWriteLock.get))
                   } else {
                     kv.requirements.foreach { req => 
-                      val ov = kvobj.idaEncodedContents.get(req.key)
+                      val ov = kvoss.idaEncodedContents.get(req.key)
 
                       kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
                         if (lockedTxd.transactionUUID != txd.transactionUUID)

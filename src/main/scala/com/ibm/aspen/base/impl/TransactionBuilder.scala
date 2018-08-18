@@ -99,7 +99,7 @@ class TransactionBuilder(
     }
     
     keyValueUpdates.valuesIterator.foreach { kvu => 
-      addUpdate(kvu.pointer, KeyValueObjectCodec.encodeUpdate(kvu.pointer.ida, kvu.operations)) 
+      addUpdate(kvu.pointer, KeyValueOperation.encode(kvu.operations, kvu.pointer.ida)) 
     }
                                      
     (txd, updates, startTimestamp)
@@ -141,7 +141,7 @@ class TransactionBuilder(
     ObjectRevision(transactionUUID)
   }
   
-  def append(
+  def update(
       pointer: KeyValueObjectPointer, 
       requiredRevision: Option[ObjectRevision],
       requirements: List[KeyValueUpdate.KVRequirement],
@@ -152,21 +152,7 @@ class TransactionBuilder(
     if (revisionLocks.contains(pointer))
       throw ConflictingRequirements(pointer)
     
-    keyValueUpdates += (pointer -> KVUpdate(pointer, KeyValueUpdate.UpdateType.Append, requiredRevision, requirements, operations))
-  }
-  
-  def overwrite(
-      pointer: KeyValueObjectPointer, 
-      requiredRevision: ObjectRevision,
-      requirements: List[KeyValueUpdate.KVRequirement],
-      operations: List[KeyValueOperation]): Unit = synchronized {
-    //println(s"   TXB KV Overwrite txid $transactionUUID object ${pointer.uuid}")
-    if (updatingObjects.contains(pointer))
-      throw MultipleDataUpdatesToObject(pointer)
-    if (revisionLocks.contains(pointer))
-      throw ConflictingRequirements(pointer)
-    
-    keyValueUpdates += (pointer -> KVUpdate(pointer, KeyValueUpdate.UpdateType.Overwrite, Some(requiredRevision), requirements, operations))
+    keyValueUpdates += (pointer -> KVUpdate(pointer, KeyValueUpdate.UpdateType.Update, requiredRevision, requirements, operations))
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized {

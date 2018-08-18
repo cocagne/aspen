@@ -43,8 +43,8 @@ case class KeyValueUpdate(
 object KeyValueUpdate {
   
   object UpdateType extends Enumeration {
-    val Overwrite = Value("Overwrite")
-    val Append    = Value("Append")
+    //val Overwrite = Value("Overwrite")
+    val Update    = Value("Update")
   }
   
   object TimestampRequirement extends Enumeration {

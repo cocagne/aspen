@@ -20,6 +20,7 @@ import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.util
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.MissedUpdateStrategy
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -97,8 +98,8 @@ object Bootstrap {
     
     def allocateKV(initialContent: List[(Key, Array[Byte])]): Future[KeyValueObjectPointer] = {
       val objectUUID = UUID.randomUUID()
-      val inserts = initialContent.map(t => new Insert(t._1.bytes, t._2, timestamp))
-      val enc = KeyValueObjectCodec.encodeUpdate(bootstrapPoolIDA, inserts)
+      val inserts = initialContent.map(t => new Insert(t._1, t._2))
+      val enc = KeyValueOperation.encode(inserts, bootstrapPoolIDA)
       val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
@@ -110,8 +111,8 @@ object Bootstrap {
     }
     
     def overwriteKeyValueObject(pointer: KeyValueObjectPointer, initialContent: List[(Key, Array[Byte])]): Future[Unit] = {
-      val inserts = initialContent.map(t => new Insert(t._1.bytes, t._2, timestamp))
-      val enc = KeyValueObjectCodec.encodeUpdate(bootstrapPoolIDA, inserts)
+      val inserts = initialContent.map(t => new Insert(t._1, t._2))
+      val enc = KeyValueOperation.encode(inserts, bootstrapPoolIDA)
       Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, enc(t._2), timestamp))).map(_=>())
     }
     

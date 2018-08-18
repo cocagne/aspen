@@ -1,3 +1,94 @@
+***** Should the Transaction Future return the Committed Timestamp?
+   tx.timesamp isn't reliable till then
+   why provide it at all?
+   can only be a source of bugs
+   Forces all things trying to update from Tx to wait for tx completion
+
+
+* TODO - Read Enhancements
+   - Key-Value reads could stall
+   - Intelligently select which stores to issue re-read requests to
+      - potentially leverage lastUpdateTimestamp on store state
+
+* For restore, need a minimum guaranteed "freshness"
+   - Use case is to ensure that the read value exceeds the timestamp of the local object during a
+     restore operation
+   - if (kvos.readTime > localState.lastUpdateTimestamp) update else don't
+
+
+* KeyValueObject encode
+   - Convert current object state to set of ops to apply to empty state
+      - must IDA-encode and select correct index for each IDA-encoded element
+   - Use existing store encode?
+
+* Reads
+   + Remove support for partial read. Circle back around to it later
+      - Be sure to remove API as well
+      
+   + Add locked Tx UUID + List[OpCode + Data] to all reads
+      - Must separate out on a per-object basis, not tx basis
+   + Add to network encoding
+   + Add to Read driver
+      
+   - AspenSystem tracks recently successful transactions on a Set[TxUUID] basis
+   - During read, check locked transactions to see if they're in the recently-completed set. If yes, promote to full version
+      - do this immediately upon message reception, before any processing takes place
+      - rest of the logic just uses the final object revision
+   - Also promote lock if any other read shows that revision as a committed version
+      - Relies on Paxos commitment ensuring answer cannot change.
+      - For the first to commit, Accepted messages must be sent by a write-threshold
+   - Restoring keys works just like restoring objects
+      - isRestorable(reads: List[Option[ObjectRevision]): Option[Boolean]
+         - Returns None if recoverability cannot be determined
+         - Some(true) for recoverable Some(false) for unrecoverable
+      - Use isRestorable on top-level object revision for both KV and Data
+         - KV additionally does this check on all KV pairs
+            - only need non-none values for all KV pairs
+            
+            
+** Think-through KV rebuild process to ensure it's logically correct
+
+* Sending operations list in Tx avoids need to continually replicate the ObjectRevision
+   - but then overwrite operations always update the timestamp
+   - Could discard the overwrite notion entirely and switch to just locks
+      - which is really what we're doing anyway
+      - "overwrite" can be done from client side
+      - TransactionRequirements can specify MinLock & MaxLock in addition to locking individual keys
+          - should simplify transaction handling
+        
+
+* Need a more fundamental re-think of how we're handling key-value object states and encodings
+   - backend store state is good
+   - MutableObject should probably reference an Option[kvoss] rather then replicating hte fields directly
+   - Need to discard Updates concept from KeyValueObject encoding
+
+* Redo encoding
+   - The "updates" are the set of contained revisions for maintaining read/unit test compatibility
+   - Series of key,value,revision,timestamp
+   - Encoding used by the store does NOT need to match that of the transaction or read response
+       - Store never saves delete markers or old SetMin/SetMax.
+       - It always overwrites the object with the exact current content
+       - Optionally, it could be smart about compressing the data
+           - e.g. snappy for compressing keys with common prefix?
+   - Encoded values can use a separate class for representing KVPairs (maybe use that name)
+   - TEMPORARILY throw away revision and timestamp when creating Value
+
+
+* Redo reads
+   - Send Either[DataObjectData, KeyValueData]
+   - Send locked transaction updates plus data
+       - Not the TXD. Use simpler mechanism   
+
+      
+* Need to separate Long-term from near-term
+   - Supporting arbitrarily-sized KV objects would be great in the long run but not much of a near-term win
+   - For now, we can afford to load and store full objects
+   - Optimizations can come later
+   - KV objects will generally be small for now
+   - TieredLists can be updated to split on num pairs or size exceeded
+      + Bonus to unit tests which currently assume pointer sizes
+   - Size on store will always be an estimate, cannot be accurate (ex level db with multiple files and compaction)
+      - should assume worst-case during size calculation
 
 * KeyValue Redesign
    - Discard current 'updates' mechanism
@@ -11,9 +102,28 @@
    
    - For apps that overwrite multiple keys, can save space by sharing (revision,timestamp)
       - Similar to current 'update' scheme
+      
+   - There will be no need to "compact" KV objects. Each store can do that locally.
+      - For now we'll load the whole KV object
+      
+* Separate Data & KeyValue Backends?
+   - May need two DataStoreFrontends - or base + two specialized
+   - For KeyValue, we don't really need "overwrite". What we really need is "LockAllPairsAndUpdate"
+   - Lock can be done by the key-range the object owns
+   - Arbitrarily sized objects can be used if we don't have to read everything all the time
+   - Could support ranged reads
+       - If backend doesn't natively support it via an Interface, read whole object and use
+         just the KV pairs
+       - Could use DataToKVAdapter to adapt a raw data backend (like file) to parse/encode
+         KV pairs during read/write.
+   - kvGet
    
 
 * RACE CONDITION
+   - Will want a common function for restoring an object (either a full data object or
+     just the Value associated with a key)
+         - Needs to take IDA thresholds & outstanding transactions into account
+         
    - Client can see TX commits and issues read that reads OLD version
        - stores haven't yet realized they should commit
        

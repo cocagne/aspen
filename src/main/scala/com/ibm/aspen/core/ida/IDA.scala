@@ -54,7 +54,7 @@ sealed abstract class IDA extends Ordered[IDA] {
    *  Note that any padding required to achieve alignment requirements must be transparently handled by
    *  the encode/restore methods. 
    */
-  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer
+  def restore(segments: List[(Byte,DataBuffer)]): DataBuffer
   
   /** Restores the data or throws an Exception if the restore operation fails. 
    *  Accepts a list of (EncodingIndex, Option[DataBuffer]).
@@ -63,7 +63,7 @@ sealed abstract class IDA extends Ordered[IDA] {
    *  Note that any padding required to achieve alignment requirements must be transparently handled by
    *  the encode/restore methods. 
    */
-  def restoreToArray(segments: List[(Byte,Option[DataBuffer])]): Array[Byte] = restore(segments).getByteArray()
+  def restoreArray(segments: List[(Byte, Array[Byte])]): Array[Byte] 
   
   /** Encodes the object into an array of ByteBuffers
    *  
@@ -76,6 +76,8 @@ sealed abstract class IDA extends Ordered[IDA] {
    */
   def encode(objectContent: DataBuffer): Array[DataBuffer]
   
+  def encode(objectContent: Array[Byte]): Array[Array[Byte]]
+  
   /** Encodes the object into the provided array of ByteBuffers. The the size of the array must match the
    *  IDA width and each buffer must support writing at least calculateEncodedSegmentLength bytes.
    */
@@ -85,8 +87,8 @@ sealed abstract class IDA extends Ordered[IDA] {
   
   def compare(that: IDA) = failureTolerance - that.failureTolerance
   
-  /** Returns length of the DataBuffers that would be returned by calling encode() on the provided DataBuffer */ 
-  def calculateEncodedSegmentLength(objectContent: DataBuffer): Int
+  /** Returns length of the DataBuffers that would be returned by calling encode() on the provided number of bytes */ 
+  def calculateEncodedSegmentLength(nbytes: Int): Int
   
   /** Returns the size of the restored object given the size of the object segment on a data store */
   def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int
@@ -106,16 +108,19 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
   
   def consistentRestoreThreshold: Int = width / 2 + 1
   
-  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = segments.find(t => t._2 match {
-    case None => false
-    case Some(_) => true
-  }) match {
-    case None => throw new IDARestoreError
-    case Some(t) => t._2.get
-  }
+  def restore(segments: List[(Byte,DataBuffer)]): DataBuffer = if (segments.size < restoreThreshold) throw new IDARestoreError else segments.head._2 
+  
+  def restoreArray(segments: List[(Byte, Array[Byte])]): Array[Byte] = if (segments.size < restoreThreshold) throw new IDARestoreError else segments.head._2 
   
   def encode(objectContent: DataBuffer): Array[DataBuffer] = {
     val arr = new Array[DataBuffer](width)
+    for (i <- 0 until width)
+      arr(i) = objectContent
+    arr
+  }
+  
+  def encode(objectContent: Array[Byte]): Array[Array[Byte]] = {
+    val arr = new Array[Array[Byte]](width)
     for (i <- 0 until width)
       arr(i) = objectContent
     arr
@@ -127,7 +132,7 @@ case class Replication(width: Int, writeThreshold: Int) extends IDA {
       bb.put(objectContent)
   }
   
-  def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = objectContent.size
+  def calculateEncodedSegmentLength(nbytes: Int): Int = nbytes
   
   def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int = objectSizeOnDataStore
   
@@ -145,11 +150,15 @@ case class ReedSolomon(width: Int, restoreThreshold: Int, writeThreshold: Int)
   
   def consistentRestoreThreshold: Int = restoreThreshold
   
-  def restore(segments: List[(Byte,Option[DataBuffer])]): DataBuffer = throw new IDANotSupportedError
+  def restore(segments: List[(Byte,DataBuffer)]): DataBuffer = throw new IDANotSupportedError
+  
+  def restoreArray(segments: List[(Byte, Array[Byte])]): Array[Byte] = throw new IDANotSupportedError
   
   def encode(objectContent: DataBuffer): Array[DataBuffer] = throw new IDANotSupportedError
   
-  def calculateEncodedSegmentLength(objectContent: DataBuffer): Int = throw new IDANotSupportedError
+  def encode(objectContent: Array[Byte]): Array[Array[Byte]] = throw new IDANotSupportedError
+  
+  def calculateEncodedSegmentLength(nbytes: Int): Int = throw new IDANotSupportedError
   
   def calculateRestoredObjectSize(objectSizeOnDataStore: Int): Int = throw new IDANotSupportedError
   

@@ -27,6 +27,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.RetryStrategy
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 
 
 object KeyValueList {
@@ -58,8 +59,8 @@ object KeyValueList {
         else {
           kvos.right match {
             case None => p.failure(new CorruptedLinkedList)
-            case Some(arr) => try {
-              val next = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+            case Some(right) => try {
+              val next = KeyValueObjectPointer(right.content)
               if (blacklist.contains(next.uuid))
                 p.success(kvos)
               else
@@ -96,8 +97,8 @@ object KeyValueList {
     def scanRight(node: KeyValueObjectState): Unit = node.right match {
       case None => p.success(Some(node))
       
-      case Some(arr) => 
-        val rightPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+      case Some(right) => 
+        val rightPointer = KeyValueObjectPointer(right.content)
         
         if (node.keyInRange(key, ordering) || blacklist.contains(rightPointer.uuid))
           p.success(Some(node))
@@ -128,8 +129,8 @@ object KeyValueList {
     def scanRight(node: KeyValueObjectState): Unit = node.right match {
       case None => p.success(node)
       
-      case Some(arr) => 
-        val rightPointer = ObjectPointer.fromArray(arr).asInstanceOf[KeyValueObjectPointer]
+      case Some(right) => 
+        val rightPointer = KeyValueObjectPointer(right.content)
         
         if (node.keyInRange(key, ordering))
           p.success(node)
@@ -149,86 +150,70 @@ object KeyValueList {
   def prepreUpdateTransaction(
       kvos: KeyValueObjectState,
       nodeSizeLimit: Int,
+      kvPairLimit: Int,
       inserts: List[(Key, Array[Byte])],
       deletes: List[Key],
       requirements: List[KeyValueUpdate.KVRequirement],
       ordering: KeyOrdering,
       reader: ObjectReader,
       allocater: ObjectAllocater,
-      onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit,
-      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onSplit: (KeyValueListPointer, List[KeyValueListPointer]) => Unit,
+      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[KeyValueObjectState]] = {
     
     if (inserts.exists(t => !kvos.keyInRange(t._1, ordering)) || deletes.exists(key => !kvos.keyInRange(key, ordering)))
        return Future.failed(new OutOfRange)
-   
-    val timestamp = tx.timestamp()
+       
+    val finalKVSet = (kvos.contents.keySet -- deletes.toSet) ++ inserts.map(_._1).toSet
     
-    val appendOps = (inserts.iterator.map(t => new Insert(t._1.bytes, t._2, timestamp)) ++ deletes.iterator.map(key => new Delete(key.bytes))).toList
+    if (finalKVSet.size > 2*kvPairLimit)
+      return Future.failed(new NodeSizeExceeded)
     
     val maxSize = kvos.pointer.size match {
       case None => nodeSizeLimit
       case Some(lim) => if (lim < nodeSizeLimit) lim else nodeSizeLimit
     }
     
-    val sizeAfterAppend = kvos.sizeOnStore + KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, appendOps) 
+    val sizeAfterAppend = kvos.guessSizeOnStoreAfterUpdate(inserts, deletes)
     
-    if (sizeAfterAppend <= maxSize) {
+    if (sizeAfterAppend > 2*nodeSizeLimit)
+      return Future.failed(new NodeSizeExceeded)
+    
+    val remaining = inserts.foldLeft(deletes.foldLeft(kvos.contents.keysIterator.toSet)((s,k) => s - k))((s,t) => s + t._1)
+    
+    if (sizeAfterAppend <= maxSize && remaining.size < kvPairLimit) {
       
-      val newKvos = updateState(kvos, appendOps, sizeAfterAppend, kvos.maximum, kvos.right)
+      val updateOps = (inserts.iterator.map(t => new Insert(t._1, t._2)) ++ deletes.iterator.map(key => new Delete(key))).toList
       
-      if (newKvos.contents.isEmpty)
-        joinOnEmpty(newKvos, requirements, timestamp, maxSize, ordering, reader, onJoin)
+      if (remaining.isEmpty)
+        joinOnEmpty(kvos, requirements, updateOps, maxSize, ordering, reader, onJoin)
       else {
         
-        tx.append(kvos.pointer, None, requirements, appendOps)
+        tx.update(kvos.pointer, None, requirements, updateOps)
         
-        Future.successful(newKvos)
-      }
-    } else {
-      
-      val deleteSet = deletes.toSet
-      var ops = List[KeyValueOperation]()
-      
-      inserts.foreach(t => ops = new Insert(t._1.bytes, t._2, timestamp) :: ops)
-      kvos.contents.foreach { t => 
-        if (!deleteSet.contains(t._1))
-          ops = new Insert(t._1.bytes, t._2.value, t._2.timestamp) :: ops
-      }
-
-      kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-      kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-      kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
-      
-      if (KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, ops) <= maxSize) {
-        val newKvos = updateState(kvos, appendOps, sizeAfterAppend, kvos.maximum, kvos.right)
+        val fnewKvos = tx.result.map(timestamp => updateState(kvos, timestamp, tx.txRevision, updateOps, kvos.maximum, kvos.right))
         
-        if (newKvos.contents.isEmpty)
-          joinOnEmpty(newKvos, requirements, timestamp, maxSize, ordering, reader, onJoin)
-        else {
-          tx.overwrite(kvos.pointer, kvos.revision, requirements, ops)
-          Future.successful(newKvos)
-        }
-      } else
-        split(kvos, requirements, inserts, deleteSet, timestamp, maxSize, ordering, allocater, onSplit)
-    }
+        Future.successful(fnewKvos)
+      }
+    } else
+      split(kvos, requirements, inserts, deletes, maxSize, kvPairLimit, ordering, allocater, onSplit)
   }
   
   private def updateState(
-      kvos: KeyValueObjectState, 
+      kvos: KeyValueObjectState,
+      timestamp: HLCTimestamp,
+      revision: ObjectRevision,
       ops: List[KeyValueOperation], 
-      newSizeOnStore: Int, 
-      maximum: Option[Key], 
-      right: Option[Array[Byte]]): KeyValueObjectState = {
+      maximum: Option[KeyValueObjectState.Max], 
+      right: Option[KeyValueObjectState.Right]): KeyValueObjectState = {
     
     val newContents = ops.foldLeft(kvos.contents) { (m, op) => op match {
       case i: Insert =>
-        val key = Key(i.key)
-        m + (key -> Value(key, i.value, i.timestamp))
+        m + (i.key -> Value(i.key, i.value, timestamp, revision))
       case d: Delete => m - Key(d.value)
       case _ => m
     }}
     
-    new KeyValueObjectState(kvos.pointer, kvos.revision, kvos.refcount, kvos.timestamp, kvos.updates, newSizeOnStore, 
+    new KeyValueObjectState(kvos.pointer, kvos.revision, kvos.refcount, timestamp, timestamp,
         kvos.minimum, maximum, kvos.left, right, newContents)
   }
    
@@ -236,101 +221,173 @@ object KeyValueList {
       kvos: KeyValueObjectState,
       requirements: List[KeyValueUpdate.KVRequirement],
       inserts: List[(Key, Array[Byte])],
-      deleteSet: Set[Key],
-      timestamp: HLCTimestamp,
+      deletes: List[Key],
       maxSize: Int,
+      maxPairs: Int,
       ordering: KeyOrdering,
       allocater: ObjectAllocater,
-      onSplit: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onSplit: (KeyValueListPointer, List[KeyValueListPointer]) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[KeyValueObjectState]] = {
     
-    val contents = inserts.foldLeft(kvos.contents.filter(t => !deleteSet.contains(t._1))){ (m, t) =>
-      m + (t._1 -> Value(t._1, t._2, timestamp))
+    val pruneSet = deletes.toSet
+    val prunedContents = kvos.contents.filter(t => !pruneSet.contains(t._1))
+    
+    def getInsertOptions(key: Key): (Option[HLCTimestamp], Option[ObjectRevision]) = prunedContents.get(key) match {
+      case None => (None, None)
+      case Some(v) => (Some(v.timestamp), Some(v.revision))
     }
-
-    val keys = contents.keysIterator.toArray
+    
+    val rawPairs = prunedContents.map(t => (t._1, t._2.value)) ++ inserts
+    
+    val keys = rawPairs.keysIterator.toArray
     
     scala.util.Sorting.quickSort(keys)(ordering)
     
-    var rightIndex = keys.length / 2
-    var rightMin = keys(rightIndex)
+    val totalKVSize = rawPairs.foldLeft(0)((sz, t) => sz + KeyValueObjectStoreState.idaEncodedPairSize(kvos.pointer.ida, t._1, t._2))
     
-    var leftOps = List[KeyValueOperation]()
-    var rightOps = List[KeyValueOperation]()
-    
-    for (i <- 0 until keys.length) {
-      val v = contents(keys(i))
-      val ins = new Insert(v.key.bytes, v.value, v.timestamp)
+    def rfill(
+        ops: List[KeyValueOperation], 
+        insertedCount: Int,
+        remainingKeys: List[Key],
+        remainingCount: Int,
+        remainingKVSize: Int,
+        lastKey: Option[Key],  
+        objectSize: Int
+        ): (List[KeyValueOperation], List[Key], Key, Int, Boolean) = {
       
-      if ( i < rightIndex )
-        leftOps = ins :: leftOps
-      else
-        rightOps = ins :: rightOps
+      if (remainingKeys.isEmpty || insertedCount == maxPairs || (!lastKey.isEmpty && (objectSize > remainingKVSize || insertedCount > remainingCount))) {
+        (SetMin(lastKey.get) :: ops, remainingKeys, lastKey.get, remainingKVSize, false)
+      } else {
+        val key = remainingKeys.head
+        val value = rawPairs(key)
+        val pairSize = KeyValueObjectStoreState.idaEncodedPairSize(kvos.pointer.ida, key, value)
+        val minSize = KeyValueObjectStoreState.encodedMinimumSize(key)
+
+        if (objectSize + pairSize + minSize < maxSize) {
+          val (ts, rev) = getInsertOptions(key)
+          rfill(Insert(key, value, ts, rev) :: ops, insertedCount + 1, remainingKeys.tail, remainingCount - 1, remainingKVSize - pairSize, Some(key), objectSize + pairSize)
+        } else
+          (SetMin(lastKey.get) :: ops, remainingKeys, lastKey.get, remainingKVSize, true)
+      }
     }
     
-    kvos.maximum.foreach( arr => rightOps = new SetMax(arr) :: rightOps )
-    kvos.right.foreach( arr => rightOps = new SetRight(arr) :: rightOps )
-    rightOps = new SetMin(rightMin) :: rightOps
-
-    allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, rightOps, None) map { rightNodePointer =>
-      val rnpArr = rightNodePointer.toArray
-      leftOps = new SetMax(rightMin) :: leftOps
-      leftOps = new SetRight(rnpArr) :: leftOps
-      val newSizeOnStore = KeyValueObjectCodec.calculateEncodedSize(kvos.pointer.ida, leftOps)
+    def ralloc(
+        right: Option[(Key, KeyValueObjectPointer)],
+        remainingKeys: List[Key],
+        remainingSize: Int,
+        allocated: List[(Key, KeyValueObjectPointer)]): Future[(List[(Key, KeyValueObjectPointer)], List[Key])] = {
       
-      tx.overwrite(kvos.pointer, kvos.revision, requirements, leftOps)
+      allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil, None) flatMap { newPtr =>
+        
+        val (rops: List[KeyValueOperation], rsize) = right match {
+          case None => (Nil, 0)
+          case Some(t) =>
+            val (max, rptr) = t
+            val encodedRptr = rptr.toArray
+            val rsize = KeyValueObjectStoreState.encodedMaximumSize(max) + KeyValueObjectStoreState.encodedRightSize(kvos.pointer.ida, encodedRptr)
+            (SetMax(max) :: SetRight(encodedRptr) :: Nil, rsize)
+        }
+        
+        val (ops, leftoverKeys, minimum, leftoverSize, continueAllocating) = rfill(rops, 0, remainingKeys, remainingKeys.size, remainingSize, None, rsize)
+        
+        tx.update(newPtr, Some(tx.txRevision), Nil, ops)
+        
+        if (leftoverKeys.isEmpty || !continueAllocating)
+          Future.successful(((minimum, newPtr) :: allocated, Nil))
+        else
+          ralloc(Some((minimum, newPtr)), leftoverKeys, leftoverSize, (minimum, newPtr) :: allocated)
+      }
+    }
+    
+    val right = (kvos.right, kvos.maximum) match {
+      case (Some(r), Some(m)) => Some((m.key, KeyValueObjectPointer(r.content)))
+      case (None, None) => None
+      case _ => return Future.failed(new CorruptedLinkedList)
+    }
+    
+    ralloc(right, keys.toList.reverse, totalKVSize, Nil) map { t =>
+      val (allocated, remainingKeys) = t
+      val (newMax, newRight) = allocated.head
+      val currentSet = kvos.contents.keys.toSet
+      val remainingSet = remainingKeys.toSet
+      val toDelete = (currentSet &~ remainingSet).toList
+      val toInsert = (remainingSet &~ currentSet).toList
+      val toOverwrite = (remainingSet & inserts.map(_._1).toSet).toList
       
-      val left = KeyValueListPointer(kvos.minimum.getOrElse(Key.AbsoluteMinimum), kvos.pointer)
-      val right = KeyValueListPointer(rightMin, rightNodePointer)
+      // Delete all keys that were previously in the object but are not in the object now
+      val delOps = toDelete.map(k => Delete(k))
+      val insOps = (toInsert ++ toOverwrite).map { k =>
+        val (ts, rev) = getInsertOptions(k)
+        Insert(k, rawPairs(k), ts, rev)
+      }
       
-      onSplit(left, right)
+      tx.update(kvos.pointer, Some(kvos.revision), Nil, SetMax(newMax) :: SetRight(newRight.toArray) :: (insOps ++ delOps))
       
-      new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, Set(), newSizeOnStore, 
-        kvos.minimum, Some(rightMin), kvos.left, Some(rnpArr), contents)
+      val leftMin = kvos.minimum match {
+        case None => Key.AbsoluteMinimum
+        case Some(m) => m.key
+      }
+      
+      val left = KeyValueListPointer(leftMin, kvos.pointer)
+      
+      onSplit(left, allocated.map(t => KeyValueListPointer(t._1, t._2)))
+      
+      tx.result map { timestamp =>
+        val newContents = toInsert.foldLeft(toDelete.foldLeft(kvos.contents)((m,k) => m - k)) { (m,k) =>
+          m + (k -> Value(k, rawPairs(k), timestamp, tx.txRevision))
+        }
+        new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, timestamp,  
+          kvos.minimum, Some(KeyValueObjectState.Max(newMax, tx.txRevision, timestamp)), kvos.left,
+          Some(KeyValueObjectState.Right(newRight.toArray, tx.txRevision, timestamp)), newContents)
+      }
     }
   }
   
   private def joinOnEmpty(
       emptyKvos: KeyValueObjectState,
       requirements: List[KeyValueUpdate.KVRequirement],
-      timestamp: HLCTimestamp,
+      updateOps: List[KeyValueOperation],
       maxSize: Int,
       ordering: KeyOrdering,
       reader: ObjectReader,
-      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[KeyValueObjectState] = {
+      onJoin: (KeyValueListPointer, KeyValueListPointer) => Unit)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[KeyValueObjectState]] = {
     
     val opsReady = emptyKvos.right match {
       case None => Future.successful(None)
-      case Some(rightArr) =>
-        val rightPointer = ObjectPointer.fromArray(rightArr).asInstanceOf[KeyValueObjectPointer]
+      case Some(right) =>
+        val rightPointer = KeyValueObjectPointer(right.content)
         reader.readObject(rightPointer).map( rightKvos => Some(rightKvos) )
     }
     
     opsReady.map { oright =>
-      var ops = List[KeyValueOperation]()
-      
-      emptyKvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
       
       oright match {
-        case None => 
-          tx.overwrite(emptyKvos.pointer, emptyKvos.revision, requirements, ops)
-          val newSizeOnStore = KeyValueObjectCodec.calculateEncodedSize(emptyKvos.pointer.ida, ops)
-          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, Set(), newSizeOnStore, 
-            emptyKvos.minimum, None, emptyKvos.left, None, Map())
+        case None =>
+          // No object to the right to pull kv pairs from. Just delete the contents and leave it empty
+          tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, updateOps)
+
+          tx.result.map { timestamp =>
+            new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
+              emptyKvos.minimum, None, emptyKvos.left, None, Map())
+          }
           
         case Some(rkvos) =>
-          rkvos.maximum.foreach( x => ops = new SetMax(x) :: ops )
-          rkvos.right.foreach( x => ops = new SetRight(x) :: ops )
-          rkvos.contents.foreach { t => ops = new Insert(t._1.bytes, t._2.value, t._2.timestamp) :: ops }
-          val newSizeOnStore = KeyValueObjectCodec.calculateEncodedSize(emptyKvos.pointer.ida, ops)
+          // Migrate all content from the right node to this node and delete the right node
+          var ops = updateOps
           
-          tx.overwrite(emptyKvos.pointer, emptyKvos.revision, requirements, ops)
-          tx.overwrite(rkvos.pointer, rkvos.revision, requirements, List())
+          rkvos.maximum.foreach( m => ops = new SetMax(m.key) :: ops )
+          rkvos.right.foreach( r => ops = new SetRight(r.content) :: ops )
+          rkvos.contents.valuesIterator.foreach { v => ops = new Insert(v.key, v.value, Some(v.timestamp), Some(v.revision)) :: ops }
+
+          tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, ops)
+          tx.update(rkvos.pointer, Some(rkvos.revision), requirements, List())
           tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
           
           onJoin(KeyValueListPointer(emptyKvos), KeyValueListPointer(rkvos))
           
-          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, Set(), newSizeOnStore, 
-            emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, Map())
+          tx.result.map { timestamp =>
+            new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
+              emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, rkvos.contents)
+          }
       }
     }
   }
@@ -340,6 +397,29 @@ object KeyValueList {
       rootPointer: KeyValueListPointer,
       prepareForDeletion: KeyValueObjectState => Future[Unit])
       (implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    
+    def destroyRight(oright: Option[KeyValueObjectPointer]): Future[Option[KeyValueObjectPointer]] = oright match {
+      case None => Future.successful(None)
+      case Some(rp) => system.readObject(rp) flatMap { rkvos => 
+        system.transact { implicit tx =>
+          tx.update(root.pointer, None, Nil, SetRight(rkvos.
+          tx.update(rkvos.pointer, Some(rkvos.revision), Nil, Nil)
+          tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
+          prepareForDeletion(rkvos)
+        }.map(_ => rkvos.right.map(r => KeyValueObjectPointer(r.content)))
+      }
+    }
+    
+    {
+      prepareForDeletion(rightKvos).flatMap { _ =>
+        
+      }
+    }
+    /*
+     * while(!rootNode.right.isEmpty) {
+     *   rootNode = destroyRight(rootNode, rightNode)
+     * }
+     */
    
     val p = Promise[Unit]()
     

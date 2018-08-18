@@ -47,7 +47,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
   def encdec(kvos: KeyValueObjectState): KeyValueObjectState = {
     val enc = KeyValueObjectCodec.encode(ida, kvos)
     
-    val storeStates = enc.zipWithIndex.map( t => KeyValueObjectStoreState(t._2.asInstanceOf[Byte], t._1) ).toList
+    val storeStates = enc.zipWithIndex.map( t => KeyValueObjectStoreState.decode(t._2.asInstanceOf[Byte], t._1) ).toList
     
     KeyValueObjectCodec.decode(ptr, rev, Set(), ref, ts, sz, storeStates)
   }
@@ -112,7 +112,7 @@ class KeyValueEncodingSuite extends FunSuite with Matchers {
       DataBuffer(bb)
     }
     
-    val storeStates = conjoined.zipWithIndex.map( t => KeyValueObjectStoreState(t._2.asInstanceOf[Byte], t._1) ).toList
+    val storeStates = conjoined.zipWithIndex.map( t => KeyValueObjectStoreState.decode(t._2.asInstanceOf[Byte], t._1) ).toList
     
     val dec = KeyValueObjectCodec.decode(ptr, rev, Set(), ref, ts, sz, storeStates)
     

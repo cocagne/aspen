@@ -21,11 +21,9 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
       data: DataBuffer,
       objectType: ObjectType.Value): MutableObject = synchronized {
     val obj = objectType match {
-      case ObjectType.Data => new MutableDataObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this)
-      case ObjectType.KeyValue => new MutableKeyValueObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this)
+      case ObjectType.Data => new MutableDataObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some((metadata, data)))
+      case ObjectType.KeyValue => new MutableKeyValueObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some((metadata, data)))
     }
-    obj.metadata = metadata
-    obj.data = data
     objects += (objectUUID -> obj)
     obj
   }
@@ -43,8 +41,8 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
         
       case None =>
         val obj = objectType match {
-          case ObjectType.Data => new MutableDataObject(objectId, operation, this)
-          case ObjectType.KeyValue => new MutableKeyValueObject(objectId, operation, this)
+          case ObjectType.Data => new MutableDataObject(objectId, operation, this, None)
+          case ObjectType.KeyValue => new MutableKeyValueObject(objectId, operation, this, None)
         }
         objects += (objectId.objectUUID -> obj)
         obj

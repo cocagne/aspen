@@ -12,6 +12,8 @@ import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.Lock
 import com.ibm.aspen.core.data_store.ObjectReadError
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.util.Varint
 
 sealed abstract class Message
 
@@ -26,6 +28,7 @@ final case class Read(
 final case class ReadResponse(
     fromStore: DataStoreID,
     readUUID: UUID,
+    readTime: HLCTimestamp,
     result: Either[ObjectReadError.Value, ReadResponse.CurrentState]) extends Message
     
 final case class OpportunisticRebuild(
@@ -34,16 +37,18 @@ final case class OpportunisticRebuild(
     objectPointer: ObjectPointer,
     oldRevision: ObjectRevision,
     oldRefcount: ObjectRefcount,
-    oldUpdateSet: Set[UUID],
+    oldUpdateSet: Set[ObjectRevision],
     newRevision: ObjectRevision,
     newRefcount: ObjectRefcount,
     newTimestamp: HLCTimestamp,
-    newData: DataBuffer) extends Message
+    newData: DataBuffer) extends Message {
+}
+
+
     
 object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
-      updates: Set[UUID],
       refcount: ObjectRefcount,
       timestamp: HLCTimestamp,
       sizeOnStore: Int,
@@ -59,7 +64,7 @@ object ReadResponse {
           case _ => false
         }
         
-        revision == rhs.revision && refcount == rhs.refcount && dmatch && updates == rhs.updates && locks == rhs.locks
+        revision == rhs.revision && refcount == rhs.refcount && dmatch && locks == rhs.locks
         
       case _ => false
     }

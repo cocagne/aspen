@@ -36,7 +36,7 @@ class BaseTransaction(
     transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) extends Transaction {
   
   val uuid: UUID = UUID.randomUUID()
-  private [this] val promise = Promise[Unit]
+  private [this] val promise = Promise[HLCTimestamp]
   private [this] var state: Either[HLCTimestamp, TransactionBuilder] = Right(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   
   def disableMissedUpdateTracking(): Unit = synchronized { state } match {
@@ -58,21 +58,12 @@ class BaseTransaction(
     case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def append(
+  def update(
       pointer: KeyValueObjectPointer, 
       requiredRevision: Option[ObjectRevision],
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit = synchronized { state } match {
-    case Right(bldr) => bldr.append(pointer, requiredRevision, requirements, operations)
-    case Left(_) => throw PostCommitTransactionModification()
-  }
-  
-  def overwrite(
-      pointer: KeyValueObjectPointer, 
-      requiredRevision: ObjectRevision,
-      requirements: List[KeyValueUpdate.KVRequirement],
-      operations: List[KeyValueOperation]): Unit = synchronized { state } match {
-    case Right(bldr) => bldr.overwrite(pointer, requiredRevision, requirements, operations)
+    case Right(bldr) => bldr.update(pointer, requiredRevision, requirements, operations)
     case Left(_) => throw PostCommitTransactionModification()
   }
   
@@ -96,11 +87,6 @@ class BaseTransaction(
     case Left(_) => throw PostCommitTransactionModification()
   }
   
-  def timestamp(): HLCTimestamp = synchronized { state } match {
-    case Right(bldr) => bldr.timestamp()
-    case Left(ts) => ts
-  }
-  
   def addFinalizationAction(finalizationActionUUID: UUID, serializedContent: Array[Byte]): Unit = synchronized { state } match {
     case Right(bldr) => bldr.addFinalizationAction(finalizationActionUUID, serializedContent)
     case Left(_) => throw PostCommitTransactionModification()
@@ -121,26 +107,26 @@ class BaseTransaction(
       promise.failure(reason)
   }
   
-  def result: Future[Unit] = promise.future
+  def result: Future[HLCTimestamp] = promise.future
   
   /** Begins the transaction commit process and returns a Future to its completion. This is the same future as
    *  returned by 'result' 
    *  
    *  The future successfully completes if the transaction commits. Otherwise it will fail with a TransactionError subclass.  
    */
-  def commit()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+  def commit()(implicit ec: ExecutionContext): Future[HLCTimestamp] = synchronized {
     if (!promise.isCompleted) {
       state.foreach { bldr =>
         val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
         state = Left(timestamp)
         if (txd.requirements.isEmpty)
-          promise.success(())
+          promise.success(HLCTimestamp(txd.startTimestamp))
         else {
           txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {
             case Failure(cause) =>
               // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
               promise.failure(cause)
-            case Success(committed) => if (committed) promise.success(()) else promise.failure(TransactionAborted(txd))
+            case Success(committed) => if (committed) promise.success(HLCTimestamp(txd.startTimestamp)) else promise.failure(TransactionAborted(txd))
           }
         }
       }

@@ -50,6 +50,13 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
   
   def split(offset: Int): (DataBuffer, DataBuffer) = (slice(0, offset), slice(offset))
   
+  def append(append: DataBuffer): DataBuffer = {
+    val buf = ByteBuffer.allocate( this.size + append.size )
+    buf.put(this.asReadOnlyBuffer())
+    buf.put(append.asReadOnlyBuffer())
+    buf.position(0)
+    DataBuffer(buf)
+  }
 }
 
 object DataBuffer {

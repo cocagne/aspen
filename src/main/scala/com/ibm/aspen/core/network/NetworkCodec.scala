@@ -311,12 +311,10 @@ object NetworkCodec {
   
   
   def encodeKeyValueUpdateType(e:KeyValueUpdate.UpdateType.Value): Byte = e match {
-    case KeyValueUpdate.UpdateType.Append    => P.KeyValueUpdateType.Append
-    case KeyValueUpdate.UpdateType.Overwrite => P.KeyValueUpdateType.Overwrite
+    case KeyValueUpdate.UpdateType.Update    => P.KeyValueUpdateType.Update
   }
   def decodeKeyValueUpdateType(e: Byte): KeyValueUpdate.UpdateType.Value = e match {
-    case P.KeyValueUpdateType.Append     => KeyValueUpdate.UpdateType.Append
-    case P.KeyValueUpdateType.Overwrite  => KeyValueUpdate.UpdateType.Overwrite
+    case P.KeyValueUpdateType.Update     => KeyValueUpdate.UpdateType.Update
   }
   
   def encodeKeyValueTimestampRequirementEnum(e:KeyValueUpdate.TimestampRequirement.Value): Byte = e match {
@@ -1099,8 +1097,8 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:ReadResponse): Int = {
     val fromStore = encode(builder, o.fromStore)
     
-    val (objectData, locks, updates) = o.result match {
-      case Left(_) => (-1, -1, -1)
+    val (objectData, locks) = o.result match {
+      case Left(_) => (-1, -1)
       case Right(cs) => 
         val od = cs.objectData match {
           case None => -1
@@ -1111,20 +1109,14 @@ object NetworkCodec {
         val locks = if (cs.locks.isEmpty) -1 else {
           P.ReadResponse.createLocksVector(builder, cs.locks.map(ue => encode(builder, ue)).toArray)
         }
-        val up = if( cs.updates.isEmpty )
-          -1
-        else {
-          //val storePointers = P.ObjectPointer.createStorePointersVector(builder, o.storePointers.map(sp => encode(builder, sp)))
-          P.ReadResponse.startUpdatesVector(builder, cs.updates.size)
-          cs.updates.foreach { uuid => encode(builder, uuid) }
-          builder.endVector()
-        }
-        (od, locks, up)
+        
+        (od, locks)
     }
     
     P.ReadResponse.startReadResponse(builder)
     P.ReadResponse.addFromStore(builder, fromStore)
     P.ReadResponse.addReadUUID(builder, encode(builder, o.readUUID))
+    P.ReadResponse.addReadTime(builder, o.readTime.asLong)
     o.result match {
       case Left(err) => 
         P.ReadResponse.addReadError(builder, encodeReadError(err))
@@ -1137,13 +1129,13 @@ object NetworkCodec {
         P.ReadResponse.addHaveData(builder, cs.objectData.isDefined)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
         if (locks != -1) P.ReadResponse.addLocks(builder, locks)
-        if (updates != -1) P.ReadResponse.addUpdates(builder, updates)
     }
     P.ReadResponse.endReadResponse(builder)
   }
   def decode(n: P.ReadResponse): ReadResponse = {
     val fromStore = decode(n.fromStore())
     val readUUID = decode(n.readUUID())
+    val readTime = HLCTimestamp(n.readTime())
     val result = if (n.revision() == null) {
       Left(decodeReadError(n.readError()))
     } else {
@@ -1158,21 +1150,15 @@ object NetworkCodec {
         buff.position(0)
         Some(buff)
       }
-      val updates = if (n.updatesLength() <= 0) Set[UUID]() else {
-        var up = Set[UUID]()
-        for (i <- 0 until n.updatesLength())
-          up += decode(n.updates(i))
-        up
-      }
       
       def locks(idx: Int, l:List[Lock]): List[Lock] = if (idx == -1) 
         l
       else 
         locks(idx-1, decode(n.locks(idx)) :: l)
       
-      Right(ReadResponse.CurrentState(revision, updates, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
+      Right(ReadResponse.CurrentState(revision, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
     }
-    ReadResponse(fromStore, readUUID, result)
+    ReadResponse(fromStore, readUUID, readTime, result)
   }
   
   
@@ -1182,12 +1168,13 @@ object NetworkCodec {
     val optr = encode(builder, o.objectPointer)
     builder.createUnintializedVector(1, o.newData.size, 1).put(o.newData.asReadOnlyBuffer())
     val newData = builder.endVector()
-    val oldUpdateSet = if( o.oldUpdateSet.isEmpty )
-      -1
-    else {
-      //val storePointers = P.ObjectPointer.createStorePointersVector(builder, o.storePointers.map(sp => encode(builder, sp)))
-      P.OpportunisticRebuild.startOldUpdateSetVector(builder, o.oldUpdateSet.size)
-      o.oldUpdateSet.foreach { uuid => encode(builder, uuid) }
+    
+    val updates = if (o.oldUpdateSet.isEmpty) -1 else {
+      val bb = builder.createUnintializedVector(1, o.oldUpdateSet.size * 16, 1)
+      o.oldUpdateSet.foreach { r => 
+        bb.putLong(r.lastUpdateTxUUID.getMostSignificantBits)
+        bb.putLong(r.lastUpdateTxUUID.getLeastSignificantBits)
+      }
       builder.endVector()
     }
     
@@ -1197,7 +1184,7 @@ object NetworkCodec {
     P.OpportunisticRebuild.addObjectPointer(builder, optr)
     P.OpportunisticRebuild.addOldRevision(builder, encodeObjectRevision(builder, o.oldRevision))
     P.OpportunisticRebuild.addOldRefcount(builder, encode(builder, o.oldRefcount))
-    if (oldUpdateSet != -1) P.OpportunisticRebuild.addOldUpdateSet(builder, oldUpdateSet)
+    if (updates > 0) P.OpportunisticRebuild.addOldUpdates(builder, updates)
     P.OpportunisticRebuild.addNewRevision(builder, encodeObjectRevision(builder, o.newRevision))
     P.OpportunisticRebuild.addNewRefcount(builder, encode(builder, o.newRefcount))
     P.OpportunisticRebuild.addNewTimestamp(builder, o.newTimestamp.asLong)
@@ -1212,12 +1199,20 @@ object NetworkCodec {
     val objectPointer = decode(n.objectPointer())
     val oldRevision = decode(n.oldRevision())
     val oldRefcount = decode(n.oldRefcount())
-    val oldUpdateSet = if (n.oldUpdateSetLength() <= 0) Set[UUID]() else {
-      var up = Set[UUID]()
-      for (i <- 0 until n.oldUpdateSetLength())
-        up += decode(n.oldUpdateSet(i))
-      up
+    
+    var updates = Set[ObjectRevision]()
+    
+    if (n.oldUpdatesLength() > 0) {
+      val bb = n.oldUpdatesAsByteBuffer()
+      bb.limit(bb.position() + n.oldUpdatesLength())
+      
+      while (bb.remaining() > 0) {
+        val msb = bb.getLong()
+        val lsb = bb.getLong()
+        updates += ObjectRevision(new UUID(msb, lsb)) 
+      }
     }
+    
     val newRevision = decode(n.newRevision())
     val newRefcount = decode(n.newRefcount())
     val newTimestamp = HLCTimestamp(n.newTimestamp())
@@ -1229,6 +1224,6 @@ object NetworkCodec {
     val newData = DataBuffer(buff)
     
     OpportunisticRebuild(toStore, ClientID(fromClient), objectPointer, oldRevision, oldRefcount, 
-        oldUpdateSet, newRevision, newRefcount, newTimestamp, newData)
+        updates, newRevision, newRefcount, newTimestamp, newData)
   }
 }

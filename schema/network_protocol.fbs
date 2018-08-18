@@ -86,8 +86,7 @@ enum DataUpdateOperation:byte {
 }
 
 enum KeyValueUpdateType:byte {
-  Overwrite,
-  Append
+  Update
 }
 
 enum KeyValueTimestampRequirementEnum:byte {
@@ -307,8 +306,8 @@ table ReadResponse {
   readUUID: UUID;
   revision: ObjectRevision;
   refcount: ObjectRefcount;
-  updates: [UUID];
   timestamp: long;
+  readTime: long;
   sizeOnStore: int;
   haveData: bool;
   objectData: [byte];
@@ -322,7 +321,7 @@ table OpportunisticRebuild {
    objectPointer: ObjectPointer;
    oldRevision: ObjectRevision;
    oldRefcount: ObjectRefcount;
-   oldUpdateSet: [UUID];
+   oldUpdates: [byte];
    newRevision: ObjectRevision;
    newRefcount: ObjectRefcount;
    newTimestamp: long;
