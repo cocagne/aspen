@@ -25,7 +25,7 @@ final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer)
 object KeyValueListPointer {
 
   def apply(objectState: KeyValueObjectState): KeyValueListPointer = {
-    new KeyValueListPointer(objectState.minimum.getOrElse(Key.AbsoluteMinimum), objectState.pointer)
+    new KeyValueListPointer(objectState.minimum.map(_.key).getOrElse(Key.AbsoluteMinimum), objectState.pointer)
   }
   
   def encodeToByteArray(p: KeyValueListPointer): Array[Byte] = {

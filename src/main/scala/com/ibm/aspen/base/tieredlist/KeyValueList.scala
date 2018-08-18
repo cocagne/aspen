@@ -28,6 +28,8 @@ import java.util.UUID
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.RetryStrategy
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.core.objects.keyvalue.DeleteMax
+import com.ibm.aspen.core.objects.keyvalue.DeleteRight
 
 
 object KeyValueList {
@@ -398,88 +400,37 @@ object KeyValueList {
       prepareForDeletion: KeyValueObjectState => Future[Unit])
       (implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
     
-    def destroyRight(oright: Option[KeyValueObjectPointer]): Future[Option[KeyValueObjectPointer]] = oright match {
-      case None => Future.successful(None)
+    def destroyRight(rootRevision: ObjectRevision, oright: Option[KeyValueObjectPointer]): Future[ObjectRevision] = oright match {
+      case None => Future.successful(rootRevision)
       case Some(rp) => system.readObject(rp) flatMap { rkvos => 
         system.transact { implicit tx =>
-          tx.update(root.pointer, None, Nil, SetRight(rkvos.
+          val rootOps = (rkvos.right, rkvos.maximum) match {
+            case (None, None) => DeleteMax() :: DeleteRight() :: Nil
+            case (Some(r), Some(m)) => SetRight(r.content) :: SetMax(m.key) :: Nil
+            case _ => throw new CorruptedLinkedList
+          }
+          tx.update(rootPointer.pointer, Some(rootRevision), Nil, rootOps)
           tx.update(rkvos.pointer, Some(rkvos.revision), Nil, Nil)
           tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
-          prepareForDeletion(rkvos)
-        }.map(_ => rkvos.right.map(r => KeyValueObjectPointer(r.content)))
+          prepareForDeletion(rkvos).map(_ => tx.txRevision)
+        }.flatMap { rootRevision => 
+          destroyRight(rootRevision, rkvos.right.map(r => KeyValueObjectPointer(r.content)))
+        }
       }
     }
     
-    {
-      prepareForDeletion(rightKvos).flatMap { _ =>
-        
+    def destroyRoot(): Future[Unit] = system.readObject(rootPointer.pointer) flatMap { kvos =>
+      system.transact { implicit tx =>
+        tx.update(kvos.pointer, Some(kvos.revision), Nil, Nil)
+        tx.setRefcount(kvos.pointer, kvos.refcount, kvos.refcount.decrement())
+        Future.unit
       }
     }
-    /*
-     * while(!rootNode.right.isEmpty) {
-     *   rootNode = destroyRight(rootNode, rightNode)
-     * }
-     */
-   
-    val p = Promise[Unit]()
     
-    def getOverwriteOps(kvos: KeyValueObjectState): List[KeyValueOperation] = kvos.right match {
-       case None => Nil
-       case Some(arr) => SetRight(arr) :: Nil
-    }
-    
-    // Discard all content in the root node except the right pointer
-    def prepRoot(initialRoot: KeyValueObjectState): Future[Unit] = system.transact { implicit tx =>
-      for {
-        _ <- prepareForDeletion(initialRoot)
-        _ = tx.overwrite(rootPointer.pointer, initialRoot.revision, Nil, getOverwriteOps(initialRoot))   
-      } yield ()
-    }
-    
-    // Delete the node to the right of the root if it exists. If not, delete the root node
-    def unlink(rootRevision: ObjectRevision, oright: Option[Array[Byte]]): Unit = oright match {
-      case None => 
-        val fcomplete = system.transact { implicit tx =>
-          for {
-            kvos <- system.readObject(rootPointer.pointer)
-            _ = tx.setRefcount(rootPointer.pointer, kvos.refcount, kvos.refcount.decrement())
-          } yield ()
-        }
-        
-        p.completeWith(fcomplete)
-        
-      case Some(arr) => 
-        val funlink = system.transact { implicit tx =>
-          for {
-            rkvos <- system.readObject(KeyValueObjectPointer(arr))
-            _ <- prepareForDeletion(rkvos)
-            _ = tx.overwrite(rootPointer.pointer, rootRevision, Nil, getOverwriteOps(rkvos))
-            _ = tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
-          } yield (tx.txRevision, rkvos.right)
-        }
-        
-        funlink onComplete {
-          case Failure(err) => p.failure(err)
-          case Success((newRevision, oright)) => unlink(newRevision, oright)
-        }
-    }
-    
-    system.readObject(rootPointer.pointer) onComplete {
-      case Success(initialRoot) => 
-        val finit = for {
-          _ <- prepRoot(initialRoot)
-          refreshedRoot <- system.readObject(rootPointer.pointer)
-        } yield {
-          unlink(refreshedRoot.revision, refreshedRoot.right)
-        }
-        
-        finit.failed.foreach( err => p.failure(err) )
-         
-      case Failure(_) =>
-        // Failing to read the root node should mean that it has already been deleted.
-        p.success(())
-    }
-    
-    p.future
+    for {
+      root <- system.readObject(rootPointer.pointer)
+      _ <- destroyRight(root.revision, root.right.map(r => KeyValueObjectPointer(r.content)))
+      _ <- destroyRoot()
+    } yield ()
   }
 }

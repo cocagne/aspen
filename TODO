@@ -1,8 +1,14 @@
+* Add KV requirement for Min/Max/Left/Right revisions? Or do we just use a full object lock with revision requirement when operating on these?
+    - probably just the full revision lock
+    - requires that the revision change on commit
+* Need to rethink transaction semantics then. Use regular 
+
 ***** Should the Transaction Future return the Committed Timestamp?
    tx.timesamp isn't reliable till then
    why provide it at all?
    can only be a source of bugs
    Forces all things trying to update from Tx to wait for tx completion
+   
 
 
 * TODO - Read Enhancements
