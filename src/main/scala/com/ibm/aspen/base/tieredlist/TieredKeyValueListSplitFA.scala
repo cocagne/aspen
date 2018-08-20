@@ -38,7 +38,7 @@ object TieredKeyValueListSplitFA {
       keyOrdering: KeyOrdering,
       targetTier: Int, 
       left: KeyValueListPointer, 
-      right: KeyValueListPointer): Unit = {
+      right: List[KeyValueListPointer]): Unit = {
     
     val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, right)
         
@@ -50,7 +50,7 @@ object TieredKeyValueListSplitFA {
       treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], 
       targetTier: Int, 
       left: KeyValueListPointer, 
-      right: KeyValueListPointer,
+      inserted: List[KeyValueListPointer],
       keyOrdering: KeyOrdering)
       
   class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
@@ -58,10 +58,9 @@ object TieredKeyValueListSplitFA {
     val complete = system.retryStrategy.retryUntilSuccessful {
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
-      def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
+      def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root, inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
         
-        val iLeft  = Insert(c.left.minimum.bytes, c.left.pointer.toArray, tx.timestamp())
-        val iRight = Insert(c.right.minimum.bytes, c.right.pointer.toArray, tx.timestamp())
+        val ops  = Insert(c.left.minimum, c.left.pointer.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
         
         for {
           allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
@@ -69,31 +68,32 @@ object TieredKeyValueListSplitFA {
           newRootPointer <- allocater.allocateKeyValueObject(
               allocatingObject = containerKvos.pointer, 
               allocatingObjectRevision = containerKvos.revision, 
-              initialContent = List(iLeft, iRight))
+              initialContent = ops)
               
           commitReady <- lst.prepreUpdateRootTransaction(c.targetTier, newRootPointer)
         } yield ()
       }
       
-      def insertIntoExistingTier(root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
+      def insertIntoExistingTier(root: TieredKeyValueList.Root, right: KeyValueListPointer): Future[Unit] = system.transact { implicit tx =>
         
-        def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
-          addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, right)
+        def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {
+          addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, inserted)
         }
         
         def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
         
         for {
-          kvos <- lst.fetchContainingNode(c.right.minimum, c.targetTier) 
+          kvos <- lst.fetchContainingNode(right.minimum, c.targetTier) 
           
           allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
           
           nodeSizeLimit = root.getTierNodeSize(c.targetTier)
-          inserts = List((c.right.minimum, c.right.pointer.toArray))
+          nodeKVPairLimit = root.getTierNodeKVPairLimit(c.targetTier)
+          inserts = List((right.minimum, right.pointer.toArray))
           deletes = Nil
           requirements = Nil
 
-          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
 
         } yield ()
       }
@@ -102,7 +102,10 @@ object TieredKeyValueListSplitFA {
       
       lst.refreshRoot() onComplete {
         case Success((containerKvos, root)) =>
-          val fadd = if (root.topTier < c.targetTier) createNewTier(containerKvos, root) else insertIntoExistingTier(root)
+          val fadd = if (root.topTier < c.targetTier) 
+            createNewTier(containerKvos, root, c.inserted) 
+          else 
+            Future.sequence(c.inserted.map(kvlp => insertIntoExistingTier(root, kvlp))).map(_ => ())
           
           p.completeWith(fadd)
         

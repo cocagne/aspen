@@ -20,6 +20,8 @@ final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer)
     minimum.bytes.length +
     ptrSize
   }
+  
+  def encodeInto(bb: ByteBuffer): Unit = KeyValueListPointer.encodeInto(bb, this)
 }
 
 object KeyValueListPointer {
@@ -27,6 +29,8 @@ object KeyValueListPointer {
   def apply(objectState: KeyValueObjectState): KeyValueListPointer = {
     new KeyValueListPointer(objectState.minimum.map(_.key).getOrElse(Key.AbsoluteMinimum), objectState.pointer)
   }
+  
+  def apply(bb:ByteBuffer): KeyValueListPointer = fromByteBuffer(bb)
   
   def encodeToByteArray(p: KeyValueListPointer): Array[Byte] = {
     val arr = new Array[Byte](p.encodedSize)

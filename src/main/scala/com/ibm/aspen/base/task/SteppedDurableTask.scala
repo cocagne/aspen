@@ -11,6 +11,7 @@ import com.ibm.aspen.base.ObjectReader
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.keyvalue.Delete
 
 object SteppedDurableTask {
 
@@ -69,13 +70,15 @@ abstract class SteppedDurableTask(
     }
   }}
   
-  def completeStep(tx: Transaction, taskStateUpdates: List[(Key,Array[Byte])]): Unit = synchronized {
-          
-    val newContent = (currentState.iterator ++ taskStateUpdates.iterator).toMap + (StepKey -> encodeStep(currentStep+1))
-    val ts = tx.timestamp()
-    val ilist = newContent.iterator.map(t => Insert(t._1, t._2, ts)).toList
+  def completeStep(tx: Transaction, taskStateUpdates: List[(Key,Array[Byte])], taskStateDeletes: List[Key]=Nil): Unit = synchronized {
     
-    tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, ilist)
+    val nextStep = (StepKey -> encodeStep(currentStep+1))
+    val deleteSet = taskStateDeletes.toSet
+    val newContent = taskStateUpdates.foldLeft(currentState.filter(t => !deleteSet.contains(t._1)))((m, t) => m + t) + nextStep
+          
+    val updateOps = taskStateDeletes.map(Delete(_)) ++ taskStateUpdates.map(t => Insert(t._1, t._2))
+    
+    tx.update(taskPointer.kvPointer, Some(currentRevision), Nil, updateOps)
 
     tx.result foreach { _ => synchronized {
       currentStep += 1
@@ -88,7 +91,9 @@ abstract class SteppedDurableTask(
   def completeTask(tx: Transaction, result: Option[AnyRef]=None): Unit = synchronized {
     val idleTask = new Array[Byte](16) // Zeroed Type UUID
     
-    tx.overwrite(taskPointer.kvPointer, currentRevision, Nil, List(Insert(DurableTask.TaskTypeKey, idleTask, tx.timestamp())))
+    val resetOps = Insert(DurableTask.TaskTypeKey, idleTask) :: currentState.toList.filter(t => t._1 != DurableTask.TaskTypeKey).map(t => Delete(t._1)) 
+    
+    tx.update(taskPointer.kvPointer, Some(currentRevision), Nil, resetOps)
     
     tx.result foreach { _ => synchronized { 
       taskPromise.success((tx.txRevision, result))

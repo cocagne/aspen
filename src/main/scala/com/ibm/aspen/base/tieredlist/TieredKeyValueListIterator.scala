@@ -54,7 +54,7 @@ class TieredKeyValueListIterator(
     if (valueList.isEmpty) {
       kvos.right match {
         case None => valueListPromise.success(()) // All KV pairs consumed. We're done
-        case Some(rptr) => fetchRight(rptr)
+        case Some(right) => fetchRight(right.content)
       }
     } else {
       val p = valueListPromise
@@ -106,7 +106,7 @@ class TieredKeyValueListIterator(
             
             currentNode match {
               case None => loadNextNodeFromTree() // Initial request
-              case Some(kvos) => fetchRight(kvos.right.get) // kvos.right must be valid or done would be true
+              case Some(kvos) => fetchRight(kvos.right.get.content) // kvos.right must be valid or done would be true
             }
             
             valueListPromise.future.foreach { _ => synchronized {

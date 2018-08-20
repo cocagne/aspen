@@ -70,7 +70,7 @@ object TieredKeyValueListJoinFA {
       
       def remove(root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
         
-        def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {}
+        def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {}
         
         def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
           addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, removed)
@@ -90,6 +90,7 @@ object TieredKeyValueListJoinFA {
           allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
           
           nodeSizeLimit = root.getTierNodeSize(c.targetTier)
+          nodeKVPairLimit = root.getTierNodeKVPairLimit(c.targetTier)
           inserts = Nil
           deletes = List(c.removed.minimum)
           requirements = List(KVRequirement(c.removed.minimum, value.timestamp, KeyValueUpdate.TimestampRequirement.Equals))
@@ -98,7 +99,7 @@ object TieredKeyValueListJoinFA {
           
           test <- system.readObject(kvos.pointer)
 
-          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
           
           done <- tx.commit()
 

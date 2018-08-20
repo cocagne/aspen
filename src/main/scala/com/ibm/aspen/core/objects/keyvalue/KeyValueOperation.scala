@@ -258,7 +258,7 @@ class Insert(
   }
 }
 object Insert {
-  def apply(key: Key, value: Array[Byte], timestamp: Option[HLCTimestamp], revision: Option[ObjectRevision]) = new Insert(key, value, timestamp, revision)
+  def apply(key: Key, value: Array[Byte], timestamp: Option[HLCTimestamp]=None, revision: Option[ObjectRevision]=None) = new Insert(key, value, timestamp, revision)
   
   def decode(bb: ByteBuffer, dataLen: Int, revision: ObjectRevision, timestamp: HLCTimestamp) = {
     val keyLen = Varint.getUnsignedInt(bb)

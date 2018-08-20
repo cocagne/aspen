@@ -44,7 +44,7 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
     /** Note that this future will fail if the right node node has been deleted */
     def fetchRight()(implicit ec: ExecutionContext): Future[Option[MutableNode]] = kvos.right match {
       case None => Future.successful(None)
-      case Some(ptr) => system.readObject(KeyValueObjectPointer(ptr)).map(kvos => Some(new MutableNode(kvos)))
+      case Some(ptr) => system.readObject(KeyValueObjectPointer(ptr.content)).map(kvos => Some(new MutableNode(kvos)))
     }
     
     /** Note that this future will fail if the node has been deleted */
@@ -53,11 +53,11 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
     def prepreUpdateTransaction(
       inserts: List[(Key, Array[Byte])],
       deletes: List[Key],
-      requirements: List[KeyValueUpdate.KVRequirement])(implicit tx: Transaction, ec: ExecutionContext): Future[MutableNode] = {
+      requirements: List[KeyValueUpdate.KVRequirement])(implicit tx: Transaction, ec: ExecutionContext): Future[Future[MutableNode]] = {
       
       val reader = getObjectReaderForTier(0) 
       
-      def onSplit(left: KeyValueListPointer, right: KeyValueListPointer): Unit = {
+      def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {
         TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, right)
       }
       
@@ -70,10 +70,10 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
       for {
         allocater <- fallocater
         root <- rootPointer()
-        updatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, root.getTierNodeSize(0), inserts, deletes, requirements, 
+        fupdatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, root.getTierNodeSize(0), root.getTierNodeKVPairLimit(0), inserts, deletes, requirements, 
                        keyOrdering, reader, allocater, onSplit, onJoin)
       } yield {
-        new MutableNode(updatedKvos)
+        tx.result.flatMap(_ => fupdatedKvos.map(updatedKvos => new MutableNode(updatedKvos)))
       }
     }
   }

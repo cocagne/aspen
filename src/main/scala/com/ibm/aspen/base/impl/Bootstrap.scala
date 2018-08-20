@@ -35,6 +35,7 @@ object Bootstrap {
   val BootstrapStoragePoolUUID        = ZeroedUUID
   
   val SystemTreeNodeSizeLimit         = 64 * 1024
+  val SystemTreeKVPairLimit           = 20
   
   
   val BootstrapAllocatedObjectCount   = 6
@@ -121,7 +122,7 @@ object Bootstrap {
     }
     
     def treeRoot(rootNode: KeyValueObjectPointer): Array[Byte] = {
-      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), ByteArrayKeyOrdering, rootNode).toArray
+      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), Array(SystemTreeKVPairLimit), ByteArrayKeyOrdering, rootNode).toArray
     }
     
     def getPoolKV(allocPtr: KeyValueObjectPointer): List[(Key, Array[Byte])] = {

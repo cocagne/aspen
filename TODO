@@ -3,6 +3,9 @@
     - requires that the revision change on commit
 * Need to rethink transaction semantics then. Use regular 
 
+
+* Tiered List needs restructuring. Replacing the root in a KV object isn't right.
+
 ***** Should the Transaction Future return the Committed Timestamp?
    tx.timesamp isn't reliable till then
    why provide it at all?

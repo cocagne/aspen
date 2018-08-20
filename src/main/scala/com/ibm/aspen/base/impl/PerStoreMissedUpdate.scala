@@ -39,34 +39,38 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
  
   val typeUUID = UUID.fromString("fed25913-19e0-4045-b45c-2fc30d3200f1")
   
-  def getStrategy(objectAllocaters: Array[UUID], tierNodeSizes: Array[Int]): MissedUpdateStrategy = {
-    MissedUpdateStrategy(typeUUID, Some(encodeTreeConfig(objectAllocaters, tierNodeSizes)))
+  def getStrategy(objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], tierKVPairLimits: Array[Int]): MissedUpdateStrategy = {
+    MissedUpdateStrategy(typeUUID, Some(encodeTreeConfig(objectAllocaters, tierNodeSizes, tierKVPairLimits)))
   }
   
-  def encodeTreeConfig(objectAllocaters: Array[UUID], tierNodeSizes: Array[Int]): Array[Byte] = {
-    val arr = new Array[Byte](1 + 1 + 16 * objectAllocaters.length + 4 * tierNodeSizes.length)
+  def encodeTreeConfig(objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], tierNodeKVPairLimits: Array[Int]): Array[Byte] = {
+    val arr = new Array[Byte](1 + 1 + 1+ 16 * objectAllocaters.length + 4 * tierNodeSizes.length + 4 * tierNodeKVPairLimits.length)
     val bb = ByteBuffer.wrap(arr)
     bb.put(objectAllocaters.length.asInstanceOf[Byte])
     bb.put(tierNodeSizes.length.asInstanceOf[Byte])
+    bb.put(tierNodeKVPairLimits.length.asInstanceOf[Byte])
     objectAllocaters.foreach { u =>
       bb.putLong(u.getMostSignificantBits)
       bb.putLong(u.getLeastSignificantBits)
     }
     tierNodeSizes.foreach( i => bb.putInt(i) )
+    tierNodeKVPairLimits.foreach( i => bb.putInt(i) )
     arr
   }
   
-  def decodeTreeConfig(arr: Array[Byte]): (Array[UUID], Array[Int]) = {
+  def decodeTreeConfig(arr: Array[Byte]): (Array[UUID], Array[Int], Array[Int]) = {
     val bb = ByteBuffer.wrap(arr)
     val nu = bb.get()
     val ni = bb.get()
+    val nl = bb.get()
     val objectAllocaters = (0 until nu).map { _ =>
       val msb = bb.getLong()
       val lsb = bb.getLong()
       new UUID(msb, lsb)
     }.toArray
     val tierNodeSizes = (0 until ni).map( _ => bb.getInt() ).toArray
-    (objectAllocaters, tierNodeSizes)
+    val tierNodeKVPairLimits = (0 until nl).map( _ => bb.getInt() ).toArray
+    (objectAllocaters, tierNodeSizes, tierNodeKVPairLimits)
   }
   
   def storeKey(storeIndex: Byte): Key = {
@@ -96,9 +100,9 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       case Some(v) => Future.successful(SimpleMutableTieredKeyValueList.load(system, pool.poolDefinitionPointer, treeKey, v.value))
       
       case None =>
-        val (objectAllocaters, tierNodeSizes) = decodeTreeConfig(pool.getMissedUpdateStrategy().config.get)
+        val (objectAllocaters, tierNodeSizes, tierKVPairLimits) = decodeTreeConfig(pool.getMissedUpdateStrategy().config.get)
         
-        SimpleMutableTieredKeyValueList.create(system, kvos, treeKey, objectAllocaters, tierNodeSizes, ByteArrayKeyOrdering)
+        SimpleMutableTieredKeyValueList.create(system, kvos, treeKey, objectAllocaters, tierNodeSizes, tierKVPairLimits, ByteArrayKeyOrdering)
     }
     
     // Race condition between multiple peers simultaneously attempting to create the tree could conflict and

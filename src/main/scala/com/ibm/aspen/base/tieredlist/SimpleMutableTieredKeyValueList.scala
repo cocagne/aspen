@@ -24,6 +24,7 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import java.util.UUID
 import com.ibm.aspen.core.transaction.KeyValueUpdate.KVRequirement
 import com.ibm.aspen.core.transaction.KeyValueUpdate.TimestampRequirement
+import com.ibm.aspen.core.HLCTimestamp
 
 object SimpleMutableTieredKeyValueList {
   
@@ -49,15 +50,16 @@ object SimpleMutableTieredKeyValueList {
       treeKey: Key,
       objectAllocaters: Array[UUID], 
       tierNodeSizes: Array[Int], 
+      kvPairLimits: Array[Int],
       keyOrdering: KeyOrdering)(implicit ec: ExecutionContext): Future[SimpleMutableTieredKeyValueList] = {
     
     system.transact { implicit tx =>
       for {
         alloc <- system.getObjectAllocater(objectAllocaters(0))
         rootNode <- alloc.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-        root = TieredKeyValueList.Root(0, objectAllocaters, tierNodeSizes, keyOrdering, rootNode)
-        ins = Insert(treeKey, root.toArray(), tx.timestamp())
-        _=tx.append(kvos.pointer, Some(kvos.revision), List(KVRequirement(treeKey, tx.timestamp, TimestampRequirement.DoesNotExist)), List(ins))
+        root = TieredKeyValueList.Root(0, objectAllocaters, tierNodeSizes, kvPairLimits, keyOrdering, rootNode)
+        ins = Insert(treeKey, root.toArray(), None, None)
+        _=tx.update(kvos.pointer, Some(kvos.revision), List(KVRequirement(treeKey, HLCTimestamp.now, TimestampRequirement.DoesNotExist)), List(ins))
       } yield {
         new SimpleMutableTieredKeyValueList(system, Left(kvos.pointer), treeKey, root.keyOrdering, Some(root))
       }    
@@ -145,23 +147,10 @@ class SimpleMutableTieredKeyValueList(
       newTier: Int,
       newRootPointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = refreshRoot map { t =>
     val (kvos, root) = t
+
+    val newRoot = TieredKeyValueList.Root(newTier, root.tierObjectAllocaters, root.tierNodeSizes, root.teirNodePairLimit, keyOrdering, newRootPointer)
     
-    var ops: List[KeyValueOperation] = Nil
-    
-    kvos.minimum.foreach( arr => ops = new SetMin(arr) :: ops )
-    kvos.maximum.foreach( arr => ops = new SetMax(arr) :: ops )
-    kvos.left.foreach( arr => ops = new SetLeft(arr) :: ops )
-    kvos.right.foreach( arr => ops = new SetRight(arr) :: ops )
-    
-    val newRoot = TieredKeyValueList.Root(newTier, root.tierObjectAllocaters, root.tierNodeSizes, keyOrdering, newRootPointer)
-    
-    val updatedContent = kvos.contents + (treeIdentifier -> Value(treeIdentifier, newRoot.toArray(), tx.timestamp()))
-    
-    updatedContent.valuesIterator.foreach{ v => 
-      ops = new Insert(v.key.bytes, v.value, v.timestamp) :: ops 
-    }
-    
-    tx.overwrite(kvos.pointer, kvos.revision, Nil, ops)
+    tx.update(kvos.pointer, Some(kvos.revision), Nil, Insert(treeIdentifier, newRoot.toArray) :: Nil)
   }
   
   protected def getObjectAllocaterForTier(tier: Int)(implicit ec: ExecutionContext): Future[ObjectAllocater] = synchronized {

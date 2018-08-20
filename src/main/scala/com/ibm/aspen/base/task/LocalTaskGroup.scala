@@ -28,6 +28,7 @@ object LocalTaskGroup extends TaskGroupType {
   val TaskListKey = Key(Array[Byte](2))
   
   val TaskListNodeSize = 16 * 1024 // TODO: Make this configurable?
+  val TaskListKVPairLimit = 20     // TODO: Make this configurable?
   
   val typeUUID = UUID.fromString("f3051f22-9052-4c71-a469-22047b9edd8b")
   
@@ -52,15 +53,13 @@ object LocalTaskGroup extends TaskGroupType {
       revision: ObjectRevision, 
       objectAllocaterUUID: UUID)(implicit t: Transaction, ec: ExecutionContext): Future[(TaskGroupPointer, Future[LocalTaskGroup])] = {
     
-    val ts = t.timestamp()
-    
-    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID), ts), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID), ts))
+    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
     
     for {
       allocater <- system.getObjectAllocater(objectAllocaterUUID)
       taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil, None)
-      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), IntegerKeyOrdering, taskListRoot)
-      fullContent = Insert(TaskListKey, tlroot.toArray, ts) :: content
+      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit), IntegerKeyOrdering, taskListRoot)
+      fullContent = Insert(TaskListKey, tlroot.toArray) :: content
       groupPointer <- allocater.allocateKeyValueObject(allocatingObject, revision, fullContent)
 
     } yield {
@@ -81,17 +80,15 @@ object LocalTaskGroup extends TaskGroupType {
       groupPointer: TaskGroupPointer, 
       revision: ObjectRevision, 
       objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = system.transact { implicit tx =>
-    
-    val ts = tx.timestamp()
-    
-    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID), ts), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID), ts))
+
+    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
     
     for {
       allocater <- system.getObjectAllocater(objectAllocaterUUID)
       taskListRoot <- allocater.allocateKeyValueObject(groupPointer.kvPointer, revision, Nil, None)
-      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), IntegerKeyOrdering, taskListRoot)
-      fullContent = Insert(TaskListKey, tlroot.toArray, ts) :: content
-      _ = tx.overwrite(groupPointer.kvPointer, revision, Nil, fullContent)
+      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit), IntegerKeyOrdering, taskListRoot)
+      fullContent = Insert(TaskListKey, tlroot.toArray) :: content
+      _ = tx.update(groupPointer.kvPointer, Some(revision), Nil, fullContent)
     } yield {
       new LocalTaskGroup(system, groupPointer, allocater, 
           new SimpleMutableTieredKeyValueList(system, Left(groupPointer.kvPointer), TaskListKey, IntegerKeyOrdering), 
@@ -263,9 +260,8 @@ class LocalTaskGroup(
       taskType: DurableTaskType, 
       initialState: List[(Key, Array[Byte])])(implicit tx: Transaction): Future[Future[Option[AnyRef]]] = synchronized {
         
-    val ts = tx.timestamp()
     val taskTypeArr = uuid2byte(taskType.typeUUID)
-    val content = Insert(DurableTask.TaskTypeKey, taskTypeArr, ts) :: initialState.map(t => new Insert(t._1, t._2, ts))
+    val content = Insert(DurableTask.TaskTypeKey, taskTypeArr) :: initialState.map(t => new Insert(t._1, t._2))
 
     def allocateIdleTask(): Future[IdleTask] = {
       if (idleTasks.isEmpty) {
@@ -279,7 +275,7 @@ class LocalTaskGroup(
     }
     
     def addTaskAllocationToTransaction(it: IdleTask, taskPromise: Promise[Option[AnyRef]]): Unit = {
-      tx.overwrite(it.taskPointer.kvPointer, it.revision, Nil, content)
+      tx.update(it.taskPointer.kvPointer, Some(it.revision), Nil, content)
       
       tx.result.onComplete {
         case Failure(reason) =>
@@ -290,11 +286,11 @@ class LocalTaskGroup(
             }
           }
           
-        case Success(_) => synchronized {
-          val imap: Map[Key,Value] = Map((DurableTask.TaskTypeKey -> Value(DurableTask.TaskTypeKey, taskTypeArr, ts)))
-          val contents = initialState.foldLeft(imap)((m, t) => m + (t._1 -> Value(t._1, t._2, ts)))
+        case Success(timestamp) => synchronized {
           
-          val task = taskType.createTask(system, it.taskPointer, tx.txRevision, contents)
+          val ttv = Value(DurableTask.TaskTypeKey, taskTypeArr, timestamp, tx.txRevision)
+          val content = initialState.map(t => (t._1 -> Value(t._1, t._2, timestamp, tx.txRevision))).toMap + (ttv.key -> ttv)
+          val task = taskType.createTask(system, it.taskPointer, tx.txRevision, content)
 
           executeTask(ActiveTask(it.taskNumber, it.taskPointer, task))
           
