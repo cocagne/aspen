@@ -38,7 +38,7 @@ class SimpleDirectory(
   
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
   
-  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
    cachedInode = new DirectoryInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   
@@ -83,13 +83,14 @@ class SimpleDirectory(
 
         fs.system.transact { implicit tx =>
         
-          val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+          val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
           
           for {
             allocater <- fs.system.getObjectAllocater(fs.directoryLoader.directoryTableAllocaters(0))
             dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.directoryTableAllocaters, fs.directoryLoader.directoryTableSizes, LexicalKeyOrdering, dirContentPtr)
-            _ = tx.append(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray(), tx.timestamp()) :: Nil)
+            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.directoryTableAllocaters, fs.directoryLoader.directoryTableSizes, 
+                                                     fs.directoryLoader.directoryTableKVPairLimits, LexicalKeyOrdering, dirContentPtr)
+            _ = tx.update(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray()) :: Nil)
           } yield dirTblRoot  
         }
     }
@@ -133,7 +134,7 @@ class SimpleDirectory(
   def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
     implicit val tx = fs.system.newTransaction()
     
-    prepareInsert(name, file.pointer).flatMap { _ =>tx.commit() }
+    prepareInsert(name, file.pointer).flatMap { _ =>tx.commit().map(_=>()) }
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {

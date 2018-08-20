@@ -59,16 +59,17 @@ object ConfigFile {
   
   abstract class MissedUpdateHandler
   
-  case class PerStoreSet(allocaters: List[String], nodeSizes: List[Int]) extends MissedUpdateHandler
+  case class PerStoreSet(allocaters: List[String], nodeSizes: List[Int], nodeLimits: List[Int]) extends MissedUpdateHandler
   
   object PerStoreSet extends YObject[MissedUpdateHandler] {
     
     val allocaters = Required("tier-allocaters",   YList(YString))
     val nodeSizes = Required("tier-node-sizes",    YList(YInt))
+    val nodeLimits = Required("tier-node-kv-limit", YList(YInt))
     
-    val attrs = allocaters :: nodeSizes :: Nil
+    val attrs = allocaters :: nodeSizes :: nodeLimits :: Nil
     
-    def create(o: Object): PerStoreSet = PerStoreSet(allocaters.get(o), nodeSizes.get(o))
+    def create(o: Object): PerStoreSet = PerStoreSet(allocaters.get(o), nodeSizes.get(o), nodeLimits.get(o))
   }
   
   val MissedUpdateOptions = Map(("per-store-set" -> PerStoreSet))

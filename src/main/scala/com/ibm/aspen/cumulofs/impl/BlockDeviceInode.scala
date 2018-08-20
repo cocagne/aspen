@@ -17,7 +17,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 
 object SimpleBlockDevice {
   case class SetDeviceType(rdev: Int) extends SimpleBaseFile.SimpleSet {
-    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = DeviceInode.setDeviceType(rdev) 
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Array[Byte]) = DeviceInode.setDeviceType(rdev) 
   }
 }
 
@@ -35,7 +35,7 @@ class SimpleBlockDevice(
     }}
   }
   
-  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
    cachedInode = new BlockDeviceInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   

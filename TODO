@@ -1,3 +1,10 @@
+* Might be time for a CumuloFS redesign
+   - inodes may be better implemented as DataObjects
+   - with explicit get/set methods for updating the tiered lists it holds
+
+* CumuloFS timestamp handling is all off
+   - timestamp only provided after TX commits
+
 * Add KV requirement for Min/Max/Left/Right revisions? Or do we just use a full object lock with revision requirement when operating on these?
     - probably just the full revision lock
     - requires that the revision change on commit

@@ -106,7 +106,7 @@ class DeleteFileTask private (
     def destroyInode(ikvos: KeyValueObjectState): Future[Unit] = {
       implicit val tx = system.newTransaction()
       tx.setRefcount(iptr.pointer, ikvos.refcount, ikvos.refcount.setCount(0))
-      tx.commit() 
+      tx.commit().map(_ =>())
     }
     
     for {

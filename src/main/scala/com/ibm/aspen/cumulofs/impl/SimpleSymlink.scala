@@ -16,7 +16,7 @@ import com.ibm.aspen.core.objects.ObjectRefcount
 
 object SimpleSymlink {
   case class SetLink(newLink: String) extends SimpleBaseFile.SimpleSet {
-    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Value) = SymlinkInode.setLink(newLink) 
+    def getUpdate(inode: Inode)(implicit tx: Transaction): (Key,Array[Byte]) = SymlinkInode.setLink(newLink) 
   }
 }
 
@@ -34,7 +34,7 @@ class SimpleSymlink(
     }}
   }
   
-  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
+  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
    cachedInode = new SymlinkInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
   }
   

@@ -56,7 +56,7 @@ trait InodeLoader {
     val pload = Promise[Inode]()
       
     system.readObject(pointer.pointer) onComplete {
-      case Success(kvos) => pload.success(Inode(pointer, kvos.revision, kvos.refcount, kvos.timestamp, kvos.contents)) 
+      case Success(kvos) => pload.success(Inode(pointer, kvos.revision, kvos.refcount, kvos.timestamp, kvos.contents.map(t => (t._1 -> t._2.value)))) 
         
         
       case Failure(e: CorruptedObject) =>

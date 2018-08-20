@@ -19,6 +19,7 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.task.TaskGroupInterface
+import com.ibm.aspen.core.objects.keyvalue.Insert
 
 trait FileSystem {
   /** UUID of the FileSystem's root KeyValue object */
@@ -98,6 +99,7 @@ object FileSystem {
   val LocalTaskGroupsTreeKey              = Key(6)
   val DefaultFileSegmentAllocationPoolKey = Key(7)
   val DefaultFileSegmentSizeKey           = Key(8)
+  val KVPairLimitsKey                     = Key(9)
   
   private[this] var loadedFileSystems = Map[UUID, FileSystem]()
   
@@ -133,6 +135,7 @@ object FileSystem {
       inodeAllocater: UUID,
       inodeTableAllocaters: Array[UUID],     // For InodeTable Tiered List
       inodeTableSizes: Array[Int],
+      inodeKVPairLimits: Array[Int],
       directoryTableAllocaters: Array[UUID], // For Directory entry Tiered List
       directoryTableSizes: Array[Int],
       dataTableAllocaters: Array[UUID],      // For File Data Tiered List
@@ -153,14 +156,14 @@ object FileSystem {
     
       rootDirPtr = new DirectoryPointer(InodeTable.RootInode, rootDirObj)
       
-      inodeTblContent = KeyValueOperation.insertOperations(List((Key(InodeTable.RootInode), rootDirPtr.toArray)), tx.timestamp())
+      inodeTblContent = Insert(Key(InodeTable.RootInode), rootDirPtr.toArray) :: Nil
       
       rootInodeTblPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, inodeTblContent)
       
-      inodeTblRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, IntegerKeyOrdering, rootInodeTblPtr)
+      inodeTblRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits, IntegerKeyOrdering, rootInodeTblPtr)
       
       lgtgTier0 <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, Nil)
-      lgtgRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, ByteArrayKeyOrdering, lgtgTier0)
+      lgtgRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits, ByteArrayKeyOrdering, lgtgTier0)
       
       icontent = List(
           (InodeTableKey,                       inodeTblRoot.toArray),
@@ -171,9 +174,10 @@ object FileSystem {
           (DataTableSizesKey,                   encodeIntArray(dataTableSizes)),
           (LocalTaskGroupsTreeKey,              lgtgRoot.toArray),
           (DefaultFileSegmentAllocationPoolKey, uuid2byte(fileSegmentAllocationPool)),
-          (DefaultFileSegmentSizeKey,           int2arr(fileSegmentSize)))
+          (DefaultFileSegmentSizeKey,           int2arr(fileSegmentSize)),
+          (KVPairLimitsKey,                     encodeIntArray(inodeKVPairLimits)))
       
-      fsObjContent = KeyValueOperation.insertOperations(icontent, tx.timestamp())
+      fsObjContent = icontent.map(t => Insert(t._1, t._2))
       
       fsObjPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, fsObjContent)
       

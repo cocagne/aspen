@@ -439,7 +439,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
            // Write begins in an allocated segment
            val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, offset, buffers, entries)
            
-           Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, tx.result))
+           Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, tx.result.map(_=>())))
          }
        }
        
@@ -571,7 +571,7 @@ object IndexedFileContent {
                 case t: Throwable => println(s"Unexpected error while deleting truncated index node: $t")
               }
             }
-          }
+          }.map(_ => ())
         } recover {
           case _: InvalidObject => () // Already done!
         }

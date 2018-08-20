@@ -71,6 +71,6 @@ trait Transaction {
    *  
    *  The future successfully completes if the transaction commits. Otherwise it will fail with a TransactionError subclass.  
    */
-  def commit()(implicit ec: ExecutionContext): Future[Unit]
+  def commit()(implicit ec: ExecutionContext): Future[HLCTimestamp]
   
 }

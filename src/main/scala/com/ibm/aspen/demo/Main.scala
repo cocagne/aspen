@@ -65,6 +65,7 @@ import com.ibm.aspen.base.AggregateTypeRegistry
 import com.ibm.aspen.base.TypeFactory
 import com.ibm.aspen.base.TypeRegistry
 import org.apache.logging.log4j.scala.Logging
+import com.ibm.aspen.core.objects.keyvalue.Insert
 
 object Main {
   
@@ -224,6 +225,7 @@ object Main {
     
     val uarr = Array(Bootstrap.BootstrapObjectAllocaterUUID)
     val iarr = Array(8192)
+    val ilim = Array(20)
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
     
@@ -239,10 +241,10 @@ object Main {
           alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       
           
-          ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, kvos.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, uarr, iarr, uarr, narr,
+          ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, kvos.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, ilim, uarr, iarr, uarr, narr,
                    Bootstrap.BootstrapObjectAllocaterUUID, fileSegmentSize)
           
-          _=tx.append(sys.radiclePointer, None, Nil, KeyValueOperation.insertOperations(List((CumuloFSKey -> ptr.toArray))))
+          _=tx.update(sys.radiclePointer, None, Nil, Insert(CumuloFSKey, ptr.toArray) :: Nil)
                    
           txdone <- tx.commit()
           
@@ -451,7 +453,7 @@ object Main {
     
     val missedUpdateStrategy = cfg.pools("bootstrap-pool").missedUpdateStrategy match {
       case pss: ConfigFile.PerStoreSet => 
-        PerStoreMissedUpdate.getStrategy(pss.allocaters.map(name => cfg.allocaters(name).uuid).toArray, pss.nodeSizes.toArray)
+        PerStoreMissedUpdate.getStrategy(pss.allocaters.map(name => cfg.allocaters(name).uuid).toArray, pss.nodeSizes.toArray, pss.nodeLimits.toArray)
     }
     
     val fptr = Bootstrap.initializeNewSystem(bootstrapStores, bootstrapPoolIDA, missedUpdateStrategy)

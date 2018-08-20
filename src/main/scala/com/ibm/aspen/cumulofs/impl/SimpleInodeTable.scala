@@ -17,6 +17,7 @@ import com.ibm.aspen.base.AspenSystem
 import java.util.UUID
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.cumulofs.InodeTable.NullInode
+import com.ibm.aspen.core.HLCTimestamp
 
 class SimpleInodeTable(
     val system: AspenSystem,
@@ -51,7 +52,7 @@ class SimpleInodeTable(
     
     val inodeNumber = allocateInode()
     val key = Key(inodeNumber)
-    val requirements = KeyValueUpdate.KVRequirement(key, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+    val requirements = KeyValueUpdate.KVRequirement(key, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
     
     for {
       allocater <- fallocater

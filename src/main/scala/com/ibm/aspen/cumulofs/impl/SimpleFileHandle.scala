@@ -21,6 +21,8 @@ import com.ibm.aspen.util.Varint
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.cumulofs.Inode
 import com.ibm.aspen.cumulofs.Timespec
+import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.HLCTimestamp
 
 object SimpleFileHandle {
   
@@ -190,16 +192,16 @@ class SimpleFileHandle(
         val inode = file.inode
         
         val base = inode.content + Inode.setMtime(Timespec.now) +
-          (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(tr.newFileEnd), tx.timestamp))
+          (FileInode.FileSizeKey -> Varint.unsignedLongToArray(tr.newFileEnd))
           
         val newContent = ws.newRoot match {
           case None => base - FileInode.FileIndexRootKey
-          case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+          case Some(p) => base + (FileInode.FileIndexRootKey -> p.toArray) 
         }
         
-        tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
+        tx.update(inode.pointer.pointer, Some(inode.revision), Nil, newContent.toList.map(t => Insert(t._1,t._2)))
         
-        (tx.txRevision, tx.timestamp, newContent)
+        (tx.txRevision, HLCTimestamp.now, newContent)
       }
     }
     
@@ -250,18 +252,18 @@ class SimpleFileHandle(
             val newSize = if (writeOffset + nwritten > inode.size) writeOffset + nwritten else inode.size
             
             val base = inode.content + Inode.setMtime(Timespec.now) + 
-              (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newSize), tx.timestamp))
+              (FileInode.FileSizeKey -> Varint.unsignedLongToArray(newSize))
               
             val newContent = ws.newRoot match {
               case None => base
-              case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+              case Some(p) => base + (FileInode.FileIndexRootKey -> p.toArray) 
             }
             
-            tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
+            tx.update(inode.pointer.pointer, Some(inode.revision), Nil, newContent.toList.map(t => Insert(t._1,t._2)))
             
-            val updatedInode = inode.update(tx.txRevision, tx.timestamp, newSize, ws.newRoot.map(_.toArray), inode.refcount)
+            val updatedInode = inode.update(tx.txRevision, HLCTimestamp.now, newSize, ws.newRoot.map(_.toArray), inode.refcount)
             
-            (ws.remainingOffset, ws.remainingData, tx.txRevision, tx.timestamp, newContent)
+            (ws.remainingOffset, ws.remainingData, tx.txRevision, HLCTimestamp.now, newContent)
           }
         }
         

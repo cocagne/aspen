@@ -30,6 +30,7 @@ import com.ibm.aspen.cumulofs.CharacterDevicePointer
 import com.ibm.aspen.cumulofs.BlockDevice
 import com.ibm.aspen.cumulofs.CharacterDevice
 import com.ibm.aspen.cumulofs.BlockDevicePointer
+import com.ibm.aspen.core.HLCTimestamp
 
 object SimpleFileSystem {
   def load(
@@ -48,7 +49,7 @@ object SimpleFileSystem {
             
             val ffgroup = system.transact { implicit tx =>
             
-              val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, tx.timestamp(), KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+              val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
               
               for {
                 node <- t.fetchMutableNode(taskGroupKey)
@@ -91,6 +92,8 @@ class SimpleFileSystem private (
   val dataTableSizes: Array[Int]            = decodeIntArray(rootKvos.contents(FileSystem.DataTableSizesKey).value)
   val inodeAllocater: UUID                  = byte2uuid(rootKvos.contents(FileSystem.InodeAllocaterKey).value)
   val defaultSegmentSize: Int = com.ibm.aspen.cumulofs.arr2int(rootKvos.contents(FileSystem.DefaultFileSegmentSizeKey).value)
+  val inodeKVPairLimits: Array[Int]         = decodeIntArray(rootKvos.contents(FileSystem.KVPairLimitsKey).value)
+  val directoryTableKVPairLimits: Array[Int] = decodeIntArray(rootKvos.contents(FileSystem.KVPairLimitsKey).value)
       
   private lazy val fdefaultSegmentAllocater = system.getObjectAllocater(byte2uuid(rootKvos.contents(FileSystem.DefaultFileSegmentAllocationPoolKey).value))
   
@@ -103,7 +106,7 @@ class SimpleFileSystem private (
   
   val inodeLoader: InodeLoader = new SimpleInodeLoader(system, inodeTable, new NoInodeCache)
   
-  val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes)
+  val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes, directoryTableKVPairLimits)
   
   val fileLoader: FileLoader = new SimpleFileLoader
   

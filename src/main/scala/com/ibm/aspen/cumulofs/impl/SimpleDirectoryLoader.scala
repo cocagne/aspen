@@ -12,7 +12,8 @@ import com.ibm.aspen.cumulofs.DirectoryInode
 
 class SimpleDirectoryLoader(
     val directoryTableAllocaters: Array[UUID],
-    val directoryTableSizes: Array[Int]
+    val directoryTableSizes: Array[Int],
+    val directoryTableKVPairLimits: Array[Int]
     ) extends DirectoryLoader {
  
   override def loadDirectory(fs: FileSystem, pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[Directory] = fs.inodeLoader.load(pointer) map { inode =>

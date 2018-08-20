@@ -47,5 +47,5 @@ trait BaseFile {
   /** Frees all objects owned by the inode */
   def freeResources()(implicit ec: ExecutionContext): Future[Unit] = Future.unit
   
-  def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Value], newRefcount: Option[ObjectRefcount]): Unit
+  def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit
 }
