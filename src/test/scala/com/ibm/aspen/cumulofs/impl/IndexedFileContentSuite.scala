@@ -12,6 +12,7 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.base.task.LocalTaskGroup
+import com.ibm.aspen.core.objects.keyvalue.Insert
 
 object IndexedFileContentSuite {
   
@@ -35,47 +36,47 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
     
     val newSize = if (offset + nbytes > inode.size) offset + nbytes else inode.size
     
-    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Value] = {
+    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Array[Byte]] = {
       val base = inode.content + 
-        (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(newSize), tx.timestamp))
+        (FileInode.FileSizeKey -> Varint.unsignedLongToArray(newSize))
       newRoot match {
         case None => base
-        case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+        case Some(p) => base + (FileInode.FileIndexRootKey -> p.toArray) 
       }
     }
     
     for { 
       ws <- ifc.write(inode, offset, lbytes.map(a => DataBuffer(a)))
       newContent = getNewContent(ws.newRoot)
-      _ = tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
-      _ <- tx.commit()
+      _ = tx.update(inode.pointer.pointer, Some(inode.revision), Nil, newContent.toList.map(t => Insert(t._1, t._2)))
+      timestamp <- tx.commit()
       _ <- ws.writeComplete
     } yield {
       val adjustedSize = newSize - ws.remainingData.foldLeft(0)((sz, db) => sz + db.size)
-      (inode.update(tx.txRevision, tx.timestamp, adjustedSize, ws.newRoot.map(_.toArray), inode.refcount), ws.remainingOffset, ws.remainingData)
+      (inode.update(tx.txRevision, timestamp, adjustedSize, ws.newRoot.map(_.toArray), inode.refcount), ws.remainingOffset, ws.remainingData)
     }
   }
   
   def truncate(inode: FileInode, ifc: IndexedFileContent, offset: Long): Future[FileInode] = {
     implicit val tx = sys.newTransaction()
     
-    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Value] = {
+    def getNewContent(newRoot: Option[DataObjectPointer]): Map[Key,Array[Byte]] = {
       val base = inode.content + 
-        (FileInode.FileSizeKey -> Value(FileInode.FileSizeKey, Varint.unsignedLongToArray(offset), tx.timestamp))
+        (FileInode.FileSizeKey -> Varint.unsignedLongToArray(offset))
       newRoot match {
         case None => base
-        case Some(p) => base + (FileInode.FileIndexRootKey -> Value(FileInode.FileIndexRootKey, p.toArray, tx.timestamp)) 
+        case Some(p) => base + (FileInode.FileIndexRootKey -> p.toArray) 
       }
     }
     
     for { 
       ws <- ifc.truncate(inode, offset)
       newContent = getNewContent(ws.newRoot)
-      _ = tx.overwrite(inode.pointer.pointer, inode.revision, Nil, KeyValueOperation.contentToOps(newContent))
-      _ <- tx.commit()
+      _ = tx.update(inode.pointer.pointer, Some(inode.revision), Nil, newContent.toList.map(t => Insert(t._1, t._2)))
+      timestamp <- tx.commit()
       _ <- ws.writeComplete
     } yield {
-      inode.update(tx.txRevision, tx.timestamp, offset, ws.newRoot.map(_.toArray), inode.refcount)
+      inode.update(tx.txRevision, timestamp, offset, ws.newRoot.map(_.toArray), inode.refcount)
     }
   }
   

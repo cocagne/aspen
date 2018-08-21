@@ -5,6 +5,8 @@ import scala.concurrent.Future
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectType
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectRevision
 
 class MutableObjectLoader(val backend: DataStoreBackend) {
   
@@ -16,13 +18,16 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
   def createNewObject(
       objectUUID: UUID,
       allocationTransactionUUID: UUID,
+      allocationTimestamp: HLCTimestamp,
       storePointer: StorePointer, 
       metadata: ObjectMetadata, 
       data: DataBuffer,
       objectType: ObjectType.Value): MutableObject = synchronized {
     val obj = objectType match {
       case ObjectType.Data => new MutableDataObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some((metadata, data)))
-      case ObjectType.KeyValue => new MutableKeyValueObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some((metadata, data)))
+      case ObjectType.KeyValue => 
+        val allocState = (metadata, data, ObjectRevision(allocationTransactionUUID), allocationTimestamp)
+        new MutableKeyValueObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some(allocState))
     }
     objects += (objectUUID -> obj)
     obj

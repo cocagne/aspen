@@ -7,12 +7,14 @@ class MutableDataObject(
     objectId: StoreObjectID, 
     initialOperation: UUID, 
     loader: MutableObjectLoader,
-    ostate: Option[(ObjectMetadata, DataBuffer)]) extends MutableObject(objectId, initialOperation, loader, ostate) {
+    ostate: Option[(ObjectMetadata, DataBuffer)]) extends MutableObject(objectId, initialOperation, loader) {
+  
+  ostate.foreach(t => setState(t._1, t._2))
   
   def overwriteData(db: DataBuffer): Unit = dataBuffer = db
   
   def appendData(db: DataBuffer): Unit = dataBuffer = dataBuffer.append(db)
   
-  def restore(meta: ObjectMetadata, data: DataBuffer): Unit = setRebuildState(meta, data)
+  def restore(meta: ObjectMetadata, data: DataBuffer): Unit = setState(meta, data)
   
 }

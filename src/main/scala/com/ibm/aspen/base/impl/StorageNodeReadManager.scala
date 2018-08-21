@@ -63,7 +63,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       val cs = ReadResponse.CurrentState(md.revision, md.refcount, md.timestamp, sizeOnStore, odata,
                                          if (message.returnLockedTransaction) locks else Nil)
               
-        messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, HLCTimestamp.now, Right(cs)))
+      messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, HLCTimestamp.now, Right(cs)))
     }
 
     message.readType match {
@@ -92,7 +92,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, locks)) =>
           try {
-            val kvos = KeyValueObjectStoreState.decode(data)
+            val kvos = KeyValueObjectStoreState(data)
             
             val includeMinMax = !kvos.keyInRange(rt.key, rt.ordering)
             
@@ -112,7 +112,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, locks)) =>
           try {
-            val kvos = KeyValueObjectStoreState.decode(data)
+            val kvos = KeyValueObjectStoreState(data)
             
             val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
@@ -136,7 +136,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, locks)) =>
           try {
-            val kvos = KeyValueObjectStoreState.decode(data)
+            val kvos = KeyValueObjectStoreState(data)
             
             val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
@@ -160,7 +160,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, locks)) =>
           try {
-            val kvos = KeyValueObjectStoreState.decode(data)
+            val kvos = KeyValueObjectStoreState(data)
 
             val kvlist = kvos.idaEncodedContents.foldLeft(List[Value]()){ (l, t) =>
               if ( rt.ordering.compare(t._1, rt.minimum) >= 0 && rt.ordering.compare(t._1, rt.maximum) <= 0 ) 

@@ -23,9 +23,9 @@ class SteppedTaskSuite  extends TestSystemSuite {
 
     var ops = List[KeyValueOperation]()
     
-    taskType.foreach { uuid => ops = Insert(DurableTask.TaskTypeKey, uuid2byte(uuid), tx.timestamp()) :: ops }
+    taskType.foreach { uuid => ops = Insert(DurableTask.TaskTypeKey, uuid2byte(uuid)) :: ops }
     
-    contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
+    contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)

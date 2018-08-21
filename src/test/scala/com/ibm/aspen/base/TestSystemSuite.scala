@@ -61,7 +61,7 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
 
     var ops = List[KeyValueOperation]()
     
-    contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
+    contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)

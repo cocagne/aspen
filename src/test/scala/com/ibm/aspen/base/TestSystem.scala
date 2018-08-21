@@ -149,7 +149,7 @@ class TestSystem(
   val (store1, crl1) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 1))
   val (store2, crl2) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 2))
   
-  val missedUpdateStrategy = PerStoreMissedUpdate.getStrategy(Array(BootstrapObjectAllocaterUUID), Array(8192))
+  val missedUpdateStrategy = PerStoreMissedUpdate.getStrategy(Array(BootstrapObjectAllocaterUUID), Array(8192), Array(1000))
   
   val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA, missedUpdateStrategy), 500 milliseconds)
   

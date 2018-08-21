@@ -62,8 +62,9 @@ class CodecSuite extends FunSuite with Matchers {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
+    val readTime = HLCTimestamp.now
     
-    val rr = ReadResponse(storeId, readUUID, Left(ObjectReadError.ObjectMismatch))
+    val rr = ReadResponse(storeId, readUUID, readTime, Left(ObjectReadError.ObjectMismatch))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -86,12 +87,13 @@ class CodecSuite extends FunSuite with Matchers {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
+    val readTime = HLCTimestamp.now
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, Some(DataBuffer(List[Byte](1,2,3).toArray)), List(RevisionWriteLock(txd)))
+    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, Some(DataBuffer(List[Byte](1,2,3).toArray)), List(RevisionWriteLock(txd)))
     
-    val rr = ReadResponse(storeId, readUUID, Right(cs))
+    val rr = ReadResponse(storeId, readUUID, readTime, Right(cs))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -114,12 +116,13 @@ class CodecSuite extends FunSuite with Matchers {
     val poolUUID = new java.util.UUID(1,2)
     val storeId = DataStoreID(poolUUID, 3)
     val readUUID = new java.util.UUID(3,4)
+    val readTime = HLCTimestamp.now
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, Set[UUID](), ref, ts, 5, None, Nil)
+    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, None, Nil)
     
-    val rr = ReadResponse(storeId, readUUID, Right(cs))
+    val rr = ReadResponse(storeId, readUUID, readTime, Right(cs))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -137,72 +140,6 @@ class CodecSuite extends FunSuite with Matchers {
     val decoded = NetworkCodec.decode(m2.readResponse())
     
     decoded should be (rr)
-  }
-  test("ReadResponse Encoding with single update") {
-    val poolUUID = new java.util.UUID(1,2)
-    val storeId = DataStoreID(poolUUID, 3)
-    val readUUID = new java.util.UUID(3,4)
-    val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(new UUID(0, 2))
-    val ts = HLCTimestamp.now
-    val updates = Set[UUID](new UUID(2,2))
-    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, 5, None, Nil)
-    
-    val rr = ReadResponse(storeId, readUUID, Right(cs))
-    
-    val builder = new FlatBufferBuilder(1024)
-    
-    val o = NetworkCodec.encode(builder, rr)
-    
-    P.Message.startMessage(builder)
-    P.Message.addReadResponse(builder, o)
-    
-    val m =  P.Message.endMessage(builder)
-    builder.finish(m)
-    
-    val buf = builder.dataBuffer()
-    
-    val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = NetworkCodec.decode(m2.readResponse())
-    
-    decoded should be (rr)
-    rr.result match {
-      case Left(err) => fail("Should not be an error")
-      case Right(s) => s.updates should be (updates)
-    }
-  }
-  test("ReadResponse Encoding with multiple updates") {
-    val poolUUID = new java.util.UUID(1,2)
-    val storeId = DataStoreID(poolUUID, 3)
-    val readUUID = new java.util.UUID(3,4)
-    val ref = ObjectRefcount(1,1)
-    val rev = ObjectRevision(new UUID(0, 2))
-    val ts = HLCTimestamp.now
-    val updates = Set[UUID](new UUID(2,2), new UUID(3,3))
-    val cs = ReadResponse.CurrentState(rev, updates, ref, ts, 5, None, Nil)
-    
-    val rr = ReadResponse(storeId, readUUID, Right(cs))
-    
-    val builder = new FlatBufferBuilder(1024)
-    
-    val o = NetworkCodec.encode(builder, rr)
-    
-    P.Message.startMessage(builder)
-    P.Message.addReadResponse(builder, o)
-    
-    val m =  P.Message.endMessage(builder)
-    builder.finish(m)
-    
-    val buf = builder.dataBuffer()
-    
-    val m2 = P.Message.getRootAsMessage(buf)
-    val decoded = NetworkCodec.decode(m2.readResponse())
-    
-    decoded should be (rr)
-    rr.result match {
-      case Left(err) => fail("Should not be an error")
-      case Right(s) => s.updates should be (updates)
-    }
   }
   
   test("Direct ObjectPointer encode/decode") {

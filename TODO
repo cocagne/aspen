@@ -1,3 +1,40 @@
+* Need to re-think TieredKeyValueList design
+   - Its always felt kind of clunky
+   - Root handling isn't very good
+   - Usage interface is okay, initialization and support needs work
+   
+   - Root contains:
+       - top tier number
+       - root node pointer
+       - KeyOrdering
+       - TreeTypeUUID - UUID for the registered MutableTieredKeyValueList subclass that knows how to update
+          the root?
+          -- Inode example. How would a non-cumlofs app know how to update the inode for DataObject case?
+             -> type constructor could be passed root + containing object pointer?
+          -- Does this need to be fully generic? Missed Tx, FAs need to load simple TKVLs held by KV objects
+             - CumuloFS directories are only every loaded by application-specific code. So holding in
+               a DataObject is fine the things that want to load hte tree will know the right type to use.
+             - FAs can also embed whatever info they need to load a TKVL
+          -- Can get away with generic KV-based TKVL host and rely on application-specific alternatives
+       - MutableTieredKeyValueListConfig UUID - for type registry
+       - byteArray for mutable config data
+       
+       ** Root node updates are infrequent enough that we don't need to worry about contention. 
+          - even self-contending on directory update shouldn't be a problem
+       
+   - MutableTieredKeyValueListConfig
+       - Registered in type registry
+       - provides allocation & size limits
+       - 
+
+* KeyValueObjectStoreSuite
+   - Add tests for operations on object
+
+* Read Tests for KeyValue pairs - three object store states 
+    - kv all match
+    - kv split with valid in final two
+    - kv with only one store (deleted)
+
 * Might be time for a CumuloFS redesign
    - inodes may be better implemented as DataObjects
    - with explicit get/set methods for updating the tiered lists it holds

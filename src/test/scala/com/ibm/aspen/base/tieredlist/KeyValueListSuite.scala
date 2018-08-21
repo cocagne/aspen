@@ -146,6 +146,7 @@ class KeyValueListSuite extends TestSystemSuite {
       kvos0 <- sys.readObject(l0)
       
       nodeSizeLimit = 50 + l0.toArray.size
+      kvPairLimit = 100
       
       inserts = List((key,value))
       deletes = Nil
@@ -153,10 +154,10 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
+      onSplit = (left: KeyValueListPointer, right: List[KeyValueListPointer]) => split = right.head.pointer
       onJoin = (left: KeyValueListPointer, removed: KeyValueListPointer) => join = removed.pointer
       
-      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, kvPairLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
       
       done <- tx.commit()
       
@@ -187,16 +188,16 @@ class KeyValueListSuite extends TestSystemSuite {
     var join: KeyValueObjectPointer = null
     
     implicit val tx = sys.newTransaction()
-    val ts = tx.timestamp()
     
     for {
       l2 <- alloc(Some(max1), None, None)
-      l1 <- alloc(Some(max0), Some(max1), Some(l2), List(Insert(key2,value,ts)))
-      l0 <- alloc(None, Some(max0), Some(l1), List(Insert(key0,value,ts), Insert(key1,value,ts)))
+      l1 <- alloc(Some(max0), Some(max1), Some(l2), List(Insert(key2,value)))
+      l0 <- alloc(None, Some(max0), Some(l1), List(Insert(key0,value), Insert(key1,value)))
       
       kvos0 <- sys.readObject(l0)
 
       nodeSizeLimit = 220
+      kvPairLimit = 100
       
       inserts = Nil
       deletes = List(key0, key1)
@@ -204,10 +205,10 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
+      onSplit = (left: KeyValueListPointer, right: List[KeyValueListPointer]) => split = right.head.pointer
       onJoin = (left: KeyValueListPointer, removed: KeyValueListPointer) => join = removed.pointer
       
-      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, kvPairLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
       
       done <- tx.commit()
       
@@ -219,10 +220,11 @@ class KeyValueListSuite extends TestSystemSuite {
       kvos.pointer should be (l0)
       kvos.contents.size should be (1)
       kvos.minimum should be (None)
-      kvos.maximum should be (Some(max1))
+      kvos.maximum.isDefined should be (true)
+      kvos.maximum.get.key should be (max1)
       kvos.right match {
         case None => fail("missing pointer")
-        case Some(arr) => arr should be (l2.toArray)
+        case Some(r) => r.content should be (l2.toArray)
       }
       kvos.contents.get(key2) match {
         case None => fail("missing key")
@@ -241,7 +243,7 @@ class KeyValueListSuite extends TestSystemSuite {
     val key3 = Key(Array[Byte](3))
     val key4 = Key(Array[Byte](4))
     //val key5 = Key(Array[Byte](5))
-    val value = new Array[Byte](50)
+    val value = new Array[Byte](5)
     
     var split: KeyValueObjectPointer = null
     var join: KeyValueObjectPointer = null
@@ -253,7 +255,8 @@ class KeyValueListSuite extends TestSystemSuite {
       
       kvos0 <- sys.readObject(l0)
       
-      nodeSizeLimit = 220
+      nodeSizeLimit = 8192
+      kvPairLimit = 3
       
       inserts = List((key0,value),(key1,value),(key2,value),(key3,value),(key4,value))
       deletes = Nil
@@ -261,10 +264,10 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
+      onSplit = (left: KeyValueListPointer, right: List[KeyValueListPointer]) => split = right.head.pointer
       onJoin = (left: KeyValueListPointer, removed: KeyValueListPointer) => join = removed.pointer
       
-      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, kvPairLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
       
       done <- tx.commit()
       
@@ -311,7 +314,8 @@ class KeyValueListSuite extends TestSystemSuite {
       
       kvos0 <- sys.readObject(l0)
       
-      nodeSizeLimit = 300
+      nodeSizeLimit = 8192
+      kvPairLimit = 3
       
       inserts = List((key0,value),(key1,value),(key2,value),(key3,value),(key4,value))
       deletes = Nil
@@ -319,10 +323,10 @@ class KeyValueListSuite extends TestSystemSuite {
       comparison = ByteArrayKeyOrdering
       reader = sys
       allocater = new SinglePoolObjectAllocater(sys, Bootstrap.BootstrapObjectAllocaterUUID, BootstrapStoragePoolUUID, Some(nodeSizeLimit), new Replication(3,2))
-      onSplit = (left: KeyValueListPointer, right: KeyValueListPointer) => split = right.pointer
+      onSplit = (left: KeyValueListPointer, right: List[KeyValueListPointer]) => split = right.head.pointer
       onJoin = (left: KeyValueListPointer, removed: KeyValueListPointer) => join = removed.pointer
       
-      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
+      kvosPrep <- KeyValueList.prepreUpdateTransaction(kvos0, nodeSizeLimit, kvPairLimit, inserts, deletes, requirements, comparison, reader, allocater, onSplit, onJoin)
       
       done <- tx.commit()
       
@@ -333,7 +337,7 @@ class KeyValueListSuite extends TestSystemSuite {
      
     } yield {
       kvos1.pointer should be (l0)
-      kvos1.contents.size should be (2)
+      kvos1.contents.size should be (3)
       kvos1.contents.get(key0) match {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
@@ -342,14 +346,15 @@ class KeyValueListSuite extends TestSystemSuite {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
       }
-      kvos1.maximum should be (Some(key2))
-      split shouldNot be (null)
-      kvos2.pointer shouldNot be (l0)
-      kvos2.contents.size should be (3)
-      kvos2.contents.get(key2) match {
+      kvos2.contents.get(key3) match {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
       }
+      kvos1.maximum.isDefined should be(true)
+      kvos1.maximum.get.key should be (key3)
+      split shouldNot be (null)
+      kvos2.pointer shouldNot be (l0)
+      kvos2.contents.size should be (2)
       kvos2.contents.get(key3) match {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
@@ -358,7 +363,8 @@ class KeyValueListSuite extends TestSystemSuite {
         case None => fail("missing key")
         case Some(v) => v.value should be (value)
       }
-      kvos2.maximum should be (Some(max0))
+      kvos2.maximum.isDefined should be (true)
+      kvos2.maximum.get.key should be (max0)
     }
   }
  
@@ -368,10 +374,10 @@ class KeyValueListSuite extends TestSystemSuite {
     val max1 = Key(Array[Byte](10))
     val target = Key(Array[Byte](9))
     
-    var preps: List[KeyValueObjectPointer] = Nil
+    var preps: List[UUID] = Nil
     
     def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
-      preps = kvos.pointer :: preps
+      preps = kvos.pointer.uuid :: preps
       Future.unit
     }
     
@@ -392,7 +398,7 @@ class KeyValueListSuite extends TestSystemSuite {
      
     } yield {
       kvos.pointer should be (l1)
-      preps should be (List(l2, l1, l0))
+      preps.toSet should be (Set(l2.uuid, l1.uuid, l0.uuid))
     }
   }
   
@@ -402,10 +408,10 @@ class KeyValueListSuite extends TestSystemSuite {
     val max1 = Key(Array[Byte](10))
     val target = Key(Array[Byte](9))
     
-    var preps: List[KeyValueObjectPointer] = Nil
+    var preps: List[UUID] = Nil
     
     def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
-      preps = kvos.pointer :: preps
+      preps = kvos.pointer.uuid :: preps
       Future.unit
     }
     
@@ -424,7 +430,7 @@ class KeyValueListSuite extends TestSystemSuite {
      
     } yield {
       kvos.pointer should be (l1)
-      preps should be (List(l1, l0))
+      preps.toSet should be (Set(l1.uuid, l0.uuid))
     }
   }
   
@@ -434,10 +440,10 @@ class KeyValueListSuite extends TestSystemSuite {
     val max1 = Key(Array[Byte](10))
     val target = Key(Array[Byte](9))
     
-    var preps: List[KeyValueObjectPointer] = Nil
+    var preps: List[UUID] = Nil
     
     def prepareForDeletion(kvos: KeyValueObjectState): Future[Unit] = {
-      preps = kvos.pointer :: preps
+      preps = kvos.pointer.uuid :: preps
       Future.unit
     }
     
@@ -455,7 +461,7 @@ class KeyValueListSuite extends TestSystemSuite {
      
     } yield {
       kvos.pointer should be (l0)
-      preps should be (List(l0))
+      preps.toSet should be (Set(l0.uuid))
     }
   }
 }

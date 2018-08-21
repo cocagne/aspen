@@ -20,11 +20,19 @@ import com.ibm.aspen.core.HLCTimestamp
 
 class MutableKeyValueObject(
     objectId: StoreObjectID, 
-    initialOperation: UUID, 
+    initialOperation: UUID,
     loader: MutableObjectLoader,
-    ostate: Option[(ObjectMetadata, DataBuffer)]) extends MutableObject(objectId, initialOperation, loader, ostate) {
+    allocationState: Option[(ObjectMetadata, DataBuffer, ObjectRevision, HLCTimestamp)]) extends MutableObject(objectId, initialOperation, loader) {
   
-  protected var okvoss: Option[KeyValueObjectStoreState] = None
+  // if we have initial data, overwrite the data buffer with the converted content
+  protected var okvoss: Option[KeyValueObjectStoreState] = allocationState.map { t =>
+    val (meta, opsData, revision, ts) = t
+    val newKvoss = KeyValueObjectStoreState().update(opsData, revision, ts)
+    
+    setState(meta, newKvoss.encode)
+    
+    newKvoss
+  }
   
   var keyRevisionReadLocks: Map[Key, Map[UUID,TransactionDescription]] = Map()
   var keyRevisionWriteLocks: Map[Key, TransactionDescription] = Map()
@@ -55,31 +63,29 @@ class MutableKeyValueObject(
     okvoss match {
       case Some(kvoss) => kvoss
       case None => 
-        val kvoss = KeyValueObjectStoreState.decode(dataBuffer)
+        val kvoss = KeyValueObjectStoreState(dataBuffer)
         okvoss = Some(kvoss)
         kvoss
     }
   }
   
   def restore(meta: ObjectMetadata, kvoss: KeyValueObjectStoreState): Unit = {
-    val db = KeyValueObjectStoreState.encode(kvoss)
-    setRebuildState(meta, db)
+    setState(meta, kvoss.encode)
     okvoss = Some(kvoss)
   }
   
   def restore(meta: ObjectMetadata, data: DataBuffer): Unit = {
-    val kvoss = KeyValueObjectStoreState.decode(data)
-    setRebuildState(meta, data)
+    val kvoss = KeyValueObjectStoreState(data)
+    setState(meta, data)
     okvoss = Some(kvoss)
   }
   
   def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): Unit = {
-    val kvoss = storeState
     
-    val (partialKvoss, deletes) = KeyValueObjectStoreState.decodeOps(db, txRevision, txTimestamp)
+    val newKvoss = storeState.update(db, txRevision, txTimestamp)
     
-    okvoss = Some(kvoss.update(partialKvoss, deletes))
+    okvoss = Some(newKvoss)
 
-    dataBuffer = KeyValueObjectStoreState.encode(kvoss)
+    dataBuffer = newKvoss.encode
   }
 }

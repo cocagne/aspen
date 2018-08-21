@@ -54,12 +54,12 @@ object TieredKeyValueListSplitFA {
       keyOrdering: KeyOrdering)
       
   class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
-    
+    println(s"BEGINNING INSERT INTO UPPER TIER FA")
     val complete = system.retryStrategy.retryUntilSuccessful {
       val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
       
       def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root, inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
-        
+        println(s"  CREATING NEW TIER")
         val ops  = Insert(c.left.minimum, c.left.pointer.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
         
         for {
@@ -109,7 +109,8 @@ object TieredKeyValueListSplitFA {
           
           p.completeWith(fadd)
         
-        case Failure(_) =>
+        case Failure(err) =>
+          println(s"REFRESH ROOT ERR $err")
           // Failures here must be either due to the containing object being corrupt/deleted or the root key
           // being deleted. In either case there's nothing we can do to recover. Declare success.
           p.success(())

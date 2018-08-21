@@ -86,42 +86,45 @@ class BaseReadDriver(
     })
   }
   
-  def opportunisticRebuild(storeId: DataStoreID, ss: StoreState): Unit = if (readType == FullObject) restoredObject.foreach { t =>
-    
-    if (disableOpportunisticRebuild)
-      return // skip if disabled
-    
-    val (objectState, currentUpdateSet) = t
+  def opportunisticRebuild(storeId: DataStoreID, ss: StoreState): Unit = readType match {
+    case _: FullObject => restoredObject.foreach { t =>
+      if (disableOpportunisticRebuild)
+        return // skip if disabled
       
-    val repair = objectState match {
-      case d: DataObjectState => d.timestamp > ss.timestamp && (d.revision != ss.revision || d.refcount != ss.refcount)
-      
-      case k: KeyValueObjectState => 
-        if (k.revision != ss.revision || k.refcount != ss.refcount)
-          true
-        else
-          ss.asInstanceOf[KVObjectStoreState].kvoss.updateSet != currentUpdateSet
+      val (objectState, currentUpdateSet) = t
         
-      case m: MetadataObjectState => false
-    }
-    
-    if (repair && objectState.lastUpdateTimestamp > ss.lastUpdateTimestamp && objectState.lastUpdateTimestamp - ss.lastUpdateTimestamp > opportunisticRebuildDelay) {
-      logger.info(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
-      
-      val arrIdx = objectPointer.getEncodedDataIndexForStore(storeId).get
-      val data = objectState.getRebuildDataForStore(storeId).get
-      
-      val oldUpdates = ss match {
-        case _: DataObjectStoreState => Set[ObjectRevision]()
-        case k: KVObjectStoreState => k.kvoss.updateSet
+      val repair = objectState match {
+        case d: DataObjectState => d.timestamp > ss.timestamp && (d.revision != ss.revision || d.refcount != ss.refcount)
+        
+        case k: KeyValueObjectState => 
+          if (k.revision != ss.revision || k.refcount != ss.refcount)
+            true
+          else
+            ss.asInstanceOf[KVObjectStoreState].kvoss.updateSet != currentUpdateSet
+          
+        case m: MetadataObjectState => false
       }
       
-      val msg = OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, 
-                  ss.revision, ss.refcount, oldUpdates,
-                  objectState.revision, objectState.refcount, objectState.timestamp, data)
-                  
-      clientMessenger.send(msg)
+      if (repair && objectState.lastUpdateTimestamp > ss.lastUpdateTimestamp && objectState.lastUpdateTimestamp - ss.lastUpdateTimestamp > opportunisticRebuildDelay) {
+        logger.info(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
+        
+        val arrIdx = objectPointer.getEncodedDataIndexForStore(storeId).get
+        val data = objectState.getRebuildDataForStore(storeId).get
+        
+        val oldUpdates = ss match {
+          case _: DataObjectStoreState => Set[ObjectRevision]()
+          case k: KVObjectStoreState => k.kvoss.updateSet
+        }
+        
+        val msg = OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, 
+                    ss.revision, ss.refcount, oldUpdates,
+                    objectState.revision, objectState.refcount, objectState.timestamp, data)
+                    
+        clientMessenger.send(msg)
+      }
     }
+    
+    case _ =>
   }
   
   def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
@@ -362,7 +365,7 @@ object BaseReadDriver {
     
     val kvoss = objectData match {
       case None => new KeyValueObjectStoreState(None, None, None, None, Map())
-      case Some(db) => KeyValueObjectStoreState.decode(db)
+      case Some(db) => KeyValueObjectStoreState(db)
     }
     
     def lastUpdateTimestamp: HLCTimestamp = kvoss.lastUpdateTimestamp

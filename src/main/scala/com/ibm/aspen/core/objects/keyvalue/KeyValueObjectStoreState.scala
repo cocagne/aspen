@@ -33,19 +33,28 @@ class KeyValueObjectStoreState(
     minOk && maxOk
   }
   
-  def update(partialKvoss: KeyValueObjectStoreState, deletes: List[Key]): KeyValueObjectStoreState = {
+  def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): KeyValueObjectStoreState = {
+    
     var tmin: Option[KeyValueObjectStoreState.Min] = minimum
     var tmax: Option[KeyValueObjectStoreState.Max] = maximum
     var tleft: Option[KeyValueObjectStoreState.Left] = left
     var tright: Option[KeyValueObjectStoreState.Right] = right
     var tpairs: Map[Key,Value] = idaEncodedContents
     
-    partialKvoss.minimum.foreach(m => tmin = Some(m))
-    partialKvoss.maximum.foreach(m => tmax = Some(m))
-    partialKvoss.left.foreach(a => tleft = Some(a))
-    partialKvoss.right.foreach(a => tright = Some(a))
-    deletes.foreach { k => tpairs -= k }
-    partialKvoss.idaEncodedContents.foreach(t => tpairs += t)
+    KeyValueOperation.decode(db.asReadOnlyBuffer(), txRevision, txTimestamp).foreach { o => o match {
+      case op: SetMin   => tmin = Some(Min(Key(op.value), op.revision.get, op.timestamp.get)) 
+      case op: SetMax   => tmax = Some(Max(Key(op.value), op.revision.get, op.timestamp.get))
+      case op: SetLeft  => tleft = Some(Left(op.value, op.revision.get, op.timestamp.get))
+      case op: SetRight => tright = Some(Right(op.value, op.revision.get, op.timestamp.get))
+      case op: Insert   => 
+        val v = Value(op.key, op.value, op.timestamp.get, op.revision.get)
+        tpairs += (op.key -> v)
+      case op: Delete   => tpairs -= op.key
+      case op: DeleteMin => tmin = None
+      case op: DeleteMax => tmax = None
+      case op: DeleteLeft => tleft = None
+      case op: DeleteRight => tright = None
+    }}
     
     new KeyValueObjectStoreState(tmin, tmax, tleft, tright, tpairs)
   }
@@ -71,6 +80,8 @@ class KeyValueObjectStoreState(
   }
   
   def encode(): DataBuffer = KeyValueObjectStoreState.encode(this)
+  
+  def encodedSize: Int = KeyValueObjectStoreState.encodedSize(this)
 }
   
 /** On disk format is a series of entries:
@@ -92,52 +103,24 @@ object KeyValueObjectStoreState {
   val CodeRight = 3.asInstanceOf[Byte] 
   val CodePair  = 4.asInstanceOf[Byte] 
   
-  // Returns object state plus list of keys to be deleted
-  def decodeOps(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): (KeyValueObjectStoreState, List[Key]) = {
-    var min: Option[KeyValueObjectStoreState.Min] = None
-    var max: Option[KeyValueObjectStoreState.Max] = None
-    var left: Option[KeyValueObjectStoreState.Left] = None
-    var right: Option[KeyValueObjectStoreState.Right] = None
-    var pairs: Map[Key,Value] = Map()
-    var deletes: List[Key] = Nil
-    
-    KeyValueOperation.decode(db.asReadOnlyBuffer(), txRevision, txTimestamp).foreach { o => o match {
-      case op: SetMin   => min = Some(Min(Key(op.value), op.revision.get, op.timestamp.get)) 
-      case op: SetMax   => max = Some(Max(Key(op.value), op.revision.get, op.timestamp.get))
-      case op: SetLeft  => left = Some(Left(op.value, op.revision.get, op.timestamp.get))
-      case op: SetRight => right = Some(Right(op.value, op.revision.get, op.timestamp.get))
-      case op: Insert   => 
-        val v = Value(op.key, op.value, op.timestamp.get, op.revision.get)
-        pairs += (op.key -> v)
-      case op: Delete   => deletes = op.key :: deletes
-    }}
-    
-    (new KeyValueObjectStoreState(min, max, left, right, pairs), deletes)
-  }
-  
-  private def encodedArraySize(arr: Array[Byte]): Int = Varint.getUnsignedIntEncodingLength(arr.length) + arr.length
-  
-  
-  def encodedPairSize(key: Key, value: Array[Byte]): Int = {
-    1 + 16 + 8 + Varint.getUnsignedIntEncodingLength(key.bytes.length + value.length) + Varint.getUnsignedIntEncodingLength(key.bytes.length) +
-    key.bytes.length + value.length
-  }
-  
-  def idaEncodedPairSize(ida: IDA, key: Key, value: Array[Byte]): Int = {
-    val vlen = ida.calculateEncodedSegmentLength(value.length)
-    1 + 16 + 8 + Varint.getUnsignedIntEncodingLength(key.bytes.length + vlen) + Varint.getUnsignedIntEncodingLength(key.bytes.length) +
-    key.bytes.length + vlen
-  }
-  
-  def encodedPairsSize(pairs: Map[Key,Value]): Int = pairs.foldLeft(0)((sz, t) => sz + encodedPairSize(t._1, t._2.value))
+  def encodedEntrySize(nbytes: Int): Int = 1 + 16 + 8 + Varint.getUnsignedIntEncodingLength(nbytes) + nbytes
+  def encodedEntrySize(arr: Array[Byte]): Int = encodedEntrySize(arr.length)
   
   def encodedMinimumSize(min: Key): Int = encodedEntrySize(min.bytes)
   def encodedMaximumSize(min: Key): Int = encodedEntrySize(min.bytes)
   def encodedLeftSize(ida: IDA, left: Array[Byte]) = encodedEntrySize(ida.calculateEncodedSegmentLength(left.length))
   def encodedRightSize(ida: IDA, right: Array[Byte]) = encodedEntrySize(ida.calculateEncodedSegmentLength(right.length))
   
-  def encodedEntrySize(arr: Array[Byte]): Int = encodedEntrySize(arr.length)
-  def encodedEntrySize(nbytes: Int): Int = 1 + 16 + 8 + Varint.getUnsignedIntEncodingLength(nbytes) + nbytes
+  def encodedPairSize(key: Key, value: Array[Byte]): Int = {
+    encodedEntrySize(key.bytes.length) + Varint.getUnsignedIntEncodingLength(value.length) + value.length
+  }
+  
+  def idaEncodedPairSize(ida: IDA, key: Key, value: Array[Byte]): Int = {
+    val vlen = ida.calculateEncodedSegmentLength(value.length)
+    encodedEntrySize(key.bytes.length) + Varint.getUnsignedIntEncodingLength(vlen) + vlen
+  }
+  
+  def encodedPairsSize(pairs: Map[Key,Value]): Int = pairs.foldLeft(0)((sz, t) => sz + encodedPairSize(t._1, t._2.value))
   
   def encodedSize(kvoss: KeyValueObjectStoreState): Int = {
     kvoss.minimum.map(m => encodedEntrySize(m.key.bytes)).getOrElse(0) +
@@ -158,13 +141,19 @@ object KeyValueObjectStoreState {
     bb.put(CodePair)
     revision.encodeInto(bb)
     bb.putLong(timestamp.asLong)
-    Varint.putUnsignedInt(bb, key.length + value.length)
     Varint.putUnsignedInt(bb, key.length)
     bb.put(key)
+    Varint.putUnsignedInt(bb, value.length)
     bb.put(value)
   }
   
-  def decode(db: DataBuffer): KeyValueObjectStoreState = {
+  def convertOpsToStoreState(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): DataBuffer = {
+    KeyValueObjectStoreState().update(db, txRevision, txTimestamp).encode
+  }
+  
+  def apply() = new KeyValueObjectStoreState(None, None, None, None, Map())
+  
+  def apply(db: DataBuffer): KeyValueObjectStoreState = {
     var min: Option[KeyValueObjectStoreState.Min] = None
     var max: Option[KeyValueObjectStoreState.Max] = None
     var left: Option[KeyValueObjectStoreState.Left] = None
@@ -183,10 +172,9 @@ object KeyValueObjectStoreState {
       val code = bb.get()
       val msb = bb.getLong()
       val lsb = bb.getLong()
-      val revision = ObjectRevision(new UUID(msb, lsb))
-      val timestamp = HLCTimestamp(bb.getLong())
+      val timestamp = bb.getLong()
       val dataLen = Varint.getUnsignedInt(bb)
-      (code, revision, timestamp, dataLen)
+      (code, ObjectRevision(new UUID(msb, lsb)), HLCTimestamp(timestamp), dataLen)
     }
     
     while (bb.remaining() > 0) {
@@ -198,9 +186,9 @@ object KeyValueObjectStoreState {
         case CodeLeft => left = Some(Left(getArray(dataLen), revision, timestamp))
         case CodeRight => right = Some(Right(getArray(dataLen), revision, timestamp))
         case CodePair =>
-          val keyLen = Varint.getUnsignedInt(bb)
-          val key = Key(getArray(keyLen))
-          val value = getArray(dataLen - keyLen)
+          val key = Key(getArray(dataLen))
+          val valueLen = Varint.getUnsignedInt(bb)
+          val value = getArray(valueLen)
           pairs += (key -> Value(key, value, timestamp, revision))
       }
     }

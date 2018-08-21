@@ -25,6 +25,7 @@ object RemoteFuseTest {
     
     val uarr = Array(Bootstrap.BootstrapObjectAllocaterUUID)
     val iarr = Array(8192)
+    val larr = Array(20)
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
     
@@ -38,7 +39,7 @@ object RemoteFuseTest {
       
       alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       
-      ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, uarr, iarr, uarr, narr,
+      ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, larr, uarr, iarr, uarr, narr,
                Bootstrap.BootstrapObjectAllocaterUUID, fileSegmentSize)
       
       txdone <- tx.commit()

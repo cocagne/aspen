@@ -11,7 +11,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.DataBuffer
 
-abstract class KeyValueOperation {
+sealed abstract class KeyValueOperation {
   
   import KeyValueOperation._
   
@@ -20,50 +20,47 @@ abstract class KeyValueOperation {
   def revision: Option[ObjectRevision]
   
   protected def opcode: Byte
-  
-  def replicationOnly: Boolean = false
-  
+
   final def getEncodedLength(ida: IDA): Int = {
-    val vlen = if (replicationOnly) getDataLength() else ida.calculateEncodedSegmentLength(getDataLength())
-    1 + revision.map(_ => 16).getOrElse(0) + timestamp.map(_ => 8).getOrElse(0) + Varint.getUnsignedIntEncodingLength(vlen) + vlen
+    val dataLen = getDataLength(ida)
+    1 + revision.map(_ => 16).getOrElse(0) + timestamp.map(_ => 8).getOrElse(0) + Varint.getUnsignedIntEncodingLength(dataLen) + dataLen
   }
   
-  // Returns the size of the encoded data payload
-  protected def getDataLength(): Int
+  final def getEncodedLength(): Int = {
+    val dataLen = getDataLength()
+    1 + revision.map(_ => 16).getOrElse(0) + timestamp.map(_ => 8).getOrElse(0) + Varint.getUnsignedIntEncodingLength(dataLen) + dataLen
+  }
   
-  protected def getData(): DataBuffer
+  protected def getDataLength(ida: IDA): Int
+  protected def putData(ida: IDA, bbArray: Array[ByteBuffer]): Unit
+  
+  protected def getDataLength(): Int
+  protected def putData(bb: ByteBuffer): Unit
   
   final protected def encodeGenericIda(ida: IDA, bbArray:Array[ByteBuffer]): Unit = {
-    if (replicationOnly) {
-      val data = getData()
-      for (bb <- bbArray)
-        bb.put(data.asReadOnlyBuffer())
+    
+    val mask = revision.map(_ => HasRevisionMask).getOrElse(0.asInstanceOf[Byte]) | timestamp.map(_ => HasTimestampMask).getOrElse(0.asInstanceOf[Byte])
+    val dataLen = getDataLength(ida)
+    
+    for (bb <- bbArray) {
+      bb.put( (mask | opcode).asInstanceOf[Byte] )
+      revision.foreach(rev => rev.encodeInto(bb))
+      timestamp.foreach(ts => bb.putLong(ts.asLong))
+      Varint.putUnsignedInt(bb, dataLen)
     }
-    else {
-      val mask = revision.map(_ => HasRevisionMask).getOrElse(0.asInstanceOf[Byte]) | timestamp.map(_ => HasTimestampMask).getOrElse(0.asInstanceOf[Byte])
-      val dataLen = ida.calculateEncodedSegmentLength(getDataLength())
-      
-      for (bb <- bbArray) {
-        bb.put( (mask | opcode).asInstanceOf[Byte] )
-        revision.foreach(rev => rev.encodeInto(bb))
-        timestamp.foreach(ts => bb.putLong(ts.asLong))
-        Varint.putUnsignedInt(bb, dataLen)
-      }
-      
-      val earr = ida.encode(getData())
-      for (i <- 0 until bbArray.length)
-        bbArray(i).put( earr(i).asReadOnlyBuffer() )
-    }
+    
+    putData(ida, bbArray)
   }
   
   final protected def encodeReplicated(bb: ByteBuffer): Unit = {
     val mask = revision.map(_ => HasRevisionMask).getOrElse(0.asInstanceOf[Byte]) | timestamp.map(_ => HasTimestampMask).getOrElse(0.asInstanceOf[Byte])
     val dataLen = getDataLength()
+    
     bb.put( (mask | opcode).asInstanceOf[Byte] )
     revision.foreach(rev => rev.encodeInto(bb))
     timestamp.foreach(ts => bb.putLong(ts.asLong))
     Varint.putUnsignedInt(bb, dataLen)
-    bb.put( getData().asReadOnlyBuffer() )
+    putData(bb)
   }
 }
 
@@ -162,27 +159,34 @@ object KeyValueOperation {
 
 sealed abstract class NoValue extends KeyValueOperation {
   
-  override def replicationOnly: Boolean = true
+  protected def getDataLength(ida: IDA): Int = 0
+  protected def putData(ida: IDA, bbArray: Array[ByteBuffer]): Unit = {}
   
   protected def getDataLength(): Int = 0
+  protected def putData(bb: ByteBuffer): Unit = {}
   
-  protected def getData(): DataBuffer = DataBuffer.Empty
 }
 
 sealed abstract class SingleReplicatedValue(val value: Array[Byte]) extends KeyValueOperation {
   
-  override def replicationOnly: Boolean = true
+  protected def getDataLength(ida: IDA): Int = value.length
+  protected def putData(ida: IDA, bbArray: Array[ByteBuffer]): Unit = bbArray.foreach(bb => bb.put(value))
   
   protected def getDataLength(): Int = value.length
+  protected def putData(bb: ByteBuffer): Unit = bb.put(value)
   
-  protected def getData(): DataBuffer = DataBuffer(value)
 }
 
 sealed abstract class SingleEncodedValue(val value: Array[Byte]) extends KeyValueOperation {
   
-  protected def getDataLength(): Int = value.length
+  protected def getDataLength(ida: IDA): Int = ida.calculateEncodedSegmentLength(value.length)
+  protected def putData(ida: IDA, bbArray: Array[ByteBuffer]): Unit = {
+    ida.encode(value).zip(bbArray).foreach( t => t._2.put(t._1) )
+  }
   
-  protected def getData(): DataBuffer = DataBuffer(value)
+  protected def getDataLength(): Int = value.length
+  protected def putData(bb: ByteBuffer): Unit = bb.put(value)
+  
 }
 
 class SetMin(value: Key, val timestamp: Option[HLCTimestamp]=None, val revision: Option[ObjectRevision]=None)  extends SingleReplicatedValue(value.bytes) {
@@ -246,23 +250,30 @@ class Insert(
   
   def opcode: Byte = KeyValueOperation.InsertCode
   
-  protected def getDataLength(): Int = Varint.getUnsignedIntEncodingLength(key.bytes.length) + key.bytes.length + value.length
+  protected def getDataLength(ida: IDA): Int = Varint.getUnsignedIntEncodingLength(key.bytes.length) + key.bytes.length + ida.calculateEncodedSegmentLength(value.length)
+  protected def putData(ida: IDA, bbArray: Array[ByteBuffer]): Unit = {
+    ida.encode(value).zip(bbArray).foreach { t =>
+      val (idaEncodedValue, bb) = t
+      Varint.putUnsignedInt(bb, key.bytes.length)
+      bb.put(key.bytes)
+      bb.put(idaEncodedValue)
+    }
+  }
   
-  protected def getData(): DataBuffer = {
-    val arr = new Array[Byte](getDataLength)
-    val bb = ByteBuffer.wrap(arr)
+  protected def getDataLength(): Int = Varint.getUnsignedIntEncodingLength(key.bytes.length) + key.bytes.length + value.length
+  protected def putData(bb: ByteBuffer): Unit = {
     Varint.putUnsignedInt(bb, key.bytes.length)
     bb.put(key.bytes)
     bb.put(value)
-    arr
   }
+  
 }
 object Insert {
   def apply(key: Key, value: Array[Byte], timestamp: Option[HLCTimestamp]=None, revision: Option[ObjectRevision]=None) = new Insert(key, value, timestamp, revision)
   
   def decode(bb: ByteBuffer, dataLen: Int, revision: ObjectRevision, timestamp: HLCTimestamp) = {
     val keyLen = Varint.getUnsignedInt(bb)
-    val valLen = dataLen - keyLen
+    val valLen = dataLen - Varint.getUnsignedIntEncodingLength(keyLen) - keyLen
     val key = Key(KeyValueOperation.getArray(bb, keyLen))
     val value = KeyValueOperation.getArray(bb, valLen)
     new Insert(key, value, Some(timestamp), Some(revision))

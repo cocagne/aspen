@@ -36,7 +36,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     max.foreach { m => ops = SetMax(m) :: ops }
     right.foreach { m => ops = SetRight(m.toArray) :: ops }
     
-    contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
+    contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)
@@ -67,8 +67,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((target -> value)))
       
       nodeSizeLimit = 300
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -98,8 +99,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((target -> value)))
       
       nodeSizeLimit = 300
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -125,20 +127,21 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     
     def put(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      smt.put(old, value).flatMap(_ => tx.commit())
+      smt.put(old, value).flatMap(_ => tx.commit().map(_=>()))
     }
     
     def replace(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      smt.replace(old, target).flatMap(_ => tx.commit())
+      smt.replace(old, target).flatMap(_ => tx.commit().map(_=>()))
     }
     
     for {
       l0 <- alloc(None, None, None, List((target -> value)))
       
       nodeSizeLimit = 300
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -173,8 +176,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
       
       nodeSizeLimit = 250
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -188,9 +192,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       txPrepped <- node0.prepreUpdateTransaction(inserts, deletes, requirements)
       txDone <- tx.commit()
-      
+      _=println("******* WAIT FOR TX COMPLETE ****")
       finalizersDone <- waitForTransactionsComplete()
-      
+      _=println("******* TX COMPLETE ****")
       (newKvos, newRoot) <- smt.refreshRoot()
       
       ovalue0 <- smt.get(target)
@@ -240,8 +244,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray)))
        
       nodeSizeLimit = 250
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -302,8 +307,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -369,8 +375,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -445,8 +452,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
       nodeSizeLimit = 250
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, rootPtr)
+      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -515,8 +523,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((target -> value)))
       
       nodeSizeLimit = 300
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       
@@ -555,8 +564,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((target -> value)))
       
       nodeSizeLimit = 300
+      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), ByteArrayKeyOrdering, l0)
+      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
       
       rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
       

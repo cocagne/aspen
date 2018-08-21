@@ -39,8 +39,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k1 = List[Byte](1).toArray
     val k2 = List[Byte](2).toArray
     
-    val t = HLCTimestamp(5)
-
     implicit val tx = sys.newTransaction()
     
     for {
@@ -55,7 +53,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil, 
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil, 
           None)
           
       done <- tx.commit()
@@ -65,13 +63,13 @@ class BasicKeyValueSuite extends TestSystemSuite {
     } yield {
       kvos.refcount should be (ObjectRefcount(0,1))
       kvos.minimum.isDefined should be (true)
-      kvos.minimum.get should be (minimum)
+      kvos.minimum.get.key should be (minimum)
       kvos.maximum.isDefined should be (true)
-      kvos.maximum.get should be (maximum)
+      kvos.maximum.get.key should be (maximum)
       kvos.left.isDefined should be (true)
-      kvos.left.get should be (left)
+      kvos.left.get.content should be (left)
       kvos.right.isDefined should be (true)
-      kvos.right.get should be (right)
+      kvos.right.get.content should be (right)
       kvos.contents.size should be (2)
       kvos.contents.get(Key(k1)) match {
         case None => fail("missin k1")
@@ -94,8 +92,6 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val k1 = List[Byte](1).toArray
     val k2 = List[Byte](2).toArray
     
-    val t = HLCTimestamp(5)
-
     val tx1 = sys.newTransaction()
     
     for {
@@ -110,14 +106,14 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Nil, 
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil, 
           None)(tx1, executionContext)
           
       done <- tx1.commit()
       
       tx2 = sys.newTransaction()
       
-      _ = tx2.append(kvp, None, List(KeyValueUpdate.KVRequirement(Key(k2), t, KeyValueUpdate.TimestampRequirement.DoesNotExist)), List(new Insert(k2,k2,t)))
+      _ = tx2.update(kvp, None, List(KeyValueUpdate.KVRequirement(Key(k2), HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist)), List(new Insert(Key(k2),k2)))
       
       done2 <- tx2.commit()
       
@@ -125,13 +121,13 @@ class BasicKeyValueSuite extends TestSystemSuite {
       
     } yield {
       kvos.minimum.isDefined should be (true)
-      kvos.minimum.get should be (minimum)
+      kvos.minimum.get.key should be (minimum)
       kvos.maximum.isDefined should be (true)
-      kvos.maximum.get should be (maximum)
+      kvos.maximum.get.key should be (maximum)
       kvos.left.isDefined should be (true)
-      kvos.left.get should be (left)
+      kvos.left.get.content should be (left)
       kvos.right.isDefined should be (true)
-      kvos.right.get should be (right)
+      kvos.right.get.content should be (right)
       kvos.contents.size should be (2)
       kvos.contents.get(Key(k1)) match {
         case None => fail("missin k1")
@@ -170,14 +166,14 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Nil, 
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil, 
           None)(tx1, executionContext)
           
       done <- tx1.commit()
       
       tx2 = sys.newTransaction()
       
-      _ = tx2.overwrite(kvp, ObjectRevision(new UUID(1,1)), Nil, Nil)
+      _ = tx2.update(kvp, Some(ObjectRevision(new UUID(1,1))), Nil, Nil)
       
       err <- tx2.commit().failed
 
@@ -212,7 +208,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
           None)
           
       done <- tx.commit()
@@ -261,7 +257,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
           None)
           
       done <- tx.commit()
@@ -269,14 +265,10 @@ class BasicKeyValueSuite extends TestSystemSuite {
       kvos <- sys.readSingleKey(kvp, Key(k3), ByteArrayKeyOrdering)
       
     } yield {
-      kvos.minimum.isDefined should be (true)
-      kvos.minimum.get should be (minimum)
-      kvos.maximum.isDefined should be (true)
-      kvos.maximum.get should be (maximum)
-      kvos.left.isDefined should be (true)
-      kvos.left.get should be (left)
-      kvos.right.isDefined should be (true)
-      kvos.right.get should be (right)
+      kvos.minimum.isDefined should be (false)
+      kvos.maximum.isDefined should be (false)
+      kvos.left.isDefined should be (false)
+      kvos.right.isDefined should be (false)
       kvos.contents.size should be (0)
     }
   }
@@ -308,7 +300,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Nil,
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
           None)
           
       done <- tx.commit()
@@ -352,7 +344,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Nil,
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil,
           None)
           
       done <- tx.commit()
@@ -402,7 +394,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Nil, 
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil, 
           None)
           
       done <- tx.commit()
@@ -410,14 +402,10 @@ class BasicKeyValueSuite extends TestSystemSuite {
       kvos <- sys.readLargestKeyLessThan(kvp, Key(kt), ByteArrayKeyOrdering)
       
     } yield {
-      kvos.minimum.isDefined should be (true)
-      kvos.minimum.get should be (minimum)
-      kvos.maximum.isDefined should be (true)
-      kvos.maximum.get should be (maximum)
-      kvos.left.isDefined should be (true)
-      kvos.left.get should be (left)
-      kvos.right.isDefined should be (true)
-      kvos.right.get should be (right)
+      kvos.minimum.isDefined should be (false)
+      kvos.maximum.isDefined should be (false)
+      kvos.left.isDefined should be (false)
+      kvos.right.isDefined should be (false)
       kvos.contents.size should be (0)
     }
   }
@@ -445,7 +433,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
     val t = HLCTimestamp(5)
 
     val ops = SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: 
-              Insert(k1,k1,t) :: Insert(k2,k2,t) :: Insert(k3,k3,t) :: Insert(k4,k4,t) :: Nil
+              Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Insert(Key(k4),k4) :: Nil
 
     implicit val tx = sys.newTransaction()
     
@@ -473,14 +461,10 @@ class BasicKeyValueSuite extends TestSystemSuite {
       kvos5 <- sys.readKeyRange(kvp, kpost, kpost2, ByteArrayKeyOrdering)
       
     } yield {
-      kvos1.minimum.isDefined should be (true)
-      kvos1.minimum.get should be (minimum)
-      kvos1.maximum.isDefined should be (true)
-      kvos1.maximum.get should be (maximum)
-      kvos1.left.isDefined should be (true)
-      kvos1.left.get should be (left)
-      kvos1.right.isDefined should be (true)
-      kvos1.right.get should be (right)
+      kvos1.minimum.isDefined should be (false)
+      kvos1.maximum.isDefined should be (false)
+      kvos1.left.isDefined should be (false)
+      kvos1.right.isDefined should be (false)
       kvos1.contents.size should be (0)
       
       kvos2.contents.size should be (1)

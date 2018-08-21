@@ -29,7 +29,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
 
     var ops = List[KeyValueOperation]()
     
-    contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
+    contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)
@@ -99,7 +99,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
         } else {
           for {
             o <- sys.readObject(target)
-            _ = tx.append(target, None, Nil, List(Insert(nextStepKey, Array[Byte](5), tx.timestamp())))
+            _ = tx.update(target, None, Nil, List(Insert(nextStepKey, Array[Byte](5))))
             _ = completeStep(tx, List((nextStepKey ->SteppedDurableTask.encodeStep(step+1))))
             done <- tx.commit()
           } yield ()
@@ -137,7 +137,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       taskGroup <- allocGroup()
       
       tx = sys.newTransaction()
-      _ = tx.append(target, None, Nil, List(Insert(itgtKey, Array[Byte](1), tx.timestamp())))
+      _ = tx.update(target, None, Nil, List(Insert(itgtKey, Array[Byte](1))))
       
       ftaskResult <- taskGroup.prepareTask(registry, List((tkey, target.toArray)))(tx)
       
@@ -199,7 +199,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
         } else {
           for {
             o <- sys.readObject(target)
-            _ = tx.append(target, None, Nil, List(Insert(nextStepKey, Array[Byte](5), tx.timestamp())))
+            _ = tx.update(target, None, Nil, List(Insert(nextStepKey, Array[Byte](5))))
             _ = completeStep(tx, List((nextStepKey ->SteppedDurableTask.encodeStep(step+1))))
             done <- tx.commit()
           } yield ()
@@ -237,7 +237,7 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       taskGroup <- allocGroup()
       
       tx = sys.newTransaction()
-      _ = tx.append(target, None, Nil, List(Insert(itgtKey, Array[Byte](1), tx.timestamp())))
+      _ = tx.update(target, None, Nil, List(Insert(itgtKey, Array[Byte](1))))
       
       ftaskDone <- taskGroup.prepareTask(registry, List((tkey, target.toArray)))(tx)
       
@@ -249,8 +249,8 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       // overwrite task pointer with valid content
       tskKvos <- sys.readObject(taskPtr)
       tx = sys.newTransaction()
-      ops = Insert(DurableTask.TaskTypeKey, uuid2byte(registry.typeUUID), tx.timestamp()) :: Insert(tkey, target.toArray, tx.timestamp()) :: Nil 
-      _ = tx.overwrite(taskPtr, tskKvos.revision, Nil, ops)
+      ops = Insert(DurableTask.TaskTypeKey, uuid2byte(registry.typeUUID)) :: Insert(tkey, target.toArray) :: Nil 
+      _ = tx.update(taskPtr, Some(tskKvos.revision), Nil, ops)
       done <- tx.commit()
       
       //create new group

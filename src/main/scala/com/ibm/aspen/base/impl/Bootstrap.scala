@@ -21,6 +21,8 @@ import com.ibm.aspen.util
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -86,6 +88,7 @@ object Bootstrap {
     
     require( bootstrapPoolIDA.width >= bootstrapStores.length)
 
+    val txRevision = ObjectRevision(new UUID(0,0))
     val timestamp = HLCTimestamp.now
     val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
     val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
@@ -104,7 +107,9 @@ object Bootstrap {
       val storePointers = new Array[StorePointer](bootstrapPoolIDA.width)
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
-        store.bootstrapAllocateNewObject(objectUUID, enc(storeIndex), timestamp).map(sp => storePointers(storeIndex) = sp) 
+        store.bootstrapAllocateNewObject(objectUUID, 
+            KeyValueObjectStoreState.convertOpsToStoreState(enc(storeIndex), txRevision, timestamp), 
+            timestamp).map(sp => storePointers(storeIndex) = sp) 
       }}
       Future.sequence(falloc) map { _ =>
           new KeyValueObjectPointer(objectUUID, BootstrapStoragePoolUUID, objectSize, bootstrapPoolIDA, storePointers)
@@ -114,7 +119,7 @@ object Bootstrap {
     def overwriteKeyValueObject(pointer: KeyValueObjectPointer, initialContent: List[(Key, Array[Byte])]): Future[Unit] = {
       val inserts = initialContent.map(t => new Insert(t._1, t._2))
       val enc = KeyValueOperation.encode(inserts, bootstrapPoolIDA)
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, enc(t._2), timestamp))).map(_=>())
+      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, KeyValueObjectStoreState.convertOpsToStoreState(enc(t._2), txRevision, timestamp), timestamp))).map(_=>())
     }
     
     def updateAllocationTree(allocTreeRoot: KeyValueObjectPointer, pointers: List[KeyValueObjectPointer]) : Future[Unit] = {

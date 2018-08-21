@@ -70,7 +70,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     def vbump(ptr: ObjectPointer, revision: ObjectRevision): Future[Unit] = {
       implicit val tx = sys.newTransaction()
       tx.bumpVersion(ptr, revision)
-      tx.commit()
+      tx.commit().map(_=>())
     }
     
     for {

@@ -32,7 +32,7 @@ object TieredListSuite {
     val keyOrdering: KeyOrdering = ByteArrayKeyOrdering
     
     override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, 
-        new Array[UUID](0), new Array[Int](0), ByteArrayKeyOrdering, root))
+        new Array[UUID](0), new Array[Int](0), new Array[Int](100), ByteArrayKeyOrdering, root))
   
     override protected def getObjectReaderForTier(tier: Int): ObjectReader = sys
     
@@ -54,7 +54,7 @@ class TieredListSuite extends TestSystemSuite {
     max.foreach { m => ops = SetMax(m) :: ops }
     right.foreach { m => ops = SetRight(m.toArray) :: ops }
     
-    contents.foreach { t => ops = Insert(t._1, t._2, tx.timestamp()) :: ops }
+    contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
     
     for {
       r <- sys.readObject(sys.radiclePointer)

@@ -29,8 +29,7 @@ object MutableObject {
 abstract class MutableObject(
     val objectId: StoreObjectID, 
     initialOperation: UUID, 
-    loader: MutableObjectLoader, 
-    ostate: Option[(ObjectMetadata, DataBuffer)]) {
+    loader: MutableObjectLoader) {
   
   import MutableObject._
   
@@ -54,18 +53,7 @@ abstract class MutableObject(
   
   def metadata = ObjectMetadata(revision, refcount, timestamp)
   
-  ostate.foreach { t =>
-    val (meta, db) = t
-    revision = meta.revision
-    refcount = meta.refcount
-    timestamp = meta.timestamp
-    dataBuffer = db
-    val fright = Future.successful(Right(this))
-    fmeta = Some(fright)
-    fdata = Some(fright)
-  }
-  
-  protected def setRebuildState(meta: ObjectMetadata, content: DataBuffer): Unit = {
+  protected def setState(meta: ObjectMetadata, content: DataBuffer): Unit = {
     metadata = meta
     dataBuffer = content
     val p = Promise[Either[ObjectReadError, MutableObject]]()

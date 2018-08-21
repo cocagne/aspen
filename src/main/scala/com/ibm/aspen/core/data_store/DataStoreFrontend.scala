@@ -164,7 +164,7 @@ class DataStoreFrontend(
   
   private def loadAllocatedObject(ars: AllocationRecoveryState): Unit = synchronized {
     val metadata = ObjectMetadata(ObjectRevision(ars.allocationTransactionUUID), ars.initialRefcount, ars.timestamp)
-    val obj = objectLoader.createNewObject(ars.newObjectUUID, ars.allocationTransactionUUID, ars.storePointer, metadata, ars.objectData, ars.objectType)
+    val obj = objectLoader.createNewObject(ars.newObjectUUID, ars.allocationTransactionUUID, ars.timestamp, ars.storePointer, metadata, ars.objectData, ars.objectType)
     val lst = obj :: allocations.getOrElse(ars.allocationTransactionUUID, Nil)
     allocations += (ars.allocationTransactionUUID -> lst)
   }
@@ -963,11 +963,9 @@ class DataStoreFrontend(
                           case Some(maxSize) => 
                             val kvoss = obj.asInstanceOf[MutableKeyValueObject].storeState
     
-                            val (partialKvoss, deletes) = KeyValueObjectStoreState.decodeOps(data, ObjectRevision(txd.transactionUUID), HLCTimestamp(txd.startTimestamp))
+                            val updatedKvoss = kvoss.update(data, ObjectRevision(txd.transactionUUID), HLCTimestamp(txd.startTimestamp))
                             
-                            val requiredSize = KeyValueObjectStoreState.encodedSize(kvoss.update(partialKvoss, deletes))
-                            
-                            requiredSize <= maxSize
+                            updatedKvoss.encodedSize <= maxSize
                         }
                         meetsSizeRequirement && backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
                     }

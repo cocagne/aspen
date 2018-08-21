@@ -294,7 +294,7 @@ object KeyValueList {
         tx.update(newPtr, Some(tx.txRevision), Nil, ops)
         
         if (leftoverKeys.isEmpty || !continueAllocating)
-          Future.successful(((minimum, newPtr) :: allocated, Nil))
+          Future.successful(((minimum, newPtr) :: allocated, leftoverKeys))
         else
           ralloc(Some((minimum, newPtr)), leftoverKeys, leftoverSize, (minimum, newPtr) :: allocated)
       }
@@ -337,6 +337,7 @@ object KeyValueList {
         val newContents = toInsert.foldLeft(toDelete.foldLeft(kvos.contents)((m,k) => m - k)) { (m,k) =>
           m + (k -> Value(k, rawPairs(k), timestamp, tx.txRevision))
         }
+        
         new KeyValueObjectState(kvos.pointer, tx.txRevision, kvos.refcount, timestamp, timestamp,  
           kvos.minimum, Some(KeyValueObjectState.Max(newMax, tx.txRevision, timestamp)), kvos.left,
           Some(KeyValueObjectState.Right(newRight.toArray, tx.txRevision, timestamp)), newContents)
@@ -423,7 +424,7 @@ object KeyValueList {
       system.transact { implicit tx =>
         tx.update(kvos.pointer, Some(kvos.revision), Nil, Nil)
         tx.setRefcount(kvos.pointer, kvos.refcount, kvos.refcount.decrement())
-        Future.unit
+        prepareForDeletion(kvos)
       }
     }
     
