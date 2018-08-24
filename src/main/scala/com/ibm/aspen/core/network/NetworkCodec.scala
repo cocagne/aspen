@@ -1005,8 +1005,7 @@ object NetworkCodec {
     P.Read.addFromClient(builder, clientData)
     P.Read.addReadUUID(builder, encode(builder, o.readUUID))
     P.Read.addObjectPointer(builder, optr)
-    P.Read.addReturnLockedTransaction(builder, o.returnLockedTransaction)
-    
+
     o.readType match {
       case rt: MetadataOnly       => P.Read.addReadType(builder, P.ReadType.MetadataOnly)
       case rt: FullObject         => P.Read.addReadType(builder, P.ReadType.FullObject)
@@ -1036,7 +1035,6 @@ object NetworkCodec {
     n.fromClientAsByteBuffer().get(fromClient)
     val readUUID = decode(n.readUUID())
     val objectPointer = decode(n.objectPointer())
-    val returnLockedTransaction = n.returnLockedTransaction()
     
     import scala.language.implicitConversions
     
@@ -1056,7 +1054,7 @@ object NetworkCodec {
       case P.ReadType.KeyRange                    => KeyRange(Key(n.minAsByteBuffer()), Key(n.maxAsByteBuffer()), decodeKeyComparison(n.comparison()))
     }
     
-    Read(toStore, ClientID(fromClient), readUUID, objectPointer, readType, returnLockedTransaction)
+    Read(toStore, ClientID(fromClient), readUUID, objectPointer, readType)
   }
   
   def encodeReadError(err: ObjectReadError.Value): Byte = err match {
@@ -1106,8 +1104,14 @@ object NetworkCodec {
             builder.createUnintializedVector(1, d.size, 1).put(d.asReadOnlyBuffer())
             builder.endVector()
         }
-        val locks = if (cs.locks.isEmpty) -1 else {
-          P.ReadResponse.createLocksVector(builder, cs.locks.map(ue => encode(builder, ue)).toArray)
+        val locks = if (cs.lockedWriteTransactions.isEmpty) -1 else {
+          val arr = new Array[Byte](16 * cs.lockedWriteTransactions.size)
+          val bb = ByteBuffer.wrap(arr)
+          cs.lockedWriteTransactions.foreach { u =>
+            bb.putLong(u.getMostSignificantBits)
+            bb.putLong(u.getLeastSignificantBits)
+          }
+          P.ReadResponse.createLockedWriteTransactionsVector(builder, arr)
         }
         
         (od, locks)
@@ -1128,7 +1132,7 @@ object NetworkCodec {
         P.ReadResponse.addSizeOnStore(builder, cs.sizeOnStore)
         P.ReadResponse.addHaveData(builder, cs.objectData.isDefined)
         if (objectData != -1) P.ReadResponse.addObjectData(builder, objectData)
-        if (locks != -1) P.ReadResponse.addLocks(builder, locks)
+        if (locks != -1) P.ReadResponse.addLockedWriteTransactions(builder, locks)
     }
     P.ReadResponse.endReadResponse(builder)
   }
@@ -1151,12 +1155,16 @@ object NetworkCodec {
         Some(buff)
       }
       
-      def locks(idx: Int, l:List[Lock]): List[Lock] = if (idx == -1) 
-        l
-      else 
-        locks(idx-1, decode(n.locks(idx)) :: l)
+      var lockedWriteTransactions = Set[UUID]()
+      val lbb = n.lockedWriteTransactionsAsByteBuffer()
+      while (lbb.remaining() != 0) {
+        val msb = lbb.getLong()
+        val lsb = lbb.getLong()
+        lockedWriteTransactions += new UUID(msb, lsb) 
+      }
       
-      Right(ReadResponse.CurrentState(revision, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), locks(n.locksLength()-1, Nil)))
+      
+      Right(ReadResponse.CurrentState(revision, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), lockedWriteTransactions))
     }
     ReadResponse(fromStore, readUUID, readTime, result)
   }

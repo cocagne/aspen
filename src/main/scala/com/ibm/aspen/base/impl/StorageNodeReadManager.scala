@@ -59,9 +59,8 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       new KeyValueObjectStoreState(None, None, None, None, values.map(v => (v.key -> v)).toMap).encode()
     }
     
-    def respond(md: ObjectMetadata, sizeOnStore: Int, odata: Option[DataBuffer], locks: List[Lock]): Unit = {
-      val cs = ReadResponse.CurrentState(md.revision, md.refcount, md.timestamp, sizeOnStore, odata,
-                                         if (message.returnLockedTransaction) locks else Nil)
+    def respond(md: ObjectMetadata, sizeOnStore: Int, odata: Option[DataBuffer], writeLocks: Set[UUID]): Unit = {
+      val cs = ReadResponse.CurrentState(md.revision, md.refcount, md.timestamp, sizeOnStore, odata, writeLocks)
               
       messenger.send(message.fromClient, ReadResponse(message.toStore, message.readUUID, HLCTimestamp.now, Right(cs)))
     }
@@ -69,28 +68,28 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     message.readType match {
       case rt: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, locks)) => respond(metadata, 0, None, locks)
+        case Right((metadata, locks, writeLocks)) => respond(metadata, 0, None, writeLocks)
       }}
         
       case rt: FullObject => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) => respond(metadata, data.size, Some(data), locks)
+        case Right((metadata, data, locks, writeLocks)) => respond(metadata, data.size, Some(data), writeLocks)
       }} 
       
       case rt: ByteRange => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) => 
+        case Right((metadata, data, locks, writeLocks)) => 
           if (rt.offset + rt.length <= data.size)
-            respond(metadata, data.size, Some(data.slice(rt.offset, rt.length)), locks)
+            respond(metadata, data.size, Some(data.slice(rt.offset, rt.length)), writeLocks)
           else if (rt.offset < data.size)
-            respond(metadata, data.size, Some(data.slice(rt.offset)), locks)
+            respond(metadata, data.size, Some(data.slice(rt.offset)), writeLocks)
           else
-            respond(metadata, data.size, Some(DataBuffer.Empty), locks)
+            respond(metadata, data.size, Some(DataBuffer.Empty), writeLocks)
       }}
       
       case rt: SingleKey => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) =>
+        case Right((metadata, data, locks, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
             
@@ -102,7 +101,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = partialKvoss(values)
-            respond(metadata, data.size, Some(partialData), locks)  
+            respond(metadata, data.size, Some(partialData), writeLocks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -110,7 +109,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       
       case rt: LargestKeyLessThan => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) =>
+        case Right((metadata, data, locks, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
             
@@ -126,7 +125,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = partialKvoss(kvlist)
-            respond(metadata, data.size, Some(partialData), locks)  
+            respond(metadata, data.size, Some(partialData), writeLocks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -134,7 +133,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       
       case rt: LargestKeyLessThanOrEqualTo => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) =>
+        case Right((metadata, data, locks, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
             
@@ -150,7 +149,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = partialKvoss(kvlist)
-            respond(metadata, data.size, Some(partialData), locks)  
+            respond(metadata, data.size, Some(partialData), writeLocks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
@@ -158,7 +157,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
       
       case rt: KeyRange => store.getObject(message.objectPointer) foreach { result => result match {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks)) =>
+        case Right((metadata, data, locks, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
 
@@ -170,7 +169,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
             }
             
             val partialData = partialKvoss(kvlist)
-            respond(metadata, data.size, Some(partialData), locks)  
+            respond(metadata, data.size, Some(partialData), writeLocks)  
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }

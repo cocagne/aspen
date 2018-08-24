@@ -201,7 +201,7 @@ class DataStoreFrontend(
     }
   }
   
-  override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
+  override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock], Set[UUID])]] = pointer.getStorePointer(storeId) match {
     case None =>
       log.read.info(s"$storeId read INVALID object ${pointer.uuid}")
       Future.successful(Left(new InvalidLocalPointer))
@@ -219,7 +219,7 @@ class DataStoreFrontend(
           log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
           obj.completeOperation(readUUID)
           //println(s"getObject ${pointer.uuid} ${obj.metadata}")
-          Right((obj.metadata, obj.data, obj.locks))
+          Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
         }
       }}
   }
@@ -230,7 +230,7 @@ class DataStoreFrontend(
    *  and transaction requests can be satisfied without reading the object data, this method will be used instead of
    *  getObject
    */
-  override def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]] = pointer.getStorePointer(storeId) match {
+  override def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock], Set[UUID])]] = pointer.getStorePointer(storeId) match {
     case None =>
       log.read.info(s"$storeId readMeta INVALID object ${pointer.uuid}")
       Future.successful(Left(new InvalidLocalPointer))
@@ -248,13 +248,13 @@ class DataStoreFrontend(
           log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
           obj.completeOperation(readUUID)
           //println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
-          Right((obj.metadata, obj.locks))
+          Right((obj.metadata, obj.locks, obj.writeLocks))
         }
       }}
   }
   
  
-  override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]] = pointer.getStorePointer(storeId) match {
+  override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]] = pointer.getStorePointer(storeId) match {
     case None =>
       log.read.info(s"$storeId readData INVALID object ${pointer.uuid}")
       Future.successful(Left(new InvalidLocalPointer))
@@ -272,7 +272,7 @@ class DataStoreFrontend(
           log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
           obj.completeOperation(readUUID)
           //println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
-          Right((obj.data, obj.locks))
+          Right((obj.data, obj.locks, obj.writeLocks))
         }
       }}
   }

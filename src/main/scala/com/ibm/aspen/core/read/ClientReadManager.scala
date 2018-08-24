@@ -67,7 +67,7 @@ class ClientReadManager(
       readType: ReadType,
       retrieveTransactionLocks:Boolean=false,
       disableOpportunisticRebuild:Boolean=false,
-      driverFactory: ReadDriver.Factory): Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]] = {
+      driverFactory: ReadDriver.Factory): Future[Either[ReadError, ObjectState]] = {
     
     val readUUID = UUID.randomUUID()
     

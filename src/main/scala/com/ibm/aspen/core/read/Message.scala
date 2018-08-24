@@ -22,8 +22,7 @@ final case class Read(
     fromClient: ClientID,
     readUUID: UUID,
     objectPointer: ObjectPointer,
-    readType: ReadType,
-    returnLockedTransaction: Boolean = false) extends Message
+    readType: ReadType) extends Message
     
 final case class ReadResponse(
     fromStore: DataStoreID,
@@ -53,7 +52,7 @@ object ReadResponse {
       timestamp: HLCTimestamp,
       sizeOnStore: Int,
       objectData: Option[DataBuffer],
-      locks: List[Lock]) {
+      lockedWriteTransactions: Set[UUID]) {
     
     override def equals(other: Any): Boolean = other match {
       case rhs: CurrentState =>
@@ -64,7 +63,7 @@ object ReadResponse {
           case _ => false
         }
         
-        revision == rhs.revision && refcount == rhs.refcount && dmatch && locks == rhs.locks
+        revision == rhs.revision && refcount == rhs.refcount && dmatch && lockedWriteTransactions == rhs.lockedWriteTransactions
         
       case _ => false
     }

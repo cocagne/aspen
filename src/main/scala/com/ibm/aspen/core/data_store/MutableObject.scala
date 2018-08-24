@@ -136,6 +136,8 @@ abstract class MutableObject(
     ll
   }
   
+  def writeLocks: Set[UUID] = objectRefcountWriteLock.foldLeft(objectRevisionWriteLock.foldLeft(Set[UUID]())((s, l) => s + l.transactionUUID))((s, l) => s + l.transactionUUID)
+  
   def keepUntilDone(fn: => Future[Unit]): Future[Unit] = {
     val keepUntilCommitComplete = UUID.randomUUID()
     beginOperation(keepUntilCommitComplete)

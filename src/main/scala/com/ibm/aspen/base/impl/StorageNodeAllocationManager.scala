@@ -134,7 +134,7 @@ class StorageNodeAllocationManager(
     store.getObjectMetadata(message.primaryObject) foreach { os => 
       val state = os match {
         case Left(err) => Left(ObjectReadError(err))
-        case Right((md, locks)) => Right(AllocationObjectStatus.State(md.revision, md.refcount, locks))
+        case Right((md, locks, writeLocks)) => Right(AllocationObjectStatus.State(md.revision, md.refcount, locks))
       }
       allocationMessenger.send(AllocationStatusReply(message.from, message.to, message.allocationTransactionUUID, message.newObjectUUID, txStatus, 
                                            AllocationObjectStatus(message.primaryObject.uuid, state))) 

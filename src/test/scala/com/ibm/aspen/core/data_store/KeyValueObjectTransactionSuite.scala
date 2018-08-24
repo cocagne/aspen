@@ -114,7 +114,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val r = Await.result(ds.getObject(pointer), awaitDuration)
     r match {      
       case Left(_) => fail
-      case Right((md, data, locks)) => State(md, KeyValueObjectStoreState(data), locks.toSet)
+      case Right((md, data, locks, wlocks)) => State(md, KeyValueObjectStoreState(data), locks.toSet)
     }
   }
   

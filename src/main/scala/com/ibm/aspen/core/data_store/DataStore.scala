@@ -89,8 +89,10 @@ trait DataStore {
   def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit]
   
   
-  /** Reads and returns the object metadata, data, and a list of any active locks on the object */
-  def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]]
+  /** Reads and returns the object metadata, data, and a list of any active locks on the object, and set of write transaction UUIDs
+   *  that are locked 
+   */
+  def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock], Set[UUID])]]
   
   
   /** Returns the object metadata but not the object data itself.
@@ -98,7 +100,7 @@ trait DataStore {
    *  and transaction requests can be satisfied without reading the object data, this method will be used instead of
    *  getObject
    */
-  def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]]
+  def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock], Set[UUID])]]
   
   
   /** Returns the object data without the metadata.
@@ -106,7 +108,7 @@ trait DataStore {
    *  read and transaction requests can be satisfied without reading the object metadata, this method will be used
    *  instead of getObject
    */
-  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]]
+  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]
   
   
   /** Attempts to locks all objects referenced by the transaction that are hosted by this store.

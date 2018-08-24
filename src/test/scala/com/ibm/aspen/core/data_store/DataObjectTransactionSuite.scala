@@ -84,7 +84,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val r = Await.result(ds.getObject(op), awaitDuration)
     r match {      
       case Left(_) => fail
-      case Right((rmeta, rdata, rlocks)) =>
+      case Right((rmeta, rdata, rlocks, wlocks)) =>
         obuf.foreach(buf => rdata should be (buf))
         
         if (ignoreTimestamp)

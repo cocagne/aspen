@@ -169,7 +169,7 @@ class BasicAspenSystem(
       disableOpportunisticRebuild:Boolean): Future[DataObjectState] = readManager.read(objectPointer, FullObject(), false, disableOpportunisticRebuild,
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
-            case Right((os, locks)) => os.asInstanceOf[DataObjectState]
+            case Right(os) => os.asInstanceOf[DataObjectState]
           })
           
   def readObject(
@@ -178,31 +178,31 @@ class BasicAspenSystem(
       disableOpportunisticRebuild:Boolean): Future[KeyValueObjectState] = readManager.read(pointer, FullObject(), false, disableOpportunisticRebuild, 
           readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
             case Left(err) => throw err
-            case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+            case Right(os) => os.asInstanceOf[KeyValueObjectState]
           })
           
   def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
       SingleKey(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
         case Left(err) => throw err
-        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+        case Right(os) => os.asInstanceOf[KeyValueObjectState]
       })
       
   def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
       LargestKeyLessThan(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
         case Left(err) => throw err
-        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+        case Right(os) => os.asInstanceOf[KeyValueObjectState]
       })
       
   def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
       LargestKeyLessThanOrEqualTo(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
         case Left(err) => throw err
-        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+        case Right(os) => os.asInstanceOf[KeyValueObjectState]
       })
       
   def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
       KeyRange(minimum, maximum, comparison), false, false, defaultReadDriverFactory).map(r => r match {
         case Left(err) => throw err
-        case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
+        case Right(os) => os.asInstanceOf[KeyValueObjectState]
       })
           
   def newTransaction(): Transaction = transactionFactory(this, txManager, chooseDesignatedLeader, None)

@@ -54,11 +54,11 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def allocationRecoveryComplete(ars: AllocationRecoveryState, commit: Boolean): Future[Unit] = Future.successful(())
   
-  def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock])]] = Future.successful(Left(new InvalidLocalPointer))
+  def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer, List[Lock], Set[UUID])]] = Future.successful(Left(new InvalidLocalPointer))
   
-  def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock])]] = Future.successful(Left(new InvalidLocalPointer))
+  def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock], Set[UUID])]] = Future.successful(Left(new InvalidLocalPointer))
   
-  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock])]]= Future.successful(Left(new InvalidLocalPointer))
+  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]= Future.successful(Left(new InvalidLocalPointer))
    
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
   

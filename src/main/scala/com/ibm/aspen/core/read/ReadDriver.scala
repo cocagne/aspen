@@ -11,7 +11,7 @@ import com.ibm.aspen.core.data_store.Lock
 import scala.concurrent.duration.Duration
 
 trait ReadDriver {
-  def readResult: Future[Either[ReadError, (ObjectState, Option[Map[DataStoreID, List[Lock]]])]]
+  def readResult: Future[Either[ReadError, ObjectState]]
   
   /** Called to begin the read process. Read messages must not be sent until this method is called */
   def begin(): Unit

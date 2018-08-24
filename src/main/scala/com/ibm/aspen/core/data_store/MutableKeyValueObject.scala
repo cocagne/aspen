@@ -36,6 +36,10 @@ class MutableKeyValueObject(
   
   var keyRevisionReadLocks: Map[Key, Map[UUID,TransactionDescription]] = Map()
   var keyRevisionWriteLocks: Map[Key, TransactionDescription] = Map()
+  
+  override def writeLocks: Set[UUID] = {
+    keyRevisionWriteLocks.foldLeft(super.writeLocks)((s, t) => s + t._2.transactionUUID)
+  }
 
   override def getTransactionPreventingRevisionWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     super.getTransactionPreventingRevisionWriteLock(ignoreTxd) match {

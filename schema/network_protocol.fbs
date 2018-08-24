@@ -291,7 +291,6 @@ table Read {
    fromClient: [byte];
    readUUID: UUID;
    objectPointer: ObjectPointer;
-   returnLockedTransaction: bool;
    readType: ReadType;
    key: [byte];
    min: [byte];
@@ -311,7 +310,7 @@ table ReadResponse {
   sizeOnStore: int;
   haveData: bool;
   objectData: [byte];
-  locks: [Lock];
+  lockedWriteTransactions: [byte]; // Sequence of UUIDs
   readError: ObjectReadError;
 }
     

@@ -1,7 +1,15 @@
+* Super Simple solution would be to always send the set of locked UUIDs only (skip full txd)
+   - If any is known, committed. Drop the message and re-request
+   - Involves a spin but it's really easy to implement
+   - Modify the read message to always send locked UUIDs
+   - REMOVE the option for getting TXDs in read request
+
 * Add recent commit cache
    - Use during read to auto-promote received segments
    - Could use an intermediary future between future exposed to application layer and as comes from Paxos impl
    - Should help avoid spurrious TransactionAborted
+   
+* Indexed File Truncation is broken
 
 * Need to re-do allocation method
    - KV objects don't always change revision

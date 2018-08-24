@@ -91,7 +91,7 @@ class CodecSuite extends FunSuite with Matchers {
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0,2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, Some(DataBuffer(List[Byte](1,2,3).toArray)), List(RevisionWriteLock(txd)))
+    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, Some(DataBuffer(List[Byte](1,2,3).toArray)), Set(readUUID))
     
     val rr = ReadResponse(storeId, readUUID, readTime, Right(cs))
     
@@ -120,7 +120,7 @@ class CodecSuite extends FunSuite with Matchers {
     val ref = ObjectRefcount(1,1)
     val rev = ObjectRevision(new UUID(0, 2))
     val ts = HLCTimestamp.now
-    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, None, Nil)
+    val cs = ReadResponse.CurrentState(rev, ref, ts, 5, None, Set())
     
     val rr = ReadResponse(storeId, readUUID, readTime, Right(cs))
     
@@ -163,7 +163,7 @@ class CodecSuite extends FunSuite with Matchers {
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     
-    val r = Read(storeId, c, readUUID, op, FullObject(), false)
+    val r = Read(storeId, c, readUUID, op, FullObject())
     
     val builder = new FlatBufferBuilder(1024)
     
