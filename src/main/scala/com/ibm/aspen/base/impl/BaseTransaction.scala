@@ -25,12 +25,14 @@ import com.ibm.aspen.core.transaction.KeyValueUpdate
 
 object BaseTransaction {
   def Factory(
+      system: BasicAspenSystem,
       txManager: ClientTransactionManager,
       chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
-      transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) = new BaseTransaction(txManager, chooseDesignatedLeader, transactionDriverStrategy)
+      transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) = new BaseTransaction(system, txManager, chooseDesignatedLeader, transactionDriverStrategy)
 }
 
 class BaseTransaction(
+    val system: BasicAspenSystem,
     txManager: ClientTransactionManager,
     chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
     transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) extends Transaction {
@@ -141,7 +143,13 @@ class BaseTransaction(
             case Failure(cause) =>
               // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
               promise.failure(cause)
-            case Success(committed) => if (committed) promise.success(HLCTimestamp(txd.startTimestamp)) else promise.failure(TransactionAborted(txd))
+            case Success(committed) =>
+              if (committed) {
+                system.transactionCache.put(txd.transactionUUID, true)
+                promise.success(HLCTimestamp(txd.startTimestamp)) 
+              } else 
+                promise.failure(TransactionAborted(txd))
+              
           }
         }
       }

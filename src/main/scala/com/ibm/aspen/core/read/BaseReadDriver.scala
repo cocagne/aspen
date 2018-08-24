@@ -31,6 +31,7 @@ import org.apache.logging.log4j.scala.Logging
 import com.ibm.aspen.core.objects.keyvalue.Key
 
 class BaseReadDriver(
+    val getTransactionResult: (UUID) => Option[Boolean],
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val readType: ReadType,
@@ -68,7 +69,7 @@ class BaseReadDriver(
   
   /** Sends a Read request to the specified store. Must be called from within a synchronized block */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send( 
-      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType, retrieveLockedTransaction))
+      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType, true))
       
   def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
     //storeStates.contains(storeId) || errors.contains(storeId)
@@ -372,12 +373,13 @@ object BaseReadDriver {
   }
       
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
+      getTransactionResult: (UUID) => Option[Boolean],
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
+    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
   }
 }

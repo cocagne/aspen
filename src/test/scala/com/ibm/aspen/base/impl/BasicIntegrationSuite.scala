@@ -22,7 +22,6 @@ import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.read.TriggeredReread
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TestSystem

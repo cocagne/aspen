@@ -72,11 +72,16 @@ object BaseReadDriverSuite {
 class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   import BaseReadDriverSuite._
   
+  def noTxCache(txuuid: UUID): Option[Boolean] = None
+  
   def mkReader(clientMessenger: ClientSideReadMessenger,
                objectPointer: ObjectPointer = ptr,
                readType: ReadType = FullObject(),
                retrieveLockedTransaction: Boolean = true,
-               readUUID:UUID = readUUID) = new BaseReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+               readUUID:UUID = readUUID,
+               getTransactionResult: (UUID) => Option[Boolean] = noTxCache) = {
+    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+  }
   
   test("Fail with invalid object") {
     val m = new TMessenger

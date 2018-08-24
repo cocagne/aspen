@@ -1,3 +1,8 @@
+* Add recent commit cache
+   - Use during read to auto-promote received segments
+   - Could use an intermediary future between future exposed to application layer and as comes from Paxos impl
+   - Should help avoid spurrious TransactionAborted
+
 * Need to re-do allocation method
    - KV objects don't always change revision
    - Need sealed AllocationGuard

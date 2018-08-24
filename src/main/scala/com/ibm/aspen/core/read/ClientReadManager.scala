@@ -13,7 +13,9 @@ import com.ibm.aspen.core.data_store.Lock
 import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.BackgroundTask
 
-class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
+class ClientReadManager(
+    val getTransactionResult: (UUID) => Option[Boolean], 
+    val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
   private[this] var completionTimes = Map[UUID, (Long, ReadDriver)]()
@@ -69,7 +71,7 @@ class ClientReadManager(val clientMessenger: ClientSideReadMessenger)(implicit e
     
     val readUUID = UUID.randomUUID()
     
-    val driver = driverFactory(clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
+    val driver = driverFactory(getTransactionResult, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     

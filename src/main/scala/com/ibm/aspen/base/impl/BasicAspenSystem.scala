@@ -66,6 +66,9 @@ import org.apache.logging.log4j.scala.Logging
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
 import com.ibm.aspen.base.tieredlist.MutableTKVLRootManager
+import com.github.blemale.scaffeine.Cache
+import com.github.blemale.scaffeine.Scaffeine
+import scala.concurrent.duration._
 
 
 object BasicAspenSystem {
@@ -74,7 +77,8 @@ object BasicAspenSystem {
   
   import com.ibm.aspen.util.uuid2byte
   
-  type TransactionFactory = (ClientTransactionManager,  
+  type TransactionFactory = (BasicAspenSystem,
+                             ClientTransactionManager,  
                              (ObjectPointer) => Byte, // Choose the designatedLeader for the Tx based on online/offline peer knowledge
                              Option[ClientTransactionDriver.Factory] // Strategy for driving the Tx to completion. Default will be used if None
                              ) => Transaction
@@ -101,9 +105,16 @@ class BasicAspenSystem(
   
   logger.debug("Constructing BasicAspenSystem")
   
-  protected val readManager = new ClientReadManager(net.readHandler)
+  val transactionCache: Cache[UUID,Boolean] = Scaffeine()
+        .expireAfterWrite(Duration(5, MINUTES))
+        .maximumSize(1000)
+        .build[UUID, Boolean]()
+        
+  protected val readManager = new ClientReadManager(transactionCache.getIfPresent _, net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
+  
+  
   
   def getStorageHost(storeId: DataStoreID): Future[StorageHost] = getStorageHostFn(storeId)
   
@@ -194,10 +205,10 @@ class BasicAspenSystem(
         case Right((os, locks)) => os.asInstanceOf[KeyValueObjectState]
       })
           
-  def newTransaction(): Transaction = transactionFactory(txManager, chooseDesignatedLeader, None)
+  def newTransaction(): Transaction = transactionFactory(this, txManager, chooseDesignatedLeader, None)
   
   override def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = {
-    transactionFactory(txManager, chooseDesignatedLeader, Some(transactionDriverStrategy))
+    transactionFactory(this, txManager, chooseDesignatedLeader, Some(transactionDriverStrategy))
   }
   
   def lowLevelAllocateDataObject(

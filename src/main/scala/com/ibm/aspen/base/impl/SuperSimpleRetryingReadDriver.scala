@@ -11,24 +11,26 @@ import com.ibm.aspen.core.read.ReadDriver
 
 object SuperSimpleRetryingReadDriver {
   def factory(opportunisticRebuildDelay: Duration, ec: ExecutionContext)(
+      getTransactionResult: (UUID) => Option[Boolean],
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new SuperSimpleRetryingReadDriver(clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)(ec)
+    new SuperSimpleRetryingReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)(ec)
   }
 }
 
 class SuperSimpleRetryingReadDriver(
+    getTransactionResult: (UUID) => Option[Boolean],
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID,
     opportunisticRebuildDelay: Duration,
-    disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(clientMessenger, objectPointer, 
+    disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, 
         readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)  {
   
   val retryTask = BackgroundTask.schedulePeriodic(period=Duration(2000, MILLISECONDS), callNow=false)( sendReadRequests() )

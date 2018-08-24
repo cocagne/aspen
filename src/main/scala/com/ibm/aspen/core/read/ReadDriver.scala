@@ -36,5 +36,5 @@ object ReadDriver {
    * ,        readUUID:UUID,
    *          disableOpportunisticRebuild: Boolean)
    */
-  type Factory = (ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
+  type Factory = ((UUID) => Option[Boolean], ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
 }
