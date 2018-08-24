@@ -14,3 +14,11 @@ class CorruptedLinkedList extends KeyValueError
 class NodeSizeExceeded extends KeyValueError
 
 class KeyDoesNotExist(val key: Key) extends KeyValueError
+
+class InvalidRoot extends KeyValueError
+
+class TierAlreadyCreated extends KeyValueError
+
+class InvalidConfiguration extends KeyValueError
+
+class EmptyTree extends KeyValueError

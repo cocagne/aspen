@@ -21,17 +21,19 @@ import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.read.FatalReadError
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.util.Varint
 
 
 trait TieredKeyValueList {
   
   import TieredKeyValueList._
   
-  val keyOrdering: KeyOrdering
+  val rootManager: TieredKeyValueListRootManager
  
-  protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root]
+  protected[tieredlist] def getObjectReaderForTier(tier: Int): ObjectReader
   
-  protected def getObjectReaderForTier(tier: Int): ObjectReader
+  def keyOrdering: KeyOrdering = rootManager.root.keyOrdering
   
   def get(key: Key)(implicit ec: ExecutionContext): Future[Option[Value]] = fetchContainingNode(key, 0) map { kvos =>
     kvos.contents.get(key) 
@@ -136,94 +138,13 @@ trait TieredKeyValueList {
       }
     }
     
-    rootPointer() onComplete {
-      case Failure(cause) => p.failure(cause)
-      case Success(root) => navigateTier( (root.topTier, KeyValueListPointer(Key.AbsoluteMinimum, root.rootNode)) :: Nil, Set()) 
-    }
+    navigateTier((rootManager.root.topTier, KeyValueListPointer(Key.AbsoluteMinimum, rootManager.root.rootNode)) :: Nil, Set()) 
     
     p.future
   }
 }
 
 object TieredKeyValueList {
-  
-  class Root(val topTier: Int, val tierObjectAllocaters: Array[UUID], val tierNodeSizes: Array[Int], val teirNodePairLimit: Array[Int], 
-             val keyOrdering: KeyOrdering, val rootNode: KeyValueObjectPointer) {
-    
-    def getTierNodeSize(tier: Int): Int = if (tier < tierNodeSizes.length) tierNodeSizes(tier) else tierNodeSizes.last
-    
-    def getTierNodeKVPairLimit(tier: Int): Int = if (tier < teirNodePairLimit.length) teirNodePairLimit(tier) else teirNodePairLimit.last
-    
-    def getTierNodeAllocaterUUID(tier: Int): UUID = if (tier < tierObjectAllocaters.length) tierObjectAllocaters(tier) else tierObjectAllocaters.last
-    
-    def toArray(): Array[Byte] = {
-      val orderCode = keyOrdering match {
-        case ByteArrayKeyOrdering => 0
-        case IntegerKeyOrdering   => 1
-        case LexicalKeyOrdering   => 2
-      }
-      val arr = new Array[Byte](6 + tierObjectAllocaters.length * 16 + tierNodeSizes.length * 4 + teirNodePairLimit.length * 4 + rootNode.encodedSize)
-      val bb = ByteBuffer.wrap(arr)
-      bb.put(0.asInstanceOf[Byte]) // Placeholder for a version number
-      bb.put(topTier.asInstanceOf[Byte])
-      bb.put(orderCode.asInstanceOf[Byte])
-      bb.put(tierObjectAllocaters.length.asInstanceOf[Byte])
-      bb.put(tierNodeSizes.length.asInstanceOf[Byte])
-      bb.put(teirNodePairLimit.length.asInstanceOf[Byte])
-      tierObjectAllocaters.foreach { uuid =>
-        bb.putLong(uuid.getMostSignificantBits)
-        bb.putLong(uuid.getLeastSignificantBits)
-      }
-      tierNodeSizes.foreach { sz => bb.putInt(sz) }
-      teirNodePairLimit.foreach { sz => bb.putInt(sz) }
-      
-      rootNode.encodeInto(bb)
-      arr
-    }
-  }
-  
-  object Root {
-    def apply(topTier: Int, objectAllocaters: Array[UUID], tierNodeSizes: Array[Int], tierNodeKVPairLimit: Array[Int], 
-              keyOrdering: KeyOrdering, rootNode: KeyValueObjectPointer): Root = {
-      new Root(topTier, objectAllocaters, tierNodeSizes, tierNodeKVPairLimit, keyOrdering, rootNode)
-    }
-    
-    def apply(bb: ByteBuffer): Root = {
-      bb.get() // Placeholder for a version number
-      val topTier = bb.get()
-      val orderCode = bb.get()
-      val numAllocaters = bb.get()
-      val numSizes = bb.get()
-      val numKVLimits = bb.get()
-      
-      val objectAllocaters = new Array[UUID](numAllocaters)
-      for (i <- 0 until numAllocaters) {
-        val msb = bb.getLong()
-        val lsb = bb.getLong()
-        objectAllocaters(i) = new UUID(msb, lsb)
-      }
-      
-      val tierNodeSizes = new Array[Int](numSizes)
-      for (i <- 0 until numSizes)
-        tierNodeSizes(i) = bb.getInt()
-        
-      val kvPairLimits = new Array[Int](numKVLimits)
-      for (i <- 0 until numKVLimits)
-        kvPairLimits(i) = bb.getInt()
-        
-      val rootNode = ObjectPointer.fromByteBuffer(bb).asInstanceOf[KeyValueObjectPointer]
-      
-      val keyOrdering = orderCode match {
-        case 0 => ByteArrayKeyOrdering
-        case 1 => IntegerKeyOrdering
-        case 2 =>LexicalKeyOrdering
-      }
-      
-      Root(topTier, objectAllocaters, tierNodeSizes, kvPairLimits, keyOrdering, rootNode)
-    }
-    
-    def apply(arr: Array[Byte]): Root = apply(ByteBuffer.wrap(arr))
-  }
   
   def findPointerToNextTierDown(
       objectReader: ObjectReader, 

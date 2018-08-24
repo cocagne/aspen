@@ -6,6 +6,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.util.Varint
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.objects.keyvalue.Value
+import java.nio.ByteOrder
 
 /** 
  * 
@@ -110,6 +111,9 @@ object ObjectPointer {
   def fromArray(arr: Array[Byte]): ObjectPointer = fromByteBuffer(ByteBuffer.wrap(arr))
   
   def fromByteBuffer(bb: ByteBuffer): ObjectPointer = {
+    val origOrder = bb.order()
+    bb.order(ByteOrder.BIG_ENDIAN) // ensure big-endian
+    
     val baseSize = Varint.getUnsignedInt(bb)
     val endPos = bb.position + baseSize
     val typeCode = bb.get()
@@ -149,6 +153,9 @@ object ObjectPointer {
     val spArray = spList.reverse.toArray
     
     val size = if (rawSize == 0) None else Some(rawSize)
+    
+    // reset order to whatever it was originally
+    bb.order(origOrder)
     
     typeCode match {
       case DataObjectPointerCode => new DataObjectPointer(objectUUID, poolUUID, size, ida, spArray)

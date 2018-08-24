@@ -510,7 +510,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
     
     val arr = kvlp.toArray
     
-    val kvlp2 = KeyValueListPointer.fromArray(arr)
+    val kvlp2 = KeyValueListPointer(arr)
     
     kvlp2 should be (kvlp)
   }
@@ -532,7 +532,7 @@ class BasicKeyValueSuite extends TestSystemSuite {
     
     val arr = kvlp.toArray
     
-    val kvlp2 = KeyValueListPointer.fromArray(arr)
+    val kvlp2 = KeyValueListPointer(arr)
     
     kvlp2 should be (kvlp)
   }

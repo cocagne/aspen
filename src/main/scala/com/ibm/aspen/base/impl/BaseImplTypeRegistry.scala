@@ -11,6 +11,9 @@ import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.TypeFactory
 import com.ibm.aspen.base.task.TaskGroupRegistry
 import com.ibm.aspen.base.AggregateTypeRegistry
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import com.ibm.aspen.base.tieredlist.MutableTKVLRootManager
 
 object BaseImplTypeRegistry {
   
@@ -27,6 +30,11 @@ object BaseImplTypeRegistry {
         new TieredKeyValueListJoinFA,
         PerStoreMissedUpdate,
         MissedUpdateFinalizationAction,
+        
+        SimpleTieredKeyValueListNodeAllocater,
+        MutableKeyValueObjectRootManager,
+        MutableTKVLRootManager,
+        
         new BootstrapPoolObjectAllocaterFactory(system.bootstrapPoolIDA)
     )
     

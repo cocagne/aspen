@@ -12,7 +12,7 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.ObjectAllocater
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.Value
 import java.nio.ByteBuffer
@@ -22,6 +22,9 @@ import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import scala.util.Failure
 import scala.util.Success
 import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
 
 object LocalTaskGroup extends TaskGroupType {
   val AllocaterKey = Key(Array[Byte](1))
@@ -55,20 +58,23 @@ object LocalTaskGroup extends TaskGroupType {
     
     val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
     
+    val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit))
+    
     for {
       allocater <- system.getObjectAllocater(objectAllocaterUUID)
       taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil, None)
-      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit), IntegerKeyOrdering, taskListRoot)
-      fullContent = Insert(TaskListKey, tlroot.toArray) :: content
+      root = TieredKeyValueListRoot(0, IntegerKeyOrdering, taskListRoot, allocaterType, allocaterConfig)
+      fullContent = Insert(TaskListKey, root.toArray) :: content
       groupPointer <- allocater.allocateKeyValueObject(allocatingObject, revision, fullContent)
 
     } yield {
       val ptr = TaskGroupPointer(groupPointer)
       
+      val rootMgr = new MutableKeyValueObjectRootManager(system, groupPointer, TaskListKey, root)
+      
       val fgroup = t.result.map { _ =>
-        new LocalTaskGroup(system, ptr, allocater, 
-            new SimpleMutableTieredKeyValueList(system, Left(groupPointer), TaskListKey, IntegerKeyOrdering, Some(tlroot)), 
-            List())
+        new LocalTaskGroup(system, ptr, allocater, new MutableTieredKeyValueList(rootMgr), List())
       }
       
       (ptr, fgroup)
@@ -79,22 +85,12 @@ object LocalTaskGroup extends TaskGroupType {
       system: AspenSystem,
       groupPointer: TaskGroupPointer, 
       revision: ObjectRevision, 
-      objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = system.transact { implicit tx =>
-
-    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
-    
-    for {
-      allocater <- system.getObjectAllocater(objectAllocaterUUID)
-      taskListRoot <- allocater.allocateKeyValueObject(groupPointer.kvPointer, revision, Nil, None)
-      tlroot = TieredKeyValueList.Root(0, Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit), IntegerKeyOrdering, taskListRoot)
-      fullContent = Insert(TaskListKey, tlroot.toArray) :: content
-      _ = tx.update(groupPointer.kvPointer, Some(revision), Nil, fullContent)
-    } yield {
-      new LocalTaskGroup(system, groupPointer, allocater, 
-          new SimpleMutableTieredKeyValueList(system, Left(groupPointer.kvPointer), TaskListKey, IntegerKeyOrdering), 
-          List())
-    }
+      objectAllocaterUUID: UUID)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
+    system.transact { implicit tx =>
+      prepareGroupAllocation(system, groupPointer.kvPointer, revision, objectAllocaterUUID)
+    }.flatMap(t => t._2)
   }
+    
   
   def createInterface(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
     createExecutor(system, groupState)
@@ -103,7 +99,8 @@ object LocalTaskGroup extends TaskGroupType {
   def createExecutor(system:AspenSystem, groupState: KeyValueObjectState)(implicit ec: ExecutionContext): Future[LocalTaskGroup] = {
 
     val objectAllocaterUUID = byte2uuid(groupState.contents(AllocaterKey).value)
-    val taskTree = new SimpleMutableTieredKeyValueList(system, Left(groupState.pointer), TaskListKey, IntegerKeyOrdering)
+    val rootMgr = new MutableKeyValueObjectRootManager(system, groupState.pointer, TaskListKey, TieredKeyValueListRoot(groupState.contents(TaskListKey).value))
+    val taskTree = new MutableTieredKeyValueList(rootMgr)
     
     var loadingTasks: List[Future[ReusableTask]] = Nil
     
@@ -151,7 +148,7 @@ class LocalTaskGroup(
     val system: AspenSystem,
     val pointer: TaskGroupPointer,
     protected val allocater: ObjectAllocater,
-    protected val taskTree: SimpleMutableTieredKeyValueList,
+    protected val taskTree: MutableTieredKeyValueList,
     initialTasks: List[LocalTaskGroup.ReusableTask])
     (implicit ec: ExecutionContext) extends TaskGroupExecutor with TaskGroupInterface {
     

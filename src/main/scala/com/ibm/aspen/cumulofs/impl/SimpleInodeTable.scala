@@ -5,7 +5,6 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.cumulofs.InodePointer
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue.Key
@@ -22,7 +21,7 @@ import com.ibm.aspen.core.HLCTimestamp
 class SimpleInodeTable(
     val system: AspenSystem,
     val inodeAllocaterUUID: UUID,
-    val table: SimpleMutableTieredKeyValueList) extends InodeTable {
+    val table: MutableTieredKeyValueList) extends InodeTable {
   
   val fallocater = system.getObjectAllocater(inodeAllocaterUUID)
   

@@ -12,6 +12,7 @@ import com.ibm.aspen.cumulofs.error.CorruptedInode
 import com.ibm.aspen.util.Varint
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 
 object Inode {
   
@@ -147,8 +148,8 @@ class DirectoryInode(
   
   def hasContentTree: Boolean = content.contains(ContentTieredListKey)
   
-  def contentTree: Option[TieredKeyValueList.Root] = content.get(ContentTieredListKey) map { value =>
-    TieredKeyValueList.Root(value)
+  def contentTree: Option[TieredKeyValueListRoot] = content.get(ContentTieredListKey) map { value =>
+    TieredKeyValueListRoot(value)
   }
 }
 

@@ -28,13 +28,11 @@ import com.ibm.aspen.core.objects.StorePointer
 object TieredListSuite {
   val kvalue = Array[Byte](1,2)
   
-  class TKVL(val sys: AspenSystem, depth: Int, root: KeyValueObjectPointer) extends TieredKeyValueList {
-    val keyOrdering: KeyOrdering = ByteArrayKeyOrdering
-    
-    override protected def rootPointer()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = Future.successful(TieredKeyValueList.Root(depth, 
-        new Array[UUID](0), new Array[Int](0), new Array[Int](100), ByteArrayKeyOrdering, root))
-  
-    override protected def getObjectReaderForTier(tier: Int): ObjectReader = sys
+  class TKVL(
+      sys: AspenSystem, 
+      topTier: Int, 
+      root: KeyValueObjectPointer) extends ReadOnlyTieredKeyValueList(sys, 
+          StaticTieredKeyValueRootManager(TieredKeyValueListRoot(topTier, ByteArrayKeyOrdering, root, new UUID(0,0), Array[Byte]()))) {
     
     def find(key: Key, targetTier: Int=0)(implicit ec: ExecutionContext): Future[KeyValueObjectState]  = fetchContainingNode(key, targetTier)
   }

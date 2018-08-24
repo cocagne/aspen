@@ -16,7 +16,6 @@ import com.ibm.aspen.base.Transaction
 import sun.reflect.generics.reflectiveObjects.NotImplementedException
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.KeyValueObjectState
 

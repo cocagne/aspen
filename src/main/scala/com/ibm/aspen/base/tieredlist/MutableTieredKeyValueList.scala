@@ -12,73 +12,43 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+import scala.concurrent.Promise
+import scala.util.Failure
+import scala.util.Success
+import java.util.UUID
+import com.ibm.aspen.core.DataBuffer
+import org.apache.logging.log4j.scala.Logging
+import com.ibm.aspen.base.ObjectReader
 
-trait MutableTieredKeyValueList extends TieredKeyValueList {
-  
-  val system: AspenSystem
-  
-  protected val treeIdentifier: Key
-  protected val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root]
-  
-  protected def getObjectAllocaterForTier(tier: Int)(implicit ec: ExecutionContext): Future[ObjectAllocater]
-  
-  /** Future completes when the transactions is ready to commit */
-  protected[tieredlist] def prepreUpdateRootTransaction(
-      newTier: Int,
-      newRootPointer: KeyValueObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
-  
-  
-  protected[tieredlist] def refreshRoot()(implicit ec: ExecutionContext): Future[(KeyValueObjectState, TieredKeyValueList.Root)]
-  
-  def fetchRoot()(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = refreshRoot().map(t => t._2)
-  
-  /** Delete's the tree. Prior to freeing each tier0 node in the tree the prepareForDeletion method will be invoked for
-   *  that node's content
-   */
-  def destroy(prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit]
-  
-  class MutableNode(val kvos: KeyValueObjectState) {
+object MutableTieredKeyValueList extends Logging {
+  def load(
+      system: AspenSystem,
+      rootManagerType: UUID,
+      serializedRootManager: DataBuffer)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = {
     
-    def ordering: KeyOrdering = keyOrdering
-    
-    /** Note that this future will fail if the right node node has been deleted */
-    def fetchRight()(implicit ec: ExecutionContext): Future[Option[MutableNode]] = kvos.right match {
-      case None => Future.successful(None)
-      case Some(ptr) => system.readObject(KeyValueObjectPointer(ptr.content)).map(kvos => Some(new MutableNode(kvos)))
-    }
-    
-    /** Note that this future will fail if the node has been deleted */
-    def refresh()(implicit ec: ExecutionContext): Future[MutableNode] = system.readObject(kvos.pointer).map(kv => new MutableNode(kv))
-    
-    def prepreUpdateTransaction(
-      inserts: List[(Key, Array[Byte])],
-      deletes: List[Key],
-      requirements: List[KeyValueUpdate.KVRequirement])(implicit tx: Transaction, ec: ExecutionContext): Future[Future[MutableNode]] = {
-      
-      val reader = getObjectReaderForTier(0) 
-      
-      def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {
-        TieredKeyValueListSplitFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, right)
-      }
-      
-      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
-        TieredKeyValueListJoinFA.addFinalizationAction(tx, treeIdentifier, treeContainer, keyOrdering, 1, left, removed)
-      }
-      
-      val fallocater = getObjectAllocaterForTier(0)
-      
-      for {
-        allocater <- fallocater
-        root <- rootPointer()
-        fupdatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, root.getTierNodeSize(0), root.getTierNodeKVPairLimit(0), inserts, deletes, requirements, 
-                       keyOrdering, reader, allocater, onSplit, onJoin)
-      } yield {
-        tx.result.flatMap(_ => fupdatedKvos.map(updatedKvos => new MutableNode(updatedKvos)))
-      }
+    system.typeRegistry.getTypeFactory[TieredKeyValueListMutableRootManagerFactory](rootManagerType) match {
+      case None =>
+        logger.error(s"Unregistered TieredKeyValueListMutableRootManagerFactory type: $rootManagerType")
+        Future.failed(new InvalidConfiguration)
+      case Some(f) =>
+        f.createMutableRootManager(system, serializedRootManager) map { rootManager =>
+          new MutableTieredKeyValueList(rootManager) 
+        }
     }
   }
+}
+
+class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootManager) extends TieredKeyValueList {
   
-  def fetchMutableNode(key: Key)(implicit ec: ExecutionContext): Future[MutableNode] = fetchContainingNode(key, 0).map(new MutableNode(_))
+  def system: AspenSystem = rootManager.system
+  
+  val allocater = rootManager.getAllocater()
+  
+  protected[tieredlist] def getObjectReaderForTier(tier: Int): ObjectReader = system
+  
+  def fetchMutableNode(key: Key)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueListNode] = {
+    fetchContainingNode(key, 0).map(kvos => new MutableTieredKeyValueListNode(system, this, kvos))
+  }
   
   def put(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
     node <- fetchMutableNode(key) 
@@ -94,7 +64,7 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
     val fold = fetchMutableNode(oldKey)
     val fnew = fetchMutableNode(newKey)
     
-    def prepareUpdate(oldNode: MutableNode, newNode: MutableNode): Future[Unit] = {
+    def prepareUpdate(oldNode: MutableTieredKeyValueListNode, newNode: MutableTieredKeyValueListNode): Future[Unit] = {
       oldNode.kvos.contents.get(oldKey) match {
         case None => Future.failed(new KeyDoesNotExist(oldKey))
         
@@ -116,5 +86,73 @@ trait MutableTieredKeyValueList extends TieredKeyValueList {
       newNode <- fnew
       prep <- prepareUpdate(oldNode, newNode)
     } yield ()
+  }
+  
+  /** Deletes the tree. Prior to freeing each tier0 node in the tree the prepareForDeletion method will be invoked for
+   *  that node's content
+   */
+  def destroy(
+      prepareForDeletion: Map[Key,Value] => Future[Unit])(implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    val p = Promise[Unit]
+    
+    def rdelete(tiers: List[(Int, KeyValueListPointer)]): Unit = {
+      if (tiers.isEmpty) {
+        implicit val tx = system.newTransaction()
+        
+        rootManager.prepareRootDeletion().foreach { _ =>
+          if (tx.valid)
+            p.completeWith(tx.commit().map(_=>()))
+          else
+            p.success(())    
+        }
+      } else {
+        val (tier, pointer) = tiers.head
+        
+        def prepTier0(kvos: KeyValueObjectState): Future[Unit] = prepareForDeletion(kvos.contents)
+        def prepRest(kvos: KeyValueObjectState): Future[Unit] = Future.unit
+        
+        val prepFunc = if (tier == 0) prepTier0 _ else prepRest _
+        
+        KeyValueList.destroy(system, pointer, prepFunc) foreach { _ => rdelete(tiers.tail) }
+      }
+    }
+    
+    getTierRootPointers onComplete {
+      case Failure(cause) => p.failure(cause)
+      case Success(tiers) => rdelete(tiers)
+    }
+    
+    p.future
+  }
+  
+  def getTierRootPointers()(implicit ec: ExecutionContext): Future[List[(Int, KeyValueListPointer)]] = {
+    val p = Promise[List[(Int, KeyValueListPointer)]]()
+    
+    def rfind(ptr: KeyValueListPointer, tier: Int, tiers: List[(Int, KeyValueListPointer)]): Unit = {
+      
+      val thisTier = (tier, ptr) :: tiers
+      
+      if (tier == 0)
+        p.success(thisTier)
+      else {
+        TieredKeyValueList.findPointerToNextTierDown(system, ptr, keyOrdering, Set(), Key.AbsoluteMinimum) onComplete {
+          case Failure(_) => p.success(thisTier) // This tier must already have been deleted
+          
+          case Success(e) => e match {
+            case Left(_) => p.success(thisTier) // Must be in-process of deleting this tier
+            
+            case Right(nextTierPointer) => rfind(nextTierPointer, tier - 1, thisTier)
+          }
+        }
+      }
+    }
+    
+    rootManager.refresh onComplete { 
+      case Failure(_) => p.success(Nil)
+      
+      case Success(root) => rfind(KeyValueListPointer(Key.AbsoluteMinimum, root.rootNode), root.topTier, Nil)
+    }
+    
+    p.future
   }
 }

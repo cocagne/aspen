@@ -20,6 +20,8 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.task.TaskGroupInterface
 import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
 
 trait FileSystem {
   /** UUID of the FileSystem's root KeyValue object */
@@ -111,8 +113,8 @@ object FileSystem {
     loadedFileSystems.get(uuid)
   }
   
-  def getLocalTaskGroupTree(rootKvos: KeyValueObjectState): TieredKeyValueList.Root = {
-    TieredKeyValueList.Root(rootKvos.contents(LocalTaskGroupsTreeKey).value)
+  def getLocalTaskGroupTreeRoot(rootKvos: KeyValueObjectState): TieredKeyValueListRoot = {
+    TieredKeyValueListRoot(rootKvos.contents(LocalTaskGroupsTreeKey).value)
   }
   
   def getInodeAllocater(rootKvos: KeyValueObjectState): UUID = {
@@ -150,6 +152,8 @@ object FileSystem {
     
     val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, None)
     
+    val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits)
     
     for {
       rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
@@ -160,10 +164,11 @@ object FileSystem {
       
       rootInodeTblPtr <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, inodeTblContent)
       
-      inodeTblRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits, IntegerKeyOrdering, rootInodeTblPtr)
+      inodeTblRoot = TieredKeyValueListRoot(0, IntegerKeyOrdering, rootInodeTblPtr, allocaterType, allocaterConfig)
       
       lgtgTier0 <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, Nil)
-      lgtgRoot = new TieredKeyValueList.Root(0, inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits, ByteArrayKeyOrdering, lgtgTier0)
+      
+      lgtgRoot = TieredKeyValueListRoot(0, ByteArrayKeyOrdering, lgtgTier0, allocaterType, allocaterConfig)
       
       icontent = List(
           (InodeTableKey,                       inodeTblRoot.toArray),

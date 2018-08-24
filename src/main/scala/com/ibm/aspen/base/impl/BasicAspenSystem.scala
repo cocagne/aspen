@@ -47,7 +47,6 @@ import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import com.ibm.aspen.base.ObjectSizeExceeded
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
@@ -64,6 +63,9 @@ import com.ibm.aspen.base.MissedUpdateHandlerFactory
 import com.ibm.aspen.base.MissedUpdateIterator
 import com.ibm.aspen.base.ObjectAllocaterFactory
 import org.apache.logging.log4j.scala.Logging
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import com.ibm.aspen.base.tieredlist.MutableTKVLRootManager
 
 
 object BasicAspenSystem {
@@ -133,30 +135,22 @@ class BasicAspenSystem(
   }
   
   lazy val systemTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
-    radicle.map(kvos => new SimpleMutableTieredKeyValueList(this, Left(kvos.pointer), Bootstrap.SystemTreeKey, ByteArrayKeyOrdering))
-  }
-  
-  lazy val storagePoolTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
-    for {
-      sysTree <- systemTree
-      sysTreeRoot <- sysTree.fetchRoot()
-      v <- sysTree.get(StoragePoolTreeUUID)
-      root = TieredKeyValueList.Root(v.get.value)
-    } yield {
-      new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.StoragePoolTreeUUID, ByteArrayKeyOrdering)
+    radicle.map { kvos => 
+      new MutableTieredKeyValueList(MutableKeyValueObjectRootManager(this, kvos, Bootstrap.SystemTreeKey))
     }
   }
   
-  lazy val taskGroupTree: Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
-    for {
-      sysTree <- systemTree
-      sysTreeRoot <- sysTree.fetchRoot()
-      v <- sysTree.get(TaskGroupTreeUUID)
-      root = TieredKeyValueList.Root(v.get.value)
-    } yield {
-      new SimpleMutableTieredKeyValueList(this, Right(sysTreeRoot), Bootstrap.TaskGroupTreeUUID, ByteArrayKeyOrdering)
+  private[this] def loadSupportTree(treeUUID: UUID): Future[MutableTieredKeyValueList] = retryStrategy.retryUntilSuccessful {
+    systemTree.flatMap { sysTree =>
+      MutableTKVLRootManager.load(sysTree, treeUUID).map { orootMgr =>
+        new MutableTieredKeyValueList(orootMgr.get)
+      }
     }
   }
+  
+  lazy val storagePoolTree: Future[MutableTieredKeyValueList] = loadSupportTree(Bootstrap.StoragePoolTreeUUID) 
+  
+  lazy val taskGroupTree: Future[MutableTieredKeyValueList] = loadSupportTree(Bootstrap.TaskGroupTreeUUID)
   
   def readObject(
       objectPointer:DataObjectPointer, 

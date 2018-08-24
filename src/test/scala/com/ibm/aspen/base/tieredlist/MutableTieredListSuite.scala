@@ -23,8 +23,10 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.objects.KeyValueObjectState
 
 
-class SimpleMutableTieredListSuite extends TestSystemSuite {
+class MutableTieredListSuite extends TestSystemSuite {
   import Bootstrap._
+  
+  val treeKey = Key(Array[Byte](0,0,0))
   
   def alloc(min: Option[Key], max: Option[Key], right: Option[KeyValueObjectPointer], contents: List[(Key,Array[Byte])] = Nil): Future[KeyValueObjectPointer] = {
     
@@ -57,25 +59,42 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     } yield kvp
   }
   
+  def mk(rootNode: KeyValueObjectPointer, nodeSizeLimit:Int=300, kvPairLimit:Int=100, topTier:Int=0): Future[MutableTieredKeyValueList] = {
+    val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(Array(BootstrapStoragePoolUUID), Array(nodeSizeLimit), Array(kvPairLimit))
+    
+    val root = TieredKeyValueListRoot(topTier, ByteArrayKeyOrdering, rootNode, allocaterType, allocaterConfig)
+    
+    alloc(None, None, None, List((treeKey -> root.toArray))).map { rootContainer =>
+      val rootMgr = new MutableKeyValueObjectRootManager(sys, rootContainer, treeKey, root)
+      new MutableTieredKeyValueList(rootMgr)
+    }
+  }
+  
+  def reload(tkvl: MutableTieredKeyValueList): Future[MutableTieredKeyValueList] = {
+    val m = tkvl.rootManager.asInstanceOf[MutableKeyValueObjectRootManager]
+    sys.readObject(m.containingObject) map { kvos =>
+      val newRootMgr = new MutableKeyValueObjectRootManager(sys, m.containingObject, treeKey, TieredKeyValueListRoot(kvos.contents(treeKey).value))
+      new MutableTieredKeyValueList(newRootMgr)
+    }
+  }
+  
+  def readContainerObject(tkvl: MutableTieredKeyValueList): Future[KeyValueObjectState] = {
+    val m = tkvl.rootManager.asInstanceOf[MutableKeyValueObjectRootManager]
+    sys.readObject(m.containingObject)
+  }
+  
   test("Test single-node tree") {
   
-    val treeId = Key(Array[Byte](0,0,0))
     val target = Key(Array[Byte](2))
     val value = Array[Byte](2,3,4)
     
     for {
       l0 <- alloc(None, None, None, List((target -> value)))
       
-      nodeSizeLimit = 300
-      kvPairLimit = 100
-      
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      ovalue <- smt.get(target)
+      tkvl <- mk(l0)
+
+      ovalue <- tkvl.get(target)
 
     } yield {
       ovalue match {
@@ -87,7 +106,6 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   
   test("Test replace non-existent value") {
   
-    val treeId = Key(Array[Byte](0,0,0))
     val target = Key(Array[Byte](2))
     val value = Array[Byte](2,3,4)
     
@@ -101,13 +119,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       nodeSizeLimit = 300
       kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      r <- smt.replace(invalid, target).failed
+      tkvl <- mk(l0)
+
+      r <- tkvl.replace(invalid, target).failed
 
     } yield {
       r match {
@@ -118,40 +132,32 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   }
   
   test("Test replace value. Single node") {
-  
-    val treeId = Key(Array[Byte](0,0,0))
+
     val target = Key(Array[Byte](2))
     val value = Array[Byte](2,3,4)
     
     val old = Key("old")
     
-    def put(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
+    def put(tkvl: MutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      smt.put(old, value).flatMap(_ => tx.commit().map(_=>()))
+      tkvl.put(old, value).flatMap(_ => tx.commit().map(_=>()))
     }
     
-    def replace(smt: SimpleMutableTieredKeyValueList): Future[Unit] = {
+    def replace(tkvl: MutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      smt.replace(old, target).flatMap(_ => tx.commit().map(_=>()))
+      tkvl.replace(old, target).flatMap(_ => tx.commit().map(_=>()))
     }
     
     for {
       l0 <- alloc(None, None, None, List((target -> value)))
       
-      nodeSizeLimit = 300
-      kvPairLimit = 100
+      tkvl <- mk(l0)
+
+      _ <- put(tkvl)
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
+      _ <- replace(tkvl)
       
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      _ <- put(smt)
-      
-      _ <- replace(smt)
-      
-      v <- smt.get(target)
+      v <- tkvl.get(target)
 
     } yield {
       java.util.Arrays.equals(v.get.value, value) should be (true)
@@ -160,7 +166,6 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   
   test("Test split single-node tree") {
   
-    val treeId = Key(Array[Byte](0,0,0))
     val target = Key(Array[Byte](10))
     val value = Array[Byte](2,3,4)
     val key0 = Key(Array[Byte](0))
@@ -175,16 +180,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     for {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
       
-      nodeSizeLimit = 250
-      kvPairLimit = 100
+      tkvl <- mk(l0, kvPairLimit=4)
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      node0 <- smt.fetchMutableNode(target)
+      node0 <- tkvl.fetchMutableNode(target)
       
       inserts = List((key4,bulk), (target,value))
       deletes = Nil
@@ -192,23 +190,22 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       txPrepped <- node0.prepreUpdateTransaction(inserts, deletes, requirements)
       txDone <- tx.commit()
-      _=println("******* WAIT FOR TX COMPLETE ****")
+      
       finalizersDone <- waitForTransactionsComplete()
-      _=println("******* TX COMPLETE ****")
-      (newKvos, newRoot) <- smt.refreshRoot()
+
+      ovalue0 <- tkvl.get(target)
       
-      ovalue0 <- smt.get(target)
+      tkvl2 <- reload(tkvl)
       
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      ovalue1 <- tkvl2.get(target)
       
-      ovalue1 <- smt2.get(target)
-      
-      newRootKvos <- sys.readObject(newRoot.rootNode)
-      
+      newRootKvos <- sys.readObject(tkvl2.rootManager.root.rootNode)
 
     } yield {
-      newRoot.topTier should be (1)
-      newRoot.rootNode should not be (l0)
+      tkvl.rootManager.root.topTier should be (0)
+      tkvl2.rootManager.root.topTier should be (1)
+      tkvl.rootManager.root.rootNode should be (l0)
+      tkvl2.rootManager.root.rootNode should not be (l0)
       
       newRootKvos.contents.size should be (2)
       
@@ -225,8 +222,7 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   }
   
   test("Test split two-tier tree") {
-  
-    val treeId = Key(Array[Byte](0,0,0))
+
     val target = Key(Array[Byte](10))
     val value = Array[Byte](2,3,4)
     val key0 = Key(Array[Byte](0))
@@ -242,17 +238,10 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
       
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray)))
+      
+      tkvl <- mk(rootPtr, kvPairLimit=4, topTier=1)
        
-      nodeSizeLimit = 250
-      kvPairLimit = 100
-      
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      node0 <- smt.fetchMutableNode(target)
+      node0 <- tkvl.fetchMutableNode(target)
       
       inserts = List((key4,bulk), (target,value))
       deletes = Nil
@@ -263,19 +252,19 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       finalizersDone <- waitForTransactionsComplete()
       
-      (newKvos, newRoot) <- smt.refreshRoot()
+      ovalue0 <- tkvl.get(target)
       
-      ovalue0 <- smt.get(target)
+      tkvl2 <- reload(tkvl)
       
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      ovalue1 <- tkvl2.get(target)
       
-      ovalue1 <- smt2.get(target)
-      
-      newRootKvos <- sys.readObject(newRoot.rootNode)
+      newRootKvos <- sys.readObject(tkvl2.rootManager.root.rootNode)
 
     } yield {
-      newRoot.topTier should be (1)
-      newRoot.rootNode should be (rootPtr)
+      tkvl.rootManager.root.topTier should be (1)
+      tkvl2.rootManager.root.topTier should be (1)
+      tkvl.rootManager.root.rootNode should be (rootPtr)
+      tkvl2.rootManager.root.rootNode should be (rootPtr)
       
       newRootKvos.contents.size should be (2)
       
@@ -293,7 +282,6 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   
   test("Test join two-tier tree") {
   
-    val treeId = Key(Array[Byte](0,0,0))
     val target = Key(Array[Byte](10))
     val value = Array[Byte](2,3,4)
     val key0 = Key(Array[Byte](0))
@@ -306,16 +294,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
-      nodeSizeLimit = 250
-      kvPairLimit = 100
+      tkvl <- mk(rootPtr, nodeSizeLimit=250, topTier=1)
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      node0 <- smt.fetchMutableNode(key0)
+      node0 <- tkvl.fetchMutableNode(key0)
       
       inserts = Nil
       deletes = List(key0)
@@ -326,20 +307,20 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       finalizersDone <- waitForTransactionsComplete()
       
-      (newKvos, newRoot) <- smt.refreshRoot()
+      ovalue0 <- tkvl.get(key0)
       
-      ovalue0 <- smt.get(key0)
+      tkvl2 <- reload(tkvl)
       
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      ovalue1 <- tkvl2.get(key0)
       
-      ovalue1 <- smt2.get(key0)
-      
-      newRootKvos <- sys.readObject(newRoot.rootNode)
+      newRootKvos <- sys.readObject(tkvl2.rootManager.root.rootNode)
       l0kvos <- sys.readObject(l0)
 
     } yield {
-      newRoot.topTier should be (1)
-      newRoot.rootNode should be (rootPtr)
+      tkvl.rootManager.root.topTier should be (1)
+      tkvl2.rootManager.root.topTier should be (1)
+      tkvl.rootManager.root.rootNode should be (rootPtr)
+      tkvl2.rootManager.root.rootNode should be (rootPtr)
       
       newRootKvos.contents.size should be (1)
       
@@ -354,7 +335,6 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
   
   test("Test destroy two-tier tree") {
   
-    val treeId = Key(Array[Byte](0,0,0))
     val target = Key(Array[Byte](10))
     val value = Array[Byte](2,3,4)
     val key0 = Key(Array[Byte](0))
@@ -374,16 +354,9 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
        
-      nodeSizeLimit = 250
-      kvPairLimit = 100
+      tkvl <- mk(rootPtr, nodeSizeLimit=250, topTier=1)
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      node0 <- smt.fetchMutableNode(key0)
+      node0 <- tkvl.fetchMutableNode(key0)
       
       inserts = Nil
       deletes = List(key0)
@@ -394,36 +367,26 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       finalizersDone <- waitForTransactionsComplete()
       
-      (newKvos, newRoot) <- smt.refreshRoot()
+      ovalue0 <- tkvl.get(key0)
       
-      ovalue0 <- smt.get(key0)
+      tkvl2 <- reload(tkvl)
       
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
+      ovalue1 <- tkvl2.get(key0)
       
-      ovalue1 <- smt2.get(key0)
-      
-      newRootKvos <- sys.readObject(newRoot.rootNode)
+      newRootKvos <- sys.readObject(tkvl2.rootManager.root.rootNode)
       l0kvos <- sys.readObject(l0)
       
-      toast <- smt2.destroy(prepDestroy)
+      toast <- tkvl2.destroy(prepDestroy)
       
       _ <- sys.readObject(l0).failed
       _ <- sys.readObject(l1).failed
       _ <- sys.readObject(rootPtr).failed
+      
+      containerKvos <- readContainerObject(tkvl)
 
     } yield {
-      newRoot.topTier should be (1)
-      newRoot.rootNode should be (rootPtr)
-      
-      newRootKvos.contents.size should be (1)
-      
-      l0kvos.maximum.isDefined should be (false)
-      l0kvos.right.isDefined should be (false)
-      
-      ovalue0.isDefined should be (false)
-      ovalue1.isDefined should be (false)
-      
       keys should be (List(target))
+      containerKvos.contents.contains(treeKey) should be (false)
     }
   }
   
@@ -450,17 +413,10 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       l0 <- alloc(None, Some(target), Some(l1), List((key0 -> value)))
       
       rootPtr <- alloc(None, None, None, List((Key.AbsoluteMinimum -> l0.toArray), (target, l1.toArray)))
-       
-      nodeSizeLimit = 250
-      kvPairLimit = 100
       
-      root = TieredKeyValueList.Root(1, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, rootPtr)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      node0 <- smt.fetchMutableNode(key0)
+      tkvl <- mk(rootPtr, nodeSizeLimit=250, topTier=1)
+
+      node0 <- tkvl.fetchMutableNode(key0)
       
       inserts = Nil
       deletes = List(key0)
@@ -471,38 +427,27 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
       
       finalizersDone <- waitForTransactionsComplete()
       
-      (newKvos, newRoot) <- smt.refreshRoot()
+      ovalue0 <- tkvl.get(key0)
       
-      ovalue0 <- smt.get(key0)
+      tkvl2 <- reload(tkvl)
       
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      ovalue1 <- smt2.get(key0)
-      
-      newRootKvos <- sys.readObject(newRoot.rootNode)
+      ovalue1 <- tkvl2.get(key0)
+
       l0kvos <- sys.readObject(l0)
       
       tier0toast <- KeyValueList.destroy(sys, KeyValueListPointer(Key.AbsoluteMinimum, l0), listDestroy)
       
       _ <- sys.readObject(l0).failed
       
-      toast <- smt2.destroy(prepDestroy)
+      toast <- tkvl2.destroy(prepDestroy)
       
       _ <- sys.readObject(l0).failed
       _ <- sys.readObject(l1).failed
       _ <- sys.readObject(rootPtr).failed
 
+      containerKvos <- readContainerObject(tkvl)
     } yield {
-      newRoot.topTier should be (1)
-      newRoot.rootNode should be (rootPtr)
-      
-      newRootKvos.contents.size should be (1)
-      
-      l0kvos.maximum.isDefined should be (false)
-      l0kvos.right.isDefined should be (false)
-      
-      ovalue0.isDefined should be (false)
-      ovalue1.isDefined should be (false)
+      containerKvos.contents.contains(treeKey) should be (false)
     }
   }
   
@@ -522,72 +467,23 @@ class SimpleMutableTieredListSuite extends TestSystemSuite {
     for {
       l0 <- alloc(None, None, None, List((target -> value)))
       
-      nodeSizeLimit = 300
-      kvPairLimit = 100
+      tkvl <- mk(l0)
       
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
+      ovalue <- tkvl.get(target)
       
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      ovalue <- smt.get(target)
-      
-      toast <- smt.destroy(prepDestroy)
+      toast <- tkvl.destroy(prepDestroy)
       
       _ <- sys.readObject(l0).failed
 
+      containerKvos <- readContainerObject(tkvl)
     } yield {
       keys should be (List(target))
-      
+      containerKvos.contents.contains(treeKey) should be (false)
       ovalue match {
         case None => fail("failed to find target key")
         case Some(v) => v.value should be (value)
       }
     }
   }
-  
-  test("Test destroy already destroyed tree") {
-  
-    val treeId = Key(Array[Byte](0,0,0))
-    val target = Key(Array[Byte](2))
-    val value = Array[Byte](2,3,4)
-    
-    @volatile var keys = List[Key]()
-    
-    def prepDestroy(contents: Map[Key, Value]): Future[Unit] = {
-      keys = keys ++ contents.keys
-      Future.unit
-    }
-    
-    for {
-      l0 <- alloc(None, None, None, List((target -> value)))
-      
-      nodeSizeLimit = 300
-      kvPairLimit = 100
-      
-      root = TieredKeyValueList.Root(0, Array[UUID](BootstrapStoragePoolUUID), Array[Int](nodeSizeLimit), Array[Int](kvPairLimit), ByteArrayKeyOrdering, l0)
-      
-      rootContainer <- alloc(None, None, None, List((treeId -> root.toArray)))
-      
-      smt = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      
-      ovalue <- smt.get(target)
-      
-      toast <- smt.destroy(prepDestroy)
-      
-      _ <- sys.readObject(l0).failed
-      
-      smt2 = new SimpleMutableTieredKeyValueList(sys, Left(rootContainer), treeId, ByteArrayKeyOrdering)
-      toast <- smt2.destroy(prepDestroy)
 
-    } yield {
-      keys should be (List(target))
-      
-      ovalue match {
-        case None => fail("failed to find target key")
-        case Some(v) => v.value should be (value)
-      }
-    }
-  }
 }

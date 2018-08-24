@@ -22,9 +22,10 @@ import com.ibm.aspen.core.transaction.KeyValueUpdate
 import scala.concurrent.Promise
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription
+import org.apache.logging.log4j.scala.Logging
 
 
-object TieredKeyValueListJoinFA {
+object TieredKeyValueListJoinFA extends Logging {
   val FinalizationActionUUID = UUID.fromString("fb262a22-8aea-4bbd-8da8-9c3a939c3786")
   
   /** 
@@ -38,9 +39,7 @@ object TieredKeyValueListJoinFA {
    */
   def addFinalizationAction(
       transaction: Transaction, 
-      treeIdentifier: Key, 
-      treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root],
-      keyOrdering: KeyOrdering,
+      mtkvl: MutableTieredKeyValueList,
       targetTier: Int,
       left: KeyValueListPointer,
       removed: KeyValueListPointer): Unit = {
@@ -48,77 +47,72 @@ object TieredKeyValueListJoinFA {
     // TODO: Support removal of the root node. For now we'll skip join finalizers for all left-most nodes. Tree structure and depth is preserved
     //       we just loose the uncached lookup efficiency typically found in smaller trees.  
     if ( removed.minimum != Key.AbsoluteMinimum ) {
-      val serializedContent = BaseCodec.encodeTieredKeyValueListJoinFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, removed)
-          
+      val content = TieredKeyValueListSplitFA.Content(mtkvl.keyOrdering, mtkvl.rootManager.typeUUID, mtkvl.rootManager.serialize(), 
+          targetTier, left, removed :: Nil)
+
+      val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(content)
+      
       transaction.addFinalizationAction(FinalizationActionUUID, serializedContent)
     }
   }
-  
-  case class Content(
-      treeIdentifier: Key, 
-      treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], 
-      targetTier: Int,
-      left: KeyValueListPointer,
-      removed: KeyValueListPointer,
-      keyOrdering: KeyOrdering)
       
-  class RemoveFromUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
+  class RemoveFromUpperTier(val system: AspenSystem, val c: TieredKeyValueListSplitFA.Content)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    val complete = system.retryStrategy.retryUntilSuccessful {
+    def remove(mtkvl: MutableTieredKeyValueList): Future[Unit] = system.transact { implicit tx =>
+        
+      def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {}
       
-      val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
-      
-      def remove(root: TieredKeyValueList.Root): Future[Unit] = system.transact { implicit tx =>
-        
-        def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {}
-        
-        def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
-          addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, removed)
-        }
-        
-        for {
-          kvos <- lst.fetchContainingNode(c.removed.minimum, c.targetTier) 
-          
-          ovalue = kvos.contents.get(c.removed.minimum)
-          
-          if ovalue.isDefined
-          
-          value = ovalue.get
-          
-          if c.removed.pointer == ObjectPointer.fromArray(value.value)
-          
-          allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
-          
-          nodeSizeLimit = root.getTierNodeSize(c.targetTier)
-          nodeKVPairLimit = root.getTierNodeKVPairLimit(c.targetTier)
-          inserts = Nil
-          deletes = List(c.removed.minimum)
-          requirements = List(KVRequirement(c.removed.minimum, value.timestamp, KeyValueUpdate.TimestampRequirement.Equals))
-          
-          _ = tx.ensureHappensAfter(value.timestamp)
-          
-          test <- system.readObject(kvos.pointer)
-
-          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
-          
-          done <- tx.commit()
-
-        } yield ()
+      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
+        addFinalizationAction(tx, mtkvl, c.targetTier+1, left, removed)
       }
       
+      // The removed node will be the only entry in the "inserted" list 
+      val removed = c.inserted.head
+      
+      for {
+        
+        kvos <- mtkvl.fetchContainingNode(removed.minimum, c.targetTier) 
+        
+        ovalue = kvos.contents.get(removed.minimum)
+        
+        if ovalue.isDefined
+        
+        value = ovalue.get
+        
+        if removed.pointer == KeyValueObjectPointer(value.value)
+        
+        allocater <- mtkvl.allocater.tierNodeAllocater(c.targetTier)
+        
+        nodeSizeLimit = mtkvl.allocater.tierNodeSizeLimit(c.targetTier)
+        nodeKVPairLimit = mtkvl.allocater.tierNodeKVPairLimit(c.targetTier)
+        inserts = Nil
+        deletes = List(removed.minimum)
+        requirements = List(KVRequirement(removed.minimum, value.timestamp, KeyValueUpdate.TimestampRequirement.Equals))
+        
+        _ = tx.ensureHappensAfter(value.timestamp)
+        
+        test <- system.readObject(kvos.pointer)
+
+        ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+        
+        done <- tx.commit()
+      } yield ()
+    }
+    
+    val complete = system.retryStrategy.retryUntilSuccessful {
       val p = Promise[Unit]()
       
-      lst.refreshRoot() onComplete {
-        case Success((_, root)) => p.completeWith(remove(root))
-        
-        case Failure(_) =>
-          // Failures here must be either due to the containing object being corrupt/deleted or the root key
-          // being deleted. In either case there's nothing we can do to recover. Declare success.
-          p.success(())
+      MutableTieredKeyValueList.load(system, c.rootManagerType, c.serializedRootManager) onComplete {
+        case Failure(err) =>
+          logger.error(s"Failed to load MutableTieredKeyValueList for Join FinalizationAction. Error: $err")
+          p.success(()) // Nothing we can do to recover. Hopefully the tree has been deleted
+          
+        case Success(mtkvl) => 
+          p.completeWith(remove(mtkvl))
       }
       
       p.future
-    }    
+    }
   }
 }
 
@@ -132,6 +126,6 @@ class TieredKeyValueListJoinFA extends FinalizationActionHandler {
       system: AspenSystem,
       txd: TransactionDescription,
       serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
-    new RemoveFromUpperTier(system, BaseCodec.decodeTieredKeyValueListJoinFA(serializedActionData) )
+    new RemoveFromUpperTier(system, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData) )
   }
 }

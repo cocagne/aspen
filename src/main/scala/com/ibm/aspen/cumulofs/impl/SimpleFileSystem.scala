@@ -2,7 +2,7 @@ package com.ibm.aspen.cumulofs.impl
 
 import com.ibm.aspen.cumulofs.FileSystem
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
 import com.ibm.aspen.cumulofs.InodeTable
 import com.ibm.aspen.cumulofs.InodeLoader
@@ -31,6 +31,8 @@ import com.ibm.aspen.cumulofs.BlockDevice
 import com.ibm.aspen.cumulofs.CharacterDevice
 import com.ibm.aspen.cumulofs.BlockDevicePointer
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 
 object SimpleFileSystem {
   def load(
@@ -38,7 +40,7 @@ object SimpleFileSystem {
       fileSystemRoot: KeyValueObjectPointer, 
       clientUUID: UUID)(implicit ec: ExecutionContext): Future[FileSystem] = {
     
-    def getLocalTaskGroup(t: SimpleMutableTieredKeyValueList, allocaterUUID: UUID): Future[LocalTaskGroup] = {
+    def getLocalTaskGroup(t: MutableTieredKeyValueList, allocaterUUID: UUID): Future[LocalTaskGroup] = {
       val taskGroupKey = Key(clientUUID)
       
       system.retryStrategy.retryUntilSuccessful {
@@ -67,8 +69,9 @@ object SimpleFileSystem {
       
     for {
       rootKvos <- system.readObject(fileSystemRoot)
-      tgtRoot = FileSystem.getLocalTaskGroupTree(rootKvos)
-      tgt = new SimpleMutableTieredKeyValueList(system, Left(fileSystemRoot), FileSystem.LocalTaskGroupsTreeKey, ByteArrayKeyOrdering, Some(tgtRoot))
+      tgtRoot = FileSystem.getLocalTaskGroupTreeRoot(rootKvos)
+      rootMgr = new MutableKeyValueObjectRootManager(system, fileSystemRoot, FileSystem.LocalTaskGroupsTreeKey, tgtRoot)
+      tgt = new MutableTieredKeyValueList(rootMgr)
       allocaterUUID = FileSystem.getInodeAllocater(rootKvos)
       taskGroup <- getLocalTaskGroup(tgt, allocaterUUID)
     } yield {
@@ -99,10 +102,13 @@ class SimpleFileSystem private (
   
   def defaultSegmentAllocater(): Future[ObjectAllocater] = fdefaultSegmentAllocater
   
-  val inodeTable: InodeTable = new SimpleInodeTable(
-      system, 
-      inodeAllocater, 
-      new SimpleMutableTieredKeyValueList(system, Left(fileSystemRoot), FileSystem.InodeTableKey, IntegerKeyOrdering))
+  val inodeTable: InodeTable = {
+    val initialRoot = TieredKeyValueListRoot(rootKvos.contents(FileSystem.InodeTableKey).value)
+    val rootMgr = new MutableKeyValueObjectRootManager(system, fileSystemRoot, FileSystem.InodeTableKey, initialRoot)
+    val mtkvl = new MutableTieredKeyValueList(rootMgr)
+    
+    new SimpleInodeTable(system, inodeAllocater, mtkvl)
+  }
   
   val inodeLoader: InodeLoader = new SimpleInodeLoader(system, inodeTable, new NoInodeCache)
   

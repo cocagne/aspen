@@ -8,20 +8,20 @@ import com.ibm.aspen.util.Varint
 import com.ibm.aspen.core.objects.KeyValueObjectState
 
 final case class KeyValueListPointer(minimum:Key, pointer:KeyValueObjectPointer) {
-  
-  import KeyValueListPointer._
-  
-  def toArray: Array[Byte] = encodeToByteArray(this)
-  
-  def encodedSize: Int = {
-    val ptrSize = pointer.encodedSize
-    
-    Varint.getUnsignedIntEncodingLength(minimum.bytes.length) + 
-    minimum.bytes.length +
-    ptrSize
+
+  def toArray: Array[Byte] = {
+    val arr = new Array[Byte](encodedSize)
+    encodeInto(ByteBuffer.wrap(arr))
+    arr
   }
   
-  def encodeInto(bb: ByteBuffer): Unit = KeyValueListPointer.encodeInto(bb, this)
+  def encodedSize: Int = Varint.getUnsignedIntEncodingLength(minimum.bytes.length) + minimum.bytes.length + pointer.encodedSize
+  
+  def encodeInto(bb: ByteBuffer): Unit = {
+    Varint.putUnsignedInt(bb, minimum.bytes.length)
+    bb.put(minimum.bytes)
+    pointer.encodeInto(bb)
+  }
 }
 
 object KeyValueListPointer {
@@ -30,29 +30,14 @@ object KeyValueListPointer {
     new KeyValueListPointer(objectState.minimum.map(_.key).getOrElse(Key.AbsoluteMinimum), objectState.pointer)
   }
   
-  def apply(bb:ByteBuffer): KeyValueListPointer = fromByteBuffer(bb)
-  
-  def encodeToByteArray(p: KeyValueListPointer): Array[Byte] = {
-    val arr = new Array[Byte](p.encodedSize)
-    val bb = ByteBuffer.wrap(arr)
-    encodeInto(bb, p)
-    arr
-  }
-  
-  def encodeInto(bb: ByteBuffer, p: KeyValueListPointer): Unit = {
-    Varint.putUnsignedInt(bb, p.minimum.bytes.length)
-    bb.put(p.minimum.bytes)
-    ObjectPointer.encodeInto(bb, p.pointer)
-  }
-  
-  def fromArray(arr: Array[Byte]): KeyValueListPointer = fromByteBuffer(ByteBuffer.wrap(arr))
-  
-  
-  def fromByteBuffer(bb: ByteBuffer): KeyValueListPointer = {
+  def apply(bb:ByteBuffer): KeyValueListPointer = {
     val minLen = Varint.getUnsignedInt(bb)
     val minimum = new Array[Byte](minLen)
     bb.get(minimum)
-    KeyValueListPointer(Key(minimum), KeyValueObjectPointer(bb))
+    val pointer = KeyValueObjectPointer(bb)
+    KeyValueListPointer(Key(minimum), pointer)
   }
+  
+  def apply(arr: Array[Byte]): KeyValueListPointer = KeyValueListPointer(ByteBuffer.wrap(arr))
   
 }

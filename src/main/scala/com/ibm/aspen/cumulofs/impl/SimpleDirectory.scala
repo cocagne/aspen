@@ -8,7 +8,7 @@ import scala.concurrent.Future
 import com.ibm.aspen.cumulofs.DirectoryEntry
 import com.ibm.aspen.cumulofs.InodePointer
 import com.ibm.aspen.cumulofs.DirectoryInode
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.RetryStrategy
@@ -29,6 +29,10 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.cumulofs.Inode
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.cumulofs.BaseFile
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
 
 class SimpleDirectory(
     protected var cachedInode: DirectoryInode,
@@ -59,8 +63,8 @@ class SimpleDirectory(
   }
   
   private[this] def loadTieredList(inode: DirectoryInode)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = inode.contentTree match {
-    case Some(root) =>
-      Future.successful(createTieredList(root))
+    case Some(root) => 
+      Future.successful(createTieredList(root, inode.pointer.pointer))
       
     case None => fs.system.retryStrategy.retryUntilSuccessful {
       for {
@@ -68,19 +72,23 @@ class SimpleDirectory(
         // successfully create the tiered list. When that happens we'll simply detect success and skip the creation step
         kvos <- fs.system.readObject(inode.pointer.pointer)
         root <- createDirectoryTable(kvos)
-      } yield createTieredList(root)
+      } yield createTieredList(root, kvos.pointer)
     }
   }
   
-  private[this] def createDirectoryTable(kvos: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TieredKeyValueList.Root] = {
+  private[this] def createDirectoryTable(kvos: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TieredKeyValueListRoot] = {
     kvos.contents.get(DirectoryInode.ContentTieredListKey) match {
       case Some(v) => 
         // Some other node must have beaten us to the punch. 
-        Future.successful(TieredKeyValueList.Root(v.value))
+        Future.successful(TieredKeyValueListRoot(v.value))
       
       case None =>
         // Allocate the initial tree object and insert the tiered list root into the directory inode
 
+        val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+        val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(fs.directoryLoader.directoryTableAllocaters, 
+                                fs.directoryLoader.directoryTableSizes, fs.directoryLoader.directoryTableKVPairLimits)
+        
         fs.system.transact { implicit tx =>
         
           val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
@@ -88,8 +96,8 @@ class SimpleDirectory(
           for {
             allocater <- fs.system.getObjectAllocater(fs.directoryLoader.directoryTableAllocaters(0))
             dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-            dirTblRoot = new TieredKeyValueList.Root(0, fs.directoryLoader.directoryTableAllocaters, fs.directoryLoader.directoryTableSizes, 
-                                                     fs.directoryLoader.directoryTableKVPairLimits, LexicalKeyOrdering, dirContentPtr)
+            dirTblRoot = TieredKeyValueListRoot(0, LexicalKeyOrdering, dirContentPtr, allocaterType, allocaterConfig)
+            
             _ = tx.update(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray()) :: Nil)
           } yield dirTblRoot  
         }
@@ -97,8 +105,11 @@ class SimpleDirectory(
     
   }
   
-  def createTieredList( root: TieredKeyValueList.Root ): MutableTieredKeyValueList = new SimpleMutableTieredKeyValueList(
-      fs.system, Left(pointer.pointer), DirectoryInode.ContentTieredListKey, ByteArrayKeyOrdering, Some(root))
+  def createTieredList(root: TieredKeyValueListRoot, pointer: KeyValueObjectPointer): MutableTieredKeyValueList = {
+    val rootMgr = new MutableKeyValueObjectRootManager(fs.system, pointer, DirectoryInode.ContentTieredListKey, root)
+    new MutableTieredKeyValueList(rootMgr)
+  }
+    
 
   def getContents()(implicit ec: ExecutionContext): Future[List[DirectoryEntry]] = {
     var contents: List[DirectoryEntry] = Nil

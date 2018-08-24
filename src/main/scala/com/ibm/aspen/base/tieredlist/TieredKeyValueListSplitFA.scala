@@ -19,8 +19,10 @@ import com.ibm.aspen.core.objects.KeyValueObjectState
 import scala.concurrent.Promise
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.DataBuffer
+import org.apache.logging.log4j.scala.Logging
 
-object TieredKeyValueListSplitFA {
+object TieredKeyValueListSplitFA extends Logging {
   val FinalizationActionUUID = UUID.fromString("09d1c4a2-22a7-48b0-85f4-726afea02f2a")
   
   /** 
@@ -33,87 +35,76 @@ object TieredKeyValueListSplitFA {
    */
   def addFinalizationAction(
       transaction: Transaction, 
-      treeIdentifier: Key, 
-      treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root],
-      keyOrdering: KeyOrdering,
+      mtkvl: MutableTieredKeyValueList,
       targetTier: Int, 
       left: KeyValueListPointer, 
       right: List[KeyValueListPointer]): Unit = {
     
-    val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, right)
+    val content = Content(mtkvl.keyOrdering, mtkvl.rootManager.typeUUID, mtkvl.rootManager.serialize(), targetTier, left, right)
+    
+    val serializedContent = BaseCodec.encodeTieredKeyValueListSplitFA(content)
         
     transaction.addFinalizationAction(FinalizationActionUUID, serializedContent)
   }
   
   case class Content(
-      treeIdentifier: Key, 
-      treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], 
-      targetTier: Int, 
+      keyOrdering: KeyOrdering,
+      rootManagerType: UUID,
+      serializedRootManager: DataBuffer,
+      targetTier: Int,
       left: KeyValueListPointer, 
-      inserted: List[KeyValueListPointer],
-      keyOrdering: KeyOrdering)
+      inserted: List[KeyValueListPointer])
       
   class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
-    println(s"BEGINNING INSERT INTO UPPER TIER FA")
+    
+    def createNewTier(
+        mtkvl: MutableTieredKeyValueList,
+        newRootTier: Int,
+        inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
+      
+      mtkvl.rootManager.prepareRootUpdate(newRootTier, mtkvl.allocater, inserted)
+    }
+    
+    def insertIntoExistingTier(
+        mtkvl: MutableTieredKeyValueList,
+        right: KeyValueListPointer): Future[Unit] = system.transact { implicit tx =>
+        
+      def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {
+        addFinalizationAction(tx, mtkvl, c.targetTier+1, left, inserted)
+      }
+      
+      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
+      
+      for {
+        kvos <- mtkvl.fetchContainingNode(right.minimum, c.targetTier) 
+        
+        allocater <- mtkvl.allocater.tierNodeAllocater(c.targetTier)
+        
+        nodeSizeLimit = mtkvl.allocater.tierNodeSizeLimit(c.targetTier)
+        nodeKVPairLimit = mtkvl.allocater.tierNodeKVPairLimit(c.targetTier)
+        inserts = List((right.minimum, right.pointer.toArray))
+        deletes = Nil
+        requirements = Nil
+
+        ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+
+      } yield ()
+    }
+    
     val complete = system.retryStrategy.retryUntilSuccessful {
-      val lst = new SimpleMutableTieredKeyValueList(system, c.treeContainer, c.treeIdentifier, c.keyOrdering)
-      
-      def createNewTier(containerKvos: KeyValueObjectState, root: TieredKeyValueList.Root, inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
-        println(s"  CREATING NEW TIER")
-        val ops  = Insert(c.left.minimum, c.left.pointer.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
-        
-        for {
-          allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
-          
-          newRootPointer <- allocater.allocateKeyValueObject(
-              allocatingObject = containerKvos.pointer, 
-              allocatingObjectRevision = containerKvos.revision, 
-              initialContent = ops)
-              
-          commitReady <- lst.prepreUpdateRootTransaction(c.targetTier, newRootPointer)
-        } yield ()
-      }
-      
-      def insertIntoExistingTier(root: TieredKeyValueList.Root, right: KeyValueListPointer): Future[Unit] = system.transact { implicit tx =>
-        
-        def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {
-          addFinalizationAction(tx, c.treeIdentifier, c.treeContainer, c.keyOrdering, c.targetTier+1, left, inserted)
-        }
-        
-        def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
-        
-        for {
-          kvos <- lst.fetchContainingNode(right.minimum, c.targetTier) 
-          
-          allocater <- system.getObjectAllocater(root.getTierNodeAllocaterUUID(c.targetTier))
-          
-          nodeSizeLimit = root.getTierNodeSize(c.targetTier)
-          nodeKVPairLimit = root.getTierNodeKVPairLimit(c.targetTier)
-          inserts = List((right.minimum, right.pointer.toArray))
-          deletes = Nil
-          requirements = Nil
-
-          ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
-
-        } yield ()
-      }
-      
       val p = Promise[Unit]()
       
-      lst.refreshRoot() onComplete {
-        case Success((containerKvos, root)) =>
-          val fadd = if (root.topTier < c.targetTier) 
-            createNewTier(containerKvos, root, c.inserted) 
-          else 
-            Future.sequence(c.inserted.map(kvlp => insertIntoExistingTier(root, kvlp))).map(_ => ())
-          
-          p.completeWith(fadd)
-        
+      MutableTieredKeyValueList.load(system, c.rootManagerType, c.serializedRootManager) onComplete {
         case Failure(err) =>
-          println(s"REFRESH ROOT ERR $err")
-          // Failures here must be either due to the containing object being corrupt/deleted or the root key
-          // being deleted. In either case there's nothing we can do to recover. Declare success.
-          p.success(())
+          logger.error(s"Failed to load MutableTieredKeyValueList for Split FinalizationAction. Error: $err")
+          p.success(()) // Nothing we can do to recover. Hopefully the tree has been deleted
+          
+        case Success(mtkvl) =>
+          val fadd = if (c.targetTier > mtkvl.rootManager.root.topTier)
+            createNewTier(mtkvl, c.targetTier, c.inserted)
+          else
+            Future.sequence(c.inserted.map(kvlp => insertIntoExistingTier(mtkvl, kvlp))).map(_ => ())
+          p.completeWith(fadd)
       }
       
       p.future

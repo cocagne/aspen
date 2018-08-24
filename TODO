@@ -1,3 +1,13 @@
+* Need to re-do allocation method
+   - KV objects don't always change revision
+   - Need sealed AllocationGuard
+       - Object with overloaded apply() method:
+       - apply(DataObjectPointer, ObjectRevision)
+       - apply(KeyValueObject, ObjectRevision)
+       - apply(KeyValueObject, Key, ObjectRevision)
+   ** Good time to clean up KV requirements too
+       
+
 * Need to re-think TieredKeyValueList design
    - Its always felt kind of clunky
    - Root handling isn't very good

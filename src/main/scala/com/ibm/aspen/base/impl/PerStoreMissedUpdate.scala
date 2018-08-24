@@ -9,7 +9,6 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.base.tieredlist.SimpleMutableTieredKeyValueList
 import com.ibm.aspen.core.read.CorruptedObject
 import com.ibm.aspen.base.StopRetrying
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
@@ -27,6 +26,11 @@ import com.ibm.aspen.util.byte2uuid
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.StorePointer
+import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.ObjectAllocater
+import com.ibm.aspen.core.objects.keyvalue.Insert
 
 /**
  *  Strategy: Store in the pool definition a MutableTieredKeyValueList for each store that contains the UUIDs of
@@ -96,13 +100,31 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       case t => Future.unit
     }
     
-    def getOrCreate(pool: StoragePool, kvos: KeyValueObjectState): Future[SimpleMutableTieredKeyValueList] = kvos.contents.get(treeKey) match {
-      case Some(v) => Future.successful(SimpleMutableTieredKeyValueList.load(system, pool.poolDefinitionPointer, treeKey, v.value))
+    def getOrCreate(pool: StoragePool, kvos: KeyValueObjectState): Future[MutableTieredKeyValueList] = kvos.contents.get(treeKey) match {
+      case Some(v) =>
+        val rootMgr = new MutableKeyValueObjectRootManager(system, kvos.pointer, treeKey, TieredKeyValueListRoot(v.value))
+        Future.successful(new MutableTieredKeyValueList(rootMgr))
       
       case None =>
         val (objectAllocaters, tierNodeSizes, tierKVPairLimits) = decodeTreeConfig(pool.getMissedUpdateStrategy().config.get)
         
-        SimpleMutableTieredKeyValueList.create(system, kvos, treeKey, objectAllocaters, tierNodeSizes, tierKVPairLimits, ByteArrayKeyOrdering)
+        val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+        val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(objectAllocaters, tierNodeSizes, tierKVPairLimits)
+        
+        val froot = system.transactUntilSuccessful { implicit tx =>
+          for {
+            allocater <- system.getObjectAllocater(objectAllocaters.head)
+            rootNode <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
+            root = TieredKeyValueListRoot(0, ByteArrayKeyOrdering, rootNode, allocaterType, allocaterConfig)
+            reqs = KeyValueUpdate.KVRequirement(treeKey, kvos.timestamp, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+            _=tx.update(kvos.pointer, Some(kvos.revision), reqs, Insert(treeKey, root.toArray) :: Nil)
+          } yield root
+        }
+        
+        froot.map { root => 
+          val rootMgr = new MutableKeyValueObjectRootManager(system, kvos.pointer, treeKey, root)
+          new MutableTieredKeyValueList(rootMgr)
+        }
     }
     
     // Race condition between multiple peers simultaneously attempting to create the tree could conflict and

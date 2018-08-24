@@ -38,6 +38,10 @@ class BaseTransaction(
   val uuid: UUID = UUID.randomUUID()
   private [this] val promise = Promise[HLCTimestamp]
   private [this] var state: Either[HLCTimestamp, TransactionBuilder] = Right(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
+  private [this] var invalidated = false
+  private [this] var havePendingUpdates = false
+  
+  def valid: Boolean = synchronized { !invalidated && havePendingUpdates }
   
   def disableMissedUpdateTracking(): Unit = synchronized { state } match {
     case Right(bldr) => bldr.disableMissedUpdateTracking()
@@ -50,11 +54,15 @@ class BaseTransaction(
   }
   
   def append(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { state } match {
-    case Right(bldr) => bldr.append(objectPointer, requiredRevision, data)
+    case Right(bldr) =>
+      havePendingUpdates = true
+      bldr.append(objectPointer, requiredRevision, data)
     case Left(_) => throw PostCommitTransactionModification()
   }
   def overwrite(objectPointer: DataObjectPointer, requiredRevision: ObjectRevision, data: DataBuffer): ObjectRevision = synchronized { state } match {
-    case Right(bldr) => bldr.overwrite(objectPointer, requiredRevision, data)
+    case Right(bldr) =>
+      havePendingUpdates = true
+      bldr.overwrite(objectPointer, requiredRevision, data)
     case Left(_) => throw PostCommitTransactionModification()
   }
   
@@ -63,17 +71,23 @@ class BaseTransaction(
       requiredRevision: Option[ObjectRevision],
       requirements: List[KeyValueUpdate.KVRequirement],
       operations: List[KeyValueOperation]): Unit = synchronized { state } match {
-    case Right(bldr) => bldr.update(pointer, requiredRevision, requirements, operations)
+    case Right(bldr) =>
+      havePendingUpdates = true
+      bldr.update(pointer, requiredRevision, requirements, operations)
     case Left(_) => throw PostCommitTransactionModification()
   }
   
   def setRefcount(objectPointer: ObjectPointer, requiredRefcount: ObjectRefcount, refcount: ObjectRefcount): ObjectRefcount = synchronized { state } match {
-    case Right(bldr) => bldr.setRefcount(objectPointer, requiredRefcount, refcount)
+    case Right(bldr) =>
+      havePendingUpdates = true
+      bldr.setRefcount(objectPointer, requiredRefcount, refcount)
     case Left(_) => throw PostCommitTransactionModification()
   }
   
   def bumpVersion(objectPointer: ObjectPointer, requiredRevision: ObjectRevision): ObjectRevision = synchronized { state } match {
-    case Right(bldr) => bldr.bumpVersion(objectPointer, requiredRevision)
+    case Right(bldr) =>
+      havePendingUpdates = true
+      bldr.bumpVersion(objectPointer, requiredRevision)
     case Left(_) => throw PostCommitTransactionModification()
   }
   
@@ -103,6 +117,7 @@ class BaseTransaction(
   }
   
   def invalidateTransaction(reason: Throwable): Unit = synchronized {
+    invalidated = true
     if (!promise.isCompleted)
       promise.failure(reason)
   }

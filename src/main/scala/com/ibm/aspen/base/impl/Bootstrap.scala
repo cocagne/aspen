@@ -23,6 +23,8 @@ import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -127,7 +129,9 @@ object Bootstrap {
     }
     
     def treeRoot(rootNode: KeyValueObjectPointer): Array[Byte] = {
-      TieredKeyValueList.Root(0, Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), Array(SystemTreeKVPairLimit), ByteArrayKeyOrdering, rootNode).toArray
+      val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+      val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(Array(BootstrapObjectAllocaterUUID), Array(SystemTreeNodeSizeLimit), Array(SystemTreeKVPairLimit))
+      TieredKeyValueListRoot(0, ByteArrayKeyOrdering, rootNode, allocaterType, allocaterConfig).toArray
     }
     
     def getPoolKV(allocPtr: KeyValueObjectPointer): List[(Key, Array[Byte])] = {

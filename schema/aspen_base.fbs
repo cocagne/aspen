@@ -59,12 +59,11 @@ table AllocationFinalizationActionContent {
 //- TieredKeyValueListSplitFA
 //---------------------------------------------------------------------------
 table TieredKeyValueListSplitFA {
-  treeIdentifierKey: [byte];
-  containingObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
-  containingTreeRoot: [byte];
+  rootManagerType: com.ibm.aspen.core.network.protocol.UUID;
+  serializedRootManager: [byte];
   keyComparison: com.ibm.aspen.core.network.protocol.KeyComparison;
   targetTier: int;
   left: [byte];
-  right: [byte];
+  inserted: [byte];
 }
 

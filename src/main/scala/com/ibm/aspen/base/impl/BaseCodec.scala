@@ -50,101 +50,68 @@ object BaseCodec {
   }
   
   //-------------------------------------------------------------------------------------------------------------------
-  // TieredKeyValueListJoinFA
-  //
-  // NOTE: The structure of this message is identical to Split. So this method is implemented in terms of Split
-  //
-  def encodeTieredKeyValueListJoinFA(
-      treeIdentifier: Key, treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], keyOrdering: KeyOrdering,
-      targetTier: Int, left: KeyValueListPointer, right: KeyValueListPointer): Array[Byte] = {
-    encodeTieredKeyValueListSplitFA(treeIdentifier, treeContainer, keyOrdering, targetTier, left, List(right))
-  }
-  def decodeTieredKeyValueListJoinFA(arr: Array[Byte]): TieredKeyValueListJoinFA.Content = {
-    val c = decodeTieredKeyValueListSplitFA(arr)
-    TieredKeyValueListJoinFA.Content(c.treeIdentifier, c.treeContainer, c.targetTier, c.left, c.inserted.head, c.keyOrdering)
-  }
-  
-  //-------------------------------------------------------------------------------------------------------------------
   // TieredKeyValueListSplitFA
   //
-  def encodeTieredKeyValueListSplitFA(
-      treeIdentifier: Key, 
-      treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root], 
+  /*case class Content(
       keyOrdering: KeyOrdering,
-      targetTier: Int, 
+      rootManagerType: UUID,
+      serializedRootManager: DataBuffer,
+      targetTier: Int,
       left: KeyValueListPointer, 
-      right: List[KeyValueListPointer]): Array[Byte] = {
-    val builder = new FlatBufferBuilder(1024)
+      inserted: List[KeyValueListPointer])
+      
+      rootManagerType: com.ibm.aspen.core.network.protocol.UUID;
+  serializedRootManager: [byte];
+  keyComparison: com.ibm.aspen.core.network.protocol.KeyComparison;
+  targetTier: int;
+  left: [byte];
+  inserted: [byte];
+      * */
+  def encodeTieredKeyValueListSplitFA(c: TieredKeyValueListSplitFA.Content): Array[Byte] = {
+    val builder = new FlatBufferBuilder(4096)
     
-    val treeIdentifierOffset = P.TieredKeyValueListSplitFA.createTreeIdentifierKeyVector(builder, treeIdentifier.bytes)
-    val (containingObjectOffset, treeRootOffset) = treeContainer match {
-      case Left(pointer) => (NetworkCodec.encode(builder, pointer), -1)
-      case Right(root) => (-1, P.TieredKeyValueListSplitFA.createContainingTreeRootVector(builder, root.toArray()))
-    }
-    
-    val leftOffset = P.TieredKeyValueListSplitFA.createLeftVector(builder, left.toArray)
-    
-    val rightOffset = {
-      val encodedRightSz = right.foldLeft(0)((sz, lp) => sz + lp.encodedSize)
-      val arr = new Array[Byte](encodedRightSz)
+    val insVec = {
+      val sz = c.inserted.foldLeft(0)((sz, lp) => sz + lp.encodedSize)
+      val arr = new Array[Byte](sz)
       val bb = ByteBuffer.wrap(arr)
-      right.foreach(lp => lp.encodeInto(bb))
-      P.TieredKeyValueListSplitFA.createRightVector(builder, arr)
+      c.inserted.foreach(lp => lp.encodeInto(bb))
+      arr
     }
+
+    val smr = P.TieredKeyValueListSplitFA.createSerializedRootManagerVector(builder, c.serializedRootManager.getByteArray())
+    val left = P.TieredKeyValueListSplitFA.createLeftVector(builder, c.left.toArray)
+    val ins = P.TieredKeyValueListSplitFA.createInsertedVector(builder, insVec)
     
     P.TieredKeyValueListSplitFA.startTieredKeyValueListSplitFA(builder)
-    P.TieredKeyValueListSplitFA.addTreeIdentifierKey(builder, treeIdentifierOffset)
-    
-    if (containingObjectOffset >= 0)
-      P.TieredKeyValueListSplitFA.addContainingObject(builder, containingObjectOffset)
-    if (treeRootOffset >= 0)
-      P.TieredKeyValueListSplitFA.addContainingTreeRoot(builder, treeRootOffset)
-      
-    P.TieredKeyValueListSplitFA.addKeyComparison(builder, NetworkCodec.encodeKeyComparison(keyOrdering))
-    
-    P.TieredKeyValueListSplitFA.addTargetTier(builder, targetTier)
-    
-    P.TieredKeyValueListSplitFA.addLeft(builder, leftOffset)
-    P.TieredKeyValueListSplitFA.addRight(builder, rightOffset)
-    
-    val finalOffset = P.TieredKeyValueListSplitFA.endTieredKeyValueListSplitFA(builder)   
+    P.TieredKeyValueListSplitFA.addRootManagerType(builder, NetworkCodec.encode(builder, c.rootManagerType))
+    P.TieredKeyValueListSplitFA.addSerializedRootManager(builder, smr)
+    P.TieredKeyValueListSplitFA.addKeyComparison(builder, NetworkCodec.encodeKeyComparison(c.keyOrdering))
+    P.TieredKeyValueListSplitFA.addTargetTier(builder, c.targetTier)
+    P.TieredKeyValueListSplitFA.addLeft(builder, left)
+    P.TieredKeyValueListSplitFA.addInserted(builder, ins)
  
-    builder.finish(finalOffset)
+    builder.finish(P.TieredKeyValueListSplitFA.endTieredKeyValueListSplitFA(builder))
     
-    val db = builder.dataBuffer()
-    
-    val arr = new Array[Byte](db.limit - db.position)
-    db.get(arr)
-    
-    arr
+    NetworkCodec.byteBufferToArray(builder.dataBuffer())
   }
   def decodeTieredKeyValueListSplitFA(arr: Array[Byte]): TieredKeyValueListSplitFA.Content = {
     val o = P.TieredKeyValueListSplitFA.getRootAsTieredKeyValueListSplitFA(ByteBuffer.wrap(arr))
     
-    val karr = new Array[Byte](o.treeIdentifierKeyLength())
-    o.treeIdentifierKeyAsByteBuffer().get(karr)
-    val treeIdentifier = Key(karr)
-    
-    val leftPointer = KeyValueListPointer(o.leftAsByteBuffer())
-    
-    val rbb = o.rightAsByteBuffer()
-    var right: List[KeyValueListPointer] = Nil
-    while (rbb.remaining() != 0)
-      right = KeyValueListPointer(rbb) :: right
-    
-    right = right.reverse
-    
-    val treeContainer: Either[KeyValueObjectPointer, TieredKeyValueList.Root] = if (o.containingTreeRootLength() > 0)
-        Right(TieredKeyValueList.Root(o.containingTreeRootAsByteBuffer()))
-      else
-        Left(NetworkCodec.decode(o.containingObject()).asInstanceOf[KeyValueObjectPointer])
-    
+    val rootManagerType = NetworkCodec.decode(o.rootManagerType())
+    val smr = new Array[Byte](o.serializedRootManagerLength())
+    o.serializedRootManagerAsByteBuffer().get(smr)
     val keyOrdering = NetworkCodec.decodeKeyComparison(o.keyComparison())
+    val targetTier = o.targetTier()
+
+    val left = KeyValueListPointer(o.leftAsByteBuffer())
+
+    var ins: List[KeyValueListPointer] = Nil
+    val ibb = o.insertedAsByteBuffer()
+    while (ibb.remaining != 0)
+      ins = KeyValueListPointer(ibb) :: ins
     
-    TieredKeyValueListSplitFA.Content(treeIdentifier, treeContainer, o.targetTier(),
-        leftPointer, right, keyOrdering)
+    TieredKeyValueListSplitFA.Content(keyOrdering, rootManagerType, smr, 
+        targetTier, left, ins.reverse)
   }
-  
-  
   
 }

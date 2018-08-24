@@ -54,6 +54,9 @@ trait Transaction {
    */
   def invalidateTransaction(reason: Throwable): Unit
   
+  /** True if one or more updates have been added to the transaction and it has not been invalidated */
+  def valid: Boolean
+  
   def result: Future[HLCTimestamp]
   
   /** Used by MissedUpdateFinalizationActions to prevent circular loops when marking objects as having missed update transactions.

@@ -377,8 +377,14 @@ object KeyValueList {
           // Migrate all content from the right node to this node and delete the right node
           var ops = updateOps
           
-          rkvos.maximum.foreach( m => ops = new SetMax(m.key) :: ops )
-          rkvos.right.foreach( r => ops = new SetRight(r.content) :: ops )
+          rkvos.maximum match {
+            case Some(m) => ops = SetMax(m.key) :: ops
+            case None => ops = DeleteMax() :: ops
+          }
+          rkvos.right match {
+            case Some(r) => ops = SetRight(r.content) :: ops
+            case None => ops = DeleteRight() :: ops 
+          }
           rkvos.contents.valuesIterator.foreach { v => ops = new Insert(v.key, v.value, Some(v.timestamp), Some(v.revision)) :: ops }
 
           tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, ops)
@@ -400,6 +406,8 @@ object KeyValueList {
       rootPointer: KeyValueListPointer,
       prepareForDeletion: KeyValueObjectState => Future[Unit])
       (implicit ec: ExecutionContext): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
+    
+    val pcomplete = Promise[Unit]()
     
     def destroyRight(rootRevision: ObjectRevision, oright: Option[KeyValueObjectPointer]): Future[ObjectRevision] = oright match {
       case None => Future.successful(rootRevision)
@@ -428,10 +436,16 @@ object KeyValueList {
       }
     }
     
-    for {
-      root <- system.readObject(rootPointer.pointer)
-      _ <- destroyRight(root.revision, root.right.map(r => KeyValueObjectPointer(r.content)))
-      _ <- destroyRoot()
-    } yield ()
+    system.readObject(rootPointer.pointer) onComplete {
+      case Failure(_) => pcomplete.success(()) // Already done!
+      case Success(root) =>
+        val fcomplete = for {
+          _ <- destroyRight(root.revision, root.right.map(r => KeyValueObjectPointer(r.content)))
+          _ <- destroyRoot()
+        } yield ()
+        pcomplete.completeWith(fcomplete)
+    }
+    
+    pcomplete.future
   }
 }
