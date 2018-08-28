@@ -30,18 +30,7 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   
   def createNewTestSystem(): TestSystem = new TestSystem()
   
-  def waitForTransactionsComplete(): Future[Unit] = Future {
-
-    var count = 0
-    
-    while (!ts.sn0.allTransactionsComplete && count < 100) {
-      count += 1
-      Thread.sleep(5)
-    }
-    
-    if (count >= 100) 
-      throw new Exception("Finalization Actions Timed Out")
-  }
+  def waitForTransactionsComplete(): Future[Unit] = ts.waitForTransactionsComplete()
   
   def waitForIt(errMsg: String)(fn: => Boolean): Future[Unit] = Future {
     

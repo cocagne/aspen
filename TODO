@@ -1,7 +1,18 @@
-* We're generally having hangs during one or more tests
-   - Could be PerStoreMissedUpdate not finishing?
+* Audit DataStoreFrontend & ObjectLoader
+  - Hangs are almost certainly due to one or more bugs here
+  - MemoryOnlyCRL & DataStoreBackend *never* block and network cannot delay messages
+   
+* HANGS
+  - Add report of reads taking over 3 seconds along with diagnostics for why
+  - FA completion
+     - in waitForFinalizationCompletion
+         - Add report if FA exceeds 3 seconds
+         - At min, print the class name
+         - could also add a getDebugInfo method
    
 * WTF are we having missed updates during unit tests though?
+   - Could easily be a read-hang
+   - if something went wrong with decode process, could spin forever
 
 * KeyValueObjectStoreSuite
    - Add tests for operations on object

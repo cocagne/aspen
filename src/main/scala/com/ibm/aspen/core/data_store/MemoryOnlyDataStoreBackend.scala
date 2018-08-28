@@ -29,67 +29,69 @@ class MemoryOnlyDataStoreBackend(
   override def allocateObject(objectUUID: UUID, metadata: ObjectMetadata, data: DataBuffer): Future[Either[AllocationErrors.Value, Array[Byte]]] = synchronized {
     val o = new Obj(metadata, data)
     objects += (objectUUID -> o)
+    
     Future.successful(Right(NullArray))
   }
   
   override def deleteObject(objectId: StoreObjectID): Future[Unit] = synchronized {
     objects -= objectId.objectUUID
+    
     Future.successful(())
   }
   
   override def getObjectMetaData(objectId: StoreObjectID): Future[Either[ObjectReadError, ObjectMetadata]] = synchronized {
-    Future.successful {
-      objects.get(objectId.objectUUID) match {
-        case None => Left(new InvalidLocalPointer)
-        case Some(o) => Right(o.metadata)
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => Left(new InvalidLocalPointer)
+      case Some(o) => Right(o.metadata)
     }
+    
+    Future.successful(result)
   }
   
   override def getObjectData(objectId: StoreObjectID): Future[Either[ObjectReadError, DataBuffer]] = synchronized {
-    Future.successful {
-      objects.get(objectId.objectUUID) match {
-        case None => Left(new InvalidLocalPointer)
-        case Some(o) => Right(o.data)
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => Left(new InvalidLocalPointer)
+      case Some(o) => Right(o.data)
     }
+    
+    Future.successful(result)
   }
   
   override def getObject(objectId: StoreObjectID): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer)]] = synchronized {
-    Future.successful {
-      objects.get(objectId.objectUUID) match {
-        case None => Left(new InvalidLocalPointer)
-        case Some(o) => Right((o.metadata, o.data))
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => Left(new InvalidLocalPointer)
+      case Some(o) => Right((o.metadata, o.data))
     }
+    
+    Future.successful(result)
   }
   
   override def putObjectMetaData(objectId: StoreObjectID, metadata: ObjectMetadata): Future[Unit] = synchronized { 
-    Future.successful {
-      objects.get(objectId.objectUUID) match {
-        case None => assert(false, "Put attempted on non-existent object")
-        case Some(o) => o.metadata = metadata
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => assert(false, "Put attempted on non-existent object")
+      case Some(o) => o.metadata = metadata
     }
+    
+    Future.successful(result)
   }
   
   override def putObjectData(objectId: StoreObjectID, data:DataBuffer): Future[Unit] = synchronized { 
-    Future.successful {
-      objects.get(objectId.objectUUID) match {
-        case None => assert(false, "Put attempted on non-existent object")
-        case Some(o) => o.data = data
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => assert(false, "Put attempted on non-existent object")
+      case Some(o) => o.data = data
     }
+    
+    Future.successful(result)
   }
   
   override def putObject(objectId: StoreObjectID, metadata: ObjectMetadata, data: DataBuffer): Future[Unit] = synchronized { 
-    Future.successful {  
-      objects.get(objectId.objectUUID) match {
-        case None => assert(false, "Put attempted on non-existent object")
-        case Some(o) => 
-          o.metadata = metadata
-          o.data = data
-      }
+    val result = objects.get(objectId.objectUUID) match {
+      case None => assert(false, "Put attempted on non-existent object")
+      case Some(o) => 
+        o.metadata = metadata
+        o.data = data
     }
+    
+    Future.successful(result)
   }
 }
