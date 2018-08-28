@@ -1,62 +1,7 @@
-* AllocFA and DeleteFA contention during unit tests
-   - retryUntilSuccessful is the right way to go
-   - contention here is okay so we don't want to assert on retry attempt
-   - Add an allocationRetryStrategy to BasicAspenSystem
-       |-> FAs take a BasicAspenSystem and use this strategy instead
-       |-> Simple and slow backoff should be sufficient
-      
-
-* Super Simple solution would be to always send the set of locked UUIDs only (skip full txd)
-   - If any is known, committed. Drop the message and re-request
-   - Involves a spin but it's really easy to implement
-   - Modify the read message to always send locked UUIDs
-   - REMOVE the option for getting TXDs in read request
-
-* Add recent commit cache
-   - Use during read to auto-promote received segments
-   - Could use an intermediary future between future exposed to application layer and as comes from Paxos impl
-   - Should help avoid spurrious TransactionAborted
+* We're generally having hangs during one or more tests
+   - Could be PerStoreMissedUpdate not finishing?
    
-* Indexed File Truncation is broken
-
-* Need to re-do allocation method
-   - KV objects don't always change revision
-   - Need sealed AllocationGuard
-       - Object with overloaded apply() method:
-       - apply(DataObjectPointer, ObjectRevision)
-       - apply(KeyValueObject, ObjectRevision)
-       - apply(KeyValueObject, Key, ObjectRevision)
-   ** Good time to clean up KV requirements too
-       
-
-* Need to re-think TieredKeyValueList design
-   - Its always felt kind of clunky
-   - Root handling isn't very good
-   - Usage interface is okay, initialization and support needs work
-   
-   - Root contains:
-       - top tier number
-       - root node pointer
-       - KeyOrdering
-       - TreeTypeUUID - UUID for the registered MutableTieredKeyValueList subclass that knows how to update
-          the root?
-          -- Inode example. How would a non-cumlofs app know how to update the inode for DataObject case?
-             -> type constructor could be passed root + containing object pointer?
-          -- Does this need to be fully generic? Missed Tx, FAs need to load simple TKVLs held by KV objects
-             - CumuloFS directories are only every loaded by application-specific code. So holding in
-               a DataObject is fine the things that want to load hte tree will know the right type to use.
-             - FAs can also embed whatever info they need to load a TKVL
-          -- Can get away with generic KV-based TKVL host and rely on application-specific alternatives
-       - MutableTieredKeyValueListConfig UUID - for type registry
-       - byteArray for mutable config data
-       
-       ** Root node updates are infrequent enough that we don't need to worry about contention. 
-          - even self-contending on directory update shouldn't be a problem
-       
-   - MutableTieredKeyValueListConfig
-       - Registered in type registry
-       - provides allocation & size limits
-       - 
+* WTF are we having missed updates during unit tests though?
 
 * KeyValueObjectStoreSuite
    - Add tests for operations on object

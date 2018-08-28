@@ -155,7 +155,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
 //        println(s"ptr(${ptr}), rev(${nrev2}), ref(${ref}), ts(${ts}), data(${com.ibm.aspen.util.db2string(odata)})")
 //    }
     
-    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, readTime, 5, odata), noLocks))))
+    o should be (Right(DataObjectState(ptr, nrev2, ref, ts, readTime, 5, odata)))
   }
   
   test("Ignore old revisions") {
@@ -175,7 +175,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, ts, 5, odata), noLocks))))
+    o should be (Right(DataObjectState(ptr, nrev2, ref, ts, ts, 5, odata)))
   }
   
   test("Use minimum readTime") {
@@ -197,7 +197,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, nrev2, ref, ts, minTs, 5, odata), noLocks))))
+    o should be (Right(DataObjectState(ptr, nrev2, ref, ts, minTs, 5, odata)))
   }
   
   
@@ -212,7 +212,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((DataObjectState(ptr, rev, ref, ts, ts, 5, odata), noLocks))))
+    o should be (Right(DataObjectState(ptr, rev, ref, ts, ts, 5, odata)))
   }
   
   test("Successful read without data or locks") {
@@ -226,6 +226,6 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
     r.readResult.isCompleted should be (true)
     val o = Await.result(r.readResult, awaitDuration)
     
-    o should be (Right(((MetadataObjectState(ptr, rev, ref, ts, ts), None))))
+    o should be (Right(MetadataObjectState(ptr, rev, ref, ts, ts)))
   }
 }

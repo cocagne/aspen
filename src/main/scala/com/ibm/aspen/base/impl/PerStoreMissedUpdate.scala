@@ -111,14 +111,16 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
         val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
         val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(objectAllocaters, tierNodeSizes, tierKVPairLimits)
         
-        val froot = system.transactUntilSuccessful { implicit tx =>
-          for {
-            allocater <- system.getObjectAllocater(objectAllocaters.head)
-            rootNode <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-            root = TieredKeyValueListRoot(0, ByteArrayKeyOrdering, rootNode, allocaterType, allocaterConfig)
-            reqs = KeyValueUpdate.KVRequirement(treeKey, kvos.timestamp, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
-            _=tx.update(kvos.pointer, Some(kvos.revision), reqs, Insert(treeKey, root.toArray) :: Nil)
-          } yield root
+        val froot = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful{ 
+          system.transact { implicit tx =>
+            for {
+              allocater <- system.getObjectAllocater(objectAllocaters.head)
+              rootNode <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
+              root = TieredKeyValueListRoot(0, ByteArrayKeyOrdering, rootNode, allocaterType, allocaterConfig)
+              reqs = KeyValueUpdate.KVRequirement(treeKey, kvos.timestamp, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
+              _=tx.update(kvos.pointer, Some(kvos.revision), reqs, Insert(treeKey, root.toArray) :: Nil)
+            } yield root
+          }
         }
         
         froot.map { root => 
@@ -130,7 +132,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     // Race condition between multiple peers simultaneously attempting to create the tree could conflict and
     // cause failures. Continually re-read and re-attempt until either creation succeeds or we see that someone
     // else created it
-    system.retryStrategy.retryUntilSuccessful(onAttemptFailure _) {
+    system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful(onAttemptFailure _) {
       for {
         pool <- system.getStoragePool(poolUUID)
         kvos <- system.readObject(pool.poolDefinitionPointer)
@@ -239,18 +241,19 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     
     val objKey = Key(obj.uuid)
     
-    system.transactUntilSuccessfulWithRecovery(onAttemptFailure _) { implicit tx =>
-      
-      // Prevent potentially infinite recursion
-      tx.disableMissedUpdateTracking()
-      
-      val value = obj.getStorePointer(DataStoreID(obj.poolUUID, storeIndex)).get.encode()
-      
-      for {
-        tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
-        node <- tl.fetchMutableNode(objKey)
-        prep <- node.prepreUpdateTransaction(List((objKey -> value)), Nil, Nil)
-      } yield ()
+    system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful(onAttemptFailure _) {
+      system.transact { implicit tx =>
+        // Prevent potentially infinite recursion
+        tx.disableMissedUpdateTracking()
+        
+        val value = obj.getStorePointer(DataStoreID(obj.poolUUID, storeIndex)).get.encode()
+        
+        for {
+          tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
+          node <- tl.fetchMutableNode(objKey)
+          prep <- node.prepreUpdateTransaction(List((objKey -> value)), Nil, Nil)
+        } yield ()
+      }
     }
   }
   

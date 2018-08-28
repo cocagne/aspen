@@ -34,9 +34,9 @@ object AllocationFinalizationAction {
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    val complete = system.retryStrategy.retryUntilSuccessful {
+    val complete = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful {
       //
-      // TODO: getStoragePool will forever fail if the pool description object is deleted (old Tx could be recovered after pool is deleted)
+      // TODO: getStoragePool will forever fail  if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
       //
       implicit val tx = system.newTransaction()

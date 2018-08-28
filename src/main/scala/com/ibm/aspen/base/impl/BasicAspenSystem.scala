@@ -69,6 +69,7 @@ import com.ibm.aspen.base.tieredlist.MutableTKVLRootManager
 import com.github.blemale.scaffeine.Cache
 import com.github.blemale.scaffeine.Scaffeine
 import scala.concurrent.duration._
+import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 
 
 object BasicAspenSystem {
@@ -76,6 +77,14 @@ object BasicAspenSystem {
   import scala.language.implicitConversions
   
   import com.ibm.aspen.util.uuid2byte
+  
+  /** Used by allocation finalizers instead of the one passed in to the constructor.
+   *  
+   *  This is primarily used to avoid problems with the AssertOnRetry strategy as contention on the allocation tree
+   *  is normal even during unit tests. Insert/Remove retries are necessary to work around the conflicts. When 
+   *  AssertOnRetry is used, these retries are flagged as errors instead of normal operation.
+   */
+  val FinalizationActionRetryStrategyUUID = UUID.fromString("b32975fd-cdf2-41a8-891f-87d8ae179664")
   
   type TransactionFactory = (BasicAspenSystem,
                              ClientTransactionManager,  
@@ -115,6 +124,16 @@ class BasicAspenSystem(
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   
   
+  protected var retryStrategies = Map[UUID, RetryStrategy](
+      (FinalizationActionRetryStrategyUUID -> new ExponentialBackoffRetryStrategy(backoffLimit=10000, initialRetryDelay=3)))
+  
+  def getRetryStrategy(uuid: UUID): RetryStrategy = synchronized {
+    retryStrategies.getOrElse(uuid, retryStrategy)
+  }
+  
+  def registerRetryStrategy(uuid: UUID, strategy: RetryStrategy): Unit = synchronized {
+    retryStrategies +=  (uuid -> strategy)
+  }
   
   def getStorageHost(storeId: DataStoreID): Future[StorageHost] = getStorageHostFn(storeId)
   

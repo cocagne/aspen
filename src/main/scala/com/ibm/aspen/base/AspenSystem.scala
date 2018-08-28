@@ -34,6 +34,13 @@ trait AspenSystem extends ObjectReader {
   
   def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
   
+  /** Returns the retry strategy associated with the specified UUID or the default retryStrategy if not
+   *  matching UUID is found
+   */
+  def getRetryStrategy(uuid: UUID): RetryStrategy
+  
+  def registerRetryStrategy(uuid: UUID, strategy: RetryStrategy): Unit
+  
   def lowLevelAllocateDataObject(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision,

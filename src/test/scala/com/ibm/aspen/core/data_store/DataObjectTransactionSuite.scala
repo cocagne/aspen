@@ -163,7 +163,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, allocObj, allocRev)
             
-    val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, timestamp), icontent, Nil)
+    val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, timestamp), icontent, Nil, Set())
     
     futureResponse flatMap { either => either match {
       case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.storePointer)).flatMap(er => er match {

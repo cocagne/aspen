@@ -76,6 +76,7 @@ import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
 import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
 import com.ibm.aspen.core.data_store.ObjectReadError
 import com.ibm.aspen.core.transaction.RevisionLock
+import java.nio.ByteOrder
 
 
 
@@ -1107,6 +1108,7 @@ object NetworkCodec {
         val locks = if (cs.lockedWriteTransactions.isEmpty) -1 else {
           val arr = new Array[Byte](16 * cs.lockedWriteTransactions.size)
           val bb = ByteBuffer.wrap(arr)
+          bb.order(ByteOrder.BIG_ENDIAN)
           cs.lockedWriteTransactions.foreach { u =>
             bb.putLong(u.getMostSignificantBits)
             bb.putLong(u.getLeastSignificantBits)
@@ -1156,13 +1158,15 @@ object NetworkCodec {
       }
       
       var lockedWriteTransactions = Set[UUID]()
-      val lbb = n.lockedWriteTransactionsAsByteBuffer()
-      while (lbb.remaining() != 0) {
-        val msb = lbb.getLong()
-        val lsb = lbb.getLong()
-        lockedWriteTransactions += new UUID(msb, lsb) 
+      if (n.lockedWriteTransactionsLength() > 0) {
+        val lbb = n.lockedWriteTransactionsAsByteBuffer()
+        lbb.order(ByteOrder.BIG_ENDIAN)
+        while (lbb.remaining() != 0) {
+          val msb = lbb.getLong()
+          val lsb = lbb.getLong()
+          lockedWriteTransactions += new UUID(msb, lsb) 
+        }
       }
-      
       
       Right(ReadResponse.CurrentState(revision, refcount, timestamp, sizeOnStore, objectData.map(DataBuffer(_)), lockedWriteTransactions))
     }
