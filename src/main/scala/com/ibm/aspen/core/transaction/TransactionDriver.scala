@@ -48,7 +48,7 @@ abstract class TransactionDriver(
   //
   // TODO: Look for collisions with other transactions and abort only if their timestamp is less than ours
   //
-  def receiveTxPrepareResponse(msg: TxPrepareResponse): Unit = synchronized {
+  def receiveTxPrepareResponse(msg: TxPrepareResponse, txresult: (UUID) => Option[Boolean]): Unit = synchronized {
     
     if (msg.proposalId != proposer.currentProposalId)
       return
@@ -56,6 +56,25 @@ abstract class TransactionDriver(
 //    if (!msg.errors.isEmpty) {
 //      msg.errors.foreach( err => println(s"C  ${msg.from.poolIndex} TxErr ${txd.transactionUUID} $err") )
 //    }
+      
+    // If the response says there is a transaction collision with a transaction we know has successfully completed,
+    // there's a race condition. Drop the response and re-send the prepare. Eventually it will either be successfully
+    // processed or a different error will occur
+    val collisionsWithCompletedTransactions = !msg.errors.isEmpty && msg.errors.forall { e =>
+      e.conflictingTransaction match {
+        case None => false
+        case Some(txd) => txresult(txd.transactionUUID) match { 
+          case None => false
+          case Some(b) => b
+        }
+      }
+    }
+    
+    if (collisionsWithCompletedTransactions) {
+      // Race condition. Drop this message and re-send the prepare
+      sendPrepareMessage(msg.from)
+      return
+    }
       
     msg.response match {
       case Left(nack) => 
@@ -193,6 +212,12 @@ abstract class TransactionDriver(
     val proposalId = synchronized { proposer.currentProposalId }
     
     txd.allDataStores.foreach( toStore => messenger.send(TxPrepare(toStore, storeId, txd, proposalId)) )
+  }
+  
+  protected def sendPrepareMessage(storeId: DataStoreID): Unit = {
+    val proposalId = synchronized { proposer.currentProposalId }
+    
+    messenger.send(TxPrepare(storeId, storeId, txd, proposalId))
   }
   
   protected def sendAcceptMessages(): Unit = {

@@ -414,8 +414,10 @@ object Main {
     val txRetryDelay = Duration(3, SECONDS) // Delay between advancing the Paxos round and sending new prepare messages
     
     val txDriverFactory = SimpleFixedDelayTransactionDriver.factory(txRetryDelay)
+    
+    def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
 
-    val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, storageNode.net.transactionHandler, 
+    val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, txcomplete, storageNode.net.transactionHandler, 
                      txDriverFactory, finalizerFactory.factory)
     
     val allocHeartbeatPeriod   = Duration(3, SECONDS)

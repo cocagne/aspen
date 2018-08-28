@@ -1042,6 +1042,10 @@ class DataStoreFrontend(
             log.tx.warn(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
             errors.foreach( err => log.tx.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
           }
+//          if (true) {
+//            println(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
+//            errors.foreach( err => println(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
+//          }
           
           val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
             case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)

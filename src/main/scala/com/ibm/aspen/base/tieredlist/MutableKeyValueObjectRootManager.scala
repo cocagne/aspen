@@ -38,17 +38,17 @@ class MutableKeyValueObjectRootManager(
       allocater: TieredKeyValueListNodeAllocater,
       inserted: List[KeyValueListPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     
-    val fkvoss = reader.readSingleKey(containingObject, treeKey, root.keyOrdering)
+    val fkvos = reader.readSingleKey(containingObject, treeKey, root.keyOrdering)
     val falloc = allocater.tierNodeAllocater(newRootTier)
     val iops = Insert(Key.AbsoluteMinimum, root.rootNode.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
     
     for {
-      kvoss <- fkvoss
+      kvos <- fkvos
       allocater <- falloc
       // FIXME - switch to revision guard on key
-      newRootPointer <- allocater.allocateKeyValueObject(kvoss.pointer, kvoss.revision, iops)
+      newRootPointer <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, iops)
     } yield {
-      kvoss.contents.get(treeKey) match {
+      kvos.contents.get(treeKey) match {
         case None => throw new InvalidRoot
         
         case Some(v) =>
@@ -67,8 +67,8 @@ class MutableKeyValueObjectRootManager(
   }
   
   def prepareRootDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
-    reader.readSingleKey(containingObject, treeKey, root.keyOrdering) map { kvoss =>
-      kvoss.contents.get(treeKey) map { v =>
+    reader.readSingleKey(containingObject, treeKey, root.keyOrdering) map { kvos =>
+      kvos.contents.get(treeKey) map { v =>
         val reqs = KeyValueUpdate.KVRequirement(treeKey, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
         tx.update(containingObject, None, reqs, Delete(treeKey) :: Nil)
       }

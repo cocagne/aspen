@@ -532,7 +532,7 @@ object IndexedFileContent {
     def suspend(): Unit = {}
     
     def beginStep(): Unit = {
-  
+   
       def rdelete(nodePointer: DataObjectPointer): Future[Unit] = {
         system.readObject(nodePointer).flatMap { dos =>
 
@@ -584,6 +584,7 @@ object IndexedFileContent {
         system.transactUntilSuccessful { tx =>
           //println(s"******* COMPLETED FILE TRUNCATION TASK *****")
           completeTask(tx)
+          tx.result.failed.foreach(err => s"COMPLETE TX FAIL $err")
           Future.unit
         }
       }

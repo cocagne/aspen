@@ -1,3 +1,11 @@
+* AllocFA and DeleteFA contention during unit tests
+   - retryUntilSuccessful is the right way to go
+   - contention here is okay so we don't want to assert on retry attempt
+   - Add an allocationRetryStrategy to BasicAspenSystem
+       |-> FAs take a BasicAspenSystem and use this strategy instead
+       |-> Simple and slow backoff should be sufficient
+      
+
 * Super Simple solution would be to always send the set of locked UUIDs only (skip full txd)
    - If any is known, committed. Drop the message and re-request
    - Involves a spin but it's really easy to implement
@@ -70,6 +78,9 @@
     - requires that the revision change on commit
 * Need to rethink transaction semantics then. Use regular 
 
+
+** Locked transaction UUIDs could be filtered down for partial-object reads to just the returned set of keys
+    - relatively easy, just requires a bit of work on DataStoreFrontend, MutableObject, and StorageNodeReader
 
 * Tiered List needs restructuring. Replacing the root in a KV object isn't right.
 

@@ -11,6 +11,7 @@ import java.io.PrintWriter
 class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
   def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
     val p = Promise[T]()
+    val stack = com.ibm.aspen.util.getStack()
     attempt onComplete {
       case Success(r) => p.success(r)
       
@@ -18,6 +19,8 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
       
       case Failure(cause) => 
         println(s"********************* RetryUntilSuccess Operation FAILED: $cause")
+        println("**** Leading call stack")
+        println(stack)
         assert(false)
         //p.failure(cause)
     }
@@ -26,6 +29,7 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
   
   def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = retryUntilSuccessful {
     val p = Promise[T]()
+    val stack = com.ibm.aspen.util.getStack()
     attempt onComplete {
       case Success(r) => p.success(r)
       
@@ -44,12 +48,16 @@ class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
               
               case Failure(cause) => 
                 println(s"********************* RetryUntilSuccessWithRecovery Operation FAILED *after* recovery operation: $cause")
+                println("**** Leading call stack")
+                println(stack)
                 assert(false)
                 //p.failure(cause)
             }
           
           case Failure(cause) =>
             println(s"********************* RetryUntilSuccessWithRecovery Operation FAILED: $cause")
+            println("**** Leading call stack")
+            println(stack)
             assert(false)
             //p.failure(cause)
         }

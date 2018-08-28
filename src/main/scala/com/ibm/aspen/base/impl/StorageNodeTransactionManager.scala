@@ -34,6 +34,7 @@ import com.ibm.aspen.core.transaction.TxCommitted
 
 class StorageNodeTransactionManager(
     val crl: CrashRecoveryLog, 
+    val txresult: (UUID) => Option[Boolean],
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
     val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
@@ -142,7 +143,7 @@ class StorageNodeTransactionManager(
                 
                 // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
                 prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach { lst => 
-                  lst.foreach(driver.receiveTxPrepareResponse)
+                  lst.foreach( p => driver.receiveTxPrepareResponse(p, txresult))
                   
                   // No need to keep the cached entries around
                   prepareResponseCache.invalidate(m.txd.transactionUUID)
@@ -161,7 +162,7 @@ class StorageNodeTransactionManager(
      
         case m: TxPrepareResponse => 
           getTransactionDriver(m.transactionUUID)  match {
-            case Some(td) => td.receiveTxPrepareResponse(m)
+            case Some(td) => td.receiveTxPrepareResponse(m, txresult)
             
             case None =>
               // TxPrepareResponse messages are unicast to the transaction leader. That we're receiving one probably means we're

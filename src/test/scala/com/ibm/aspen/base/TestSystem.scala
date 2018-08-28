@@ -168,8 +168,10 @@ class TestSystem(
     val faRegistry = BaseImplTypeRegistry(sys)
     
     val finalizerFactory = new BaseTransactionFinalizer(sys)
+    
+    def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
      
-    val txMgr = new StorageNodeTransactionManager(sn.crl, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+    val txMgr = new StorageNodeTransactionManager(sn.crl, txcomplete, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
     val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)
     
     sn.recoverPendingOperations(txMgr, allocMgr)

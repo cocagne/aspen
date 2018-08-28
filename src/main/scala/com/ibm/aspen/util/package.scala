@@ -31,13 +31,15 @@ package object util {
   }
   def byte2int(arr: Array[Byte]): Int = ByteBuffer.wrap(arr).getInt()
   
-  def printStack(): Unit = {
+  def getStack(): String = {
     val e = new Exception("printing stack")
     val sw = new StringWriter()
     val pw = new PrintWriter(sw)
     e.printStackTrace(pw)
-    println(sw.toString())
+    sw.toString()
   }
+  
+  def printStack(): Unit = println(getStack())
   
   def db2string(db: DataBuffer): String = {
     val enc = java.util.Base64.getEncoder()

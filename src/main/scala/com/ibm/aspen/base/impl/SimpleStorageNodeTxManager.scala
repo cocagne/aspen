@@ -6,16 +6,18 @@ import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.transaction.TransactionFinalizer
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{ Duration, MILLISECONDS }
+import java.util.UUID
 
 /** Provides simple mechanism for detecting and recovering from stalled transactions */
 class SimpleStorageNodeTxManager(
     val heartbeatPeriod: Duration,
     val heartbeatTimeout: Duration,
-    crl: CrashRecoveryLog, 
+    crl: CrashRecoveryLog,
+    txresult: (UUID) => Option[Boolean],
     messenger: StoreSideTransactionMessenger,
     driverFactory: TransactionDriver.Factory,
     finalizerFactory: TransactionFinalizer.Factory)
-    (implicit ec: ExecutionContext) extends StorageNodeTransactionManager(crl, messenger, driverFactory, finalizerFactory) {
+    (implicit ec: ExecutionContext) extends StorageNodeTransactionManager(crl, txresult, messenger, driverFactory, finalizerFactory) {
   
   // Periodically send out heartbeats for all driven transactions and look for transactions that haven't received
   // heartbeats within the timeout window.

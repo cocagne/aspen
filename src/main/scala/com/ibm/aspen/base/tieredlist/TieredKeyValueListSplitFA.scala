@@ -61,10 +61,9 @@ object TieredKeyValueListSplitFA extends Logging {
         mtkvl: MutableTieredKeyValueList,
         newRootTier: Int,
         inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
-      
       mtkvl.rootManager.prepareRootUpdate(newRootTier, mtkvl.allocater, inserted)
     }
-    
+    /*
     def insertIntoExistingTier(
         mtkvl: MutableTieredKeyValueList,
         right: KeyValueListPointer): Future[Unit] = system.transact { implicit tx =>
@@ -89,6 +88,41 @@ object TieredKeyValueListSplitFA extends Logging {
         ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
 
       } yield ()
+    }*/
+    
+    def insertIntoExistingTier(
+        mtkvl: MutableTieredKeyValueList,
+        toInsert: List[KeyValueListPointer]) : Future[Unit] = if (toInsert.isEmpty) Future.successful(()) else {
+      
+      implicit val tx = system.newTransaction()
+      
+      def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {
+        addFinalizationAction(tx, mtkvl, c.targetTier+1, left, inserted)
+      }
+      
+      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
+      
+      val f = for {
+        kvos <- mtkvl.fetchContainingNode(toInsert.head.minimum, c.targetTier) 
+        
+        allocater <- mtkvl.allocater.tierNodeAllocater(c.targetTier)
+        
+        nodeSizeLimit = mtkvl.allocater.tierNodeSizeLimit(c.targetTier)
+        nodeKVPairLimit = mtkvl.allocater.tierNodeKVPairLimit(c.targetTier)
+        
+        (ins, remaining) = toInsert.partition(lp => kvos.keyInRange(lp.minimum, c.keyOrdering))
+        
+        inserts = ins.map(lp => (lp.minimum, lp.pointer.toArray))
+        deletes = Nil
+        requirements = Nil
+
+        ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+        
+        _ <- tx.commit()
+
+      } yield remaining
+      
+      f.flatMap(remaining => insertIntoExistingTier(mtkvl, remaining))
     }
     
     val complete = system.retryStrategy.retryUntilSuccessful {
@@ -103,7 +137,8 @@ object TieredKeyValueListSplitFA extends Logging {
           val fadd = if (c.targetTier > mtkvl.rootManager.root.topTier)
             createNewTier(mtkvl, c.targetTier, c.inserted)
           else
-            Future.sequence(c.inserted.map(kvlp => insertIntoExistingTier(mtkvl, kvlp))).map(_ => ())
+            insertIntoExistingTier(mtkvl, c.inserted)
+            //Future.sequence(c.inserted.map(kvlp => insertIntoExistingTier(mtkvl, kvlp))).map(_ => ())
           p.completeWith(fadd)
       }
       

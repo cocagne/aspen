@@ -74,6 +74,8 @@ object TransactionDriverSuite {
 class TransactionDriverSuite extends FunSuite with Matchers {
   import TransactionDriverSuite._
   
+  def txresult(uuid: UUID): Option[Boolean] = None
+  
   test("Simple PrepareResponse Handling") {
     val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
     val prep = mkprep(1, 0, 0, txd)
@@ -90,7 +92,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -101,7 +103,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
     
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true), 
@@ -125,7 +127,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -136,7 +138,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -147,7 +149,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -158,7 +160,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
     
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
@@ -189,7 +191,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -200,7 +202,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -211,7 +213,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -222,7 +224,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
     
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
@@ -254,7 +256,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -265,7 +267,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -276,7 +278,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -287,7 +289,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -298,7 +300,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteAbort,
-            Nil))
+            Nil), txresult)
             
     messenger.messages should be (Nil)
     
@@ -309,7 +311,7 @@ class TransactionDriverSuite extends FunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,0),
             TransactionDisposition.VoteAbort,
-            Nil))
+            Nil), txresult)
     
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),false),
