@@ -589,10 +589,17 @@ object NetworkCodec {
   
   def encode(builder:FlatBufferBuilder, o:UpdateErrorResponse): Int = {
     val updateError = encodeUpdateError(o.updateError)
-    var collidingTx = -1
-    
-    if (o.conflictingTransaction.isDefined)
-      collidingTx = encode(builder, o.conflictingTransaction.get)
+    var collidingTx = o.conflictingTransaction match {
+      case None => -1
+      case Some(t) =>
+        val arr = new Array[Byte](16 + 8)
+        val bb = ByteBuffer.wrap(arr)
+        bb.order(ByteOrder.BIG_ENDIAN)
+        bb.putLong(t._1.getMostSignificantBits)
+        bb.putLong(t._1.getLeastSignificantBits)
+        bb.putLong(t._2.asLong)
+        P.UpdateErrorResponse.createCollidingTransactionVector(builder, arr)
+    }
     
     P.UpdateErrorResponse.startUpdateErrorResponse(builder)
     P.UpdateErrorResponse.addObjectUuid(builder, encode(builder, o.objectUUID))
@@ -610,7 +617,16 @@ object NetworkCodec {
     val updateError = decodeUpdateErrore(n.updateError())
     val currentRev = if(n.currentRevision() == null) None else Some(decode(n.currentRevision()))
     val currentRef = if(n.currentRefcount() == null) None else Some(decode(n.currentRefcount()))
-    val collidingTx = if(n.collidingTransaction() == null) None else Some(decode(n.collidingTransaction()))
+    
+    val collidingTx = n.collidingTransactionAsByteBuffer() match {
+      case null => None
+      case bb =>
+        bb.order(ByteOrder.BIG_ENDIAN)
+        val msb = bb.getLong()
+        val lsb = bb.getLong()
+        val ts = bb.getLong()
+        Some((new UUID(msb, lsb), HLCTimestamp(ts)))
+    }
     
     UpdateErrorResponse(objectUUID, updateError, currentRev, currentRef, collidingTx)
   }

@@ -63,7 +63,7 @@ abstract class TransactionDriver(
     val collisionsWithCompletedTransactions = !msg.errors.isEmpty && msg.errors.forall { e =>
       e.conflictingTransaction match {
         case None => false
-        case Some(txd) => txresult(txd.transactionUUID) match { 
+        case Some((txuuid, txts)) => txresult(txuuid) match { 
           case None => false
           case Some(b) => b
         }

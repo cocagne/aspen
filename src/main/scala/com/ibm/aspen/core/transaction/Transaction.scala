@@ -30,6 +30,7 @@ import com.ibm.aspen.core.data_store.MissingUpdateContent
 import com.ibm.aspen.core.data_store.InsufficientFreeSpace
 import com.ibm.aspen.core.data_store.InvalidObjectType
 import com.ibm.aspen.core.data_store.KeyValueRequirementError
+import com.ibm.aspen.core.HLCTimestamp
 
 class Transaction(
     val crl: CrashRecoveryLog, 
@@ -279,7 +280,8 @@ object Transaction {
     }                                
     case e: RevisionMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
     case e: RefcountMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
-    case e: TransactionCollision     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, Some(e.lockedTransaction))
+    case e: TransactionCollision     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.Collision, None, None, 
+                                                            Some((e.lockedTransaction.transactionUUID, HLCTimestamp(e.lockedTransaction.startTimestamp))))
     case e: MissingUpdateContent     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.MissingUpdateData, None, None, None)
     case e: InsufficientFreeSpace    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InsufficientFreeSpace, None, None, None)
     case e: InvalidObjectType        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidObjectType, None, None, None)

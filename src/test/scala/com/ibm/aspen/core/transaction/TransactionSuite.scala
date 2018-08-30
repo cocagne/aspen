@@ -26,6 +26,7 @@ import com.ibm.aspen.core.data_store.TransactionReadError
 import com.ibm.aspen.core.data_store.MissingUpdateContent
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.DataObjectPointer
+import com.ibm.aspen.core.HLCTimestamp
 
 object TransactionSuite {
   
@@ -363,7 +364,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some(collidingTxd))))
+                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -437,7 +438,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some(collidingTxd))))
+                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { 
       

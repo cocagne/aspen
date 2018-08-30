@@ -179,7 +179,7 @@ table UpdateErrorResponse {
   update_error: UpdateError;
   current_revision: ObjectRevision;
   current_refcount: ObjectRefcount;
-  colliding_transaction: TransactionDescription;
+  colliding_transaction: [byte]; // 16-byte UUID + 8-byte timestamp
 }
 
 table TxPrepare {

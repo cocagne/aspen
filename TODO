@@ -1,11 +1,44 @@
 
+Base Transaction Messaging (failure free)
+1 Client -> All Stores (Prepare)
+2 All Stores -> Driver (designated leader if Prepare came from client) + Client (Prepared)
+3 Driver -> Primary Acceptors (Accept)
+4 Primary Acceptors -> Driver + Client (Accepted)
+5 Driver -> All Stores + Client (TxResolved(commit/abort))
+6 All Stores -> Driver (TxCommitted on commit only)
+7 Driver -> All Stores (TxFinalized on commit only)
+
+Collision Handling
+   - Super Simple approach for now
+   - For each object, count the locks held by each Tx
+   - If this Tx has the highest count for each object, continue. Else abort
+   - Rely on App-level exponential backoff to resolve
+
+Round 0 optimization can be added to reduce success detection to 1 RTT
+   - Need to be careful with writeThreshold > 2/3.
+       - Must guarantee that all recovery scenarios would result in commit and not abort 
+
+Can remove a message delays by using an N^2 messaging pattern for Prepared/Accepted
+This may not be a problem in practice
+   * Messages are tiny
+   * Application-level batching/multi-casting
+       - Single message to all stores hosted on the same LAN
+       - Single message to each host
+   
+
 Messaging Pattern
 1. Client -> All Stores (Prepare)
 2. All Stores -> PrimaryObjectStores + Client (Prepared)
     A. If #VoteCommit > wt for all objects, self-send Accept
     B. If #VoteCommit > wt and #VoteCommit > n/3+1 for all objects, return success to client (cannot fail)
           !!!! Verify that this "cannot fail"
+          
+    NOTE: If client can detect "cannot fail", so could AllStores (which could then auto-commit)
+          
 3. PrimaryObjectStores -> All Stores + client (Accepted) Paxos Learner detects successful n/2+1
+    all stores commit tx
+    
+    
 4. All Stores -> designatedLeader (TxCommitted)
 4. designatedLeader -> All Stores (TxResolved) -- backup for lost messages
 5. (late stores) -> designatedLeader (TxCommitted)
