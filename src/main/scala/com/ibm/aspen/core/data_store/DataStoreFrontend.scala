@@ -67,6 +67,7 @@ class DataStoreFrontend(
   
   private[this] var objectLoader = new MutableObjectLoader(backend)
 
+  // The content of the following two maps are managed by instances of the StoreTransaction class
   private[this] var activeTransactions = Map[UUID, StoreTransaction]()
   private[this] var lockedTransactions = Map[UUID, StoreTransaction]()
   
@@ -86,21 +87,20 @@ class DataStoreFrontend(
     
     allocationRecoveryStates.foreach(loadAllocatedObject)
     
-    // Re-establish locks on all transactions we voted to commit
-    
-    val txToLock = transactionRecoveryStates.filter(trs => trs.disposition == TransactionDisposition.VoteCommit) 
-    
-    val flocks = txToLock.foldLeft(List[Future[Unit]]()) { (l, trs) => 
+    val ftxrecovery = transactionRecoveryStates.foldLeft(List[Future[Unit]]()) { (l, trs) => 
       val t = new StoreTransaction(trs.txd, trs.localUpdates.getOrElse(Nil))
       
-      t.lockObjects()
       
-      lockedTransactions += (trs.txd.transactionUUID -> t)
+      
+      if (trs.disposition == TransactionDisposition.VoteCommit) {
+        // Re-establish locks on all transactions we voted to commit
+        t.lockObjects()
+      }
       
       t.objectsLoaded :: l
     }
 
-    Future.sequence(flocks).map(_=> this)
+    Future.sequence(ftxrecovery).map(_=> this)
   }
   
   override def close(): Future[Unit] = synchronized {
@@ -136,12 +136,12 @@ class DataStoreFrontend(
       allocatingObject: ObjectPointer,
       allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
     
-    def otype(): String = options match {
-      case _: DataAllocationOptions => "Data"
-      case _: KeyValueAllocationOptions => "KeyValue"
+    val objectType = options match {
+      case _: DataAllocationOptions => ObjectType.Data
+      case _: KeyValueAllocationOptions => ObjectType.KeyValue
     }
-    
-    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for ${otype()} object $newObjectUUID")
+        
+    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for ${objectType} object $newObjectUUID")
     
     val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), initialRefcount, timestamp)
         
@@ -149,10 +149,7 @@ class DataStoreFrontend(
       case Left(err) => Left(err)
       case Right(arr) =>
         val sp = new StorePointer(storeId.poolIndex, arr)
-        val objectType = options match {
-          case _: DataAllocationOptions => ObjectType.Data
-          case _: KeyValueAllocationOptions => ObjectType.KeyValue
-        }
+        
         val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp, 
                                           allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
                                           
@@ -278,13 +275,7 @@ class DataStoreFrontend(
   }
   
   private[this] def getStoreTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): StoreTransaction = {
-    activeTransactions.get(txd.transactionUUID) match {
-      case Some(st) => st
-      case None => 
-        val st = new StoreTransaction(txd, updateData.getOrElse(Nil))
-        activeTransactions += (txd.transactionUUID -> st)
-        st
-    }
+    activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(txd, updateData.getOrElse(Nil)))
   }
   
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
@@ -304,19 +295,8 @@ class DataStoreFrontend(
     }
   }
   
-  private[this] def releaseLocks(completedSt: StoreTransaction): Unit = synchronized {
-    completedSt.releaseObjects()
-    retryDelayedTransactions(completedSt.txd.transactionUUID)
-  }
-  
   def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
-    log.tx.info(s"$storeId tx: ${txd.transactionUUID} discarding transaction")
-    activeTransactions.get(txd.transactionUUID) match {
-      case None => retryDelayedTransactions(txd.transactionUUID)
-      case Some(st) => 
-        releaseLocks(st)
-        activeTransactions -= txd.transactionUUID
-    }
+    activeTransactions.get(txd.transactionUUID).foreach(st => st.discard())
   }
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
@@ -324,7 +304,7 @@ class DataStoreFrontend(
     
     st.objectsLoaded flatMap { _ => 
       synchronized { 
-        st.commit().map( _ => releaseLocks(st) )
+        st.commit().map( _ => st.releaseObjects() )
       }
     }
   }
@@ -652,6 +632,8 @@ class DataStoreFrontend(
     
     log.tx.info(s"$storeId tx: ${txd.transactionUUID} Beginning transaction")
     
+    activeTransactions += (txd.transactionUUID -> this)
+    
     var locked = false
     var committed = false
     
@@ -847,6 +829,12 @@ class DataStoreFrontend(
       }
     
     
+    def discard(): Unit = {
+      releaseObjects()
+      activeTransactions -= txd.transactionUUID
+      log.tx.info(s"$storeId tx: ${txd.transactionUUID} Discarding transaction")
+    }
+    
     def releaseObjects(): Unit = if (locked) {
       locked = false
     
@@ -884,6 +872,8 @@ class DataStoreFrontend(
       objects.valuesIterator foreach { obj =>
         obj.completeOperation(txd.transactionUUID)
       }
+      
+      retryDelayedTransactions(txd.transactionUUID)
     }
     
     def getRequirementErrors(requirement: TransactionRequirement): List[ObjectTransactionError] = {

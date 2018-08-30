@@ -1,3 +1,38 @@
+
+Messaging Pattern
+1. Client -> All Stores (Prepare)
+2. All Stores -> PrimaryObjectStores + Client (Prepared)
+    A. If #VoteCommit > wt for all objects, self-send Accept
+    B. If #VoteCommit > wt and #VoteCommit > n/3+1 for all objects, return success to client (cannot fail)
+          !!!! Verify that this "cannot fail"
+3. PrimaryObjectStores -> All Stores + client (Accepted) Paxos Learner detects successful n/2+1
+4. All Stores -> designatedLeader (TxCommitted)
+4. designatedLeader -> All Stores (TxResolved) -- backup for lost messages
+5. (late stores) -> designatedLeader (TxCommitted)
+
+* Round-0 Prepared messages are delivered to Transactions in addition to TransactionDriver
+   - allows round0 self-accept delivery optimization 
+ 
+* MissedUpdateFA uses TxCommitted responses
+   - missedUpdateSet[DataStoreID] = txd.allStores
+   - onTxCommitted(storeId): missed -= storeId
+ 
+
+Okay, per-store missed update is broken
+as is the messaging system
+Need to re-think the messages used in a transaction
+  * How do we know each store in a multi-object Tx does or does not need a missed update mark?
+  * Who participates in the Paxos consensus?
+  * How do we ensure 1-RTT resolution?
+  * How does a store recover if it misses a Tx result?
+
+
+Questions?
+  - What happens when you MutableObjectLoader.load(ptr).loadBoth() returns an error? What happens to the MutableObject? Need to unref it?
+  
+*** Missed Updates can only occur if AcceptResponse is not sent
+   - investigate this path for potential hangs
+
 * Audit DataStoreFrontend & ObjectLoader
   - Hangs are almost certainly due to one or more bugs here
   - MemoryOnlyCRL & DataStoreBackend *never* block and network cannot delay messages
