@@ -1,14 +1,25 @@
+* Switch to using TxCommitted messages for missed update detection
+   - more than just the primary object
+
+* KVList & TieredList
+   - Rename put to preparePut
+   - Add put(key,value)(implicit rs: RetryStrategy): Future[Unit]
+      - retries until success
+   - Audit code for potential use cases
 
 Base Transaction Messaging (failure free)
 1 Client -> All Stores (Prepare)
 2 All Stores -> Driver (designated leader if Prepare came from client) + Client (Prepared)
 3 Driver -> Primary Acceptors (Accept)
 4 Primary Acceptors -> Driver + Client (Accepted)
-5 Driver -> All Stores + Client (TxResolved(commit/abort))
+5 Driver -> All Stores + Client + Notify-on-Resolution-Stores (TxResolved(commit/abort))
 6 All Stores -> Driver (TxCommitted on commit only)
 7 Driver -> All Stores (TxFinalized on commit only)
 
 Collision Handling
+   - Simplest possible approach: Abort and rely on app-level retry. 
+       - App must support this anyway
+       - Everything else done here is an optimization/perf enhancement
    - Super Simple approach for now
    - For each object, count the locks held by each Tx
    - If this Tx has the highest count for each object, continue. Else abort
