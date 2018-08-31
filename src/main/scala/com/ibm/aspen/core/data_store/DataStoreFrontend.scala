@@ -90,8 +90,6 @@ class DataStoreFrontend(
     val ftxrecovery = transactionRecoveryStates.foldLeft(List[Future[Unit]]()) { (l, trs) => 
       val t = new StoreTransaction(trs.txd, trs.localUpdates.getOrElse(Nil))
       
-      
-      
       if (trs.disposition == TransactionDisposition.VoteCommit) {
         // Re-establish locks on all transactions we voted to commit
         t.lockObjects()
@@ -206,18 +204,21 @@ class DataStoreFrontend(
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
-      synchronized {
+      val fload = synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
-      } map { e => e match {
+      }
+      
+      fload.map { e => e match {
         case Left(err) =>
           log.read.info(s"$storeId read object ${pointer.uuid}. Error $err")
           Left(err)
-        case Right(obj) => synchronized {
-          log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
-          obj.completeOperation(readUUID)
-          //println(s"getObject ${pointer.uuid} ${obj.metadata}")
-          Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
-        }
+          
+        case Right(obj) => 
+          synchronized {
+              log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
+              obj.completeOperation(readUUID)
+              Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+          }
       }}
   }
   
@@ -235,18 +236,20 @@ class DataStoreFrontend(
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
-      synchronized {
+      val fload = synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
-      } map { e => e match {
+      } 
+      
+      fload.map { e => e match {
         case Left(err) =>
           log.read.info(s"$storeId readMeta object ${pointer.uuid}. Error $err")
           Left(err)
-        case Right(obj) => synchronized {
-          log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
-          obj.completeOperation(readUUID)
-          //println(s"getObjectMetadata ${pointer.uuid} ${obj.metadata}")
-          Right((obj.metadata, obj.locks, obj.writeLocks))
-        }
+        case Right(obj) => 
+          synchronized {
+            log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
+            obj.completeOperation(readUUID)
+            Right((obj.metadata, obj.locks, obj.writeLocks))
+          }
       }}
   }
   
@@ -259,18 +262,20 @@ class DataStoreFrontend(
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
-      synchronized {
+      val fload = synchronized {
         objectLoader.load(objectId, pointer.objectType, readUUID).loadData()
-      } map { e => e match {
+      } 
+      
+      fload.map { e => e match {
         case Left(err) => 
           log.read.info(s"$storeId readData object ${pointer.uuid}. Error $err")
           Left(err)
-        case Right(obj) => synchronized {
-          log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
-          obj.completeOperation(readUUID)
-          //println(s"getObjectData ${pointer.uuid} ${obj.metadata}")
-          Right((obj.data, obj.locks, obj.writeLocks))
-        }
+        case Right(obj) => 
+          synchronized {
+            log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
+            obj.completeOperation(readUUID)
+            Right((obj.data, obj.locks, obj.writeLocks))
+          }
       }}
   }
   
@@ -286,13 +291,6 @@ class DataStoreFrontend(
     st.objectsLoaded.foreach(_ => st.checkRequirementsAndLock(Some(p)))
     
     p.future
-  }
-  
-  private[this] def retryDelayedTransactions(completedTxUUID: UUID): Unit = {
-    delayedTransactions.get(completedTxUUID).foreach { delayedSet =>
-      delayedTransactions -= completedTxUUID
-      delayedSet.foreach( st => st.checkRequirementsAndLock(None) )
-    }
   }
   
   def discardTransaction(txd: TransactionDescription): Unit = synchronized { 
@@ -320,6 +318,7 @@ class DataStoreFrontend(
     
     val frepair = ofrepair match { 
       case Some(f) => f
+      
       case None => 
         val f = for {
           pool <- system.getStoragePool(storeId.poolUUID)
@@ -348,7 +347,7 @@ class DataStoreFrontend(
       ov <- tree.get(objectUUID)
     } yield ov.map(v => ObjectPointer.fromArray(v.value))
     
-    def next(): Unit = {
+    def next(): Unit = synchronized {
       log.rebuild.info(s"$storeId fetching next missed update entry")
       iter.fetchNext() foreach { _ =>
         iter.entry match {
@@ -378,17 +377,18 @@ class DataStoreFrontend(
     promise.future
   }
   
-  
   private def rebuildFinished(objectUUID: UUID): Unit = synchronized {
     // Check to see if another rebuild for this object is pending. If so kick it off
     activeRebuilds -= objectUUID
     
     pendingRebuilds.get(objectUUID).foreach { lst =>
       val fn = lst.head
+      
       if (lst.tail.isEmpty)
         pendingRebuilds -= objectUUID
       else
         pendingRebuilds += (objectUUID -> lst.tail)
+        
       fn()
     }
   }
@@ -483,7 +483,7 @@ class DataStoreFrontend(
     pcomplete.future
   }
   
-  private def doRepair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer], pcomplete: Promise[Unit]): Unit = {
+  private def doRepair(system: AspenSystem, entry: MissedUpdateIterator.Entry, opointer: Option[ObjectPointer], pcomplete: Promise[Unit]): Unit = synchronized {
     
     log.rebuild.info(s"$storeId repair: beginning repair of missed update for object ${entry.objectUUID}")
     
@@ -502,16 +502,19 @@ class DataStoreFrontend(
     
     val folocal = opointer match {
       case None => Future.successful(None)
-      case Some(pointer) => synchronized {
+      case Some(pointer) =>
         log.rebuild.info(s"$storeId repair: loading local state of object ${entry.objectUUID}")
-        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth() } map { e => e match {
-        case Left(err) =>
-          log.rebuild.info(s"$storeId repair: failed to get state of object ${entry.objectUUID}. Error: $err")
-          None
-        case Right(obj) =>
-          log.rebuild.info(s"$storeId repair: got local state of object ${entry.objectUUID}. Rev ${obj.revision} Ref ${obj.refcount}")
-          Some(obj)
-      }}  
+        
+        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map { e => e match {
+          case Left(err) =>
+            log.rebuild.info(s"$storeId repair: failed to get state of object ${entry.objectUUID}. Error: $err")
+            None
+          case Right(obj) =>
+            synchronized {
+              log.rebuild.info(s"$storeId repair: got local state of object ${entry.objectUUID}. Rev ${obj.revision} Ref ${obj.refcount}")
+            }
+            Some(obj)
+        }}  
     }
     
     def isAllocated(): Future[Boolean] = {
@@ -543,7 +546,7 @@ class DataStoreFrontend(
         else {
           // Delete local object state (if we have any)
           log.rebuild.info(s"$storeId repair: Reparing missed delete for object ${entry.objectUUID}")
-          backend.deleteObject(objectId)
+          synchronized { backend.deleteObject(objectId) }
         }
       }
       
@@ -559,7 +562,7 @@ class DataStoreFrontend(
           } 
           else {
             log.rebuild.info(s"$storeId repair: Repairing missed delete for object ${entry.objectUUID}")
-            backend.deleteObject(objectId)
+            synchronized { backend.deleteObject(objectId) }
           }
         }}
         
@@ -597,10 +600,9 @@ class DataStoreFrontend(
         
       }
       
-      case _ => synchronized { 
+      case _ => 
         log.rebuild.error(s"$storeId repair: Invalid Repair State for object ${entry.objectUUID}.")
         Future.unit
-      }
     }
     
     val fcomplete = for {
@@ -826,12 +828,22 @@ class DataStoreFrontend(
             }
         }
       }
-      }
+    }
     
+    def unblockDelayedTransactions(): Unit = {
+      // Attempt to lock any transactions that were dependent upon this one completing
+      delayedTransactions.get(txd.transactionUUID).foreach { delayedSet =>
+        delayedTransactions -= txd.transactionUUID
+        delayedSet.foreach( st => st.checkRequirementsAndLock(None) )
+      }
+    }
     
     def discard(): Unit = {
       releaseObjects()
       activeTransactions -= txd.transactionUUID
+      
+      unblockDelayedTransactions()
+      
       log.tx.info(s"$storeId tx: ${txd.transactionUUID} Discarding transaction")
     }
     
@@ -873,7 +885,7 @@ class DataStoreFrontend(
         obj.completeOperation(txd.transactionUUID)
       }
       
-      retryDelayedTransactions(txd.transactionUUID)
+      unblockDelayedTransactions()
     }
     
     def getRequirementErrors(requirement: TransactionRequirement): List[ObjectTransactionError] = {
@@ -886,7 +898,6 @@ class DataStoreFrontend(
       implicit def mo2ptr(mo: MutableObject): ObjectPointer = txd.allReferencedObjectsSet.find(ptr => ptr.uuid == mo.objectId.objectUUID).get
       
       val obj = objects(requirement.objectPointer.uuid)
-      
 
       obj.readError match {
         case Some(readErr) => err(TransactionReadError(obj, readErr))

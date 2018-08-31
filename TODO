@@ -1,5 +1,14 @@
-* Switch to using TxCommitted messages for missed update detection
-   - more than just the primary object
+* Looks like the read is being blocked
+   - getObject is hanging
+   - audit all synchronized blocks in DataStoreFrontend
+
+* Still seeing hangs
+   - Need to find this
+   - Should be due to a hung read?
+   
+   
+* Need Rebuild & Opportunistic Rebuild unit tests
+
 
 * KVList & TieredList
    - Rename put to preparePut

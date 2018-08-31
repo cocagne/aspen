@@ -61,6 +61,8 @@ class BaseReadDriver(
   protected var restoredObject: Option[(ObjectState, Set[ObjectRevision])] = None
   protected var retryCount = 0
   
+  protected val readStartTs = System.currentTimeMillis()
+  
   def readResult = promise.future
   
   def begin() = sendReadRequests()
@@ -79,7 +81,11 @@ class BaseReadDriver(
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
     logger.info(s"sending read requests for object ${objectPointer.uuid}.")
-    synchronized { retryCount += 1 }
+    synchronized { 
+      retryCount += 1
+      if (retryCount > 3)
+        println(s"RESENDING READ REQUEST")
+    }
     objectPointer.storePointers.foreach(sp => {
       val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
       if (!receivedReplyFrom(storeId))
@@ -143,7 +149,7 @@ class BaseReadDriver(
           
       case Right(cs) => try {
         
-        if (retryCount > 3)
+        if (retryCount > 3) 
           logger.info(s"Read Response: ${response.fromStore.poolIndex} obj ${objectPointer.uuid} rev ${cs.revision}")
         
         // If any of the write locks reference transactions that are known to have successfully completed, the returned state from the store

@@ -91,7 +91,8 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
       
       case class MissedUpdate(pointer: ObjectPointer, stores: List[Byte])
       
-      def markObject(mu: MissedUpdate): Future[Unit] = {
+      // TODO: Handle deleted pool
+      def markObject(mu: MissedUpdate): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
         for {
           pool <- system.getStoragePool(mu.pointer.poolUUID)
           muh = pool.createMissedUpdateHandler(mu.pointer, mu.stores)

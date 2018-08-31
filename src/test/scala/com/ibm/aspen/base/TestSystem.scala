@@ -69,16 +69,27 @@ class TestSystem(
   
   def getRegistries() = synchronized { typeRegistries }
   
-  def waitForTransactionsComplete(): Future[Unit] = Future {
-    
+  def synchronousWaitForTransactionsComplete(ostack: Option[String]=None): Unit = {
+    val stack = ostack match {
+      case None => com.ibm.aspen.util.getStack()
+      case Some(s) => s
+    }
     var count = 0
     while (!sn0.allTransactionsComplete && !sn1.allTransactionsComplete && !sn2.allTransactionsComplete && count < 100) {
       count += 1
       Thread.sleep(5) 
     }
         
-    if (count > 100)
-      throw new Exception("Finalization Actions Timed Out")
+    if (count > 100) {
+      throw new Exception(s"Finalization Actions Timed Out. Stack:\n$stack")
+    }
+  }
+  
+  def waitForTransactionsComplete(): Future[Unit] = {
+    val stack = com.ibm.aspen.util.getStack()
+    Future {
+      synchronousWaitForTransactionsComplete(Some(stack))
+    }
   }
   
   object userTypeRegistry extends TypeRegistry {

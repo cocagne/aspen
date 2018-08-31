@@ -22,7 +22,7 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
       storePointer: StorePointer, 
       metadata: ObjectMetadata, 
       data: DataBuffer,
-      objectType: ObjectType.Value): MutableObject = synchronized {
+      objectType: ObjectType.Value): MutableObject =  {
     val obj = objectType match {
       case ObjectType.Data => new MutableDataObject(StoreObjectID(objectUUID, storePointer), allocationTransactionUUID, this, Some((metadata, data)))
       case ObjectType.KeyValue => 
@@ -33,12 +33,12 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
     obj
   }
   
-  def getAlreadyLoadedObject(objectUUID: UUID): Option[MutableObject] = synchronized { objects.get(objectUUID) }
+  def getAlreadyLoadedObject(objectUUID: UUID): Option[MutableObject] =  objects.get(objectUUID) 
   
   /** Immediately returns a MutableObject to represent the requested object. 
    * 
    */
-  def load(objectId: StoreObjectID, objectType: ObjectType.Value, operation: UUID): MutableObject = synchronized {
+  def load(objectId: StoreObjectID, objectType: ObjectType.Value, operation: UUID): MutableObject = {
     objects.get(objectId.objectUUID) match {
       case Some(obj) =>
         obj.beginOperation(operation)
@@ -57,7 +57,7 @@ class MutableObjectLoader(val backend: DataStoreBackend) {
   /** Called when the number of operations referencing an object drops to zero or a ReadError for the object
    *  is encountered.
    */
-  protected[data_store] def unload(mobject: MutableObject, error: Option[ObjectReadError]): Unit = synchronized { 
+  protected[data_store] def unload(mobject: MutableObject, error: Option[ObjectReadError]): Unit = { 
     objects -= mobject.objectId.objectUUID
   }
 }
