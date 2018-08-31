@@ -43,8 +43,7 @@ lazy val root = (project in file(".")).
       "com.fasterxml.jackson.core"       %  "jackson-core"            % "2.9.4",
       "com.fasterxml.jackson.core"       %  "jackson-databind"        % "2.9.4",
       "com.fasterxml.jackson.dataformat" %  "jackson-dataformat-yaml" % "2.9.4",
-      "com.lmax"                         %  "disruptor"               % "3.3.7",
-      "com.github.davidmoten"            %  "flatbuffers-java"        % "1.9.0.1"
+      "com.lmax"                         %  "disruptor"               % "3.3.7"
     )
   )
   

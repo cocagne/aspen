@@ -102,8 +102,8 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
           val uuid = new UUID(msb, lsb)
         
           val slice = bb.asReadOnlyBuffer()
-          slice.limit( slice.position + len )
-          bb.position( bb.position + len )
+          slice.limit( slice.position() + len )
+          bb.position( bb.position() + len )
           localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
         }
         

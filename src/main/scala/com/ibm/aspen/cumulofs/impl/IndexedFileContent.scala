@@ -134,7 +134,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
                 if (doffset > offset)
                   bb.position((doffset - offset).asInstanceOf[Int])
                 
-                bb.put(if (bb.position + db.size > bb.limit) db.slice(0, bb.limit - bb.position) else db)
+                bb.put(if (bb.position() + db.size > bb.limit()) db.slice(0, bb.limit() - bb.position()) else db)
               }
               
               bb.position(0)
@@ -365,8 +365,8 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
              bb.put(dos.data)
              
              val nwrite = if (objOffset + nleft < segmentSize) nleft else (segmentSize - objOffset)
-             val (writeBuff, remaining) = if (objOffset + toWrite.head.size > bb.limit) {
-               val (wb, rb) = toWrite.head.split(bb.limit - objOffset)
+             val (writeBuff, remaining) = if (objOffset + toWrite.head.size > bb.limit()) {
+               val (wb, rb) = toWrite.head.split(bb.limit() - objOffset)
                (wb, rb :: toWrite.tail)
              } else {
                DataBuffer.compact(nwrite, toWrite)

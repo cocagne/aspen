@@ -64,8 +64,10 @@ class DataStoreFrontend(
   }
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
-  
-  private[this] var objectLoader = new MutableObjectLoader(backend)
+
+  private[data_store] def executeInSynchronizedBlock[T](fn: => T): T = synchronized { fn }
+
+  private[this] val objectLoader = new MutableObjectLoader(this, backend)
 
   // The content of the following two maps are managed by instances of the StoreTransaction class
   private[this] var activeTransactions = Map[UUID, StoreTransaction]()

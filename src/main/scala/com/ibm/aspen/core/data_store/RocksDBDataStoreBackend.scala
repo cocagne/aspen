@@ -51,7 +51,7 @@ object RocksDBDataStoreBackend {
   }
   
   def bytebufToArray(buf: ByteBuffer): Array[Byte] = {
-    val a = new Array[Byte](buf.limit - buf.position)
+    val a = new Array[Byte](buf.limit() - buf.position())
     buf.asReadOnlyBuffer().get(a)
     a
   }

@@ -4,6 +4,9 @@
 
 local/
 
+# Intellij
+.idea/
+
 # Scalatest
 .cache-tests
 

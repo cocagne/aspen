@@ -221,12 +221,12 @@ class WireProtocol private (
       
       val (startPos, endPos) = if (rbuff.remaining() >= nbytes) {
         val startPos = rbuff.position()
-        val endPos = rbuff.position + nbytes
+        val endPos = rbuff.position() + nbytes
         rbuff.position(endPos)
         (startPos, endPos)
       } else {
         
-        if (rbuff.position + nbytes > rbuff.capacity()) {
+        if (rbuff.position() + nbytes > rbuff.capacity()) {
           altBuff.position(0)
           altBuff.limit(altBuff.capacity())
           altBuff.put(rbuff)
@@ -236,16 +236,16 @@ class WireProtocol private (
         }
         
         val startPos = rbuff.position()
-        val endPos = rbuff.position + nbytes
+        val endPos = rbuff.position() + nbytes
         
         rbuff.limit(endPos)
   
-        while (rbuff.position < endPos) { 
+        while (rbuff.position() < endPos) {
           if (read_channel.read(rbuff) < 0)
             throw new LostConnection
         }
         
-        rbuff.limit(rbuff.position)
+        rbuff.limit(rbuff.position())
         rbuff.position(endPos)
         
         (startPos, endPos)

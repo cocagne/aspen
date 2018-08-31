@@ -167,7 +167,7 @@ object NetworkCodec {
   }
   
   def byteBufferToArray(bb: ByteBuffer): Array[Byte] = {
-    val arr = new Array[Byte](bb.limit - bb.position)
+    val arr = new Array[Byte](bb.limit() - bb.position())
     val ro = bb.asReadOnlyBuffer()
     ro.get(arr)
     arr
@@ -183,7 +183,7 @@ object NetworkCodec {
     
     val db = builder.dataBuffer()
     
-    val arr = new Array[Byte](db.limit - db.position)
+    val arr = new Array[Byte](db.limit() - db.position())
     db.get(arr)
     
     arr

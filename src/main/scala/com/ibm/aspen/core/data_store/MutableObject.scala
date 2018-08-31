@@ -45,14 +45,14 @@ abstract class MutableObject(
   var objectRefcountWriteLock: Option[TransactionDescription] = None
   var pendingOperations: Set[UUID] = Set(initialOperation)
   
-  private[this] var err: Option[ObjectReadError] = None
+  private[this] var oerr: Option[ObjectReadError] = None
   private[this] var fmeta: Option[Future[Either[ObjectReadError, MutableObject]]] = None
   private[this] var fdata: Option[Future[Either[ObjectReadError, MutableObject]]] = None
-  
+
   def data: DataBuffer = dataBuffer
-  
+
   def metadata = ObjectMetadata(revision, refcount, timestamp)
-  
+
   protected def setState(meta: ObjectMetadata, content: DataBuffer): Unit = {
     metadata = meta
     dataBuffer = content
@@ -61,146 +61,163 @@ abstract class MutableObject(
     fmeta = Some(p.future)
     fdata = Some(p.future)
   }
-  
+
   def metadata_=(m: ObjectMetadata) {
     revision = m.revision
     refcount = m.refcount
     timestamp = m.timestamp
   }
-  
+
   def metadataLoaded: Boolean = fmeta match {
     case None => false
     case Some(f) => f.isCompleted
   }
-  
+
   def dataLoaded: Boolean = fdata match {
     case None => false
     case Some(f) => f.isCompleted
   }
-  
+
   def bothLoaded: Boolean = (fmeta, fdata) match {
     case (Some(fm), Some(fd)) => fm.isCompleted && fd.isCompleted
     case _ => false
   }
-  
+
   def beginOperation(uuid: UUID): Unit = pendingOperations += uuid
-  
+
   def completeOperation(uuid: UUID): Unit = {
     pendingOperations -= uuid
     if (pendingOperations.isEmpty)
       loader.unload(this, None)
   }
-  
-  def readError: Option[ObjectReadError] = err
-  
+
+  def readError: Option[ObjectReadError] = oerr
+
   def getTransactionPreventingRevisionWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     val o = objectRevisionWriteLock match {
       case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
       case None => None
-    } 
-    
+    }
+
     o match {
       case Some(txd) => Some(txd)
       case None => if (objectRevisionReadLocks.isEmpty) None else Some(objectRevisionReadLocks.head._2)
     }
   }
-  
+
   def getTransactionPreventingRevisionReadLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     objectRevisionWriteLock match {
       case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
       case None => None
-    } 
+    }
   }
-  
+
   def getTransactionPreventingRefcountWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     val o = objectRefcountWriteLock match {
       case Some(txd) => if (txd.transactionUUID == ignoreTxd.transactionUUID) None else Some(txd)
       case None => None
     }
-    
+
     o match {
       case Some(txd) => Some(txd)
       case None => if (objectRefcountReadLocks.isEmpty) None else Some(objectRefcountReadLocks.head._2)
     }
   }
-  
+
   def locks: List[Lock] = {
     var ll: List[Lock] = Nil
-    
+
     objectRevisionWriteLock.foreach { txd => ll = RevisionWriteLock(txd) :: ll }
     objectRefcountWriteLock.foreach { txd => ll = RefcountWriteLock(txd) :: ll }
-    
+
     ll = objectRevisionReadLocks.foldLeft(ll)( (l, t) => RevisionReadLock(t._2) :: l )
     ll = objectRefcountReadLocks.foldLeft(ll)( (l, t) => RefcountReadLock(t._2) :: l )
-    
+
     ll
   }
-  
+
   def writeLocks: Set[UUID] = objectRefcountWriteLock.foldLeft(objectRevisionWriteLock.foldLeft(Set[UUID]())((s, l) => s + l.transactionUUID))((s, l) => s + l.transactionUUID)
-  
+
   def keepUntilDone(fn: => Future[Unit]): Future[Unit] = {
     val keepUntilCommitComplete = UUID.randomUUID()
     beginOperation(keepUntilCommitComplete)
     val f = fn
-    f onComplete {
-      case _ => completeOperation(keepUntilCommitComplete)
+    f onComplete {_ =>
+      loader.frontend.executeInSynchronizedBlock {
+        completeOperation(keepUntilCommitComplete)
+      }
     }
     f
   }
-  
+
   def commitMetadata(): Future[Unit] = keepUntilDone(loader.backend.putObjectMetaData(objectId, ObjectMetadata(revision, refcount, timestamp)))
-  
+
   def commitData(): Future[Unit] = keepUntilDone(loader.backend.putObjectData(objectId, data))
-  
+
   def commitBoth(): Future[Unit] = keepUntilDone(loader.backend.putObject(objectId, ObjectMetadata(revision, refcount, timestamp), data))
-  
+
   def loadMetadata(): Future[Either[ObjectReadError, MutableObject]] = fmeta match {
     case Some(f) => f
     case None =>
-      val fm = loader.backend.getObjectMetaData(objectId) map { e => e match {
-        case Left(err) => 
-          this.err = Some(err)
-          loader.unload(this, Some(err))
-          Left(err)
-          
-        case Right(metadata) =>
-          this.metadata = metadata
-          Right(this)
-      }}
+
+      val fm = loader.backend.getObjectMetaData(objectId) map { e =>
+        loader.frontend.executeInSynchronizedBlock {
+          e match {
+            case Left(err) =>
+              this.oerr = Some(err)
+              loader.unload(this, Some(err))
+              Left(err)
+
+            case Right(metadata) =>
+              this.metadata = metadata
+              Right(this)
+          }
+        }
+      }
+
       fmeta = Some(fm)
       fm
   }
-  
+
   def loadData(): Future[Either[ObjectReadError, MutableObject]] = fdata match {
     case Some(f) => f
-    case None => 
-      val fd = loader.backend.getObjectData(objectId) map { e => e match {
-        case Left(err) => 
-          this.err = Some(err)
-          loader.unload(this, Some(err))
-          Left(err)
-          
-        case Right(data) =>
-          this.dataBuffer = data
-          Right(this)
-      }}
+    case None =>
+      val fd = loader.backend.getObjectData(objectId) map { e =>
+        loader.frontend.executeInSynchronizedBlock {
+          e match {
+            case Left(err) =>
+              this.oerr = Some(err)
+              loader.unload(this, Some(err))
+              Left(err)
+
+            case Right(data) =>
+              this.dataBuffer = data
+              Right(this)
+          }
+        }
+      }
       fdata = Some(fd)
       fd
   }
-  
+
   def loadBoth(): Future[Either[ObjectReadError, MutableObject]] = (fmeta, fdata) match {
     case (None, None) =>
-      val f = loader.backend.getObject(objectId) map { e => e match {
-        case Left(err) => 
-          this.err = Some(err)
-          loader.unload(this, Some(err))
-          Left(err)
-          
-        case Right((metadata, data)) =>
-          this.metadata = metadata
-          this.dataBuffer = data
-          Right(this)
-      }}
+      val f = loader.backend.getObject(objectId) map { e =>
+        loader.frontend.executeInSynchronizedBlock {
+          e match {
+            case Left(err) =>
+              this.oerr = Some(err)
+              loader.unload(this, Some(err))
+              Left(err)
+
+            case Right((metadata, data)) =>
+              this.metadata = metadata
+              this.dataBuffer = data
+              Right(this)
+          }
+        }
+      }
+
       fmeta = Some(f)
       fdata = Some(f)
       f

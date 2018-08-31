@@ -85,7 +85,7 @@ class ReadDirReply(
     val rawEntryLength = 2*8 + 2*4 + nameBytes.length
     val fullEntryLength = rawEntryLength + getPaddingToAlignment(rawEntryLength, 8)
     
-    val currentDataLength = buffers.foldLeft(0)((accum, bb) => accum + bb.position)
+    val currentDataLength = buffers.foldLeft(0)((accum, bb) => accum + bb.position())
     
     if (fullEntryLength + currentDataLength > fuseOptions.max_write)
       return false // Data Buffers are full

@@ -115,7 +115,7 @@ object ObjectPointer {
     bb.order(ByteOrder.BIG_ENDIAN) // ensure big-endian
     
     val baseSize = Varint.getUnsignedInt(bb)
-    val endPos = bb.position + baseSize
+    val endPos = bb.position() + baseSize
     val typeCode = bb.get()
     
     def getUUID(): UUID = {
@@ -137,7 +137,7 @@ object ObjectPointer {
       val thisStore = indexMask(byte) & (1 << bit).asInstanceOf[Byte]
       
       if (thisStore != 0) {
-        val spArr = if (bb.position < endPos) {
+        val spArr = if (bb.position() < endPos) {
           val len = Varint.getUnsignedInt(bb)
           val spArr = new Array[Byte](len)
           bb.get(spArr)

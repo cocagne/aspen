@@ -8,7 +8,8 @@ import com.ibm.aspen.core.objects.ObjectType
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.ObjectRevision
 
-class MutableObjectLoader(val backend: DataStoreBackend) {
+class MutableObjectLoader( val frontend: DataStoreFrontend,
+                           val backend: DataStoreBackend) {
   
   implicit val executionContext = backend.executionContext
   
