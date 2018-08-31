@@ -23,6 +23,7 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   }
 
   after {
+	  ts.synchronousWaitForTransactionsComplete()
     ts.shutdown()
     ts = null
     sys = null
