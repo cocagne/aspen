@@ -1,24 +1,24 @@
 package com.ibm.aspen.base.tieredlist
 
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.base._
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
+
 import scala.concurrent.Promise
 import scala.util.Failure
 import scala.util.Success
 import java.util.UUID
+
 import com.ibm.aspen.core.DataBuffer
 import org.apache.logging.log4j.scala.Logging
-import com.ibm.aspen.base.ObjectReader
 
 object MutableTieredKeyValueList extends Logging {
   def load(
@@ -45,22 +45,38 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
   val allocater = rootManager.getAllocater()
   
   protected[tieredlist] def getObjectReaderForTier(tier: Int): ObjectReader = system
+
+  def put(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, rs: RetryStrategy): Future[Unit] = {
+    rs.retryUntilSuccessful {
+      system.transact { implicit tx =>
+        preparePut(key, value)
+      }
+    }
+  }
+
+  def delete(key: Key)(implicit ec: ExecutionContext, rs: RetryStrategy): Future[Unit] = {
+    rs.retryUntilSuccessful {
+      system.transact { implicit tx =>
+        prepareDelete(key)
+      }
+    }
+  }
   
   def fetchMutableNode(key: Key)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueListNode] = {
     fetchContainingNode(key, 0).map(kvos => new MutableTieredKeyValueListNode(system, this, kvos))
   }
   
-  def put(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+  def preparePut(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
     node <- fetchMutableNode(key) 
     prep <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
   } yield ()
   
-  def delete(key: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+  def prepareDelete(key: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
     node <- fetchMutableNode(key) 
     prep <- node.prepreUpdateTransaction(Nil, List(key), Nil)
   } yield ()
   
-  def replace(oldKey: Key, newKey: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = {
+  def prepareRename(oldKey: Key, newKey: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = {
     val fold = fetchMutableNode(oldKey)
     val fnew = fetchMutableNode(newKey)
     

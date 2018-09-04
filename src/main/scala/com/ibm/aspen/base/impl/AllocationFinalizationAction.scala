@@ -44,7 +44,7 @@ object AllocationFinalizationAction {
       val fcommit = for {
         pool <- system.getStoragePool(storagePoolDefinitionPointer)
         tree <- pool.getAllocationTree(system.retryStrategy)
-        commitReady <- tree.put(newNodePointer.uuid, newNodePointer.toArray)
+        commitReady <- tree.preparePut(newNodePointer.uuid, newNodePointer.toArray)
         result <- tx.commit()
       } yield ()
       

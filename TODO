@@ -1,20 +1,13 @@
-* Looks like the read is being blocked
-   - getObject is hanging
-   - audit all synchronized blocks in DataStoreFrontend
 
-* Still seeing hangs
-   - Need to find this
-   - Should be due to a hung read?
-   
-   
+* Rewrite CumuloFS in terms of DataObjects for inodes
+   - Greatly simplifies the overwrite logic
+
 * Need Rebuild & Opportunistic Rebuild unit tests
-
-
-* KVList & TieredList
-   - Rename put to preparePut
-   - Add put(key,value)(implicit rs: RetryStrategy): Future[Unit]
-      - retries until success
-   - Audit code for potential use cases
+   - Refactor the design
+   - Create a DataStoreRebuilder
+      - This contains all the logic for opportunistic/error tree
+      - Uses frontend API (may need custom methods)
+   - For tests, use frontend API to force-overwrite the object state for that store
 
 Base Transaction Messaging (failure free)
 1 Client -> All Stores (Prepare)
@@ -44,123 +37,9 @@ This may not be a problem in practice
    * Application-level batching/multi-casting
        - Single message to all stores hosted on the same LAN
        - Single message to each host
-   
-
-Messaging Pattern
-1. Client -> All Stores (Prepare)
-2. All Stores -> PrimaryObjectStores + Client (Prepared)
-    A. If #VoteCommit > wt for all objects, self-send Accept
-    B. If #VoteCommit > wt and #VoteCommit > n/3+1 for all objects, return success to client (cannot fail)
-          !!!! Verify that this "cannot fail"
-          
-    NOTE: If client can detect "cannot fail", so could AllStores (which could then auto-commit)
-          
-3. PrimaryObjectStores -> All Stores + client (Accepted) Paxos Learner detects successful n/2+1
-    all stores commit tx
-    
-    
-4. All Stores -> designatedLeader (TxCommitted)
-4. designatedLeader -> All Stores (TxResolved) -- backup for lost messages
-5. (late stores) -> designatedLeader (TxCommitted)
-
-* Round-0 Prepared messages are delivered to Transactions in addition to TransactionDriver
-   - allows round0 self-accept delivery optimization 
- 
-* MissedUpdateFA uses TxCommitted responses
-   - missedUpdateSet[DataStoreID] = txd.allStores
-   - onTxCommitted(storeId): missed -= storeId
- 
-
-Okay, per-store missed update is broken
-as is the messaging system
-Need to re-think the messages used in a transaction
-  * How do we know each store in a multi-object Tx does or does not need a missed update mark?
-  * Who participates in the Paxos consensus?
-  * How do we ensure 1-RTT resolution?
-  * How does a store recover if it misses a Tx result?
-
-
-Questions?
-  - What happens when you MutableObjectLoader.load(ptr).loadBoth() returns an error? What happens to the MutableObject? Need to unref it?
-  
-*** Missed Updates can only occur if AcceptResponse is not sent
-   - investigate this path for potential hangs
-
-* Audit DataStoreFrontend & ObjectLoader
-  - Hangs are almost certainly due to one or more bugs here
-  - MemoryOnlyCRL & DataStoreBackend *never* block and network cannot delay messages
-   
-* HANGS
-  - Add report of reads taking over 3 seconds along with diagnostics for why
-  - FA completion
-     - in waitForFinalizationCompletion
-         - Add report if FA exceeds 3 seconds
-         - At min, print the class name
-         - could also add a getDebugInfo method
-   
-* WTF are we having missed updates during unit tests though?
-   - Could easily be a read-hang
-   - if something went wrong with decode process, could spin forever
-
-* KeyValueObjectStoreSuite
-   - Add tests for operations on object
-
-* Read Tests for KeyValue pairs - three object store states 
-    - kv all match
-    - kv split with valid in final two
-    - kv with only one store (deleted)
-
-* Might be time for a CumuloFS redesign
-   - inodes may be better implemented as DataObjects
-   - with explicit get/set methods for updating the tiered lists it holds
-
-* CumuloFS timestamp handling is all off
-   - timestamp only provided after TX commits
-
-* Add KV requirement for Min/Max/Left/Right revisions? Or do we just use a full object lock with revision requirement when operating on these?
-    - probably just the full revision lock
-    - requires that the revision change on commit
-* Need to rethink transaction semantics then. Use regular 
-
-
-** Locked transaction UUIDs could be filtered down for partial-object reads to just the returned set of keys
-    - relatively easy, just requires a bit of work on DataStoreFrontend, MutableObject, and StorageNodeReader
-
-* Tiered List needs restructuring. Replacing the root in a KV object isn't right.
-
-***** Should the Transaction Future return the Committed Timestamp?
-   tx.timesamp isn't reliable till then
-   why provide it at all?
-   can only be a source of bugs
-   Forces all things trying to update from Tx to wait for tx completion
-   
-
-
-* TODO - Read Enhancements
-   - Key-Value reads could stall
-   - Intelligently select which stores to issue re-read requests to
-      - potentially leverage lastUpdateTimestamp on store state
-
-* For restore, need a minimum guaranteed "freshness"
-   - Use case is to ensure that the read value exceeds the timestamp of the local object during a
-     restore operation
-   - if (kvos.readTime > localState.lastUpdateTimestamp) update else don't
-
-
-* KeyValueObject encode
-   - Convert current object state to set of ops to apply to empty state
-      - must IDA-encode and select correct index for each IDA-encoded element
-   - Use existing store encode?
 
 * Reads
-   + Remove support for partial read. Circle back around to it later
-      - Be sure to remove API as well
-      
-   + Add locked Tx UUID + List[OpCode + Data] to all reads
-      - Must separate out on a per-object basis, not tx basis
-   + Add to network encoding
-   + Add to Read driver
-      
+
    - AspenSystem tracks recently successful transactions on a Set[TxUUID] basis
    - During read, check locked transactions to see if they're in the recently-completed set. If yes, promote to full version
       - do this immediately upon message reception, before any processing takes place
@@ -179,38 +58,7 @@ Questions?
             
 ** Think-through KV rebuild process to ensure it's logically correct
 
-* Sending operations list in Tx avoids need to continually replicate the ObjectRevision
-   - but then overwrite operations always update the timestamp
-   - Could discard the overwrite notion entirely and switch to just locks
-      - which is really what we're doing anyway
-      - "overwrite" can be done from client side
-      - TransactionRequirements can specify MinLock & MaxLock in addition to locking individual keys
-          - should simplify transaction handling
-        
 
-* Need a more fundamental re-think of how we're handling key-value object states and encodings
-   - backend store state is good
-   - MutableObject should probably reference an Option[kvoss] rather then replicating hte fields directly
-   - Need to discard Updates concept from KeyValueObject encoding
-
-* Redo encoding
-   - The "updates" are the set of contained revisions for maintaining read/unit test compatibility
-   - Series of key,value,revision,timestamp
-   - Encoding used by the store does NOT need to match that of the transaction or read response
-       - Store never saves delete markers or old SetMin/SetMax.
-       - It always overwrites the object with the exact current content
-       - Optionally, it could be smart about compressing the data
-           - e.g. snappy for compressing keys with common prefix?
-   - Encoded values can use a separate class for representing KVPairs (maybe use that name)
-   - TEMPORARILY throw away revision and timestamp when creating Value
-
-
-* Redo reads
-   - Send Either[DataObjectData, KeyValueData]
-   - Send locked transaction updates plus data
-       - Not the TXD. Use simpler mechanism   
-
-      
 * Need to separate Long-term from near-term
    - Supporting arbitrarily-sized KV objects would be great in the long run but not much of a near-term win
    - For now, we can afford to load and store full objects
@@ -221,22 +69,6 @@ Questions?
    - Size on store will always be an estimate, cannot be accurate (ex level db with multiple files and compaction)
       - should assume worst-case during size calculation
 
-* KeyValue Redesign
-   - Discard current 'updates' mechanism
-   - Each store tracks a series of (key,value,revision,timestamp)
-       - Appends just add to the end
-   - Stores are only required to store latest entry for a key
-   - Reads return only the last value for each key
-   
-   - Reads must achieve threshold on each KV pair independently
-   - Deletions are unrecoverable threshold failures
-   
-   - For apps that overwrite multiple keys, can save space by sharing (revision,timestamp)
-      - Similar to current 'update' scheme
-      
-   - There will be no need to "compact" KV objects. Each store can do that locally.
-      - For now we'll load the whole KV object
-      
 * Separate Data & KeyValue Backends?
    - May need two DataStoreFrontends - or base + two specialized
    - For KeyValue, we don't really need "overwrite". What we really need is "LockAllPairsAndUpdate"
@@ -264,48 +96,6 @@ Questions?
    - This could be the source of transient failures. Commit + ReadOldVersion + commit ... VersionMismatch
 
 
-* KeyValue reads
-   - Threshold must be achieved for each kv pair independently
-   - 
-
-
-* KeyValue Read & Rebuild changes
-   - When reading, we need to support aggregate reads
-      - objects A&B have commit 1, B&C have commit 2, none of the objects will have the same set of revisions
-      - must change to getting a threshold of each update for reconstruction
-   - For rebuild, we just need to ensure that it's a superset only (prevents old read from corrupting the object)
-   
-* Full audit of flow for transaction start to finish
-   - Need to figure out how messages can be lost
-   - Should NEVER have transactions fail during unit test
-   ***** Double check synchronized blocks all the way through for message delivery
-   ***** "Miss" could happen if the Tx isn't created locally so messages can't be delivered
-
-* Add toggle that requires 100% message responses
-   - Look for hangups
-
-* Re-add the filter for not re-reading from stores that have already responded
-   - Add safety that drops read results after a while to prevent hard stalls
-
-Next Steps
-
-  * Add DeleteFinalizationAction
-     - TransactionBuilder auto-adds finalizer when refcount is set to zero
-
-  * Test new file content impl
-     
-  * Improve CumuloFS feature set
-      - Need the basics working well
-      
-  * Add CumuloFS config to ConfigFile
-  * Add CumuloFS client ids, require client ID to launch client
-  
-  * Switch to TieredKeyValueListAllocater?
-    
-  * Simplify KeyValueRequirement handling
-  
- 
-  
 Basic Error Handling
   * Opportunistic Rebuild
       - When reads successfully restore an object, they send an OpportunisticRebuild message to each store this is observed

@@ -41,7 +41,7 @@ object DeleteFinalizationAction {
       val fcommit = for {
         pool <- system.getStoragePool(victim.poolUUID)
         tree <- pool.getAllocationTree(system.retryStrategy)
-        commitReady <- tree.delete(victim.uuid)
+        commitReady <- tree.prepareDelete(victim.uuid)
         result <- tx.commit()
       } yield {
         logger.info(s"Removed from allocation tree: ${victim.objectType}:${victim.uuid}")

@@ -131,14 +131,14 @@ class SimpleDirectory(
       tl <- tree
       kvos <- fkvos
       _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
-      prep <- tl.put(name, pointer.toArray)
+      prep <- tl.preparePut(name, pointer.toArray)
     } yield ()
   }
   
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     for {
       tl <- tree
-      prep <- tl.replace(oldName: String, newName: String)
+      prep <- tl.prepareRename(oldName: String, newName: String)
     } yield ()
   }
   
@@ -154,7 +154,7 @@ class SimpleDirectory(
       case None => Future.successful(Future.unit) // Directory entry not found. We're done!
       
       case Some(inodePtr) => 
-        val fdelEntryPrep = tl.delete(name)
+        val fdelEntryPrep = tl.prepareDelete(name)
         
         if (decref) {
           val ftaskPrep = DeleteFileTask.prepare(fs, inodePtr)

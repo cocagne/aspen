@@ -121,7 +121,7 @@ class MutableTieredListSuite extends TestSystemSuite {
       
       tkvl <- mk(l0)
 
-      r <- tkvl.replace(invalid, target).failed
+      r <- tkvl.prepareRename(invalid, target).failed
 
     } yield {
       r match {
@@ -140,12 +140,12 @@ class MutableTieredListSuite extends TestSystemSuite {
     
     def put(tkvl: MutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      tkvl.put(old, value).flatMap(_ => tx.commit().map(_=>()))
+      tkvl.preparePut(old, value).flatMap(_ => tx.commit().map(_=>()))
     }
     
     def replace(tkvl: MutableTieredKeyValueList): Future[Unit] = {
       implicit val tx = sys.newTransaction()
-      tkvl.replace(old, target).flatMap(_ => tx.commit().map(_=>()))
+      tkvl.prepareRename(old, target).flatMap(_ => tx.commit().map(_=>()))
     }
     
     for {
