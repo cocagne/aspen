@@ -421,11 +421,11 @@ class DataStoreFrontend(
             rebuildFinished(message.objectPointer.uuid)
         }
         
-        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map { e => e match {
+        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map {
           case Left(err) => synchronized {
             log.rebuild.info(s"$storeId opportunistic rebuild for ${message.objectPointer.shortString}: Storing Missed allocation")
             backend.putObject(objectId, metadata, data) onComplete { 
-              case _ => pcomplete.success(()) 
+              _ => pcomplete.success(())
             }
           }
           
@@ -436,7 +436,7 @@ class DataStoreFrontend(
               pcomplete.success(())
             }
             
-            if (!mo.locks.isEmpty) {
+            if (mo.locks.nonEmpty) {
               log.rebuild.info(s"$storeId opportunistic rebuild canceled for ${message.objectPointer.shortString}. Object is locked")
               complete()
             }
@@ -461,13 +461,13 @@ class DataStoreFrontend(
               
               if (commit) {
                 mo.commitBoth() onComplete { 
-                  case _ => complete()
+                  _ => complete()
                 }
               } else
                 complete()
             }
           }
-        }}
+        }
     }
   }
   
