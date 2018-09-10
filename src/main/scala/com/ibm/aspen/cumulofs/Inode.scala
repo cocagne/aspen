@@ -1,324 +1,465 @@
 package com.ibm.aspen.cumulofs
 
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.HLCTimestamp
+import java.nio.ByteBuffer
+import com.ibm.aspen.core.objects.{DataObjectPointer, KeyValueObjectPointer}
+import com.ibm.aspen.core.DataBuffer
 import java.nio.charset.StandardCharsets
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.cumulofs.error.CorruptedInode
 import com.ibm.aspen.util.Varint
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 
 object Inode {
-  
-  // --------- Required ---------
-  val ModeKey        = Key(0)  // Int
-  val UIDKey         = Key(1)  // Int
-  val GIDKey         = Key(2)  // Int
-  val CtimeKey       = Key(3)  // Timespec(seconds: Long, nanoseconds: Long)
-  
-  val RequiredKeys = Set(ModeKey, UIDKey, GIDKey, CtimeKey)
-  
-  // --------- Optional ---------
-  val MtimeKey            = Key(4)  // Timespec(seconds: Long, nanoseconds: Long) 
-  val AtimeKey            = Key(5)  // Timespec(seconds: Long, nanoseconds: Long) 
-  
-  val XAttrsKey           = Key(6)  // List of <varint key-len><varint value-len><key><value>
-  val XAttrsTieredListKey = Key(7)  // TieredList of key-value pairs
-  
-  val KeysReserved        = 100     // Keys Reserved for future use
-  
-  
-  def getInitialContent(mode: Int, uid: Int, gid: Int, content:List[(Key, Array[Byte])]): (List[KeyValueOperation], Map[Key, Array[Byte]]) = {
-    val iops = 
-        Insert(ModeKey,  int2arr(mode)) ::
-        Insert(UIDKey,   int2arr(uid)) ::
-        Insert(GIDKey,   int2arr(gid)) ::
-        Insert(CtimeKey, Timespec.now.toArray) :: content.map(t => Insert(t._1, t._2))
-   
-    val kvmap = iops.map(i => (i.key -> i.value)).toMap
-    
-    (iops, kvmap)
-  }
-  
+
   def apply(
-      pointer: InodePointer, 
-      revision: ObjectRevision,
-      refcount: ObjectRefcount,
-      timestamp: HLCTimestamp,
-      content: Map[Key, Array[Byte]]): Inode = pointer match {
-    case p: FilePointer            => new FileInode(p, revision, refcount, timestamp, content)
-    case p: DirectoryPointer       => new DirectoryInode(p, revision, refcount, timestamp, content)
-    case p: SymlinkPointer         => new SymlinkInode(p, revision, refcount, timestamp, content)
-    case p: UnixSocketPointer      => new UnixSocketInode(p, revision, refcount, timestamp, content)
-    case p: CharacterDevicePointer => new CharacterDeviceInode(p, revision, refcount, timestamp, content)
-    case p: BlockDevicePointer     => new BlockDeviceInode(p, revision, refcount, timestamp, content)
-    case p: FIFOPointer            => new FIFOInode(p, revision, refcount, timestamp, content)
+      pointer: InodePointer,
+      content: DataBuffer): Inode = pointer match {
+    case _: FilePointer            => FileInode(content)
+    case _: DirectoryPointer       => DirectoryInode(content)
+    case _: SymlinkPointer         => SymlinkInode(content)
+    case _: UnixSocketPointer      => UnixSocketInode(content)
+    case _: CharacterDevicePointer => CharacterDeviceInode(content)
+    case _: BlockDevicePointer     => BlockDeviceInode(content)
+    case _: FIFOPointer            => FIFOInode(content)
   }
-  
-  def setMode(pointer: InodePointer, newMode: Int)(implicit tx: Transaction): (Key, Array[Byte]) = {
-    (ModeKey, int2arr((newMode & ~FileMode.S_IFMT) | FileType.toMode(pointer.ftype)))
-  }
-  
-  def setUID(newUID: Int)(implicit tx: Transaction): (Key, Array[Byte]) = (UIDKey, int2arr(newUID))
-   
-  def setGID(newGID: Int)(implicit tx: Transaction): (Key, Array[Byte]) = (GIDKey,int2arr(newGID))
-  
-  def setCtime(ctime: Timespec)(implicit tx: Transaction): (Key, Array[Byte]) = (CtimeKey, ctime.toArray)
-  
-  def setMtime(mtime: Timespec)(implicit tx: Transaction): (Key, Array[Byte]) = (MtimeKey, mtime.toArray)
-  
-  def setAtime(atime: Timespec)(implicit tx: Transaction): (Key, Array[Byte]) = (AtimeKey, atime.toArray)
-  
-  def setattr(
-      inode: Inode, 
-      newUID: Int, 
-      newGID: Int, 
-      ctime: Timespec, 
-      mtime: Timespec, 
-      atime: Timespec, 
-      newMode: Int)(implicit tx: Transaction): Map[Key, Array[Byte]] = {
-    inode.content + setUID(newUID) + setGID(newGID) + setCtime(ctime) + setMtime(mtime) + setAtime(atime) + setMode(inode.pointer, newMode)
+
+  // First byte is the fileTypeVersionEncoding
+  def decode(bb: ByteBuffer): (Byte, Long, Int, Int, Int, Int, Timespec, Timespec, Timespec, Option[KeyValueObjectPointer]) = {
+    val encodingFormat = bb.get() & 0x0F
+    val inodeNumber = bb.getLong()
+    val mode = bb.getInt()
+    val uid = bb.getInt()
+    val gid = bb.getInt()
+    val links = bb.getInt()
+    val ctime = Timespec(bb)
+    val mtime = Timespec(bb)
+    val atime = Timespec(bb)
+    val oxattr = if (bb.get() == 0) None else Some(KeyValueObjectPointer(bb))
+    (encodingFormat.asInstanceOf[Byte], inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattr)
   }
 }
 
-sealed abstract class Inode {
-    
-  val pointer: InodePointer
-  val revision: ObjectRevision
-  val refcount: ObjectRefcount
-  val content: Map[Key, Array[Byte]]
-  val timestamp: HLCTimestamp
-  
-  import Inode._
-  
-  def requiredKeys: Set[Key] = Inode.RequiredKeys
+sealed abstract class Inode(val inodeNumber: Long,
+                            val mode: Int,
+                            val uid: Int,
+                            val gid: Int,
+                            val links: Int,
+                            val ctime: Timespec,
+                            val mtime: Timespec,
+                            val atime: Timespec,
+                            val oxattrs: Option[KeyValueObjectPointer]
+                            ) {
 
-  if (!requiredKeys.subsetOf(content.keySet))
-    throw CorruptedInode(pointer, content)
-  
-  def mode: Int = (arr2int(content(ModeKey)) & ~FileMode.S_IFMT) | FileType.toMode(pointer.ftype)
-  def uid: Int = arr2int(content(UIDKey))
-  def gid: Int = arr2int(content(GIDKey))
-  def ctime: Timespec = Timespec(content(CtimeKey))
-  def mtime: Timespec = content.get(MtimeKey) match {
-    case None => ctime
-    case Some(v) => Timespec(v)
+  def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None, links: Option[Int] = None,
+             ctime: Option[Timespec] = None, mtime: Option[Timespec] = None, atime: Option[Timespec] = None,
+             oxattrs: Option[Option[KeyValueObjectPointer]] = None, inodeNumber: Option[Long]): Inode
+
+  def fileType: FileType.Value = FileType.fromMode(mode)
+
+  val baseEncodingVersion: Byte = 0
+
+  def fileTypeEncodingVersion: Byte = 0
+
+  def encodedSize: Int = 1 + 8 + 4*4 + 12*3 + 1 + oxattrs.map(_.encodedSize).getOrElse(0)
+
+  def encodeInto(bb: ByteBuffer): Unit = {
+    // Base inode encoding version is high nibble, file-type-specific encoding format is low nibble
+    val fullVersion = baseEncodingVersion << 4 | (fileTypeEncodingVersion & 0xF)
+
+    bb.put(fullVersion.asInstanceOf[Byte])
+    bb.putLong(inodeNumber)
+    bb.putInt(mode)
+    bb.putInt(uid)
+    bb.putInt(gid)
+    bb.putInt(links)
+    ctime.encodeInto(bb)
+    mtime.encodeInto(bb)
+    atime.encodeInto(bb)
+    oxattrs match {
+      case None =>
+        bb.put(0.asInstanceOf[Byte])
+
+      case Some(p) =>
+        bb.put(1.asInstanceOf[Byte])
+        p.encodeInto(bb)
+    }
   }
-  def atime: Timespec = content.get(AtimeKey) match {
-    case None => mtime
-    case Some(v) => Timespec(v)
+
+  def toArray: Array[Byte] = {
+    val arr = new Array[Byte](encodedSize)
+    val bb = ByteBuffer.wrap(arr)
+    encodeInto(bb)
+    arr
   }
-  
+
+  def toDataBuffer: DataBuffer = DataBuffer(toArray)
 }
-
-// ----- Directory -----
 
 object DirectoryInode {
-  val ParentDirectoryInodePointerKey = Key(20) // EncodedInodePointer
-  val ContentTieredListKey           = Key(21) // TieredList of (filename -> EncodedInodePointer)
 
-  def getInitialContent(mode: Int, uid: Int, gid: Int, parentDirectoryInodePointer: Option[DirectoryPointer]): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFDIR 
-    val icontent = parentDirectoryInodePointer match {
-      case Some(p) => (ParentDirectoryInodePointerKey -> p.toArray) :: Nil
-      case None => Nil
-    }
-    Inode.getInitialContent(m, uid, gid, icontent)
+  def factory(mode: Int, uid: Int, gid: Int,
+            parentDirectory: Option[DirectoryPointer]): DirectoryInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.Directory)
+    new DirectoryInode(0, correctedMode, uid, gid, 1, now, now, now, None, parentDirectory, None)
+  }
+
+  def apply(content: DataBuffer): DirectoryInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+    val mask = bb.get()
+    val oparent = if ((mask & 1 << 1) == 0) None else Some(InodePointer(bb).asInstanceOf[DirectoryPointer])
+    val ocontent = if ((mask & 1 << 0) == 0) None else Some(KeyValueObjectPointer(bb))
+
+    new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, oparent, ocontent)
   }
 }
 
-class DirectoryInode(
-    val pointer: DirectoryPointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends Inode {
- 
-  import DirectoryInode._
-  
-  def parentDirectoryPointer: Option[DirectoryPointer] = content.get(ParentDirectoryInodePointerKey).map { v =>
-    InodePointer(v).asInstanceOf[DirectoryPointer]
+class DirectoryInode(inodeNumber: Long,
+                     mode: Int,
+                     uid: Int,
+                     gid: Int,
+                     links: Int,
+                     ctime: Timespec,
+                     mtime: Timespec,
+                     atime: Timespec,
+                     oxattrs: Option[KeyValueObjectPointer],
+                     val oparent: Option[DirectoryPointer],
+                     val ocontents: Option[KeyValueObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
+
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new DirectoryInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), 
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs), this.oparent, this.ocontents)
   }
-  
-  def hasContentTree: Boolean = content.contains(ContentTieredListKey)
-  
-  def contentTree: Option[TieredKeyValueListRoot] = content.get(ContentTieredListKey) map { value =>
-    TieredKeyValueListRoot(value)
+
+  def setParentDirectory(newParent: Option[DirectoryPointer]): DirectoryInode = {
+    new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newParent, ocontents)
+  }
+
+  def setContentTree(newContents: Option[KeyValueObjectPointer]): DirectoryInode = {
+    new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, oparent, newContents)
+  }
+
+  override def encodedSize: Int = {
+    super.encodedSize + 1 + oparent.map(_.encodedSize).getOrElse(0) + ocontents.map(_.encodedSize).getOrElse(0)
+  }
+
+  override def encodeInto(bb: ByteBuffer): Unit = {
+    super.encodeInto(bb)
+    val mask = oparent.map(_ => 1 << 1).getOrElse(0) | ocontents.map(_ => 1 << 0).getOrElse(0)
+    bb.put(mask.asInstanceOf[Byte])
+    oparent.foreach(_.encodeInto(bb))
+    ocontents.foreach(_.encodeInto(bb))
   }
 }
-
-// ----- File -----
 
 object FileInode {
-  val FileSizeKey        = Key(20) // Varint
-  val FileIndexRootKey   = Key(21) // Serialized pointer to root of the file index tree + tier level
-    
-  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFREG
-    Inode.getInitialContent(m, uid, gid, Nil)
+
+  def factory(mode: Int, uid: Int, gid: Int): FileInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new FileInode(0, correctedMode, uid, gid, 1, now, now, now, None, 0, None)
+  }
+
+  def apply(content: DataBuffer): FileInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+    val size = bb.getLong()
+    val ocontents = if (bb.get() == 0) None else Some(DataObjectPointer(bb))
+
+    new FileInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, size, ocontents)
   }
 }
 
-class FileInode(
-    val pointer: FilePointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends Inode {
- 
-  import FileInode._
-  
-  def size: Long = content.get(FileSizeKey) match {
-    case None => 0
-    case Some(varr) => Varint.getUnsignedLong(varr)
+class FileInode(inodeNumber: Long,
+                mode: Int,
+                uid: Int,
+                gid: Int,
+                links: Int,
+                ctime: Timespec,
+                mtime: Timespec,
+                atime: Timespec,
+                oxattrs: Option[KeyValueObjectPointer],
+                val size: Long,
+                val ocontents: Option[DataObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
+
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new FileInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), 
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs), size, ocontents)
   }
   
-  def fileIndexRoot(): Option[Array[Byte]] = content.get(FileIndexRootKey) 
-  
-  def update(
-      newRevision: ObjectRevision, 
-      newTimestamp: HLCTimestamp, 
-      newSize: Long=size, 
-      newFileIndexRoot:Option[Array[Byte]]=None, 
-      newRefcount:ObjectRefcount=refcount): FileInode = {
-    val newContent = newFileIndexRoot match {
-      case None => content + (FileSizeKey -> Varint.unsignedLongToArray(newSize))
-      case Some(arr) => content + (FileSizeKey -> Varint.unsignedLongToArray(newSize)) + (FileIndexRootKey -> arr)
-    }
-    new FileInode(pointer, newRevision, newRefcount, newTimestamp, newContent) 
+  def setSize(newSize: Long): FileInode = {
+    new FileInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newSize, ocontents)
+  }
+
+  def setContents(newSize: Long, newContents: Option[DataObjectPointer]): FileInode = {
+    new FileInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newSize, newContents)
+  }
+
+  override def encodedSize: Int = {
+    super.encodedSize + 8 + 1 + ocontents.map(_.encodedSize).getOrElse(0)
+  }
+
+  override def encodeInto(bb: ByteBuffer): Unit = {
+    super.encodeInto(bb)
+    bb.putLong(size)
+    bb.put(ocontents.map(_ => 1).getOrElse(0).asInstanceOf[Byte])
+    ocontents.foreach(_.encodeInto(bb))
   }
 }
-
-// ----- Symlink -----
 
 object SymlinkInode {
-  val LinkKey = Key(20)
-  
-  val RequiredKeys = Inode.RequiredKeys ++ Set(LinkKey)
-  
-  def getInitialContent(mode: Int, uid: Int, gid: Int, link: String): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFLNK
-    Inode.getInitialContent(m, uid, gid, (LinkKey -> link.getBytes(StandardCharsets.UTF_8)) :: Nil)
+
+  def factory(mode: Int, uid: Int, gid: Int): SymlinkInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new SymlinkInode(0, correctedMode, uid, gid, 1, now, now, now, None, new Array[Byte](0))
   }
-  
-  def setLink(newLink: String)(implicit tx: Transaction): (Key, Array[Byte]) = (LinkKey, newLink.getBytes(StandardCharsets.UTF_8))
+
+  def apply(content: DataBuffer): SymlinkInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+    val contentSize = Varint.getUnsignedInt(bb)
+    val contents = new Array[Byte](contentSize)
+    bb.get(contents)
+
+    new SymlinkInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, contents)
+  }
 }
 
-class SymlinkInode(
-    val pointer: SymlinkPointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends Inode {
- 
-  import SymlinkInode._
+class SymlinkInode(inodeNumber: Long,
+                   mode: Int,
+                   uid: Int,
+                   gid: Int,
+                   links: Int,
+                   ctime: Timespec,
+                   mtime: Timespec,
+                   atime: Timespec,
+                   oxattrs: Option[KeyValueObjectPointer],
+                   val content: Array[Byte]) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
+
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new SymlinkInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), atime.getOrElse(this.atime),
+      oxattrs.getOrElse(this.oxattrs), content)
+  }
+
+  def setContents(newContents: Array[Byte]): SymlinkInode = {
+    new SymlinkInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newContents)
+  }
+
+  def size: Int = content.length
   
-  override def requiredKeys = RequiredKeys
-  
-  def size: Int = content(LinkKey).length
-  
-  def link: String = new String(content(LinkKey), StandardCharsets.UTF_8)
+  def asString: String = new String(content, StandardCharsets.UTF_8)
+
+  override def encodedSize: Int = {
+    super.encodedSize + Varint.getUnsignedIntEncodingLength(content.length) + content.length
+  }
+
+  override def encodeInto(bb: ByteBuffer): Unit = {
+    super.encodeInto(bb)
+    Varint.putUnsignedInt(bb, content.length)
+    bb.put(content)
+  }
 }
 
-// ----- Unix Socket -----
 
 object UnixSocketInode {
-  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFSOCK
-    Inode.getInitialContent(m, uid, gid, Nil)
+
+  def factory(mode: Int, uid: Int, gid: Int): UnixSocketInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new UnixSocketInode(0, correctedMode, uid, gid, 1, now, now, now, None)
+  }
+
+  def apply(content: DataBuffer): UnixSocketInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+
+    new UnixSocketInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs)
   }
 }
 
-class UnixSocketInode(
-    val pointer: UnixSocketPointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends Inode {
- 
-  import UnixSocketInode._
+class UnixSocketInode(inodeNumber: Long,
+                      mode: Int,
+                      uid: Int,
+                      gid: Int,
+                      links: Int,
+                      ctime: Timespec,
+                      mtime: Timespec,
+                      atime: Timespec,
+                      oxattrs: Option[KeyValueObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
+
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new UnixSocketInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs))
+  }
 }
 
-// ----- FIFO -----
 
 object FIFOInode {
-  def getInitialContent(mode: Int, uid: Int, gid: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFFIFO
-    Inode.getInitialContent(m, uid, gid, Nil)
+
+  def factory(mode: Int, uid: Int, gid: Int): FIFOInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new FIFOInode(0, correctedMode, uid, gid, 1, now, now, now, None)
+  }
+
+  def apply(content: DataBuffer): FIFOInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+
+    new FIFOInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs)
   }
 }
 
-class FIFOInode(
-    val pointer: FIFOPointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends Inode {
- 
-  import FIFOInode._
-}
+class FIFOInode(inodeNumber: Long,
+                mode: Int,
+                uid: Int,
+                gid: Int,
+                links: Int,
+                ctime: Timespec,
+                mtime: Timespec,
+                atime: Timespec,
+                oxattrs: Option[KeyValueObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
 
-// ----- Devices -----
-
-object DeviceInode {
-  val DeviceTypeKey = Key(20)  // Device major/minor types
-  
-  val RequiredKeys = Inode.RequiredKeys ++ Set(DeviceInode.DeviceTypeKey)
-  
-  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    Inode.getInitialContent(mode, uid, gid, (DeviceTypeKey -> int2arr(rdev)) :: Nil)
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new FIFOInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs))
   }
-  
-  def setDeviceType(rdev: Int)(implicit tx: Transaction): (Key, Array[Byte]) = (DeviceTypeKey, int2arr(rdev))
-}
-
-sealed abstract class DeviceInode extends Inode {
-  def rdev: Int = arr2int(content(DeviceInode.DeviceTypeKey))
 }
 
 object CharacterDeviceInode {
-  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFCHR
-    DeviceInode.getInitialContent(m, uid, gid, rdev)
+
+  def factory(mode: Int, uid: Int, gid: Int, rdev: Int): CharacterDeviceInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new CharacterDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
+  }
+
+  def apply(content: DataBuffer): CharacterDeviceInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+    val rdev = bb.getInt()
+
+    new CharacterDeviceInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, rdev)
   }
 }
 
-class CharacterDeviceInode(
-    val pointer: CharacterDevicePointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends DeviceInode {
- 
-  import CharacterDeviceInode._
-  
-  override def requiredKeys = DeviceInode.RequiredKeys
+class CharacterDeviceInode(inodeNumber: Long,
+                           mode: Int,
+                           uid: Int,
+                           gid: Int,
+                           links: Int,
+                           ctime: Timespec,
+                           mtime: Timespec,
+                           atime: Timespec,
+                           oxattrs: Option[KeyValueObjectPointer],
+                           val rdev: Int) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
+
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new CharacterDeviceInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode),
+      uid.getOrElse(this.uid), gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs), rdev)
+  }
+
+  def setDeviceType(newrdev: Int): CharacterDeviceInode = {
+    new CharacterDeviceInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newrdev)
+  }
+
+  override def encodedSize: Int = {
+    super.encodedSize + 4
+  }
+
+  override def encodeInto(bb: ByteBuffer): Unit = {
+    super.encodeInto(bb)
+    bb.putInt(rdev)
+  }
 }
+
 
 object BlockDeviceInode {
-  def getInitialContent(mode: Int, uid: Int, gid: Int, rdev: Int): (List[KeyValueOperation], Map[Key,Array[Byte]]) = {
-    val m = (mode & ~FileMode.S_IFMT) | FileMode.S_IFBLK
-    DeviceInode.getInitialContent(m, uid, gid, rdev)
+
+  def factory(mode: Int, uid: Int, gid: Int, rdev: Int): BlockDeviceInode = {
+    val now = Timespec.now
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    new BlockDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
+  }
+
+  def apply(content: DataBuffer): BlockDeviceInode = {
+    val bb = content.asReadOnlyBuffer()
+    val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
+    val rdev = bb.getInt()
+
+    new BlockDeviceInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, rdev)
   }
 }
 
-class BlockDeviceInode(
-    val pointer: BlockDevicePointer, 
-    val revision: ObjectRevision,
-    val refcount: ObjectRefcount,
-    val timestamp: HLCTimestamp,
-    val content: Map[Key, Array[Byte]]) extends DeviceInode {
- 
-  import BlockDeviceInode._
-  
-  override def requiredKeys = DeviceInode.RequiredKeys
-}
+class BlockDeviceInode(inodeNumber: Long,
+                       mode: Int,
+                       uid: Int,
+                       gid: Int,
+                       links: Int,
+                       ctime: Timespec,
+                       mtime: Timespec,
+                       atime: Timespec,
+                       oxattrs: Option[KeyValueObjectPointer],
+                       val rdev: Int) extends Inode(inodeNumber, mode, uid, gid, links,
+  ctime, mtime, atime, oxattrs) {
 
+  override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
+                      links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
+                      atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
+                      inodeNumber: Option[Long]): Inode = {
+    new BlockDeviceInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
+      gid.getOrElse(this.gid),
+      links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
+      atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs), rdev)
+  }
+
+  def setDeviceType(newrdev: Int): BlockDeviceInode = {
+    new BlockDeviceInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newrdev)
+  }
+
+  override def encodedSize: Int = {
+    super.encodedSize + 4
+  }
+
+  override def encodeInto(bb: ByteBuffer): Unit = {
+    super.encodeInto(bb)
+    bb.putInt(rdev)
+  }
+}
 
 

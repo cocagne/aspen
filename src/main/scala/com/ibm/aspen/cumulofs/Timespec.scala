@@ -3,24 +3,20 @@ package com.ibm.aspen.cumulofs
 import java.nio.ByteBuffer
 
 case class Timespec(seconds: Long, nanoseconds: Int) {
-
-  def toArray(): Array[Byte] = {
-    val arr = new Array[Byte](12)
-    val bb = ByteBuffer.wrap(arr)
+  def size: Int = 12
+  def encodeInto(bb: ByteBuffer): Unit = {
     bb.putLong(seconds)
     bb.putInt(nanoseconds)
-    arr
   }
 }
 
 object Timespec {
-  def apply(arr: Array[Byte]): Timespec = {
-    val bb = ByteBuffer.wrap(arr)
+
+  def apply(bb: ByteBuffer): Timespec = {
     val sec = bb.getLong()
     val nsec = bb.getInt()
     new Timespec(sec, nsec)
   }
-  
   
   def now: Timespec = {
     val ts = System.currentTimeMillis()

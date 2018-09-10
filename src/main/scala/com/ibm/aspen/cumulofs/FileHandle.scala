@@ -1,9 +1,8 @@
 package com.ibm.aspen.cumulofs
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import java.nio.ByteBuffer
 import com.ibm.aspen.core.DataBuffer
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait FileHandle {
   val file: File

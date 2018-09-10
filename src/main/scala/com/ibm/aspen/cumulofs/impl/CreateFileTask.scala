@@ -1,20 +1,15 @@
-package com.ibm.aspen.cumulofs
+package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.base.task.DurableTaskType
 import java.util.UUID
+
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.task.DurableTaskPointer
+import com.ibm.aspen.base.task.{DurableTask, DurableTaskPointer, DurableTaskType, SteppedDurableTask}
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.Value
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.base.task.DurableTask
-import com.ibm.aspen.base.task.SteppedDurableTask
-import com.ibm.aspen.base.task.LocalTaskGroup
-import com.ibm.aspen.base.Transaction
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
+import com.ibm.aspen.cumulofs.{arr2string => _, _}
 import com.ibm.aspen.util._
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object CreateFileTask {
   
@@ -48,7 +43,7 @@ object CreateFileTask {
       directory: DirectoryPointer, 
       name: String, 
       ftype: FileType.Value,
-      inodeOps: List[KeyValueOperation])(implicit ec: ExecutionContext): Future[InodePointer] = {
+      inode: Inode)(implicit ec: ExecutionContext): Future[InodePointer] = {
     
     val encodedDir = directory.toArray
     val encodedName = string2arr(name)

@@ -53,7 +53,7 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       _ <- ws.writeComplete
     } yield {
       val adjustedSize = newSize - ws.remainingData.foldLeft(0)((sz, db) => sz + db.size)
-      (inode.update(tx.txRevision, timestamp, adjustedSize, ws.newRoot.map(_.toArray), inode.refcount), ws.remainingOffset, ws.remainingData)
+      (inode.update(tx.txRevision, timestamp, adjustedSize, ws.newRoot.map(_.toArray), inodeNumber = None), ws.remainingOffset, ws.remainingData)
     }
   }
   
@@ -76,7 +76,7 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       timestamp <- tx.commit()
       _ <- ws.writeComplete
     } yield {
-      inode.update(tx.txRevision, timestamp, offset, ws.newRoot.map(_.toArray), inode.refcount)
+      inode.update(tx.txRevision, timestamp, offset, ws.newRoot.map(_.toArray), inodeNumber = None)
     }
   }
   

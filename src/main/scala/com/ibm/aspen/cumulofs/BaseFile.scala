@@ -21,8 +21,7 @@ trait BaseFile {
   def ctime: Timespec
   def mtime: Timespec
   def atime: Timespec
-  
-  def linkCount: Int
+  def links: Int
  
   def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit]
   
@@ -46,6 +45,4 @@ trait BaseFile {
   
   /** Frees all objects owned by the inode */
   def freeResources()(implicit ec: ExecutionContext): Future[Unit] = Future.unit
-  
-  def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit
 }

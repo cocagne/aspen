@@ -34,9 +34,9 @@ trait Directory extends BaseFile {
       fcomplete <- prepareDelete(name)
       _ <- tx.commit()
       _ <- fcomplete
-    } yield ()
+    } yield ()c
     
-    f.failed.foreach( tx.invalidateTransaction(_) )
+    f.failed.foreach( tx.invalidateTransaction )
     f
   }
   

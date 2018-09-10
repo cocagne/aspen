@@ -2,11 +2,13 @@
 * Rewrite CumuloFS in terms of DataObjects for inodes
    - Greatly simplifies the overwrite logic
 
+* Remove 5 file op retry limit from SimpleBaseFile
+
 * Allocation Strategy Refactor
    - Need to switch to RevisionGuard for allocation
    - DataObjectRevisionGuard
    - KeyValueRevisionGuard
-      - uses revision of kv-pair instead of top-level object revision
+      - uses revision of kv-pair instead of top-level object revisio
 
 * Need Rebuild & Opportunistic Rebuild unit tests
    - Refactor the design

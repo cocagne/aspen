@@ -1,8 +1,8 @@
 package com.ibm.aspen.cumulofs
 
-import com.ibm.aspen.core.objects.keyvalue.Key
 import java.nio.charset.StandardCharsets
-import com.ibm.aspen.core.objects.keyvalue.Value
+
+import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
 
 case class DirectoryEntry(name: String, pointer: InodePointer) {
   def key: Key = Key(name)

@@ -8,7 +8,7 @@ trait Symlink extends BaseFile {
   
   def size: Int
   
-  def link: String
+  def symLink: Array[Byte]
   
-  def setLink(newLink: String)(implicit ec: ExecutionContext): Future[Unit]
+  def setSymLink(newLink: Array[Byte])(implicit ec: ExecutionContext): Future[Unit]
 }

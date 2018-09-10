@@ -1,8 +1,8 @@
 package com.ibm.aspen.cumulofs
 
 import java.util.UUID
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait DirectoryLoader {
   

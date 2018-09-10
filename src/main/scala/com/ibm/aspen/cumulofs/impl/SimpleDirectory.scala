@@ -3,6 +3,7 @@ package com.ibm.aspen.cumulofs.impl
 import com.ibm.aspen.cumulofs.Directory
 import com.ibm.aspen.cumulofs.DirectoryPointer
 import com.ibm.aspen.cumulofs.FileSystem
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.cumulofs.DirectoryEntry
@@ -22,7 +23,6 @@ import com.ibm.aspen.base.tieredlist.KeyValueListPointer
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.FilePointer
-import com.ibm.aspen.cumulofs.DeleteFileTask
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp

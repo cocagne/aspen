@@ -1,33 +1,27 @@
 package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.cumulofs.InodeTable
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.cumulofs.InodePointer
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.cumulofs.FileType
-import com.ibm.aspen.base.AspenSystem
 import java.util.UUID
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+
+import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, Transaction}
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.cumulofs.{FileType, InodePointer, InodeTable}
 import com.ibm.aspen.cumulofs.InodeTable.NullInode
-import com.ibm.aspen.core.HLCTimestamp
+
+import scala.concurrent.{ExecutionContext, Future}
 
 class SimpleInodeTable(
     val system: AspenSystem,
     val inodeAllocaterUUID: UUID,
     val table: MutableTieredKeyValueList) extends InodeTable {
   
-  val fallocater = system.getObjectAllocater(inodeAllocaterUUID)
+  protected val fallocater: Future[ObjectAllocater] = system.getObjectAllocater(inodeAllocaterUUID)
   
   protected val rnd = new java.util.Random
   
-  protected var nextInodeNumber = rnd.nextLong()
+  protected var nextInodeNumber: Long = rnd.nextLong()
   
   protected def allocateInode(): Long = synchronized {
     val t = nextInodeNumber
@@ -44,7 +38,7 @@ class SimpleInodeTable(
   
   def prepareInodeAllocation(
       ftype: FileType.Value, 
-      inodeOps: List[KeyValueOperation])(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
+      inodeContent: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
     
     // Jump to new location if the transaction fails for any reason
     tx.result.failed.foreach( _ => selectNewInodeAllocationPosition() )
@@ -56,7 +50,7 @@ class SimpleInodeTable(
     for {
       allocater <- fallocater
       node <- table.fetchMutableNode(inodeNumber)
-      ptr <- allocater.allocateKeyValueObject(node.kvos.pointer, node.kvos.revision, inodeOps)
+      ptr <- allocater.allocateDataObject(node.kvos.pointer, node.kvos.revision, inodeContent)
       iptr = InodePointer(ftype, inodeNumber, ptr)
       _<-node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
     } yield {
@@ -88,9 +82,9 @@ class SimpleInodeTable(
   }
   
   def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = {
-    table.get(Key(inodeNumber)) map { o => o match { 
+    table.get(Key(inodeNumber)) map {
       case None => None
       case Some(arr) => Some(InodePointer(arr.value))
-    }} 
+    }
   }
 }

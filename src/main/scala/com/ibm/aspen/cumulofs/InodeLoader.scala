@@ -1,6 +1,8 @@
 package com.ibm.aspen.cumulofs
 
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.objects.ObjectRevision
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import scala.concurrent.Promise
@@ -16,29 +18,29 @@ trait InodeLoader {
   
   val inodeCache: InodeCache
   
-  def load(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[DirectoryInode] = {
-    iload(pointer).map(i => i.asInstanceOf[DirectoryInode])
+  def load(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[(DirectoryInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[DirectoryInode], i._2))
   }
-  def load(pointer: FilePointer)(implicit ec: ExecutionContext): Future[FileInode] = {
-    iload(pointer).map(i => i.asInstanceOf[FileInode])
+  def load(pointer: FilePointer)(implicit ec: ExecutionContext): Future[(FileInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[FileInode], i._2))
   }
-  def load(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[SymlinkInode] = {
-    iload(pointer).map(i => i.asInstanceOf[SymlinkInode])
+  def load(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[(SymlinkInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[SymlinkInode], i._2))
   }
-  def load(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocketInode] = {
-    iload(pointer).map(i => i.asInstanceOf[UnixSocketInode])
+  def load(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[(UnixSocketInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[UnixSocketInode], i._2))
   }
-  def load(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFOInode] = {
-    iload(pointer).map(i => i.asInstanceOf[FIFOInode])
+  def load(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[(FIFOInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[FIFOInode], i._2))
   }
-  def load(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDeviceInode] = {
-    iload(pointer).map(i => i.asInstanceOf[CharacterDeviceInode])
+  def load(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[(CharacterDeviceInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[CharacterDeviceInode], i._2))
   }
-  def load(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDeviceInode] = {
-    iload(pointer).map(i => i.asInstanceOf[BlockDeviceInode])
+  def load(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[(BlockDeviceInode, ObjectRevision)] = {
+    iload(pointer).map(i => (i._1.asInstanceOf[BlockDeviceInode], i._2))
   }
   
-  def load(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Inode] = {
+  def load(inodeNumber: Long)(implicit ec: ExecutionContext): Future[(Inode, ObjectRevision)] = {
     val opointer = inodeCache.lookup(inodeNumber) match {
       case Some(ptr) => Future.successful(Some(ptr))
       case None => system.retryStrategy.retryUntilSuccessful {
@@ -46,19 +48,19 @@ trait InodeLoader {
       }
     }
     
-    opointer.flatMap { o => o match {
+    opointer.flatMap {
       case None => Future.failed(InvalidInode(inodeNumber))
-      case Some(iptr) => iload(iptr) 
-    }}
+      case Some(iptr) => iload(iptr)
+    }
   }
   
-  def iload(pointer: InodePointer)(implicit ec: ExecutionContext): Future[Inode] = {
-    val pload = Promise[Inode]()
+  def iload(pointer: InodePointer)(implicit ec: ExecutionContext): Future[(Inode, ObjectRevision)] = {
+
+    val pload = Promise[(Inode, ObjectRevision)]()
       
     system.readObject(pointer.pointer) onComplete {
-      case Success(kvos) => pload.success(Inode(pointer, kvos.revision, kvos.refcount, kvos.timestamp, kvos.contents.map(t => (t._1 -> t._2.value)))) 
-        
-        
+      case Success(dos) => pload.success((Inode(pointer, dos.data), dos.revision))
+
       case Failure(e: CorruptedObject) =>
         // TODO: If pointer fails to read, we'll need to read the inode table (could be stale pointer). If new pointer
         //       for that inode exists, we'll need to use a callback function to update the stale pointer

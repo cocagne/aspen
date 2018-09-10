@@ -16,7 +16,7 @@ object FileType extends Enumeration {
   
   
   
-  def fromMode(mode: Int): Value = (mode & S_IFMT) match {
+  def fromMode(mode: Int): Value = mode & S_IFMT match {
     case S_IFSOCK => UnixSocket
     case S_IFLNK  => Symlink
     case S_IFREG  => File
@@ -36,7 +36,8 @@ object FileType extends Enumeration {
     case BlockDevice     => S_IFBLK 
     case FIFO            => S_IFFIFO
   }
-   
+
+  def ensureModeFileType(mode: Int, fileType: FileType.Value): Int = mode & ~S_IFMT | toMode(fileType)
   
   def toByte(value: Value): Byte = {
     val i = value match {

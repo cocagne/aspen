@@ -1,23 +1,15 @@
-package com.ibm.aspen.cumulofs
+package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.base.task.SteppedDurableTask
-import com.ibm.aspen.core.objects.keyvalue.Key
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.util._
-import com.ibm.aspen.base.task.DurableTaskType
 import java.util.UUID
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.task.DurableTaskPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.base.task.DurableTask
-import com.ibm.aspen.base.Transaction
-import sun.reflect.generics.reflectiveObjects.NotImplementedException
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.objects.KeyValueObjectState
+
+import com.ibm.aspen.base.{AspenSystem, Transaction}
+import com.ibm.aspen.base.task.{DurableTask, DurableTaskPointer, DurableTaskType, SteppedDurableTask}
+import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
+import com.ibm.aspen.cumulofs._
+import com.ibm.aspen.util._
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object DeleteFileTask {
   private val BaseKeyId = SteppedDurableTask.ReservedToKeyId

@@ -261,7 +261,7 @@ class SimpleFileHandle(
             
             tx.update(inode.pointer.pointer, Some(inode.revision), Nil, newContent.toList.map(t => Insert(t._1,t._2)))
             
-            val updatedInode = inode.update(tx.txRevision, HLCTimestamp.now, newSize, ws.newRoot.map(_.toArray), inode.refcount)
+            val updatedInode = inode.update(tx.txRevision, HLCTimestamp.now, newSize, ws.newRoot.map(_.toArray), inodeNumber = None)
             
             (ws.remainingOffset, ws.remainingData, tx.txRevision, HLCTimestamp.now, newContent)
           }
