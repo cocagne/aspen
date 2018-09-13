@@ -1,52 +1,108 @@
 package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.cumulofs.FileInode
-import com.ibm.aspen.cumulofs.FileSystem
-import com.ibm.aspen.cumulofs.FilePointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.Value
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.base.ObjectAllocater
-import scala.concurrent.Promise
-import com.ibm.aspen.cumulofs.Inode
 import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.util.Varint
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.cumulofs.File
-import com.ibm.aspen.cumulofs.Timespec
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.base.StopRetrying
-import com.ibm.aspen.cumulofs.error.HolesNotSupported
-import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRevision}
+import com.ibm.aspen.cumulofs._
+import com.ibm.aspen.cumulofs.impl.IndexedFileContent.WriteStatus
+import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.FileOperation
 
-class SimpleFile(
-    fs: FileSystem,
-    protected var cachedInode: FileInode) extends SimpleBaseFile(fs) with File {
-  
-  val pointer: FilePointer = cachedInode.pointer
-  
-  def inode: FileInode = synchronized { cachedInode }
-  
-  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
-    cachedInode = new FileInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
+import scala.concurrent.{ExecutionContext, Future, Promise}
+
+class SimpleFile(override val pointer: FilePointer,
+                 cachedInodeRevision: ObjectRevision,
+                 initialInode: FileInode,
+                 fs: FileSystem,
+                 osegmentSize: Option[Int]=None,
+                 otierNodeSize: Option[Int]=None) extends SimpleBaseFile(pointer, cachedInodeRevision, initialInode, fs) with File {
+
+  import SimpleFile._
+
+  private var oifc: Option[IndexedFileContent] = None
+
+  private def content: IndexedFileContent = synchronized {
+    if (oifc.isEmpty)
+      oifc = Some(new IndexedFileContent(this, osegmentSize, otierNodeSize))
+    oifc.get
   }
-  
-  def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
-      cachedInode = refreshedInode
-    }}
+
+  override protected def setCachedInode(newInode: Inode, newRevision:ObjectRevision): Unit = synchronized {
+    super.setCachedInode(newInode, newRevision)
+    if (inode.ocontents.isEmpty)
+      oifc = None
   }
-  
+
+  override def inode: FileInode = super.inode.asInstanceOf[FileInode]
+
+  override def inodeState: (FileInode, ObjectRevision) = {
+    val t = super.inodeState
+    (t._1.asInstanceOf[FileInode], t._2)
+  }
+
   override def freeResources()(implicit ec: ExecutionContext): Future[Unit] = {
     new SimpleFileHandle(this, 0).truncate(0)
   }
 
+  def debugReadFully()(implicit ec: ExecutionContext): Future[Array[Byte]] = content.debugReadFully()
+
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
+    content.read(offset, nbytes)
+  }
+
+  def write(offset: Long,
+            buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[(Long, List[DataBuffer])] = {
+    val op = Write(this, offset, buffers)
+    enqueueOp(op)
+    op.writePromise.future
+  }
+
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Truncate(this, offset))
+}
+
+object SimpleFile {
+  case class Truncate(file: SimpleFile, offset: Long) extends FileOperation {
+
+    def prepareTransaction(pointer: DataObjectPointer,
+                           revision: ObjectRevision,
+                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode] = synchronized {
+      file.content.truncate(offset).map { ws =>
+        val updatedInode = inode.asInstanceOf[FileInode].updateContent(offset, Timespec.now, ws.newRoot)
+        tx.overwrite(pointer, revision, updatedInode.toDataBuffer)
+        updatedInode
+      }
+    }
+
+  }
+
+  case class Write(file: SimpleFile, offset: Long, buffers: List[DataBuffer]) extends FileOperation {
+    val writePromise: Promise[(Long, List[DataBuffer])] = Promise()
+
+    def prepareTransaction(pointer: DataObjectPointer,
+                           revision: ObjectRevision,
+                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode] = synchronized {
+
+      val finode = inode.asInstanceOf[FileInode]
+
+      val totalSize = buffers.foldLeft(0)((sz, db) => sz + db.size)
+
+      file.content.write(offset, buffers).map { ws =>
+
+        val nwritten = totalSize - ws.remainingData.foldLeft(0)((sz, db) => sz + db.size)
+
+        val endOffset = offset + nwritten
+
+        val newSize = if (endOffset > finode.size) endOffset else finode.size
+
+        val updatedInode = inode.asInstanceOf[FileInode].updateContent(newSize, Timespec.now, ws.newRoot)
+
+        tx.overwrite(pointer, revision, updatedInode.toDataBuffer)
+
+        tx.result.foreach { _ =>
+          writePromise.success((ws.remainingOffset, ws.remainingData))
+        }
+
+        updatedInode
+      }
+    }
+  }
 }

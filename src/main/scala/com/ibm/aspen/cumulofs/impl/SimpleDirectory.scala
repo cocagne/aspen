@@ -1,115 +1,93 @@
 package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.cumulofs.Directory
-import com.ibm.aspen.cumulofs.DirectoryPointer
-import com.ibm.aspen.cumulofs.FileSystem
-
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.cumulofs.DirectoryEntry
-import com.ibm.aspen.cumulofs.InodePointer
-import com.ibm.aspen.cumulofs.DirectoryInode
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.base.RetryStrategy
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.base.tieredlist.KeyValueListPointer
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+import com.ibm.aspen.base.tieredlist.{MutableTieredKeyValueList, TieredKeyValueListNodeAllocaterFactory, TieredKeyValueListRoot}
+import com.ibm.aspen.base.{ObjectAllocater, Transaction}
+import com.ibm.aspen.core.objects.keyvalue.{Key, LexicalKeyOrdering, Value}
+import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
-import com.ibm.aspen.cumulofs.FilePointer
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.cumulofs.Inode
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.cumulofs.BaseFile
-import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
-import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.SimpleSet
 
-class SimpleDirectory(
-    protected var cachedInode: DirectoryInode,
-    fs: FileSystem) extends SimpleBaseFile(fs) with Directory {
-  
-  val pointer: DirectoryPointer = synchronized { cachedInode.pointer }
-  
+import scala.concurrent.{ExecutionContext, Future}
+
+object SimpleDirectory {
+
+  case class SetParentDirectory(newParent: Option[DirectoryPointer]) extends SimpleSet {
+    def update(inode: Inode): Inode = inode.asInstanceOf[DirectoryInode].setParentDirectory(newParent)
+  }
+
+}
+
+class SimpleDirectory(override val pointer: DirectoryPointer,
+                      cachedInodeRevision: ObjectRevision,
+                      initialInode: DirectoryInode,
+                      fs: FileSystem) extends SimpleBaseFile(pointer, cachedInodeRevision, initialInode, fs) with Directory {
+
+
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
   
-  override def updateInode(newRevision: ObjectRevision, newTimestamp: HLCTimestamp, updatedState: Map[Key,Array[Byte]], newRefcount: Option[ObjectRefcount]): Unit = synchronized {
-   cachedInode = new DirectoryInode(cachedInode.pointer, newRevision, newRefcount.getOrElse(cachedInode.refcount), newTimestamp, updatedState)
+  import SimpleDirectory._
+
+  override def inode: DirectoryInode = super.inode.asInstanceOf[DirectoryInode]
+
+  override def inodeState: (DirectoryInode, ObjectRevision) = {
+    val t = super.inodeState
+    (t._1.asInstanceOf[DirectoryInode], t._2)
+  }
+
+  def setParentDirectory(newParent: Option[DirectoryPointer])(implicit ec: ExecutionContext): Future[Unit] = {
+    enqueueOp(SetParentDirectory(newParent))
   }
   
-  def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
-    fs.inodeLoader.load(cachedInode.pointer).map { refreshedInode => synchronized {
-      cachedInode = refreshedInode
-    }}
+  override def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    super.refresh()
   }
-  
+
   private[this] def tree(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = synchronized {
     ftl match {
       case Some(f) => f
-      case None => 
-        val f = getInode().flatMap(loadTieredList)
-        ftl = Some(f)
-        f
-    }
-  }
-  
-  private[this] def loadTieredList(inode: DirectoryInode)(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = inode.contentTree match {
-    case Some(root) => 
-      Future.successful(createTieredList(root, inode.pointer.pointer))
-      
-    case None => fs.system.retryStrategy.retryUntilSuccessful {
-      for {
-        // Ensure we have an up-to-date copy of the inode state. This is necessary for retries where some other node may
-        // successfully create the tiered list. When that happens we'll simply detect success and skip the creation step
-        kvos <- fs.system.readObject(inode.pointer.pointer)
-        root <- createDirectoryTable(kvos)
-      } yield createTieredList(root, kvos.pointer)
-    }
-  }
-  
-  private[this] def createDirectoryTable(kvos: KeyValueObjectState)(implicit ec: ExecutionContext): Future[TieredKeyValueListRoot] = {
-    kvos.contents.get(DirectoryInode.ContentTieredListKey) match {
-      case Some(v) => 
-        // Some other node must have beaten us to the punch. 
-        Future.successful(TieredKeyValueListRoot(v.value))
-      
-      case None =>
-        // Allocate the initial tree object and insert the tiered list root into the directory inode
 
-        val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
-        val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(fs.directoryLoader.directoryTableAllocaters, 
-                                fs.directoryLoader.directoryTableSizes, fs.directoryLoader.directoryTableKVPairLimits)
-        
-        fs.system.transact { implicit tx =>
-        
-          val txreqs = KeyValueUpdate.KVRequirement(DirectoryInode.ContentTieredListKey, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
-          
-          for {
-            allocater <- fs.system.getObjectAllocater(fs.directoryLoader.directoryTableAllocaters(0))
-            dirContentPtr <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil)
-            dirTblRoot = TieredKeyValueListRoot(0, LexicalKeyOrdering, dirContentPtr, allocaterType, allocaterConfig)
-            
-            _ = tx.update(kvos.pointer, None, txreqs, Insert(DirectoryInode.ContentTieredListKey, dirTblRoot.toArray()) :: Nil)
-          } yield dirTblRoot  
+      case None =>
+        inode.ocontents match {
+          case Some(tkvl) =>
+            val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
+            val f = Future.successful(new MutableTieredKeyValueList(rootMgr))
+            ftl = Some(f)
+            f
+
+          case None =>
+            val (tkvlAllocaterUUID, config) = fs.directoryTableConfig
+
+            val tkvlaFactory = fs.system.typeRegistry.getTypeFactory[TieredKeyValueListNodeAllocaterFactory](tkvlAllocaterUUID).get
+
+            val tkvlAllocater = tkvlaFactory.createNodeAllocater(fs.system, config)
+
+            def alloc(allocater: ObjectAllocater) = fs.system.transact { implicit tx =>
+              allocater.allocateKeyValueObject(pointer.pointer, cachedInodeRevision, Nil) map { root =>
+                val tkvl = new TieredKeyValueListRoot(0, LexicalKeyOrdering, root, tkvlAllocaterUUID, config)
+                val newInode = inode.setContentTree(Some(tkvl))
+                tx.overwrite(pointer.pointer, cachedInodeRevision, newInode.toDataBuffer)
+                (newInode, tx.txRevision, tkvl)
+              }
+            }
+
+            val f = for {
+              allocater <- tkvlAllocater.tierNodeAllocater(0)
+              (newInode, newRevision, tkvl) <- alloc(allocater)
+            } yield {
+              val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
+              setCachedInode(newInode, newRevision)
+              new MutableTieredKeyValueList(rootMgr)
+            }
+
+            val fcreate = f.recoverWith { case _ => refresh().flatMap(_ => tree) }
+
+            ftl = Some(fcreate)
+
+            fcreate
         }
     }
-    
   }
-  
-  def createTieredList(root: TieredKeyValueListRoot, pointer: KeyValueObjectPointer): MutableTieredKeyValueList = {
-    val rootMgr = new MutableKeyValueObjectRootManager(fs.system, pointer, DirectoryInode.ContentTieredListKey, root)
-    new MutableTieredKeyValueList(rootMgr)
-  }
-    
 
   def getContents()(implicit ec: ExecutionContext): Future[List[DirectoryEntry]] = {
     var contents: List[DirectoryEntry] = Nil
@@ -131,19 +109,19 @@ class SimpleDirectory(
       tl <- tree
       kvos <- fkvos
       _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
-      prep <- tl.preparePut(name, pointer.toArray)
+      _ <- tl.preparePut(name, pointer.toArray)
     } yield ()
   }
   
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     for {
       tl <- tree
-      prep <- tl.prepareRename(oldName: String, newName: String)
+      _ <- tl.prepareRename(oldName: String, newName: String)
     } yield ()
   }
   
   def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
-    implicit val tx = fs.system.newTransaction()
+    implicit val tx: Transaction = fs.system.newTransaction()
     
     prepareInsert(name, file.pointer).flatMap { _ =>tx.commit().map(_=>()) }
   }
@@ -189,8 +167,8 @@ class SimpleDirectory(
     
     def prep(rootNode: KeyValueObjectState): Future[Unit] = {
       
-      if (!rootNode.contents.isEmpty) 
-        Future.failed(new DirectoryNotEmpty(pointer))
+      if (rootNode.contents.nonEmpty)
+        Future.failed(DirectoryNotEmpty(pointer))
       else {
         tx.lockRevision(rootNode.pointer, rootNode.revision)
         tx.setRefcount(rootNode.pointer, rootNode.refcount, rootNode.refcount.decrement())
@@ -201,7 +179,7 @@ class SimpleDirectory(
     for {
       tl <- tree
       node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
-      ready <- prep(node.kvos)
+      _ <- prep(node.kvos)
     } yield ()
   }
 }

@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.ibm.aspen.base.{AspenSystem, Transaction}
 import com.ibm.aspen.base.task.{DurableTask, DurableTaskPointer, DurableTaskType, SteppedDurableTask}
-import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.core.objects.{DataObjectState, KeyValueObjectState, ObjectRevision}
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
 import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.util._
@@ -25,19 +25,20 @@ object DeleteFileTask {
       fs: FileSystem, 
       victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
     
-    fs.inodeLoader.iload(victim) flatMap { inode =>
+    fs.inodeLoader.iload(victim) flatMap { t =>
+      val (inode, revision) = t
       //
-      // If refcount is greater than 2, more than one directory still references the file so
-      // all we need to do is decrement the refcount. If it's exactly two, we need to create
+      // If refcount is > 1, more than one directory still references the file so
+      // all we need to do is decrement the link count. If it's 1, we need to create
       // the deletion task to clean up the inode resources
       //
-      if (inode.refcount.count > 2) {
-        tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
+      if (inode.links > 1) {
+        tx.overwrite(victim.pointer, revision, inode.update(links=Some(inode.links-1)).toDataBuffer)
         Future.successful(Future.unit)
       } 
-      else if (inode.refcount.count == 2 ) {
-        tx.setRefcount(inode.pointer.pointer, inode.refcount, inode.refcount.decrement())
-        
+      else if (inode.links == 1 ) {
+        tx.overwrite(victim.pointer, revision, inode.update(links=Some(0)).toDataBuffer)
+
         val content = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.toArray))
         
         val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
@@ -45,7 +46,7 @@ object DeleteFileTask {
         inode match {
           case d: DirectoryInode => 
             for {
-              prep <- fs.loadDirectory(d).prepareForDirectoryDeletion()
+              _ <- fs.loadDirectory(victim.asInstanceOf[DirectoryPointer], d, revision).prepareForDirectoryDeletion()
               taskReady <- ftask
             } yield taskReady.map(_=>())
             
@@ -94,17 +95,17 @@ class DeleteFileTask private (
     
     val iptr = InodePointer(state(InodePointerKey))
     
-    def destroyInode(ikvos: KeyValueObjectState): Future[Unit] = {
-      implicit val tx = system.newTransaction()
-      tx.setRefcount(iptr.pointer, ikvos.refcount, ikvos.refcount.setCount(0))
+    def destroyInode(dos: DataObjectState): Future[Unit] = {
+      implicit val tx: Transaction = system.newTransaction()
+      tx.setRefcount(iptr.pointer, dos.refcount, dos.refcount.setCount(0))
       tx.commit().map(_ =>())
     }
     
     for {
       file <- fs.lookup(iptr)
       _ <- file.freeResources()
-      ikvos <- system.readObject(iptr.pointer)
-      _ <- destroyInode(ikvos)
+      dos <- system.readObject(iptr.pointer)
+      _ <- destroyInode(dos)
       _ <- fs.inodeTable.delete(iptr)
     } yield {
       system.transactUntilSuccessful { tx =>

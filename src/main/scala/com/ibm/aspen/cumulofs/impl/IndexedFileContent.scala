@@ -24,41 +24,43 @@ import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.task.DurableTask
 import com.ibm.aspen.core.read.InvalidObject
 
-class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Option[Int]=None, otierNodeSize: Option[Int]=None) {
+class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otierNodeSize: Option[Int]=None) {
   import IndexedFileContent._
   
   private[this] var otail: Option[Tail] = None
-  
-  private val inodePointer = inode.pointer
+
+  private val fs = file.fs
   
   def refresh()(implicit ec: ExecutionContext): Future[Unit] = refreshRoot.map(_=>())
   
   private def refreshRoot()(implicit ec: ExecutionContext): Future[IndexNode] = {
     
     dropCache()
-    
-    fs.inodeLoader.load(inodePointer) flatMap { inode => 
-      inode.fileIndexRoot() match {
-        case Some(arr) => load(DataObjectPointer(arr))
-          
+
+    file.refresh() flatMap { _ =>
+      file.inode.ocontents match {
+        case Some(dp) => load(dp)
+
         case None => throw new FatalIndexError("Root Index Pointer Deleted")
       }
     }
   }
   
-  private def getOrAllocateRoot(inode: FileInode)(implicit tx: Transaction, ec: ExecutionContext): Future[IndexNode] = {
-    inode.fileIndexRoot match {
+  private def getOrAllocateRoot()(implicit tx: Transaction, ec: ExecutionContext): Future[IndexNode] = {
+    val (inode, revision) = file.inodeState
+
+    inode.ocontents match {
       case None =>
         dropCache()
         
         val content = IndexNode.getEncodedNodeContent()
         
-        allocateIndexNode(inode.pointer.pointer, inode.revision, tier=0, content=content).map { newPointer =>
+        allocateIndexNode(file.pointer.pointer, revision, tier=0, content=content).map { newPointer =>
           //println(s"New Root Node: ${newPointer.uuid}")
           IndexNode(newPointer, ObjectRevision(tx.uuid), content, this)
         }
         
-      case Some(inodeRootArr) => load(DataObjectPointer(inodeRootArr))
+      case Some(dp) => load(dp)
     }
   }
   
@@ -108,14 +110,14 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     }
   }
   
-  def read(inode: FileInode, offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
-    inode.fileIndexRoot() match {
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
+    file.inode.ocontents match {
       case None => Future.successful(None)
-      case Some(arr) =>
+      case Some(dp) =>
         
         val bb = ByteBuffer.allocate(nbytes)
         //println(s"Loading index")
-        load(DataObjectPointer(arr)).flatMap { node =>
+        load(dp).flatMap { node =>
           //println(s"Index Node Loaded ${node.uuid}. offset: $offset. nbytes $nbytes Entries: ${node.entries.toList.map(d => (d.offset -> d.pointer.uuid))}")
           node.getIndexEntriesForRange(offset, nbytes).flatMap { t =>
             val (_, segments) = t
@@ -145,10 +147,10 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     }
   }
   
-  def debugReadFully(inode: FileInode)(implicit ec: ExecutionContext): Future[Array[Byte]] = read(inode, 0, inode.size.asInstanceOf[Int]).map { odb => odb match {
+  def debugReadFully()(implicit ec: ExecutionContext): Future[Array[Byte]] = read(0, file.inode.size.asInstanceOf[Int]).map {
     case None => new Array[Byte](0)
     case Some(db) => db.getByteArray()
-  }}
+  }
   
   private def recursiveAlloc(
       segmentOffset: Long, 
@@ -162,7 +164,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
       val arr = new Array[Byte](if (rbytes <= segmentSize) rbytes else segmentSize)
       val bb = ByteBuffer.wrap(arr)
       val leftover = DataBuffer.fill(bb, remaining)
-      val falloc = allocateDataSegment(inode.pointer.pointer, inode.revision, DataBuffer(arr)).map { newPointer =>
+      val falloc = allocateDataSegment(file.pointer.pointer, file.revision, DataBuffer(arr)).map { newPointer =>
         //println(s"Allocated data segment: ${newPointer.uuid}")
         (DownPointer(segmentOffset, newPointer), arr.length)
       }
@@ -216,12 +218,14 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     }
   }
   
-  def truncate(inode: FileInode, endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
+  def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
+    val inode = file.inode
+
     if (endOffset > inode.size) {
-     write(inode, endOffset - 1, List(DataBuffer(Array[Byte](0)))) 
+     write(endOffset - 1, List(DataBuffer(Array[Byte](0))))
     }
     else if (inode.size == endOffset) {
-      Future.successful(WriteStatus(inode.fileIndexRoot.map(DataObjectPointer(_)), 0, Nil, Future.unit))
+      Future.successful(WriteStatus(inode.ocontents, 0, Nil, Future.unit))
     } else {
       def truncateOrDelete(root: IndexNode): Future[Option[DataObjectPointer]] = {
         if (endOffset == 0)
@@ -230,7 +234,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
           root.truncate(endOffset).map(_ => Some(root.pointer))
       }
       for {
-        root <- getOrAllocateRoot(inode)
+        root <- getOrAllocateRoot()
         optr <- truncateOrDelete(root)
       } yield {
         val fcomplete = tx.result.map { _ =>
@@ -292,7 +296,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
         (newRoot, updatedNodes) <- IndexNode.rupdate(allocated.map(t => t._1), tailPath, tailPath.head, Nil)
       } yield {
         val fcomplete = tx.result.map { _ => synchronized {
-          if (!allocated.isEmpty) {
+          if (allocated.nonEmpty) {
             val (DownPointer(offset, pointer), size) = allocated.last
             otail = Some(Tail(offset, pointer, ObjectRevision(tx.uuid), size))
           } else {
@@ -309,7 +313,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
     }
     
     for {
-      root <- getOrAllocateRoot(inode)
+      root <- getOrAllocateRoot()
       tailPath <- root.getTail()
       fupdated <- begin(tailPath)
     } yield fupdated
@@ -327,11 +331,10 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
    *  at the beginning of the next object? Should simplify impl
    *    
    */
-   def write(
-       inode: FileInode, 
-       offset: Long, 
-       buffers: List[DataBuffer])(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
-     
+   def write(offset: Long,
+             buffers: List[DataBuffer])(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
+     val inode = file.inode
+
      if (offset == inode.size)
          writeTail(inode, offset, buffers)
      else {
@@ -353,7 +356,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
              (writeOffset, toWrite)
            else {
              
-             val (d, n, dos) = elist.head
+             val (d, _, dos) = elist.head
              val nleft = toWrite.foldLeft(0)((sz, db) => sz + db.size)
              val objOffset = (writeOffset - d.offset).asInstanceOf[Int]
              val objSize = if (objOffset + nleft > dos.data.size) {
@@ -364,7 +367,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
              val bb = ByteBuffer.allocate(objSize.asInstanceOf[Int])
              bb.put(dos.data)
              
-             val nwrite = if (objOffset + nleft < segmentSize) nleft else (segmentSize - objOffset)
+             val nwrite = if (objOffset + nleft < segmentSize) nleft else segmentSize - objOffset
              val (writeBuff, remaining) = if (objOffset + toWrite.head.size > bb.limit()) {
                val (wb, rb) = toWrite.head.split(bb.limit() - objOffset)
                (wb, rb :: toWrite.tail)
@@ -390,7 +393,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
          val segmentSize = headPath.head.index.segmentSize
          val beginObjectOffset = if (offset < segmentSize) 0 else offset - (offset.asInstanceOf[Int] % segmentSize) 
          
-         def entryContains(d: DownPointer, tgtOffset: Long): Boolean = (tgtOffset >= d.offset && tgtOffset < d.offset + segmentSize)
+         def entryContains(d: DownPointer, tgtOffset: Long): Boolean = tgtOffset >= d.offset && tgtOffset < d.offset + segmentSize
          
          if (entries.isEmpty) {
            // pure allocation within a hole in the file
@@ -446,7 +449,7 @@ class IndexedFileContent(val fs: FileSystem, inode: FileInode, osegmentSize: Opt
        val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
        
        for { 
-         root <- getOrAllocateRoot(inode)
+         root <- getOrAllocateRoot()
          (headPath, entries) <- root.getIndexEntriesForRange(offset, nbytes)
          objs <- Future.sequence(entries.map( t => fs.system.readObject(t._1.pointer).map{ dos => (t._1, t._2, dos) } )) 
          ftuple <- prepareWrite(headPath, objs)
@@ -462,7 +465,10 @@ object IndexedFileContent {
   
   class CorruptedIndex extends FatalIndexError("Corrupted Index")
   
-  case class WriteStatus(newRoot: Option[DataObjectPointer], remainingOffset: Long, remainingData: List[DataBuffer], writeComplete: Future[Unit])
+  case class WriteStatus(newRoot: Option[DataObjectPointer],
+                         remainingOffset: Long,
+                         remainingData: List[DataBuffer],
+                         writeComplete: Future[Unit])
   
   private case class Tail(offset: Long, pointer: DataObjectPointer, revision: ObjectRevision, size: Int)
  
@@ -536,7 +542,7 @@ object IndexedFileContent {
       def rdelete(nodePointer: DataObjectPointer): Future[Unit] = {
         system.readObject(nodePointer).flatMap { dos =>
 
-          val (tier, startOffset, maxOffset, entries) = IndexNode.decode(dos.data)
+          val (tier, _, _, entries) = IndexNode.decode(dos.data)
           
           //println(s"Node ${nodePointer.uuid} tier ${tier} start $startOffset, max $maxOffset Lower Entries: ${entries.map(t => (t.offset -> t.pointer.uuid))}")
           // Delete lower entries
@@ -546,10 +552,10 @@ object IndexedFileContent {
                 rdelete(d.pointer)
               else {
                 system.readObject(d.pointer).flatMap { sdos => 
-                  implicit val tx = system.newTransaction()
+                  implicit val tx: Transaction = system.newTransaction()
                   //println(s"Deleting data node ${sdos.pointer.uuid}")
                   tx.setRefcount(sdos.pointer, sdos.refcount, sdos.refcount.decrement())
-                  tx.commit()
+                  tx.commit().map(_=>())
                 } recover {
                   case _: InvalidObject => () // already deleted
                   case t: Throwable => println(s"Unexpected error while deleting truncated data node ${d.pointer.uuid}: $t")
@@ -559,13 +565,13 @@ object IndexedFileContent {
           }
           
           // Delete self
-          Future.sequence(fl.toList).flatMap { _ =>
+          Future.sequence(fl).flatMap { _ =>
             //println(s"Deleting index node ${nodePointer.uuid}")
             system.retryStrategy.retryUntilSuccessful {
               system.readObject(nodePointer).flatMap { sdos => 
-                implicit val tx = system.newTransaction()
+                implicit val tx: Transaction = system.newTransaction()
                 tx.setRefcount(sdos.pointer, sdos.refcount, sdos.refcount.decrement())
-                tx.commit()
+                tx.commit().map(_=>())
               } recover {
                 case _: InvalidObject => () // already deleted
                 case t: Throwable => println(s"Unexpected error while deleting truncated index node: $t")
@@ -811,7 +817,7 @@ object IndexedFileContent {
     }
     
     def getEntryForOffset(targetOffset: Long): Option[DownPointer] = {
-      if (targetOffset < startOffset || endOffset.map(targetOffset > _).getOrElse(false))
+      if (targetOffset < startOffset || endOffset.exists(targetOffset > _))
         None
       else if (entries.length == 0)
         None
@@ -838,7 +844,7 @@ object IndexedFileContent {
     def seek(targetOffset: Long, path: List[IndexNode]=Nil)(implicit ec: ExecutionContext): Future[List[IndexNode]] = {
       // If this node doesn't contain the target offset, we've hit an inconsistency during navigation
       // re-start from a refreshed root node
-      if (targetOffset < startOffset || endOffset.map(targetOffset > _).getOrElse(false))
+      if (targetOffset < startOffset || endOffset.exists(targetOffset > _))
         index.refreshRoot().flatMap(newRoot => newRoot.seek(targetOffset))
       else {
         if (tier == 0)

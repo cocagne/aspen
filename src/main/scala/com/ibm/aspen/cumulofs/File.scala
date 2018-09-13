@@ -1,5 +1,9 @@
 package com.ibm.aspen.cumulofs
 
+import com.ibm.aspen.core.DataBuffer
+
+import scala.concurrent.{ExecutionContext, Future}
+
 trait File extends BaseFile {
   val pointer: FilePointer
   
@@ -7,4 +11,17 @@ trait File extends BaseFile {
 
   def size: Long = inode.size
 
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]]
+
+  def write(offset: Long,
+            buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[(Long, List[DataBuffer])]
+
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit]
+
+  def write(offset: Long,
+            buffer: DataBuffer)(implicit ec: ExecutionContext): Future[(Long, List[DataBuffer])] = {
+    write(offset, List(buffer))
+  }
+
+  def debugReadFully()(implicit ec: ExecutionContext): Future[Array[Byte]]
 }

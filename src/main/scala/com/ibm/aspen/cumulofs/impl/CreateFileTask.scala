@@ -41,8 +41,7 @@ object CreateFileTask {
   def execute(
       fs: FileSystem, 
       directory: DirectoryPointer, 
-      name: String, 
-      ftype: FileType.Value,
+      name: String,
       inode: Inode)(implicit ec: ExecutionContext): Future[InodePointer] = {
     
     val encodedDir = directory.toArray
@@ -52,18 +51,17 @@ object CreateFileTask {
     val ftaskPrepared = fs.system.transactUntilSuccessful { implicit tx =>
       
       for {
-        newInode <- fs.inodeTable.prepareInodeAllocation(ftype, inodeOps)
+        newInode <- fs.inodeTable.prepareInodeAllocation(inode)
           
         taskState = List(
             (DirectoryKey,      encodedDir),
             (NameKey,           encodedName),
             (InodePointerKey,   newInode.toArray),
             (FileSystemUUIDKey, encodedFS))
-            
-        
+
         taskPrepared <- fs.localTaskGroup.prepareTask(TaskType, taskState)
         
-        committed <- tx.commit()
+        _ <- tx.commit()
         
       } yield {
         taskPrepared.map(_ => newInode)
@@ -107,12 +105,13 @@ class CreateFileTask private (
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
     
     fs.system.transactUntilSuccessful { implicit tx =>
-      
+
       for {
+
         dir <- fs.loadDirectory(directoryPointer)
-      
-        prep <- dir.prepareInsert(name, newInode)
-      
+
+        _ <- dir.prepareInsert(name, newInode)
+
         _ = completeTask(tx)
         
       } yield ()

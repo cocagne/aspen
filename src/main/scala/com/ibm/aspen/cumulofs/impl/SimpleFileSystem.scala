@@ -1,38 +1,18 @@
 package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.cumulofs.FileSystem
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
-import com.ibm.aspen.cumulofs.InodeTable
-import com.ibm.aspen.cumulofs.InodeLoader
-import com.ibm.aspen.cumulofs.DirectoryLoader
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.cumulofs.{decodeIntArray, decodeUUIDArray}
 import java.util.UUID
+
+import com.ibm.aspen.base.{AspenSystem, ObjectAllocater}
 import com.ibm.aspen.base.task.LocalTaskGroup
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.util._
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.base.tieredlist.{MutableKeyValueObjectRootManager, MutableTieredKeyValueList, SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.cumulofs.FileLoader
-import com.ibm.aspen.cumulofs.Symlink
-import com.ibm.aspen.cumulofs.SymlinkPointer
-import com.ibm.aspen.cumulofs.UnixSocketPointer
-import com.ibm.aspen.cumulofs.UnixSocket
-import com.ibm.aspen.cumulofs.FIFOPointer
-import com.ibm.aspen.cumulofs.FIFO
-import com.ibm.aspen.cumulofs.CharacterDevicePointer
-import com.ibm.aspen.cumulofs.BlockDevice
-import com.ibm.aspen.cumulofs.CharacterDevice
-import com.ibm.aspen.cumulofs.BlockDevicePointer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.cumulofs._
+import com.ibm.aspen.util._
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object SimpleFileSystem {
   def load(
@@ -44,7 +24,7 @@ object SimpleFileSystem {
       val taskGroupKey = Key(clientUUID)
       
       system.retryStrategy.retryUntilSuccessful {
-        t.get(taskGroupKey).flatMap { o => o match {
+        t.get(taskGroupKey).flatMap {
           case Some(v) => system.readObject(KeyValueObjectPointer(v.value)) flatMap { kvos => LocalTaskGroup.createExecutor(system, kvos) }
           
           case None => 
@@ -58,12 +38,12 @@ object SimpleFileSystem {
             
                 (ptr, fgroup) <- LocalTaskGroup.prepareGroupAllocation(system, node.kvos.pointer, node.kvos.revision, allocaterUUID)
             
-                ready <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
+                _ <- node.prepreUpdateTransaction(List((taskGroupKey, ptr.kvPointer.toArray)), Nil, txreqs)
               } yield fgroup
             }
             
             ffgroup.flatMap( fgroup => fgroup )
-        }}
+        }
       }
     }
       
@@ -85,7 +65,7 @@ class SimpleFileSystem private (
     val localTaskGroup: LocalTaskGroup,
     rootKvos: KeyValueObjectState) extends FileSystem {
   
-  val fileSystemRoot = rootKvos.pointer
+  val fileSystemRoot: KeyValueObjectPointer = rootKvos.pointer
   
   val uuid: UUID = fileSystemRoot.uuid
   
@@ -116,7 +96,7 @@ class SimpleFileSystem private (
   
   val fileLoader: FileLoader = new SimpleFileLoader
   
-  def getLocalTasksCompleted(): Future[Unit] = localTaskGroup.getAllTasksComplete()
+  def getLocalTasksCompleted: Future[Unit] = localTaskGroup.getAllTasksComplete()
   
   def getDataTableNodeSize(tierNumber: Int): Int = if (tierNumber < dataTableSizes.length) dataTableSizes(tierNumber) else {
     dataTableSizes(dataTableSizes.length-1)
@@ -127,15 +107,49 @@ class SimpleFileSystem private (
     system.getObjectAllocater(allocaterUUID)
   }
   
-  def loadSymlink(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[Symlink] = inodeLoader.load(pointer).map(new SimpleSymlink(_,this)) 
+  def loadSymlink(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[Symlink] = {
+    inodeLoader.load(pointer).map { t =>
+      val (inode, revision) = t
+      new SimpleSymlink(pointer, inode, revision,this)
+    }
+  }
   
-  def loadUnixSocket(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocket] = inodeLoader.load(pointer).map(new SimpleUnixSocket(_,this))
+  def loadUnixSocket(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocket] = {
+    inodeLoader.load(pointer).map { t =>
+      val (inode, revision) = t
+      new SimpleUnixSocket(pointer, inode, revision,this)
+    }
+  }
   
-  def loadFIFO(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFO] = inodeLoader.load(pointer).map(new SimpleFIFO(_,this))
+  def loadFIFO(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFO] = {
+    inodeLoader.load(pointer).map { t =>
+      val (inode, revision) = t
+      new SimpleFIFO(pointer, inode, revision,this)
+    }
+  }
   
-  def loadCharacterDevice(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDevice] = inodeLoader.load(pointer).map(new SimpleCharacterDevice(_,this))
+  def loadCharacterDevice(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDevice] = {
+    inodeLoader.load(pointer).map { t =>
+      val (inode, revision) = t
+      new SimpleCharacterDevice(pointer, inode, revision,this)
+    }
+  }
   
-  def loadBlockDevice(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDevice] = inodeLoader.load(pointer).map(new SimpleBlockDevice(_,this))
+  def loadBlockDevice(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDevice] = {
+    inodeLoader.load(pointer).map { t =>
+      val (inode, revision) = t
+      new SimpleBlockDevice(pointer, inode, revision,this)
+    }
+  }
+
+  def directoryTableConfig: (UUID, DataBuffer) = {
+    val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
+
+    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(directoryLoader.directoryTableAllocaters,
+      directoryLoader.directoryTableSizes, directoryLoader.directoryTableKVPairLimits)
+
+    (allocaterType, allocaterConfig)
+  }
   
   FileSystem.register(this)
   

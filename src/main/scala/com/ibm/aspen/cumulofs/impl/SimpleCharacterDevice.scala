@@ -13,13 +13,15 @@ object SimpleCharacterDevice {
 }
 
 class SimpleCharacterDevice(override val pointer: CharacterDevicePointer,
-                            override protected var cachedInode: CharacterDeviceInode,
+                            initialInode: CharacterDeviceInode,
                             revision: ObjectRevision,
-                            fs: FileSystem) extends SimpleBaseFile(pointer, revision, cachedInode, fs) with CharacterDevice {
+                            fs: FileSystem) extends SimpleBaseFile(pointer, revision, initialInode, fs) with CharacterDevice {
   
   import SimpleCharacterDevice._
 
-  def rdev: Int = { cachedInode.rdev }
+  override def inode: CharacterDeviceInode = super.inode.asInstanceOf[CharacterDeviceInode]
+
+  def rdev: Int = inode.rdev
   
   def setrdev(newrdev: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetDeviceType(rdev))
 }

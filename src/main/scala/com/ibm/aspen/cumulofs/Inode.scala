@@ -1,9 +1,12 @@
 package com.ibm.aspen.cumulofs
 
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.objects.{DataObjectPointer, KeyValueObjectPointer}
 import com.ibm.aspen.core.DataBuffer
 import java.nio.charset.StandardCharsets
+
+import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 import com.ibm.aspen.util.Varint
 
 object Inode {
@@ -49,7 +52,7 @@ sealed abstract class Inode(val inodeNumber: Long,
 
   def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None, links: Option[Int] = None,
              ctime: Option[Timespec] = None, mtime: Option[Timespec] = None, atime: Option[Timespec] = None,
-             oxattrs: Option[Option[KeyValueObjectPointer]] = None, inodeNumber: Option[Long]): Inode
+             oxattrs: Option[Option[KeyValueObjectPointer]] = None, inodeNumber: Option[Long] = None): Inode
 
   def fileType: FileType.Value = FileType.fromMode(mode)
 
@@ -94,8 +97,7 @@ sealed abstract class Inode(val inodeNumber: Long,
 
 object DirectoryInode {
 
-  def factory(mode: Int, uid: Int, gid: Int,
-            parentDirectory: Option[DirectoryPointer]): DirectoryInode = {
+  def init(mode: Int, uid: Int, gid: Int, parentDirectory: Option[DirectoryPointer]): DirectoryInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.Directory)
     new DirectoryInode(0, correctedMode, uid, gid, 1, now, now, now, None, parentDirectory, None)
@@ -106,7 +108,7 @@ object DirectoryInode {
     val (_, inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs) = Inode.decode(bb)
     val mask = bb.get()
     val oparent = if ((mask & 1 << 1) == 0) None else Some(InodePointer(bb).asInstanceOf[DirectoryPointer])
-    val ocontent = if ((mask & 1 << 0) == 0) None else Some(KeyValueObjectPointer(bb))
+    val ocontent = if ((mask & 1 << 0) == 0) None else Some(TieredKeyValueListRoot(bb))
 
     new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, oparent, ocontent)
   }
@@ -122,13 +124,13 @@ class DirectoryInode(inodeNumber: Long,
                      atime: Timespec,
                      oxattrs: Option[KeyValueObjectPointer],
                      val oparent: Option[DirectoryPointer],
-                     val ocontents: Option[KeyValueObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
+                     val ocontents: Option[TieredKeyValueListRoot]) extends Inode(inodeNumber, mode, uid, gid, links,
   ctime, mtime, atime, oxattrs) {
 
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new DirectoryInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), 
@@ -139,7 +141,7 @@ class DirectoryInode(inodeNumber: Long,
     new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newParent, ocontents)
   }
 
-  def setContentTree(newContents: Option[KeyValueObjectPointer]): DirectoryInode = {
+  def setContentTree(newContents: Option[TieredKeyValueListRoot]): DirectoryInode = {
     new DirectoryInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, oparent, newContents)
   }
 
@@ -158,7 +160,7 @@ class DirectoryInode(inodeNumber: Long,
 
 object FileInode {
 
-  def factory(mode: Int, uid: Int, gid: Int): FileInode = {
+  def init(mode: Int, uid: Int, gid: Int): FileInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
     new FileInode(0, correctedMode, uid, gid, 1, now, now, now, None, 0, None)
@@ -190,19 +192,16 @@ class FileInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new FileInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), 
       atime.getOrElse(this.atime), oxattrs.getOrElse(this.oxattrs), size, ocontents)
   }
   
-  def setSize(newSize: Long): FileInode = {
-    new FileInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newSize, ocontents)
-  }
-
-  def setContents(newSize: Long, newContents: Option[DataObjectPointer]): FileInode = {
-    new FileInode(inodeNumber, mode, uid, gid, links, ctime, mtime, atime, oxattrs, newSize, newContents)
+  def updateContent(newSize: Long, newMtime: Timespec, newRoot: Option[DataObjectPointer]): FileInode = {
+    new FileInode(inodeNumber, mode, uid, gid, links, ctime, newMtime, atime, oxattrs, newSize,
+      newRoot)
   }
 
   override def encodedSize: Int = {
@@ -219,10 +218,11 @@ class FileInode(inodeNumber: Long,
 
 object SymlinkInode {
 
-  def factory(mode: Int, uid: Int, gid: Int): SymlinkInode = {
+  def init(mode: Int, uid: Int, gid: Int, content: String): SymlinkInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
-    new SymlinkInode(0, correctedMode, uid, gid, 1, now, now, now, None, new Array[Byte](0))
+    new SymlinkInode(0, correctedMode, uid, gid, 1, now, now, now, None,
+      content.getBytes(StandardCharsets.UTF_8))
   }
 
   def apply(content: DataBuffer): SymlinkInode = {
@@ -251,7 +251,7 @@ class SymlinkInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new SymlinkInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime), atime.getOrElse(this.atime),
@@ -280,7 +280,7 @@ class SymlinkInode(inodeNumber: Long,
 
 object UnixSocketInode {
 
-  def factory(mode: Int, uid: Int, gid: Int): UnixSocketInode = {
+  def init(mode: Int, uid: Int, gid: Int): UnixSocketInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
     new UnixSocketInode(0, correctedMode, uid, gid, 1, now, now, now, None)
@@ -308,7 +308,7 @@ class UnixSocketInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new UnixSocketInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
@@ -319,7 +319,7 @@ class UnixSocketInode(inodeNumber: Long,
 
 object FIFOInode {
 
-  def factory(mode: Int, uid: Int, gid: Int): FIFOInode = {
+  def init(mode: Int, uid: Int, gid: Int): FIFOInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
     new FIFOInode(0, correctedMode, uid, gid, 1, now, now, now, None)
@@ -347,7 +347,7 @@ class FIFOInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new FIFOInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
@@ -357,7 +357,7 @@ class FIFOInode(inodeNumber: Long,
 
 object CharacterDeviceInode {
 
-  def factory(mode: Int, uid: Int, gid: Int, rdev: Int): CharacterDeviceInode = {
+  def init(mode: Int, uid: Int, gid: Int, rdev: Int): CharacterDeviceInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
     new CharacterDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
@@ -387,7 +387,7 @@ class CharacterDeviceInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new CharacterDeviceInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode),
       uid.getOrElse(this.uid), gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),
@@ -411,7 +411,7 @@ class CharacterDeviceInode(inodeNumber: Long,
 
 object BlockDeviceInode {
 
-  def factory(mode: Int, uid: Int, gid: Int, rdev: Int): BlockDeviceInode = {
+  def init(mode: Int, uid: Int, gid: Int, rdev: Int): BlockDeviceInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
     new BlockDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
@@ -441,7 +441,7 @@ class BlockDeviceInode(inodeNumber: Long,
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,
                       atime: Option[Timespec] = None, oxattrs: Option[Option[KeyValueObjectPointer]] = None,
-                      inodeNumber: Option[Long]): Inode = {
+                      inodeNumber: Option[Long] = None): Inode = {
     new BlockDeviceInode(inodeNumber.getOrElse(this.inodeNumber), mode.getOrElse(this.mode), uid.getOrElse(this.uid),
       gid.getOrElse(this.gid),
       links.getOrElse(this.links), ctime.getOrElse(this.ctime), mtime.getOrElse(this.mtime),

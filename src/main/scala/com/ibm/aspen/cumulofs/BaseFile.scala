@@ -35,6 +35,8 @@ trait BaseFile {
   
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit]
 
+  def flush()(implicit ec: ExecutionContext): Future[Unit]
+
   def setattr(
       newUID: Int, 
       newGID: Int, 

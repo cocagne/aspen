@@ -2,6 +2,8 @@ package com.ibm.aspen.cumulofs
 
 import java.util.UUID
 
+import com.ibm.aspen.core.objects.ObjectRevision
+
 import scala.concurrent.{ExecutionContext, Future}
 
 trait DirectoryLoader {
@@ -11,5 +13,8 @@ trait DirectoryLoader {
   def directoryTableKVPairLimits: Array[Int]
   
   def loadDirectory(fs: FileSystem, pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[Directory]
-  def loadDirectory(fs: FileSystem, inode: DirectoryInode): Directory
+  def loadDirectory(fs: FileSystem,
+                    pointer: DirectoryPointer,
+                    revision: ObjectRevision,
+                    inode: DirectoryInode): Directory
 }

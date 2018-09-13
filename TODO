@@ -1,4 +1,10 @@
 
+
+* Flush/Write/Truncate/ETC in FileHandle
+   - These must become FileOperation instances
+   - These take an offset so FileHandle can invoke them
+
+
 * Rewrite CumuloFS in terms of DataObjects for inodes
    - Greatly simplifies the overwrite logic
 

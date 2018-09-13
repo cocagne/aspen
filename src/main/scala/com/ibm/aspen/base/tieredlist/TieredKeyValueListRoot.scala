@@ -16,15 +16,15 @@ case class TieredKeyValueListRoot(
     rootNode: KeyValueObjectPointer,
     allocaterType: UUID,
     allocaterConfig: DataBuffer) {
-    
-  def toArray(): Array[Byte] = {
+
+  def encodedSize: Int = 3 + 16 + rootNode.encodedSize + Varint.getUnsignedIntEncodingLength(allocaterConfig.size) + allocaterConfig.size
+
+  def encodeInto(bb: ByteBuffer): Unit = {
     val orderCode = keyOrdering match {
       case ByteArrayKeyOrdering => 0
       case IntegerKeyOrdering   => 1
       case LexicalKeyOrdering   => 2
     }
-    val arr = new Array[Byte](3 + 16 + rootNode.encodedSize + Varint.getUnsignedIntEncodingLength(allocaterConfig.size) + allocaterConfig.size)
-    val bb = ByteBuffer.wrap(arr)
     bb.put(0.asInstanceOf[Byte]) // Placeholder for a version number
     bb.put(topTier.asInstanceOf[Byte])
     bb.put(orderCode.asInstanceOf[Byte])
@@ -33,6 +33,12 @@ case class TieredKeyValueListRoot(
     rootNode.encodeInto(bb)
     Varint.putUnsignedInt(bb, allocaterConfig.size)
     bb.put(allocaterConfig.asReadOnlyBuffer())
+  }
+    
+  def toArray: Array[Byte] = {
+    val arr = new Array[Byte](encodedSize)
+    val bb = ByteBuffer.wrap(arr)
+    encodeInto(bb)
     arr
   }
 }

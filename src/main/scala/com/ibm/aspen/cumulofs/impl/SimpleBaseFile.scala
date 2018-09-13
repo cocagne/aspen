@@ -12,13 +12,23 @@ object SimpleBaseFile {
     /** This promise completes after the file has been successfully updated and all internal data
       * structures (such as the FileIndex) have been updated to reflect the new file state.
       */
-    val promise: Promise[Inode] = Promise[Inode]()
+    val promise: Promise[Unit] = Promise[Unit]()
 
-    def result: Future[Inode] = promise.future
+    def result: Future[Unit] = promise.future
 
     def prepareTransaction(pointer: DataObjectPointer,
                            revision: ObjectRevision,
-                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
+                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode]
+  }
+
+  case class Flush() extends FileOperation {
+    override def prepareTransaction(pointer: DataObjectPointer,
+                                    revision: ObjectRevision,
+                                    inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode] = {
+      // Nothing to do. Due to serial nature of execution, by the time this method is called, all previous operations
+      // have successfully committed
+      Future.successful(inode)
+    }
   }
 
   abstract class SimpleSet extends FileOperation {
@@ -27,45 +37,43 @@ object SimpleBaseFile {
 
     def prepareTransaction(pointer: DataObjectPointer,
                            revision: ObjectRevision,
-                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+                           inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode] = {
 
       val updatedInode = update(inode)
 
       tx.overwrite(pointer, revision, updatedInode.toDataBuffer)
 
-      tx.result.foreach(_ => promise.success(updatedInode))
-
-      Future.unit
+      Future.successful(updatedInode)
     }
   }
 
   case class SetUID(uid: Int) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(uid = Some(uid), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(uid = Some(uid))
   }
 
   case class SetGID(gid: Int) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(gid = Some(gid), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(gid = Some(gid))
   }
 
   case class SetLinks(links: Int) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(links = Some(links), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(links = Some(links))
   }
 
   case class SetMode(newMode: Int) extends SimpleSet {
     private val maskedMode = newMode & ~FileMode.S_IFMT
-    def update(inode: Inode): Inode = inode.update(mode = Some((inode.mode & FileMode.S_IFMT) | maskedMode), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(mode = Some((inode.mode & FileMode.S_IFMT) | maskedMode))
   }
 
   case class SetCtime(ts: Timespec) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(ctime = Some(ts), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(ctime = Some(ts))
   }
 
   case class SetMtime(ts: Timespec) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(mtime = Some(ts), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(mtime = Some(ts))
   }
 
   case class SetAtime(ts: Timespec) extends SimpleSet {
-    def update(inode: Inode): Inode = inode.update(atime = Some(ts), inodeNumber = None)
+    def update(inode: Inode): Inode = inode.update(atime = Some(ts))
   }
 
   case class SetAttr(uid: Int, gid: Int, ct: Timespec, mt: Timespec, at: Timespec, mode: Int)
@@ -74,7 +82,8 @@ object SimpleBaseFile {
     private val maskedMode = mode & ~FileMode.S_IFMT
 
     def update(inode: Inode): Inode = {
-      inode.update(mode = Some((inode.mode & FileMode.S_IFMT) | maskedMode), uid = Some(uid), gid = Some(gid), ctime = Some(ct), mtime = Some(mt), atime = Some(at), inodeNumber = None)
+      inode.update(mode = Some((inode.mode & FileMode.S_IFMT) | maskedMode), uid = Some(uid), gid = Some(gid),
+        ctime = Some(ct), mtime = Some(mt), atime = Some(at))
     }
   }
 }
@@ -91,7 +100,7 @@ object SimpleBaseFile {
   */
 abstract class SimpleBaseFile(val pointer: InodePointer,
                               protected var cachedInodeRevision: ObjectRevision,
-                              protected var cachedInode: Inode,
+                              private var cachedInode: Inode,
                               val fs: FileSystem) extends BaseFile {
 
   import SimpleBaseFile._
@@ -100,8 +109,9 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
   private[this] var activeOp: Option[FileOperation] = None
 
   def inode: Inode = synchronized { cachedInode }
+  def revision: ObjectRevision = synchronized { cachedInodeRevision }
 
-  protected def inodeState: (Inode, ObjectRevision) = synchronized {(cachedInode, cachedInodeRevision)}
+  def inodeState: (Inode, ObjectRevision) = synchronized {(cachedInode, cachedInodeRevision)}
 
   protected def setCachedInode(newInode: Inode, newRevision:ObjectRevision): Unit = synchronized {
     cachedInode = newInode
@@ -128,6 +138,8 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
   def setCtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetCtime(ts))
   def setMtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMtime(ts))
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
+
+  def flush()(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Flush())
 
   def setattr(
       newUID: Int,
@@ -168,12 +180,19 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
       implicit val tx: Transaction = fs.system.newTransaction()
 
       val (ainode, arevision) = inodeState
-      
+
+      def commit(): Future[ObjectRevision] = {
+        if (tx.valid)
+          tx.commit().map(_ => tx.txRevision)
+        else
+          Future.unit.map(_ => arevision) // op added nothing to the transaction
+      }
+
       val fresult = for {
-        _<- op.prepareTransaction(pointer.pointer, arevision, ainode)
-        _<-tx.commit()
-        updatedInode <- op.result
-      } yield (tx.txRevision, updatedInode)
+        updatedInode <- op.prepareTransaction(pointer.pointer, arevision, ainode)
+
+        updatedRevision <- commit()
+      } yield (updatedRevision, updatedInode)
       
       fresult.failed.foreach(err => tx.invalidateTransaction(err))
       
@@ -186,12 +205,14 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
       if (retryCount < 5) {
         
         attempt() map { t => synchronized {
-          
+
           val (newRevision, updatedInode) = t
-          //println(s"Updated Inode ${inode.pointer.pointer.uuid} revision ${inode.revision} to $newRevision")
+
           setCachedInode(updatedInode, newRevision)
+
           activeOp = None
-          op.promise.success(updatedInode)
+          op.promise.success(())
+
           beginNextOp()
         }}
       } else {

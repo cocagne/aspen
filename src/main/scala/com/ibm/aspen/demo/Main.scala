@@ -1,20 +1,24 @@
 package com.ibm.aspen.demo
 
 import java.io.File
+
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.data_store.RocksDBDataStoreBackend
 import com.ibm.aspen.core.data_store.DataStoreFrontend
 import com.ibm.aspen.base.impl.Bootstrap
+
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.ida.ReedSolomon
 import com.ibm.aspen.base.impl.RocksDBCrashRecoveryLog
 import java.util.UUID
+
 import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.read.BaseReadDriver
+
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
 import com.ibm.aspen.core.allocation.BaseAllocationDriver
@@ -25,11 +29,13 @@ import com.ibm.aspen.base.impl.StorageNode
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
+
 import scala.concurrent.Future
 import com.ibm.aspen.cumulofs.FileSystem
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.ibm.aspen.cumulofs.FileInode
-import com.ibm.aspen.cumulofs.impl.SimpleFileSystem
+import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.Key
@@ -37,14 +43,12 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.fuse.FuseOptions
 import com.ibm.aspen.fuse.RemoteFuse
-import com.ibm.aspen.cumulofs.impl.FuseInterface
 import com.ibm.aspen.base.impl.BaseImplTypeRegistry
 import com.ibm.aspen.base.impl.BaseTransactionFinalizer
 import com.ibm.aspen.base.impl.StorageNodeTransactionManager
 import com.ibm.aspen.base.impl.StorageNodeAllocationManager
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
-import com.ibm.aspen.cumulofs.CumuloFSTypeRegistry
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
 import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
@@ -53,6 +57,7 @@ import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
 import com.ibm.aspen.base.impl.SuperSimpleRetryingAllocationDriver
 import com.ibm.aspen.base.impl.PerStoreMissedUpdate
 import com.ibm.aspen.base.AllocatedObjectsIterator
+
 import scala.concurrent.Promise
 import com.ibm.aspen.core.objects.DataObjectState
 import com.ibm.aspen.core.data_store.ObjectMetadata

@@ -77,7 +77,7 @@ class MutableKeyValueObjectRootManager(
 }
 
 object MutableKeyValueObjectRootManager extends TieredKeyValueListMutableRootManagerFactory {
-  val typeUUID = UUID.fromString("a024defb-5001-4dfd-8676-57796fe982fa")
+  val typeUUID: UUID = UUID.fromString("a024defb-5001-4dfd-8676-57796fe982fa")
   
   def apply(system: AspenSystem, kvos: KeyValueObjectState, rootKey: Key): MutableKeyValueObjectRootManager = {
     new MutableKeyValueObjectRootManager(system, kvos.pointer, rootKey, TieredKeyValueListRoot(kvos.contents(rootKey).value))

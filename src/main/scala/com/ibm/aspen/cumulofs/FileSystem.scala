@@ -1,27 +1,16 @@
 package com.ibm.aspen.cumulofs
 
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.base.Transaction
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.objects.keyvalue.Key
 import java.util.UUID
-import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.base.task.LocalTaskGroup
-import com.ibm.aspen.util._
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
+
+import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, Transaction}
 import com.ibm.aspen.base.task.TaskGroupInterface
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
-import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
+import com.ibm.aspen.base.tieredlist.{SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectPointer, ObjectRevision}
+import com.ibm.aspen.core.objects.keyvalue.{ByteArrayKeyOrdering, Insert, IntegerKeyOrdering, Key}
+import com.ibm.aspen.util._
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait FileSystem {
   /** UUID of the FileSystem's root KeyValue object */
@@ -43,11 +32,9 @@ trait FileSystem {
   
   def defaultSegmentAllocater(): Future[ObjectAllocater]
   
-  def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[BaseFile]] = inodeTable.lookup(inodeNumber) flatMap { optr =>
-    optr match {
-      case None => Future.successful(None)
-      case Some(iptr) => lookup(iptr).map(Some(_))
-    }
+  def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[BaseFile]] = inodeTable.lookup(inodeNumber) flatMap {
+    case None => Future.successful(None)
+    case Some(iptr) => lookup(iptr).map(Some(_))
   }
   
   def lookup(iptr: InodePointer)(implicit ec: ExecutionContext): Future[BaseFile] =  iptr match {
@@ -65,7 +52,9 @@ trait FileSystem {
   }
   
   def loadDirectory(pointer: DirectoryPointer)(implicit ec: ExecutionContext): Future[Directory] = directoryLoader.loadDirectory(this, pointer)
-  def loadDirectory(inode: DirectoryInode): Directory = directoryLoader.loadDirectory(this, inode)
+  def loadDirectory(pointer: DirectoryPointer, inode: DirectoryInode, revision: ObjectRevision): Directory = {
+    directoryLoader.loadDirectory(this, pointer, revision, inode)
+  }
   
   def loadFile(pointer: FilePointer)(implicit ec: ExecutionContext): Future[File] = fileLoader.loadFile(this, pointer)
   
@@ -82,12 +71,14 @@ trait FileSystem {
   def getDataTableNodeSize(tierNumber: Int): Int
   
   def getDataTableNodeAllocater(tierNumber: Int): Future[ObjectAllocater]
+
+  def directoryTableConfig: (UUID, DataBuffer) // Alloc config for new TieredKeyValueListRoot instances
   
   /** Returns a future to the completion of all currently active local tasks
    *  
    *  This is primarily intended for use in unit tests. 
    */
-  def getLocalTasksCompleted(): Future[Unit]
+  def getLocalTasksCompleted: Future[Unit]
 }
 
 object FileSystem {
@@ -123,7 +114,7 @@ object FileSystem {
   
   /** Creates a new CumuloFS file system as part of the supplied Transaction.
    *  
-   *  @returns Pointer to the file system root object
+   *  @return Pointer to the file system root object
    *  
    *  Involves 3 simultaneous allocations
    *    - FS root object
@@ -149,14 +140,14 @@ object FileSystem {
     import FileMode._
     
     val rootDirMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH  
-    
-    val (rootOps, rootContent) = DirectoryInode.getInitialContent(rootDirMode, 0, 0, None)
+
+    val rootInode = DirectoryInode.init(rootDirMode, 0, 0, None)
     
     val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
     val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(inodeTableAllocaters, inodeTableSizes, inodeKVPairLimits)
     
     for {
-      rootDirObj <- allocater.allocateKeyValueObject(allocatingObject, allocatingObjectRevision, rootOps)
+      rootDirObj <- allocater.allocateDataObject(allocatingObject, allocatingObjectRevision, rootInode.toDataBuffer)
     
       rootDirPtr = new DirectoryPointer(InodeTable.RootInode, rootDirObj)
       

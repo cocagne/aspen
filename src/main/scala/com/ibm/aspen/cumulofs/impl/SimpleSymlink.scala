@@ -12,15 +12,17 @@ object SimpleSymlink {
 }
 
 class SimpleSymlink(override val pointer: SymlinkPointer,
-                    override protected var cachedInode: SymlinkInode,
+                    initialInode: SymlinkInode,
                     revision: ObjectRevision,
-                    fs: FileSystem) extends SimpleBaseFile(pointer, revision, cachedInode, fs) with Symlink {
+                    fs: FileSystem) extends SimpleBaseFile(pointer, revision, initialInode, fs) with Symlink {
   
   import SimpleSymlink._
+
+  override def inode: SymlinkInode = super.inode.asInstanceOf[SymlinkInode]
+
+  def size: Int = inode.size
   
-  def size: Int = synchronized { cachedInode.content.length }
-  
-  def symLink: Array[Byte] = synchronized { cachedInode.content }
+  def symLink: Array[Byte] = inode.content
   
   def setSymLink(newLink: Array[Byte])(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetSymLink(newLink))
 }

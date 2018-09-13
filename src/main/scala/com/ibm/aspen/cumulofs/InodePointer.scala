@@ -41,7 +41,7 @@ class UnixSocketPointer(val number: Long, val pointer: DataObjectPointer) extend
 }
 
 class CharacterDevicePointer(val number: Long, val pointer: DataObjectPointer) extends InodePointer {
-  val ftype = FileType.UnixSocket
+  val ftype = FileType.CharacterDevice
 }
 
 class BlockDevicePointer(val number: Long, val pointer: DataObjectPointer) extends InodePointer {

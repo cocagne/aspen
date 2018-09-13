@@ -4,7 +4,9 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.cumulofs.{FIFO, FIFOInode, FIFOPointer, FileSystem}
 
 class SimpleFIFO(override val pointer: FIFOPointer,
-                 override protected var cachedInode: FIFOInode,
+                 initialInode: FIFOInode,
                  revision: ObjectRevision,
-                 fs: FileSystem) extends SimpleBaseFile(pointer, revision, cachedInode, fs) with FIFO {
+                 fs: FileSystem) extends SimpleBaseFile(pointer, revision, initialInode, fs) with FIFO {
+
+  override def inode: FIFOInode = super.inode.asInstanceOf[FIFOInode]
 }

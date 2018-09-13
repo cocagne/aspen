@@ -1,23 +1,14 @@
 package com.ibm.aspen.cumulofs.impl
 
-import scala.concurrent._
-import scala.concurrent.duration._
-import org.scalatest._
-import com.ibm.aspen.base.TestSystemSuite
-import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.cumulofs.FileSystem
-import org.scalactic.source.Position.apply
-import com.ibm.aspen.cumulofs.DirectoryPointer
-import com.ibm.aspen.base.task.LocalTaskGroup
-import com.ibm.aspen.base.task.TaskGroupPointer
-import java.util.UUID
-import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
+import java.nio.charset.StandardCharsets
+
+import com.ibm.aspen.base.{TestSystemSuite, Transaction}
+import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRevision}
 import com.ibm.aspen.core.read.InvalidObject
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.cumulofs.Timespec
-import com.ibm.aspen.cumulofs.FileType
-import com.ibm.aspen.cumulofs.FileMode
+import com.ibm.aspen.cumulofs.{FileMode, Timespec}
+import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
+
+import scala.concurrent._
 
 class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
   
@@ -25,7 +16,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
      for {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
-       rootInode <- rootDir.getInode()
+       (rootInode, _) <- rootDir.getInode()
      } yield {
        rootInode.uid should be (0)
      }
@@ -38,7 +29,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
-       newInode <- newDir.getInode()
+       (newInode, _) <- newDir.getInode()
        newContent <- rootDir.getContents()
      } yield {
        initialContent.length should be (0)
@@ -53,7 +44,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
      for {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
-       initialContent <- rootDir.getContents()
+       _ <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
        origUID = newDir.uid
@@ -68,7 +59,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
   
   test("Change Directory UID with recovery from revision mismatch") {
     def vbump(ptr: ObjectPointer, revision: ObjectRevision): Future[Unit] = {
-      implicit val tx = sys.newTransaction()
+      implicit val tx: Transaction = sys.newTransaction()
       tx.bumpVersion(ptr, revision)
       tx.commit().map(_=>())
     }
@@ -76,12 +67,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
-      origInode <- newDir.getInode()
+      (_, revision) <- newDir.getInode()
       origUID = newDir.uid
-      _ <- vbump(origInode.pointer.pointer, origInode.revision)
+      _ <- vbump(newDir.pointer.pointer, revision)
       _ <- newDir.setUID(5)
       newDir2 <- fs.loadDirectory(newDirPointer)
     } yield {
@@ -101,7 +92,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
       fu = newDir.setUID(u)
@@ -110,7 +101,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fc = newDir.setCtime(ct)
       fx = newDir.setMtime(mt)
       fa = newDir.setAtime(at)
-      done <- Future.sequence(List(fu, fg, fm, fc, fx, fa))
+      _ <- Future.sequence(List(fu, fg, fm, fc, fx, fa))
       d <- fs.loadDirectory(newDirPointer)
     } yield {
       d.uid should be (u)
@@ -129,10 +120,10 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        initialContent <- rootDir.getContents()
        newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
-       newInode <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
+       _ <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
        dc <- newDir.getContents()
-       if (dc.length == 1)
-       ruhRoh <- recoverToSucceededIf[DirectoryNotEmpty](rootDir.delete("foo"))
+       if dc.length == 1
+       _ <- recoverToSucceededIf[DirectoryNotEmpty](rootDir.delete("foo"))
      } yield {
        initialContent.length should be (0)
      }
@@ -160,7 +151,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        newDir <- fs.loadDirectory(newDirPointer)
        newInode <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
        dc <- newDir.getContents()
-       if (dc.length == 1)
+       if dc.length == 1
        _ <- newDir.delete("bar")       
        _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newInode))
        _ <- rootDir.delete("foo")       
@@ -174,20 +165,20 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createSymlink("foo", mode=0, uid=1, gid=2, link="bar")
       sl1 <- fs.loadSymlink(sptr)
       origSize = sl1.size
-      origLink = sl1.link
-      _<-sl1.setLink("quux")
+      origLink = sl1.symLinkAsString
+      _<-sl1.setSymLink("quux".getBytes(StandardCharsets.UTF_8))
       sl2 <- fs.loadSymlink(sptr)
     } yield {
       origSize should be (3)
       origLink should be ("bar")
       sl1.size should be (4)
-      sl1.link should be ("quux")
+      sl1.symLinkAsString should be ("quux")
       sl2.size should be (4)
-      sl2.link should be ("quux")
+      sl2.symLinkAsString should be ("quux")
     }
   }
   
@@ -195,7 +186,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createUnixSocket("foo", mode=0, uid=1, gid=2)
       us <- fs.loadUnixSocket(sptr)
     } yield {
@@ -207,7 +198,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createFIFO("foo", mode=0, uid=1, gid=2)
       us <- fs.loadFIFO(sptr)
     } yield {
@@ -219,7 +210,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createCharacterDevice("foo", mode=0, uid=1, gid=2, rdev=10)
       us <- fs.loadCharacterDevice(sptr)
     } yield {
@@ -232,7 +223,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
       us <- fs.loadBlockDevice(sptr)
     } yield {
@@ -245,14 +236,14 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
     for {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       sptr <- rootDir.createBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
       us <- fs.loadBlockDevice(sptr)
       _ <- rootDir.hardLink("bar", us)
       us2 <- fs.loadBlockDevice(sptr)
       postLinkContent <- rootDir.getContents()
     } yield {
-      us2.linkCount should be (2)
+      us2.links should be (2)
       postLinkContent.size should be (2)  
     }
   }

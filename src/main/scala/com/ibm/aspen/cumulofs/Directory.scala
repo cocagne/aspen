@@ -3,18 +3,20 @@ package com.ibm.aspen.cumulofs
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.cumulofs.impl.CreateFileTask
 
 trait Directory extends BaseFile {
   val pointer: DirectoryPointer
   val fs: FileSystem
   
-  def getInode()(implicit ec: ExecutionContext): Future[DirectoryInode] = {
+  def getInode()(implicit ec: ExecutionContext): Future[(DirectoryInode, ObjectRevision)] = {
     fs.inodeLoader.load(pointer)
   }
   
   def lookup(name: String)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = name match {
     case "." => Future.successful(Some(pointer))
-    case ".." => getInode().map( _.parentDirectoryPointer )
+    case ".." => getInode().map( _._1.oparent )
     case _ => getEntry(name)
   }
   
@@ -29,12 +31,12 @@ trait Directory extends BaseFile {
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
-    implicit val tx = fs.system.newTransaction()
+    implicit val tx: Transaction = fs.system.newTransaction()
     val f = for {
       fcomplete <- prepareDelete(name)
       _ <- tx.commit()
       _ <- fcomplete
-    } yield ()c
+    } yield ()
     
     f.failed.foreach( tx.invalidateTransaction )
     f
@@ -47,44 +49,44 @@ trait Directory extends BaseFile {
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   def createDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[DirectoryPointer] = {
-    val (initialOps, initalContent) = DirectoryInode.getInitialContent(mode, uid, gid, Some(pointer))
+    val newInode = DirectoryInode.init(mode, uid, gid, Some(pointer))
     
-    CreateFileTask.execute(fs, pointer, name, FileType.Directory, initialOps).map(_.asInstanceOf[DirectoryPointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[DirectoryPointer])
   }
   
   def createFile(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FilePointer] = {
-    val (initialOps, initalContent) = FileInode.getInitialContent(mode, uid, gid)
+    val newInode = FileInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.File, initialOps).map(_.asInstanceOf[FilePointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[FilePointer])
   }
 
   def createSymlink(name: String, mode: Int, uid: Int, gid: Int, link: String)(implicit ec: ExecutionContext): Future[SymlinkPointer] = {
-    val (initialOps, initalContent) = SymlinkInode.getInitialContent(mode, uid, gid, link)
+    val newInode = SymlinkInode.init(mode, uid, gid, link)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.Symlink, initialOps).map(_.asInstanceOf[SymlinkPointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[SymlinkPointer])
   }
   
   def createUnixSocket(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[UnixSocketPointer] = {
-    val (initialOps, initalContent) = UnixSocketInode.getInitialContent(mode, uid, gid)
+    val newInode = UnixSocketInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.UnixSocket, initialOps).map(_.asInstanceOf[UnixSocketPointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[UnixSocketPointer])
   }
   
   def createFIFO(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FIFOPointer] = {
-    val (initialOps, initalContent) = FIFOInode.getInitialContent(mode, uid, gid)
+    val newInode = FIFOInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.FIFO, initialOps).map(_.asInstanceOf[FIFOPointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[FIFOPointer])
   }
   
   def createCharacterDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[CharacterDevicePointer] = {
-    val (initialOps, initalContent) = CharacterDeviceInode.getInitialContent(mode, uid, gid, rdev)
+    val newInode = CharacterDeviceInode.init(mode, uid, gid, rdev)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.CharacterDevice, initialOps).map(_.asInstanceOf[CharacterDevicePointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[CharacterDevicePointer])
   }
   
   def createBlockDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[BlockDevicePointer] = {
-    val (initialOps, initalContent) = BlockDeviceInode.getInitialContent(mode, uid, gid, rdev)
+    val newInode = BlockDeviceInode.init(mode, uid, gid, rdev)
     
-    CreateFileTask.execute(fs, pointer, name, FileType.BlockDevice, initialOps).map(_.asInstanceOf[BlockDevicePointer])
+    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[BlockDevicePointer])
   }
 }

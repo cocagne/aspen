@@ -7,7 +7,7 @@ import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, Transaction}
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.cumulofs.{FileType, InodePointer, InodeTable}
+import com.ibm.aspen.cumulofs.{FileType, Inode, InodePointer, InodeTable}
 import com.ibm.aspen.cumulofs.InodeTable.NullInode
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -36,22 +36,21 @@ class SimpleInodeTable(
       nextInodeNumber = rnd.nextLong()
   }
   
-  def prepareInodeAllocation(
-      ftype: FileType.Value, 
-      inodeContent: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
+  def prepareInodeAllocation(inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[InodePointer] = {
     
     // Jump to new location if the transaction fails for any reason
     tx.result.failed.foreach( _ => selectNewInodeAllocationPosition() )
     
     val inodeNumber = allocateInode()
+    val updatedInode = inode.update(inodeNumber=Some(inodeNumber))
     val key = Key(inodeNumber)
     val requirements = KeyValueUpdate.KVRequirement(key, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
     
     for {
       allocater <- fallocater
       node <- table.fetchMutableNode(inodeNumber)
-      ptr <- allocater.allocateDataObject(node.kvos.pointer, node.kvos.revision, inodeContent)
-      iptr = InodePointer(ftype, inodeNumber, ptr)
+      ptr <- allocater.allocateDataObject(node.kvos.pointer, node.kvos.revision, updatedInode.toDataBuffer)
+      iptr = InodePointer(inode.fileType, inodeNumber, ptr)
       _<-node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
     } yield {
       iptr

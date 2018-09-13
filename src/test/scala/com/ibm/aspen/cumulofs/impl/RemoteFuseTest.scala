@@ -1,24 +1,21 @@
 package com.ibm.aspen.cumulofs.impl
 
-import com.ibm.aspen.base.TestSystem
-import com.ibm.aspen.base.AspenSystem
-import scala.concurrent.Future
-import com.ibm.aspen.cumulofs.FileSystem
-import scala.concurrent.ExecutionContext
-import java.util.UUID
-import com.ibm.aspen.cumulofs.FileInode
-import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.base.impl.BasicAspenSystem
-import com.ibm.aspen.core.DataBuffer
 import java.nio.charset.StandardCharsets
-import com.ibm.aspen.fuse.FuseOptions
-import com.ibm.aspen.fuse.RemoteFuse
+import java.util.UUID
+
+import com.ibm.aspen.base.impl.{BasicAspenSystem, Bootstrap}
+import com.ibm.aspen.base.{TestSystem, Transaction}
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.cumulofs.FileSystem
+import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object RemoteFuseTest {
   implicit val ec : ExecutionContext = ExecutionContext.Implicits.global
   
   def bootstrap(sys: BasicAspenSystem, numIndexNodeSegments: Int = 5, fileSegmentSize:Int=4096): Future[FileSystem] = {
-    implicit val tx = sys.newTransaction()
+    implicit val tx: Transaction = sys.newTransaction()
     
     // Approximate the size of the node needed to store numSegments
     val nodeSize = (sys.radiclePointer.encodedSize + 2) * numIndexNodeSegments
@@ -28,26 +25,24 @@ object RemoteFuseTest {
     val larr = Array(20)
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
-    
-    val (iops, _) = FileInode.getInitialContent(0, 0, 0)
-    
+
     for {
       r <- sys.readObject(sys.radiclePointer)
       
       // give transaction something to do
-      meh = tx.bumpVersion(sys.radiclePointer, r.revision)
+      _ = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       
       ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, larr, uarr, iarr, uarr, narr,
                Bootstrap.BootstrapObjectAllocaterUUID, fileSegmentSize)
       
-      txdone <- tx.commit()
+      _ <- tx.commit()
       
       fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
       
       rootDir <- fs.loadRoot()
-      initialContent <- rootDir.getContents()
+      _ <- rootDir.getContents()
       newFilePointer <- rootDir.createFile("hello_world", mode=0x1A4, uid=1, gid=2)
       file <- fs.loadFile(newFilePointer)
       db = DataBuffer("CumuloFS Lives!!!!\n".getBytes(StandardCharsets.UTF_8))

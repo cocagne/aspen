@@ -76,7 +76,7 @@ object FuseInterface {
           mtimensec  = file.mtime.nanoseconds,
           ctimensec  = file.ctime.nanoseconds,
           mode       = file.mode,
-          nlink      = file.linkCount,
+          nlink      = file.links,
           uid        = file.uid,
           gid        = file.gid,
           rdev       = 0,

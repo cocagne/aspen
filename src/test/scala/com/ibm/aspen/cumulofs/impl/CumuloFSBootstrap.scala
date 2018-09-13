@@ -21,20 +21,18 @@ trait CumuloFSBootstrap extends TestSystemSuite{
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
     
-    val (iops, _) = FileInode.getInitialContent(0, 0, 0)
-    
     for {
       r <- sys.readObject(sys.radiclePointer)
       
       // give transaction something to do
-      meh = tx.bumpVersion(sys.radiclePointer, r.revision)
+      _ = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       
       ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, r.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, larr, uarr, iarr, uarr, narr,
                Bootstrap.BootstrapObjectAllocaterUUID, fileSegmentSize)
       
-      txdone <- tx.commit()
+      _ <- tx.commit()
       
       fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
       
