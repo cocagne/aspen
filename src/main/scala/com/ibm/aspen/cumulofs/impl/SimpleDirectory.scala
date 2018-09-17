@@ -8,7 +8,7 @@ import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.SimpleSet
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object SimpleDirectory {
 
@@ -44,11 +44,13 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
   }
 
   private[this] def tree(implicit ec: ExecutionContext): Future[MutableTieredKeyValueList] = synchronized {
+    val (initialInode, initialRevision) = inodeState
+
     ftl match {
       case Some(f) => f
 
       case None =>
-        inode.ocontents match {
+        initialInode.ocontents match {
           case Some(tkvl) =>
             val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
             val f = Future.successful(new MutableTieredKeyValueList(rootMgr))
@@ -56,35 +58,59 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
             f
 
           case None =>
+
+            val promise: Promise[MutableTieredKeyValueList] = Promise()
+
+            ftl = Some(promise.future)
+
             val (tkvlAllocaterUUID, config) = fs.directoryTableConfig
 
             val tkvlaFactory = fs.system.typeRegistry.getTypeFactory[TieredKeyValueListNodeAllocaterFactory](tkvlAllocaterUUID).get
 
             val tkvlAllocater = tkvlaFactory.createNodeAllocater(fs.system, config)
 
-            def alloc(allocater: ObjectAllocater) = fs.system.transact { implicit tx =>
-              allocater.allocateKeyValueObject(pointer.pointer, cachedInodeRevision, Nil) map { root =>
-                val tkvl = new TieredKeyValueListRoot(0, LexicalKeyOrdering, root, tkvlAllocaterUUID, config)
-                val newInode = inode.setContentTree(Some(tkvl))
-                tx.overwrite(pointer.pointer, cachedInodeRevision, newInode.toDataBuffer)
-                (newInode, tx.txRevision, tkvl)
+            def createTree(refreshedInode: DirectoryInode,
+                           refreshedRevision: ObjectRevision): Unit = {
+
+              def alloc(allocater: ObjectAllocater) = fs.system.transact { implicit tx =>
+                for {
+                  root <- allocater.allocateKeyValueObject(pointer.pointer, revision, Nil)
+                } yield {
+                  val tkvl = new TieredKeyValueListRoot(0, LexicalKeyOrdering, root, tkvlAllocaterUUID, config)
+                  val newInode = inode.setContentTree(Some(tkvl))
+                  tx.overwrite(pointer.pointer, revision, newInode.toDataBuffer)
+                  (newInode, tx.txRevision, tkvl)
+                }
+              }
+
+              val f = for {
+                allocater <- tkvlAllocater.tierNodeAllocater(0)
+                (newInode, newRevision, tkvl) <- alloc(allocater)
+              } yield {
+                val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
+                setCachedInode(newInode, newRevision)
+                promise.success(new MutableTieredKeyValueList(rootMgr))
+              }
+
+              f.failed.foreach { _ =>
+                refresh().foreach { _ =>
+                  val (refreshedInode, refreshedRevision) = inodeState
+
+                  // Check to see if someone else beat us to it before retrying the create
+                  refreshedInode.ocontents match {
+                    case Some(tkvl) =>
+                      val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
+                      promise.success(new MutableTieredKeyValueList(rootMgr))
+
+                    case None => createTree(refreshedInode, refreshedRevision)
+                  }
+                }
               }
             }
 
-            val f = for {
-              allocater <- tkvlAllocater.tierNodeAllocater(0)
-              (newInode, newRevision, tkvl) <- alloc(allocater)
-            } yield {
-              val rootMgr = new SimpleDirectoryTLRootManager(fs.system, pointer.pointer, tkvl)
-              setCachedInode(newInode, newRevision)
-              new MutableTieredKeyValueList(rootMgr)
-            }
+            createTree(initialInode, initialRevision)
 
-            val fcreate = f.recoverWith { case _ => refresh().flatMap(_ => tree) }
-
-            ftl = Some(fcreate)
-
-            fcreate
+            promise.future
         }
     }
   }
@@ -93,7 +119,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     var contents: List[DirectoryEntry] = Nil
     
     def visitor(v: Value): Unit = synchronized { contents = DirectoryEntry(v) :: contents }
-    
+
     tree flatMap { tl => tl.visitAll(visitor) } map { _ => contents }
   }
   
@@ -104,7 +130,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
   def prepareInsert(name: String, pointer: InodePointer, incref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
 
     val fkvos = fs.system.readObject(pointer.pointer)
-    
+
     for {
       tl <- tree
       kvos <- fkvos
@@ -123,15 +149,19 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
   def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
     implicit val tx: Transaction = fs.system.newTransaction()
     
-    prepareInsert(name, file.pointer).flatMap { _ =>tx.commit().map(_=>()) }
+    prepareInsert(name, file.pointer).flatMap { _ =>
+      file.prepareHardLink()
+      tx.commit().map(_=>())
+    }
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
-    
+
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Future[Unit]] = oentry match {
       case None => Future.successful(Future.unit) // Directory entry not found. We're done!
       
-      case Some(inodePtr) => 
+      case Some(inodePtr) =>
+
         val fdelEntryPrep = tl.prepareDelete(name)
         
         if (decref) {
@@ -175,11 +205,16 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
         Future.unit
       }
     }
-    
-    for {
-      tl <- tree
-      node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
-      _ <- prep(node.kvos)
-    } yield ()
+
+    inode.ocontents match {
+      case None => Future.unit
+
+      case Some(_) =>
+        for {
+          tl <- tree
+          node <- tl.fetchMutableNode(Key.AbsoluteMinimum)
+          _ <- prep(node.kvos)
+        } yield ()
+    }
   }
 }

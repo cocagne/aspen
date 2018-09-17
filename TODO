@@ -1,13 +1,4 @@
 
-
-* Flush/Write/Truncate/ETC in FileHandle
-   - These must become FileOperation instances
-   - These take an offset so FileHandle can invoke them
-
-
-* Rewrite CumuloFS in terms of DataObjects for inodes
-   - Greatly simplifies the overwrite logic
-
 * Remove 5 file op retry limit from SimpleBaseFile
 
 * Allocation Strategy Refactor

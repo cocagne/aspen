@@ -81,7 +81,7 @@ class ReadDirReply(
     }
     
     val nameBytes = name.getBytes(StandardCharsets.UTF_8)
-    println(s"Sending name bytes ${com.ibm.aspen.util.arr2string(nameBytes)} len ${nameBytes.length}")
+    println(s"Sending name bytes ${com.ibm.aspen.util.printableArray(nameBytes)} len ${nameBytes.length}")
     val rawEntryLength = 2*8 + 2*4 + nameBytes.length
     val fullEntryLength = rawEntryLength + getPaddingToAlignment(rawEntryLength, 8)
     

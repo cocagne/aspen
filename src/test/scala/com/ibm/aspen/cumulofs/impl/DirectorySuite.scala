@@ -154,7 +154,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        if dc.length == 1
        _ <- newDir.delete("bar")       
        _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newInode))
-       _ <- rootDir.delete("foo")       
+       _ <- rootDir.delete("foo")
        _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
      } yield {
        initialContent.length should be (0)

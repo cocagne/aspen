@@ -1,14 +1,11 @@
 package com.ibm.aspen.base.tieredlist
 
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.{AspenSystem, Transaction}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.base.Transaction
+
+import scala.concurrent.{ExecutionContext, Future}
 
 class MutableTieredKeyValueListNode(
     val system: AspenSystem,
@@ -44,7 +41,7 @@ class MutableTieredKeyValueListNode(
     val fallocater = mtkvl.allocater.tierNodeAllocater(0)
     val pairLimit = mtkvl.allocater.tierNodeKVPairLimit(0)
     val sizeLimit = mtkvl.allocater.tierNodeSizeLimit(0)
-    
+
     for {
       allocater <- fallocater
       fupdatedKvos <- KeyValueList.prepreUpdateTransaction(kvos, sizeLimit, pairLimit, inserts, deletes, requirements, 

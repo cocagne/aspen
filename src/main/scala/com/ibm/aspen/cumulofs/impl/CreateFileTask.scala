@@ -6,7 +6,7 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.task.{DurableTask, DurableTaskPointer, DurableTaskType, SteppedDurableTask}
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
-import com.ibm.aspen.cumulofs.{arr2string => _, _}
+import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.util._
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -43,7 +43,7 @@ object CreateFileTask {
       directory: DirectoryPointer, 
       name: String,
       inode: Inode)(implicit ec: ExecutionContext): Future[InodePointer] = {
-    
+
     val encodedDir = directory.toArray
     val encodedName = string2arr(name)
     val encodedFS = uuid2byte(fs.uuid)
@@ -99,7 +99,7 @@ class CreateFileTask private (
     val name = arr2string(state(NameKey))
     val newInode = InodePointer(state(InodePointerKey))
     val fsUUID = byte2uuid(state(FileSystemUUIDKey))
-    
+
     // The task group executor is created by the FileSystem class so its guaranteed to have already
     // been registered.
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
@@ -116,6 +116,5 @@ class CreateFileTask private (
         
       } yield ()
     }
-  
   }
 }

@@ -32,9 +32,12 @@ trait Directory extends BaseFile {
   
   def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
     implicit val tx: Transaction = fs.system.newTransaction()
+
     val f = for {
       fcomplete <- prepareDelete(name)
+
       _ <- tx.commit()
+
       _ <- fcomplete
     } yield ()
     

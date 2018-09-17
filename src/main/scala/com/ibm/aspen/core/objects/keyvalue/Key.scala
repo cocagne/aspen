@@ -24,7 +24,7 @@ final case class Key(bytes: Array[Byte]) {
       s"Key($m,$l)"
     }
     else
-      s"Key(${com.ibm.aspen.util.arr2string(bytes)})"
+      s"Key(${com.ibm.aspen.util.printableArray(bytes)})"
   }
   
   def intValue: Int = new BigInteger(bytes).intValue()

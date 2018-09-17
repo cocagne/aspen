@@ -45,7 +45,7 @@ package object util {
     val enc = java.util.Base64.getEncoder()
     enc.encodeToString(db.getByteArray())
   }
-  def arr2string(arr: Array[Byte]): String = {
+  def printableArray(arr: Array[Byte]): String = {
     val enc = java.util.Base64.getEncoder()
     enc.encodeToString(arr)
   }

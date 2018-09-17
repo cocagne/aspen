@@ -130,7 +130,6 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
   def mtime: Timespec = inode.mtime
   def atime: Timespec = inode.atime
 
-
   def setMode(newMode: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetMode(newMode))
   def setUID(uid: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetUID(uid))
   def setGID(gid: Int)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetGID(gid))
@@ -140,6 +139,12 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
   def setAtime(ts: Timespec)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(SetAtime(ts))
 
   def flush()(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Flush())
+
+  def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit = {
+    val updatedInode = inode.update(links=Some(inode.links+1))
+    tx.overwrite(pointer.pointer, cachedInodeRevision, updatedInode.toDataBuffer)
+    tx.result.foreach(_ => setCachedInode(updatedInode, tx.txRevision))
+  }
 
   def setattr(
       newUID: Int,

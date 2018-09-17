@@ -1,15 +1,10 @@
 package com.ibm.aspen.core.objects
 
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import java.util.UUID
+
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
+import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, KeyValueObjectStoreState, Value}
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -17,7 +12,9 @@ sealed abstract class ObjectState(
     val refcount:ObjectRefcount, 
     val timestamp: HLCTimestamp,
     val readTimestamp: HLCTimestamp) {
-  
+
+  def uuid: UUID = pointer.uuid
+
   def canEqual(other: Any): Boolean
   
   def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer]
@@ -115,8 +112,6 @@ class KeyValueObjectState(
     val right: Option[KeyValueObjectState.Right],
     val contents: Map[Key, Value]
     ) extends ObjectState(pointer, revision, refcount, timestamp, readTimestamp) {
-  
-  import KeyValueObjectState._
   
   // Provide a rough approximation of the total size consumed on the store
   def sizeOnStore: Int = contents.foldLeft(0)((sz, t) => sz + KeyValueObjectStoreState.idaEncodedPairSize(pointer.ida, t._1, t._2.value)) +
@@ -228,16 +223,16 @@ class KeyValueObjectState(
     i.foldLeft(timestamp)( (maxts, ts) =>  if (ts > maxts) ts else maxts)
   }
   
-  override def toString(): String = {
+  override def toString: String = {
     def p(o:Option[Array[Byte]]): String = o match {
       case None => ""
-      case Some(arr) => com.ibm.aspen.util.arr2string(arr)
+      case Some(arr) => com.ibm.aspen.util.printableArray(arr)
     }
     
-    val min = minimum.map(m => com.ibm.aspen.util.arr2string(m.key.bytes)).getOrElse("")
-    val max = maximum.map(m => com.ibm.aspen.util.arr2string(m.key.bytes)).getOrElse("")
-    val l = left.map(l => com.ibm.aspen.util.arr2string(l.content)).getOrElse("")
-    val r = right.map(r => com.ibm.aspen.util.arr2string(r.content)).getOrElse("")
+    val min = minimum.map(m => com.ibm.aspen.util.printableArray(m.key.bytes)).getOrElse("")
+    val max = maximum.map(m => com.ibm.aspen.util.printableArray(m.key.bytes)).getOrElse("")
+    val l = left.map(l => com.ibm.aspen.util.printableArray(l.content)).getOrElse("")
+    val r = right.map(r => com.ibm.aspen.util.printableArray(r.content)).getOrElse("")
     
     s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: ${min}, max: ${max}, left: ${l}, right: ${r}, contents: ${contents}"
   }

@@ -1,53 +1,19 @@
 package com.ibm.aspen.core.data_store
 
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
 import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.transaction.DataUpdate
-import com.ibm.aspen.core.transaction.RefcountUpdate
-import com.ibm.aspen.core.transaction.VersionBump
-import com.ibm.aspen.core.transaction.LocalUpdate
-import scala.concurrent.Promise
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.ObjectPointer
-import scala.util.Success
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.AllocationErrors
-import com.ibm.aspen.core.transaction.DataUpdateOperation
-import com.ibm.aspen.core.transaction.TransactionDisposition
-import com.ibm.aspen.core.allocation.DataAllocationOptions
-import com.ibm.aspen.core.objects.ObjectType
-import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.core.transaction.RevisionLock
-import com.ibm.aspen.core.allocation.AllocationOptions
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.objects.ObjectState
-import com.ibm.aspen.core.read.FatalReadError
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.MetadataObjectState
+
+import com.ibm.aspen.base.{AspenSystem, MissedUpdateIterator, StoragePool}
 import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.base.StoragePool
-import com.ibm.aspen.base.MissedUpdateIterator
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.core.read.OpportunisticRebuild
-import org.apache.logging.log4j.scala.Logging
-import org.apache.logging.log4j.LogManager
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.allocation._
+import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.read.{FatalReadError, OpportunisticRebuild}
+import com.ibm.aspen.core.transaction._
+import org.apache.logging.log4j.{LogManager, Logger}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 class DataStoreFrontend(
     val storeId: DataStoreID,
@@ -57,10 +23,10 @@ class DataStoreFrontend(
     ) extends DataStore { 
   
   object log {
-    val rebuild = LogManager.getLogger(this.getClass.getName + ".rebuild")
-    val alloc  = LogManager.getLogger(this.getClass.getName + ".alloc")
-    val read  = LogManager.getLogger(this.getClass.getName + ".read")
-    val tx  = LogManager.getLogger(this.getClass.getName + ".tx")
+    val rebuild:Logger = LogManager.getLogger(this.getClass.getName + ".rebuild")
+    val alloc:Logger  = LogManager.getLogger(this.getClass.getName + ".alloc")
+    val read:Logger  = LogManager.getLogger(this.getClass.getName + ".read")
+    val tx:Logger  = LogManager.getLogger(this.getClass.getName + ".tx")
   }
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
@@ -110,12 +76,12 @@ class DataStoreFrontend(
   override def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = synchronized {
     val metadata = ObjectMetadata(ObjectRevision(new UUID(0,0)), ObjectRefcount(0,1), timestamp)
     
-    backend.allocateObject(objectUUID, metadata, initialContent) flatMap { e => e match { 
+    backend.allocateObject(objectUUID, metadata, initialContent) flatMap {
       case Left(err) => throw new Exception(s"Allocation failed: $err")
       case Right(arr) => 
         val sp = new StorePointer(storeId.poolIndex, arr)
         backend.putObject(StoreObjectID(objectUUID, sp), metadata, initialContent).map( _ => sp )
-    }}
+    }
   }
   
   override def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit] = synchronized {
@@ -141,11 +107,11 @@ class DataStoreFrontend(
       case _: KeyValueAllocationOptions => ObjectType.KeyValue
     }
         
-    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for ${objectType} object $newObjectUUID")
+    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for $objectType object $newObjectUUID")
     
     val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), initialRefcount, timestamp)
         
-    backend.allocateObject(newObjectUUID, md, objectData) map { e => e match {
+    backend.allocateObject(newObjectUUID, md, objectData) map {
       case Left(err) => Left(err)
       case Right(arr) =>
         val sp = new StorePointer(storeId.poolIndex, arr)
@@ -156,7 +122,7 @@ class DataStoreFrontend(
         loadAllocatedObject(ars)
         
         Right(ars)
-    }}  
+    }
   }
   
   private def loadAllocatedObject(ars: AllocationRecoveryState): Unit = synchronized {
@@ -184,7 +150,7 @@ class DataStoreFrontend(
             val fcommitted = mo.commitBoth()
             
             fcommitted onComplete {
-              case _ => synchronized { mo.completeOperation(ars.allocationTransactionUUID) }
+              _ => synchronized { mo.completeOperation(ars.allocationTransactionUUID) }
             }
             
             fcommitted
@@ -210,7 +176,7 @@ class DataStoreFrontend(
         objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
       }
       
-      fload.map { e => e match {
+      fload.map {
         case Left(err) =>
           log.read.info(s"$storeId read object ${pointer.uuid}. Error $err")
           Left(err)
@@ -219,9 +185,12 @@ class DataStoreFrontend(
           synchronized {
               log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
               obj.completeOperation(readUUID)
-              Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+              if (obj.deleted)
+                Left(new InvalidLocalPointer)
+              else
+                Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
           }
-      }}
+      }
   }
   
   
@@ -242,7 +211,7 @@ class DataStoreFrontend(
         objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
       } 
       
-      fload.map { e => e match {
+      fload.map {
         case Left(err) =>
           log.read.info(s"$storeId readMeta object ${pointer.uuid}. Error $err")
           Left(err)
@@ -250,9 +219,12 @@ class DataStoreFrontend(
           synchronized {
             log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
             obj.completeOperation(readUUID)
-            Right((obj.metadata, obj.locks, obj.writeLocks))
+            if (obj.deleted)
+              Left(new InvalidLocalPointer)
+            else
+              Right((obj.metadata, obj.locks, obj.writeLocks))
           }
-      }}
+      }
   }
   
  
@@ -268,7 +240,7 @@ class DataStoreFrontend(
         objectLoader.load(objectId, pointer.objectType, readUUID).loadData()
       } 
       
-      fload.map { e => e match {
+      fload.map {
         case Left(err) => 
           log.read.info(s"$storeId readData object ${pointer.uuid}. Error $err")
           Left(err)
@@ -276,9 +248,12 @@ class DataStoreFrontend(
           synchronized {
             log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
             obj.completeOperation(readUUID)
-            Right((obj.data, obj.locks, obj.writeLocks))
+            if (obj.deleted)
+              Left(new InvalidLocalPointer)
+            else
+              Right((obj.data, obj.locks, obj.writeLocks))
           }
-      }}
+      }
   }
   
   private[this] def getStoreTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): StoreTransaction = {
@@ -422,7 +397,7 @@ class DataStoreFrontend(
         }
         
         objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map {
-          case Left(err) => synchronized {
+          case Left(_) => synchronized {
             log.rebuild.info(s"$storeId opportunistic rebuild for ${message.objectPointer.shortString}: Storing Missed allocation")
             backend.putObject(objectId, metadata, data) onComplete { 
               _ => pcomplete.success(())
@@ -507,7 +482,7 @@ class DataStoreFrontend(
       case Some(pointer) =>
         log.rebuild.info(s"$storeId repair: loading local state of object ${entry.objectUUID}")
         
-        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map { e => e match {
+        objectLoader.load(objectId, pointer.objectType, repairUUID).loadBoth().map {
           case Left(err) =>
             log.rebuild.info(s"$storeId repair: failed to get state of object ${entry.objectUUID}. Error: $err")
             None
@@ -516,10 +491,10 @@ class DataStoreFrontend(
               log.rebuild.info(s"$storeId repair: got local state of object ${entry.objectUUID}. Rev ${obj.revision} Ref ${obj.refcount}")
             }
             Some(obj)
-        }}  
+        }
     }
     
-    def isAllocated(): Future[Boolean] = {
+    def isAllocated: Future[Boolean] = {
       val key = Key(entry.objectUUID)
       for {
         pool <- system.getStoragePool(storeId.poolUUID)
@@ -540,7 +515,7 @@ class DataStoreFrontend(
     
     def fix(oobj: Option[ObjectState], olocal: Option[MutableObject]): Future[Unit] = (oobj, olocal) match {
       
-      case (None, None) => isAllocated() map { allocated =>
+      case (None, None) => isAllocated map { allocated =>
         if (allocated) {
           log.rebuild.info(s"$storeId repair: Object is in an indeterminate state. Cannot yet repair object ${entry.objectUUID}")
           throw new Exception("Object is in an indeterminate state. Cannot repair yet")
@@ -553,12 +528,12 @@ class DataStoreFrontend(
       }
       
       case (None, Some(mo)) =>
-        isAllocated() map { allocated => synchronized {
+        isAllocated map { allocated => synchronized {
           if (allocated) {
             log.rebuild.info(s"$storeId repair: Object is not fully deleted. Cannot repair object ${entry.objectUUID}")
             throw new Exception("Object not fully deleted. Cannot repair yet")
           }
-          else if (!mo.locks.isEmpty) {
+          else if (mo.locks.nonEmpty) {
             log.rebuild.info(s"$storeId repair: Object is locked. Cannot repair object ${entry.objectUUID}")
             throw new Exception("Object locked. Cannot repair yet")
           } 
@@ -641,9 +616,9 @@ class DataStoreFrontend(
     var locked = false
     var committed = false
     
-    val dataUpdates: Map[UUID, DataBuffer] = updateData.map(lu => (lu.objectUUID -> lu.data)).toMap
+    val dataUpdates: Map[UUID, DataBuffer] = updateData.map(lu => lu.objectUUID -> lu.data).toMap
     
-    var lockRequests = List[Promise[List[ObjectTransactionError]]]()
+    var lockRequests: List[Promise[List[ObjectTransactionError]]] = Nil
     
     // Filter Objects & Transaction Requirements down to just the set of objects hosted by this store
     
@@ -659,9 +634,9 @@ class DataStoreFrontend(
     
     log.tx.info(s"$storeId tx: ${txd.transactionUUID} Local objects: ${objects.keys.toList}")
     
-    val requirements = txd.requirements.filter(r => objects.contains(r.objectPointer.uuid))
+    val requirements: List[TransactionRequirement] = txd.requirements.filter(r => objects.contains(r.objectPointer.uuid))
     
-    val objectsLoaded = Future.sequence {
+    val objectsLoaded: Future[Unit] = Future.sequence {
       
       // Only load data if its needed by the transaction requirements
       val dataNeeded = requirements.foldLeft(Set[UUID]())((s, r) => r match {
@@ -705,7 +680,7 @@ class DataStoreFrontend(
         // It's possible we've been asked to commit a transaction that references objects we don't have (missed the
         // creation transaction). We can safely ignore these objects and allow the repair process to clean up what
         // we miss
-        if (!cs.obj.readError.isDefined) {
+        if (cs.obj.readError.isEmpty) {
         
           // Before committing the updates associated with each transaction requirement, we must first ensure
           // that the requirement is met. We may be committing a transaction that we didn't vote to commit due
@@ -722,11 +697,11 @@ class DataStoreFrontend(
                 du.operation match {
                   case DataUpdateOperation.Overwrite => cs.obj match {
                     case d: MutableDataObject => d.overwriteData(data)
-                    case kv: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Overwrite on key-value object ${requirement.objectPointer.uuid}")
+                    case _: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Overwrite on key-value object ${requirement.objectPointer.uuid}")
                   }
                   case DataUpdateOperation.Append => cs.obj match {
                     case d: MutableDataObject => d.appendData(data)
-                    case kv: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
+                    case _: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
                   }
                 }
                 
@@ -747,7 +722,7 @@ class DataStoreFrontend(
                   log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing RefcountUpdate to DELETE object ${requirement.objectPointer.uuid}")
                 }
               
-              case vb: VersionBump => 
+              case _: VersionBump =>
                 cs.obj.revision = ObjectRevision(txd.transactionUUID)
                 cs.obj.timestamp = timestamp
                 cs.commitMetadata = true
@@ -783,6 +758,7 @@ class DataStoreFrontend(
       
       Future.sequence { csmap.valuesIterator.map { cs =>
         if (cs.deleteObject) {
+          cs.obj.deleted = true
           backend.deleteObject(cs.obj.objectId)
           
         } else {
@@ -812,10 +788,10 @@ class DataStoreFrontend(
         val obj = objects(r.objectPointer.uuid)
         
         r match {
-          case du: DataUpdate     => obj.objectRevisionWriteLock = Some(txd)
-          case ru: RefcountUpdate => obj.objectRefcountWriteLock = Some(txd)
-          case vb: VersionBump    => obj.objectRevisionWriteLock = Some(txd)
-          case rl: RevisionLock   => obj.objectRevisionReadLocks += (txd.transactionUUID -> txd)
+          case _: DataUpdate     => obj.objectRevisionWriteLock = Some(txd)
+          case _: RefcountUpdate => obj.objectRefcountWriteLock = Some(txd)
+          case _: VersionBump    => obj.objectRevisionWriteLock = Some(txd)
+          case _: RevisionLock   => obj.objectRevisionReadLocks += (txd.transactionUUID -> txd)
           case kv: KeyValueUpdate =>
             val kvobj = obj.asInstanceOf[MutableKeyValueObject]
             
@@ -861,13 +837,13 @@ class DataStoreFrontend(
         val obj = objects(r.objectPointer.uuid)
         
         r match {
-          case du: DataUpdate     => obj.objectRevisionWriteLock = None
+          case _: DataUpdate     => obj.objectRevisionWriteLock = None
           
-          case ru: RefcountUpdate => obj.objectRefcountWriteLock = None
+          case _: RefcountUpdate => obj.objectRefcountWriteLock = None
           
-          case vb: VersionBump    => obj.objectRevisionWriteLock = None
+          case _: VersionBump    => obj.objectRevisionWriteLock = None
           
-          case rl: RevisionLock => obj.objectRevisionReadLocks -= txd.transactionUUID
+          case _: RevisionLock => obj.objectRevisionReadLocks -= txd.transactionUUID
           
           case kv: KeyValueUpdate =>
             val kvobj = obj.asInstanceOf[MutableKeyValueObject]
@@ -977,7 +953,7 @@ class DataStoreFrontend(
                       err(InsufficientFreeSpace(obj))
                 }
                 
-                if (!kv.requirements.isEmpty) {
+                if (kv.requirements.nonEmpty) {
                   
                   val kvoss = kvobj.storeState
                   
@@ -1008,11 +984,11 @@ class DataStoreFrontend(
                         }
                         case KeyValueUpdate.TimestampRequirement.Exists => ov match {
                           case None => err(KeyValueRequirementError(obj, req.key))
-                          case Some(v) => 
+                          case Some(_) =>
                         }
                         case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
                           case None => 
-                          case Some(v) => err(KeyValueRequirementError(obj, req.key))
+                          case Some(_) => err(KeyValueRequirementError(obj, req.key))
                         }
                       }
                     }
@@ -1060,7 +1036,7 @@ class DataStoreFrontend(
             case _ => s
           }}
           
-          val probablyMissedCommitOfLockedTx = errors.forall { e => e match {
+          val probablyMissedCommitOfLockedTx = errors.forall {
             case r: RevisionMismatch => collisions.get(r.objectPointer.uuid) match {
               case None => false
               case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
@@ -1069,7 +1045,7 @@ class DataStoreFrontend(
             case c: TransactionCollision => mismatches.contains(c.objectPointer.uuid) 
             
             case _ => false
-          }}
+          }
           
           if (probablyMissedCommitOfLockedTx) {
             collisions.values.foreach { lockedTxUUID =>
@@ -1088,7 +1064,7 @@ class DataStoreFrontend(
           lockRequests.foreach(p => p.success(errors))
           lockRequests = Nil
         } else {
-          log.tx.info(s"$storeId tx: ${txd.transactionUUID} delaying action until transactions complete: ${waitingForTransactions}")
+          log.tx.info(s"$storeId tx: ${txd.transactionUUID} delaying action until transactions complete: $waitingForTransactions")
           op.foreach { p =>
             lockRequests = p :: lockRequests
           }

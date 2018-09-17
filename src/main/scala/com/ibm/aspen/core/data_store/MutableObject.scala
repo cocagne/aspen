@@ -44,6 +44,7 @@ abstract class MutableObject(
   var objectRefcountReadLocks: Map[UUID, TransactionDescription] = Map()
   var objectRefcountWriteLock: Option[TransactionDescription] = None
   var pendingOperations: Set[UUID] = Set(initialOperation)
+  var deleted: Boolean = false
   
   private[this] var oerr: Option[ObjectReadError] = None
   private[this] var fmeta: Option[Future[Either[ObjectReadError, MutableObject]]] = None

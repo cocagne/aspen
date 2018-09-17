@@ -57,16 +57,18 @@ trait InodeLoader {
   def iload(pointer: InodePointer)(implicit ec: ExecutionContext): Future[(Inode, ObjectRevision)] = {
 
     val pload = Promise[(Inode, ObjectRevision)]()
-      
+
     system.readObject(pointer.pointer) onComplete {
-      case Success(dos) => pload.success((Inode(pointer, dos.data), dos.revision))
+      case Success(dos) =>
+        pload.success((Inode(pointer, dos.data), dos.revision))
 
       case Failure(e: CorruptedObject) =>
         // TODO: If pointer fails to read, we'll need to read the inode table (could be stale pointer). If new pointer
         //       for that inode exists, we'll need to use a callback function to update the stale pointer
         pload.failure(e)
         
-      case Failure(cause) => pload.failure(cause)
+      case Failure(cause) =>
+        pload.failure(cause)
     }
     
     pload.future

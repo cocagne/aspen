@@ -220,7 +220,7 @@ object SymlinkInode {
 
   def init(mode: Int, uid: Int, gid: Int, content: String): SymlinkInode = {
     val now = Timespec.now
-    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.Symlink)
     new SymlinkInode(0, correctedMode, uid, gid, 1, now, now, now, None,
       content.getBytes(StandardCharsets.UTF_8))
   }
@@ -282,7 +282,7 @@ object UnixSocketInode {
 
   def init(mode: Int, uid: Int, gid: Int): UnixSocketInode = {
     val now = Timespec.now
-    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.UnixSocket)
     new UnixSocketInode(0, correctedMode, uid, gid, 1, now, now, now, None)
   }
 
@@ -321,7 +321,7 @@ object FIFOInode {
 
   def init(mode: Int, uid: Int, gid: Int): FIFOInode = {
     val now = Timespec.now
-    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.FIFO)
     new FIFOInode(0, correctedMode, uid, gid, 1, now, now, now, None)
   }
 
@@ -359,7 +359,7 @@ object CharacterDeviceInode {
 
   def init(mode: Int, uid: Int, gid: Int, rdev: Int): CharacterDeviceInode = {
     val now = Timespec.now
-    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.CharacterDevice)
     new CharacterDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
   }
 
@@ -413,7 +413,7 @@ object BlockDeviceInode {
 
   def init(mode: Int, uid: Int, gid: Int, rdev: Int): BlockDeviceInode = {
     val now = Timespec.now
-    val correctedMode = FileType.ensureModeFileType(mode, FileType.File)
+    val correctedMode = FileType.ensureModeFileType(mode, FileType.BlockDevice)
     new BlockDeviceInode(0, correctedMode, uid, gid, 1, now, now, now, None, rdev)
   }
 

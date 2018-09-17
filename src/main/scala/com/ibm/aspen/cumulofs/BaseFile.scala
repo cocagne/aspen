@@ -37,6 +37,8 @@ trait BaseFile {
 
   def flush()(implicit ec: ExecutionContext): Future[Unit]
 
+  def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit
+
   def setattr(
       newUID: Int, 
       newGID: Int, 

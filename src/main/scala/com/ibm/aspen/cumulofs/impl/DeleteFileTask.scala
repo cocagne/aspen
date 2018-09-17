@@ -2,10 +2,10 @@ package com.ibm.aspen.cumulofs.impl
 
 import java.util.UUID
 
-import com.ibm.aspen.base.{AspenSystem, Transaction}
 import com.ibm.aspen.base.task.{DurableTask, DurableTaskPointer, DurableTaskType, SteppedDurableTask}
-import com.ibm.aspen.core.objects.{DataObjectState, KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.base.{AspenSystem, Transaction}
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
+import com.ibm.aspen.core.objects.{DataObjectState, ObjectRevision}
 import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.util._
 
@@ -37,6 +37,7 @@ object DeleteFileTask {
         Future.successful(Future.unit)
       } 
       else if (inode.links == 1 ) {
+
         tx.overwrite(victim.pointer, revision, inode.update(links=Some(0)).toDataBuffer)
 
         val content = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.toArray))
@@ -50,7 +51,7 @@ object DeleteFileTask {
               taskReady <- ftask
             } yield taskReady.map(_=>())
             
-          case f: FileInode => for {
+          case _: FileInode => for {
             taskReady <- ftask
           } yield taskReady.map(_=>())
             

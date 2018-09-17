@@ -39,20 +39,20 @@ trait TieredKeyValueList {
     kvos.contents.get(key) 
   }
   
-  def visitAll(visitor: (Value) => Unit)(implicit ec: ExecutionContext): Future[Unit] = visitRange(Key.AbsoluteMinimum, None, visitor)
+  def visitAll(visitor: Value => Unit)(implicit ec: ExecutionContext): Future[Unit] = visitRange(Key.AbsoluteMinimum, None, visitor)
   
   def visitRange(
       startKey: Key, 
       stopKey: Option[Key], 
-      visitor: (Value) => Unit)(implicit ec: ExecutionContext): Future[Unit] = {
-    
+      visitor: Value => Unit)(implicit ec: ExecutionContext): Future[Unit] = {
+
     val p = Promise[Unit]()
     
     fetchContainingNode(startKey, targetTier=0) onComplete {
       case Failure(cause) => p.failure(cause)
       case Success(root) => 
         def visit(kvos: KeyValueObjectState): Unit = {
-          
+
           val reader = getObjectReaderForTier(0)
           
           kvos.contents.valuesIterator.toArray.sortBy(v => v.key)(keyOrdering).foreach { v =>
