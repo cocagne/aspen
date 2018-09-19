@@ -1,4 +1,57 @@
 
+* Can we consolidte down to a single "DataObjectStoreState" and "KeyValueObjectStoreState" ?
+   - ideally defined in the objects package
+
+Store KVOS data: is a list of Value(key: Key, value: Array[Byte], timestamp: HLCTimestamp, revision: ObjectRevision)
+Store DOS data: Rev,TS,Data
+
+** can use object read timestamp to ensure that object state is more recent that local state
+   - Necessary for deletes. If successfully read object is *after* the state of a key that has apparently been
+     removed and that key is not currently locked (which would cause rebuild of that key to fail) then it can
+     be safely removed.
+
+Rebuilder takes rebuild(storeState, currentObject): List[RebuildAction]
+  - For client-side, opportunistic rebuild this results in a Message to store with encoded rebuild action
+  - For server-side, this results in a call to DataStore rebuild(objectPointer, List[RebuildAction])
+
+How to test?
+  - Call rebuild IFace directly with customized storeState
+  - Verify that RebuildAction is correct
+  - Then verify that individual stores apply RebuildActions to local store state correctly
+      - May want to borrow from low-level message handling tests to verify that locks are delt with appropriately
+      - Also avoids complexity of full-system tests
+
+* What if we did a more conservative rebuild impl? Treat all rebuilds as "opportunistic".
+    - Store ONLY supports:
+         rebuild(op: ObjectPointer, localRev: ObjectRevision, readTimestamp: HLCTimestamp, actions: List[RebuildActions]): Future[Boolean]
+
+         XXX rebuildDelete(op: ObjectPointer, localRevision: ObjectRevision): Future[Boolean]
+         XXX rebuild(dop: DataObjectPointer, localRev: ObjectRevision, ts:Timestamp, data: DataBuffer): Future[Boolean]
+         XXX rebuild(kop: KeyValueObjectPointer,  localRev: ObjectRevision, ts:Timestamp,
+                 add: List[KVRebuildAdd(Key,Rev,TS,Data)]
+                 update: List[(Key,ObjectRevision,ObjectRevision,TS,Data)],
+                 remove: List[(Key,Rev)]): Future[Boolean]
+
+    - If local state matches and isn't locked, save and return true. else return false
+       - for opportunistic rebuild, ignore return code
+       - for missedUpdateTree failure means we'll try again later
+
+    * Opportunistic Rebuild calls this directly
+    * Missed Update reads object and local state. If local state doesn't match, call rebuild.
+
+
+* Rebuilder is an explicit Interface
+   DataStoreFrontend takes a factory function to creat one
+     - constructor takes pointer to DataStoreFrontend
+   DataStoreFrontend Has A Rebuilder instance
+     - Opportunistic messages are relayed to rebuilder instance
+   Rebuilder does its thing and calls
+      - getObject(rebuildUUID)
+      - tryRebuild(rebuildUUID, requiredRevision, requriedRefcount, metadata, data): Boolean
+          - If object matches requirements, save and return true. else dont and return false
+   ** Only synchronization requried is in tryRebuild
+      - which is guaranteed to have the object in question already loaded in memory (return false if not)
+
 * Remove 5 file op retry limit from SimpleBaseFile
 
 * Allocation Strategy Refactor
@@ -34,7 +87,9 @@ Collision Handling
 
 Round 0 optimization can be added to reduce success detection to 1 RTT
    - Need to be careful with writeThreshold > 2/3.
-       - Must guarantee that all recovery scenarios would result in commit and not abort 
+       - Must guarantee that all recovery scenarios would result in commit and not abort
+   - Commit on stores could to to 3 message delays if client sends success message to
+     all stores (removes need for N^2
 
 Can remove a message delays by using an N^2 messaging pattern for Prepared/Accepted
 This may not be a problem in practice
