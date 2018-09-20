@@ -1,35 +1,16 @@
 package com.ibm.aspen.base.tieredlist
 
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.objects.keyvalue.Key
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.base.ObjectReader
-import scala.concurrent.Promise
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.objects.keyvalue.Delete
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.keyvalue.SetMin
-import com.ibm.aspen.core.objects.keyvalue.SetMax
-import com.ibm.aspen.core.objects.keyvalue.SetRight
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.HLCTimestamp
 import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.base.RetryStrategy
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.core.objects.keyvalue.DeleteMax
-import com.ibm.aspen.core.objects.keyvalue.DeleteRight
+
+import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, ObjectReader, Transaction}
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.data_store.KeyValueObjectStoreState
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.core.objects.keyvalue._
+import com.ibm.aspen.core.transaction.KeyValueUpdate
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 
 object KeyValueList {
@@ -68,7 +49,7 @@ object KeyValueList {
               else
                 scanToContainingNode( next )
             } catch {
-              case err: Throwable => p.failure(new CorruptedLinkedList)
+              case _: Throwable => p.failure(new CorruptedLinkedList)
             }
           }
         }
@@ -107,7 +88,7 @@ object KeyValueList {
         else {
           objectReader.readObject(rightPointer) onComplete {
             case Failure(err) => p.failure(err)
-            case Success(node) => scanRight(node)
+            case Success(n) => scanRight(n)
           }
         }
     }
@@ -139,7 +120,7 @@ object KeyValueList {
         else {
           objectReader.readObject(rightPointer) onComplete {
             case Failure(err) => p.failure(err) 
-            case Success(node) => scanRight(node)
+            case Success(n) => scanRight(n)
           }
         }
     }
@@ -256,7 +237,7 @@ object KeyValueList {
         objectSize: Int
         ): (List[KeyValueOperation], List[Key], Key, Int, Boolean) = {
       
-      if (remainingKeys.isEmpty || insertedCount == maxPairs || (!lastKey.isEmpty && (objectSize > remainingKVSize || insertedCount > remainingCount))) {
+      if (remainingKeys.isEmpty || insertedCount == maxPairs || (lastKey.isDefined && (objectSize > remainingKVSize || insertedCount > remainingCount))) {
         (SetMin(lastKey.get) :: ops, remainingKeys, lastKey.get, remainingKVSize, false)
       } else {
         val key = remainingKeys.head
@@ -361,43 +342,40 @@ object KeyValueList {
         reader.readObject(rightPointer).map( rightKvos => Some(rightKvos) )
     }
     
-    opsReady.map { oright =>
-      
-      oright match {
-        case None =>
-          // No object to the right to pull kv pairs from. Just delete the contents and leave it empty
-          tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, updateOps)
+    opsReady.map {
+      case None =>
+        // No object to the right to pull kv pairs from. Just delete the contents and leave it empty
+        tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, updateOps)
 
-          tx.result.map { timestamp =>
-            new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
-              emptyKvos.minimum, None, emptyKvos.left, None, Map())
-          }
-          
-        case Some(rkvos) =>
-          // Migrate all content from the right node to this node and delete the right node
-          var ops = updateOps
-          
-          rkvos.maximum match {
-            case Some(m) => ops = SetMax(m.key) :: ops
-            case None => ops = DeleteMax() :: ops
-          }
-          rkvos.right match {
-            case Some(r) => ops = SetRight(r.content) :: ops
-            case None => ops = DeleteRight() :: ops 
-          }
-          rkvos.contents.valuesIterator.foreach { v => ops = new Insert(v.key, v.value, Some(v.timestamp), Some(v.revision)) :: ops }
+        tx.result.map { timestamp =>
+          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
+            emptyKvos.minimum, None, emptyKvos.left, None, Map())
+        }
 
-          tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, ops)
-          tx.update(rkvos.pointer, Some(rkvos.revision), requirements, List())
-          tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
-          
-          onJoin(KeyValueListPointer(emptyKvos), KeyValueListPointer(rkvos))
-          
-          tx.result.map { timestamp =>
-            new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
-              emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, rkvos.contents)
-          }
-      }
+      case Some(rkvos) =>
+        // Migrate all content from the right node to this node and delete the right node
+        var ops = updateOps
+
+        rkvos.maximum match {
+          case Some(m) => ops = SetMax(m.key) :: ops
+          case None => ops = DeleteMax() :: ops
+        }
+        rkvos.right match {
+          case Some(r) => ops = SetRight(r.content) :: ops
+          case None => ops = DeleteRight() :: ops
+        }
+        rkvos.contents.valuesIterator.foreach { v => ops = new Insert(v.key, v.value, Some(v.timestamp), Some(v.revision)) :: ops }
+
+        tx.update(emptyKvos.pointer, Some(emptyKvos.revision), requirements, ops)
+        tx.update(rkvos.pointer, Some(rkvos.revision), requirements, List())
+        tx.setRefcount(rkvos.pointer, rkvos.refcount, rkvos.refcount.decrement())
+
+        onJoin(KeyValueListPointer(emptyKvos), KeyValueListPointer(rkvos))
+
+        tx.result.map { timestamp =>
+          new KeyValueObjectState(emptyKvos.pointer, tx.txRevision, emptyKvos.refcount, timestamp, timestamp,
+            emptyKvos.minimum, rkvos.maximum, emptyKvos.left, rkvos.right, rkvos.contents)
+        }
     }
   }
   

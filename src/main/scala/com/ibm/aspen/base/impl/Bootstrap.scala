@@ -1,30 +1,16 @@
 package com.ibm.aspen.base.impl
 
 import java.util.UUID
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.ida.IDA
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.network.NetworkCodec
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.util
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
+
 import com.ibm.aspen.base.MissedUpdateStrategy
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
+import com.ibm.aspen.base.tieredlist.{SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.data_store.{DataStore, KeyValueObjectStoreState}
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectRevision, StorePointer}
+import com.ibm.aspen.core.objects.keyvalue.{ByteArrayKeyOrdering, Insert, Key, KeyValueOperation}
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object Bootstrap {
   val ZeroedUUID                      = new UUID(0, 0)
@@ -93,7 +79,7 @@ object Bootstrap {
     val txRevision = ObjectRevision(new UUID(0,0))
     val timestamp = HLCTimestamp.now
     val hosts = bootstrapStores.take(bootstrapPoolIDA.width).zipWithIndex
-    val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
+    //val hostsArray = bootstrapStores.take(bootstrapPoolIDA.width).toArray
     
     val objectSize = bootstrapStores.foldLeft(None:Option[Int])((ox,y) => (ox, y.maximumAllowedObjectSize) match {
       case (None, None) => None
@@ -110,7 +96,7 @@ object Bootstrap {
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
         store.bootstrapAllocateNewObject(objectUUID, 
-            KeyValueObjectStoreState.convertOpsToStoreState(enc(storeIndex), txRevision, timestamp), 
+            KeyValueObjectStoreState().update(enc(storeIndex), txRevision, timestamp).encode(),
             timestamp).map(sp => storePointers(storeIndex) = sp) 
       }}
       Future.sequence(falloc) map { _ =>
@@ -121,7 +107,7 @@ object Bootstrap {
     def overwriteKeyValueObject(pointer: KeyValueObjectPointer, initialContent: List[(Key, Array[Byte])]): Future[Unit] = {
       val inserts = initialContent.map(t => new Insert(t._1, t._2))
       val enc = KeyValueOperation.encode(inserts, bootstrapPoolIDA)
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, KeyValueObjectStoreState.convertOpsToStoreState(enc(t._2), txRevision, timestamp), timestamp))).map(_=>())
+      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, KeyValueObjectStoreState().update(enc(t._2), txRevision, timestamp).encode(), timestamp))).map(_=>())
     }
     
     def updateAllocationTree(allocTreeRoot: KeyValueObjectPointer, pointers: List[KeyValueObjectPointer]) : Future[Unit] = {
@@ -165,7 +151,7 @@ object Bootstrap {
           (SystemTreeKey, treeRoot(systemTreePtr)) 
       ))
       
-      complete <- updateAllocationTree(allocPtr, List(
+      _ <- updateAllocationTree(allocPtr, List(
           allocPtr,
           bootstrapPoolPtr,
           storagePoolTreePtr,

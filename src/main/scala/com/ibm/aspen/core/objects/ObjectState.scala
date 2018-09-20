@@ -3,8 +3,8 @@ package com.ibm.aspen.core.objects
 import java.util.UUID
 
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, KeyValueObjectStoreState, Value}
+import com.ibm.aspen.core.data_store.{DataStoreID, KeyValueObjectStoreState}
+import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, Value}
 
 sealed abstract class ObjectState(
     val pointer: ObjectPointer, 
@@ -203,7 +203,7 @@ class KeyValueObjectState(
     hashCodes.reduce( (a,b) => a ^ b )
   }
   
-  def updateSet: Set[ObjectRevision] = {
+  def allUpdates: Set[ObjectRevision] = {
     val i = minimum.map(_.revision).iterator ++ 
             maximum.map(_.revision).iterator ++
             left.map(_.revision).iterator ++ 
@@ -224,17 +224,18 @@ class KeyValueObjectState(
   }
   
   override def toString: String = {
+    /*
     def p(o:Option[Array[Byte]]): String = o match {
       case None => ""
       case Some(arr) => com.ibm.aspen.util.printableArray(arr)
     }
-    
+    */
     val min = minimum.map(m => com.ibm.aspen.util.printableArray(m.key.bytes)).getOrElse("")
     val max = maximum.map(m => com.ibm.aspen.util.printableArray(m.key.bytes)).getOrElse("")
     val l = left.map(l => com.ibm.aspen.util.printableArray(l.content)).getOrElse("")
     val r = right.map(r => com.ibm.aspen.util.printableArray(r.content)).getOrElse("")
     
-    s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: ${min}, max: ${max}, left: ${l}, right: ${r}, contents: ${contents}"
+    s"KVObjectState(object: ${pointer.uuid}, revision: $revision, refcount: $refcount, min: $min, max: $max, left: $l, right: $r, contents: $contents"
   }
   
   def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer] = pointer.getEncodedDataIndexForStore(storeId).map { idaIndex => 

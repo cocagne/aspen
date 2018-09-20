@@ -1,11 +1,11 @@
 package com.ibm.aspen.core.data_store
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
 import java.util.UUID
+
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationErrors
-import com.ibm.aspen.core.objects.StorePointer
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object MemoryOnlyDataStoreBackend {
   class Obj(var metadata: ObjectMetadata, var data: DataBuffer)
@@ -18,7 +18,7 @@ class MemoryOnlyDataStoreBackend(
   
   import MemoryOnlyDataStoreBackend._
   
-  var objects = Map[UUID, Obj]()  
+  var objects: Map[UUID, Obj] = Map()
   
   override def close(): Future[Unit] = Future.successful(())
   
@@ -47,15 +47,7 @@ class MemoryOnlyDataStoreBackend(
     
     Future.successful(result)
   }
-  
-  override def getObjectData(objectId: StoreObjectID): Future[Either[ObjectReadError, DataBuffer]] = synchronized {
-    val result = objects.get(objectId.objectUUID) match {
-      case None => Left(new InvalidLocalPointer)
-      case Some(o) => Right(o.data)
-    }
-    
-    Future.successful(result)
-  }
+
   
   override def getObject(objectId: StoreObjectID): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer)]] = synchronized {
     val result = objects.get(objectId.objectUUID) match {
@@ -67,31 +59,22 @@ class MemoryOnlyDataStoreBackend(
   }
   
   override def putObjectMetaData(objectId: StoreObjectID, metadata: ObjectMetadata): Future[Unit] = synchronized { 
-    val result = objects.get(objectId.objectUUID) match {
-      case None => assert(false, "Put attempted on non-existent object")
+    objects.get(objectId.objectUUID) match {
+      case None => assert(assertion=false, "Put attempted on non-existent object")
       case Some(o) => o.metadata = metadata
     }
     
-    Future.successful(result)
-  }
-  
-  override def putObjectData(objectId: StoreObjectID, data:DataBuffer): Future[Unit] = synchronized { 
-    val result = objects.get(objectId.objectUUID) match {
-      case None => assert(false, "Put attempted on non-existent object")
-      case Some(o) => o.data = data
-    }
-    
-    Future.successful(result)
+    Future.unit
   }
   
   override def putObject(objectId: StoreObjectID, metadata: ObjectMetadata, data: DataBuffer): Future[Unit] = synchronized { 
-    val result = objects.get(objectId.objectUUID) match {
-      case None => assert(false, "Put attempted on non-existent object")
+    objects.get(objectId.objectUUID) match {
+      case None => assert(assertion=false, "Put attempted on non-existent object")
       case Some(o) => 
         o.metadata = metadata
         o.data = data
     }
     
-    Future.successful(result)
+    Future.unit
   }
 }

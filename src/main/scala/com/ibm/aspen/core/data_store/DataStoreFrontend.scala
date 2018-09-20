@@ -149,10 +149,8 @@ class DataStoreFrontend(
           if (commit && mo.revision == ObjectRevision(ars.allocationTransactionUUID)) {
             val fcommitted = mo.commitBoth()
             
-            fcommitted onComplete {
-              _ => synchronized { mo.completeOperation(ars.allocationTransactionUUID) }
-            }
-            
+            fcommitted.onComplete(_ => mo.completeOperation(ars.allocationTransactionUUID))
+
             fcommitted
           } else {
             mo.completeOperation(ars.allocationTransactionUUID)
@@ -172,23 +170,22 @@ class DataStoreFrontend(
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
-      val fload = synchronized {
-        objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
-      }
-      
+      val fload = objectLoader.load(objectId, pointer.objectType, readUUID).loadBoth()
+
       fload.map {
         case Left(err) =>
           log.read.info(s"$storeId read object ${pointer.uuid}. Error $err")
           Left(err)
           
-        case Right(obj) => 
+        case Right(obj) =>
+          log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
+          obj.completeOperation(readUUID)
+
           synchronized {
-              log.read.info(s"$storeId read object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
-              obj.completeOperation(readUUID)
-              if (obj.deleted)
-                Left(new InvalidLocalPointer)
-              else
-                Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+            if (obj.deleted)
+              Left(new InvalidLocalPointer)
+            else
+              Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
           }
       }
   }
@@ -207,18 +204,17 @@ class DataStoreFrontend(
     case Some(sp) => 
       val objectId = StoreObjectID(pointer.uuid, sp)
       val readUUID = UUID.randomUUID()
-      val fload = synchronized {
-        objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
-      } 
+      val fload = objectLoader.load(objectId, pointer.objectType, readUUID).loadMetadata()
       
       fload.map {
         case Left(err) =>
           log.read.info(s"$storeId readMeta object ${pointer.uuid}. Error $err")
           Left(err)
-        case Right(obj) => 
+        case Right(obj) =>
+          log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
+          obj.completeOperation(readUUID)
+
           synchronized {
-            log.read.info(s"$storeId readMeta object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp}")
-            obj.completeOperation(readUUID)
             if (obj.deleted)
               Left(new InvalidLocalPointer)
             else
@@ -227,35 +223,7 @@ class DataStoreFrontend(
       }
   }
   
- 
-  override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]] = pointer.getStorePointer(storeId) match {
-    case None =>
-      log.read.info(s"$storeId readData INVALID object ${pointer.uuid}")
-      Future.successful(Left(new InvalidLocalPointer))
-    
-    case Some(sp) => 
-      val objectId = StoreObjectID(pointer.uuid, sp)
-      val readUUID = UUID.randomUUID()
-      val fload = synchronized {
-        objectLoader.load(objectId, pointer.objectType, readUUID).loadData()
-      } 
-      
-      fload.map {
-        case Left(err) => 
-          log.read.info(s"$storeId readData object ${pointer.uuid}. Error $err")
-          Left(err)
-        case Right(obj) => 
-          synchronized {
-            log.read.info(s"$storeId readData object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
-            obj.completeOperation(readUUID)
-            if (obj.deleted)
-              Left(new InvalidLocalPointer)
-            else
-              Right((obj.data, obj.locks, obj.writeLocks))
-          }
-      }
-  }
-  
+
   private[this] def getStoreTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): StoreTransaction = {
     activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(txd, updateData.getOrElse(Nil)))
   }
@@ -427,7 +395,7 @@ class DataStoreFrontend(
                     false
                   
                 case k: MutableKeyValueObject =>
-                  if (k.revision == message.oldRevision && k.refcount == message.oldRefcount && k.storeState.updateSet == message.oldUpdateSet) {
+                  if (k.revision == message.oldRevision && k.refcount == message.oldRefcount && k.storeState.allUpdates == message.oldUpdateSet) {
                     k.restore(metadata, data)
                     true
                   } else
@@ -557,7 +525,7 @@ class DataStoreFrontend(
           mo.commitBoth()
         } else if (kvos.refcount != mo.refcount) {
           log.rebuild.info(s"$storeId repair: Repairing missed refcount update for object ${entry.objectUUID}.")
-          mo.refcount = kvos.refcount
+          mo.setMetadata(ObjectMetadata(mo.revision, kvos.refcount, mo.timestamp))
           mo.commitMetadata()
         } else
           Future.unit
@@ -570,7 +538,7 @@ class DataStoreFrontend(
           mo.commitBoth()
         } else if (dos.refcount != mo.refcount) {
           log.rebuild.info(s"$storeId repair: Repairing missed refcount update for object ${entry.objectUUID}.")
-          mo.refcount = dos.refcount
+          mo.setMetadata(ObjectMetadata(mo.revision, dos.refcount, mo.timestamp))
           mo.commitMetadata()
         } else
           Future.unit
@@ -704,16 +672,14 @@ class DataStoreFrontend(
                     case _: MutableKeyValueObject => log.tx.info(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
                   }
                 }
-                
-                cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                cs.obj.timestamp = timestamp
+                cs.obj.setMetadata(cs.obj.metadata.copy(revision=ObjectRevision(txd.transactionUUID), timestamp=timestamp))
                 cs.commitData = true
                 cs.commitMetadata = true
                 log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing DataUpdate ${du.operation} for object ${requirement.objectPointer.uuid}")
               
-              case ru: RefcountUpdate => 
-                cs.obj.refcount = ru.newRefcount
-                cs.obj.timestamp = timestamp // TODO - Do we want to update the timestamp on refcount changes?
+              case ru: RefcountUpdate =>
+                // TODO - Do we want to update the timestamp on refcount changes?
+                cs.obj.setMetadata(cs.obj.metadata.copy(refcount=ru.newRefcount, timestamp=timestamp))
                 cs.commitMetadata = true
                 if (cs.obj.refcount.count == 0) {
                   cs.deleteObject = true
@@ -723,8 +689,7 @@ class DataStoreFrontend(
                 }
               
               case _: VersionBump =>
-                cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                cs.obj.timestamp = timestamp
+                cs.obj.setMetadata(cs.obj.metadata.copy(revision=ObjectRevision(txd.transactionUUID), timestamp=timestamp))
                 cs.commitMetadata = true
                 log.tx.info(s"$storeId tx: ${txd.transactionUUID} Committing VersionBump for object ${requirement.objectPointer.uuid}")
               
@@ -736,8 +701,7 @@ class DataStoreFrontend(
                 cs.commitData = true
                 
                 kv.requiredRevision.foreach { _ =>
-                  cs.obj.revision = ObjectRevision(txd.transactionUUID)
-                  cs.obj.timestamp = timestamp
+                  cs.obj.setMetadata(cs.obj.metadata.copy(revision=ObjectRevision(txd.transactionUUID), timestamp=timestamp))
                   cs.commitMetadata = true 
                 }
                 
@@ -767,10 +731,7 @@ class DataStoreFrontend(
             
           else if ( cs.commitMetadata )
             cs.obj.commitMetadata()
-            
-          else if (cs.commitData)
-            cs.obj.commitData()
-            
+
           else
             Future.successful(())
         }

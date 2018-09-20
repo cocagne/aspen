@@ -1,18 +1,9 @@
 package com.ibm.aspen.core.objects.keyvalue
 
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.util.Varint
-import java.util.UUID
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.ObjectEncodingError
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.data_store.KeyValueObjectStoreState
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectRefcount, ObjectRevision}
     
 object KeyValueObjectCodec {
   

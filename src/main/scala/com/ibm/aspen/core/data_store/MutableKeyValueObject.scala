@@ -1,37 +1,41 @@
 package com.ibm.aspen.core.data_store
 
 import java.util.UUID
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.objects.keyvalue.SetMin
-import com.ibm.aspen.core.objects.keyvalue.SetMax
-import com.ibm.aspen.core.objects.keyvalue.SetLeft
-import com.ibm.aspen.core.objects.keyvalue.SetRight
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.core.objects.keyvalue.Delete
-import com.ibm.aspen.core.transaction.TransactionDescription
-import scala.concurrent.Future
-import scala.concurrent.Promise
+
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 
 
-class MutableKeyValueObject(
-    objectId: StoreObjectID, 
-    initialOperation: UUID,
-    loader: MutableObjectLoader,
-    allocationState: Option[(ObjectMetadata, DataBuffer, ObjectRevision, HLCTimestamp)]) extends MutableObject(objectId, initialOperation, loader) {
-  
+class MutableKeyValueObject(objectId: StoreObjectID,
+                            initialOperation: UUID,
+                            loader: MutableObjectLoader,
+                            allocationState: Option[(ObjectMetadata, DataBuffer, ObjectRevision, HLCTimestamp)]) extends
+  MutableObject(objectId, initialOperation, loader, allocationState.isDefined) {
+
+  private[this] var encodedData: DataBuffer = DataBuffer.Empty
+
   // if we have initial data, overwrite the data buffer with the converted content
   protected var okvoss: Option[KeyValueObjectStoreState] = allocationState.map { t =>
     val (meta, opsData, revision, ts) = t
+
+    // State-modification operations are sent over the network. On disk is just the current state. For allocation we'll create
+    // and empty object then apply the state-modification operations provided in the allocation message
     val newKvoss = KeyValueObjectStoreState().update(opsData, revision, ts)
-    
-    setState(meta, newKvoss.encode)
+
+    this.meta = meta
+    encodedData = newKvoss.encode()
     
     newKvoss
+  }
+
+  def data: DataBuffer = synchronized { encodedData }
+
+  /** Called when state is loaded from the store */
+  protected def stateLoadedFromBackingStore(m: ObjectMetadata, odb: Option[DataBuffer]): Unit = synchronized {
+    this.meta = m
+    odb.foreach(db => restore(m, db))
   }
   
   var keyRevisionReadLocks: Map[Key, Map[UUID,TransactionDescription]] = Map()
@@ -62,34 +66,33 @@ class MutableKeyValueObject(
   }
     
   /** This MUST be called before using any of the variables defined in this class */
-  def storeState: KeyValueObjectStoreState = {
-    assert(dataLoaded)
+  def storeState: KeyValueObjectStoreState = synchronized {
+    assert(bothLoaded)
     okvoss match {
       case Some(kvoss) => kvoss
       case None => 
-        val kvoss = KeyValueObjectStoreState(dataBuffer)
+        val kvoss = KeyValueObjectStoreState(encodedData)
         okvoss = Some(kvoss)
         kvoss
     }
   }
   
-  def restore(meta: ObjectMetadata, kvoss: KeyValueObjectStoreState): Unit = {
-    setState(meta, kvoss.encode)
+  def restore(meta: ObjectMetadata, kvoss: KeyValueObjectStoreState): Unit = synchronized {
+    this.meta = meta
+    encodedData = kvoss.encode()
     okvoss = Some(kvoss)
   }
   
-  def restore(meta: ObjectMetadata, data: DataBuffer): Unit = {
+  def restore(meta: ObjectMetadata, data: DataBuffer): Unit = synchronized {
     val kvoss = KeyValueObjectStoreState(data)
-    setState(meta, data)
-    okvoss = Some(kvoss)
+    restore(meta, kvoss)
   }
   
-  def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): Unit = {
+  def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): Unit = synchronized {
     
     val newKvoss = storeState.update(db, txRevision, txTimestamp)
     
     okvoss = Some(newKvoss)
-
-    dataBuffer = newKvoss.encode
+    encodedData = newKvoss.encode()
   }
 }

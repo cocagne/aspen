@@ -1,39 +1,14 @@
 package com.ibm.aspen.base.impl
 
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.network.StoreSideReadMessenger
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import scala.concurrent.Future
-import com.ibm.aspen.core.read.Read
-import com.ibm.aspen.core.data_store.InvalidLocalPointer
-import com.ibm.aspen.core.data_store.ObjectMismatch
-import com.ibm.aspen.core.data_store.CorruptedObject
-import com.ibm.aspen.core.read.ReadError
-import com.ibm.aspen.core.read.ReadResponse
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import java.util.UUID
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.data_store.ObjectReadError
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.read.MetadataOnly
-import com.ibm.aspen.core.data_store.Lock
-import com.ibm.aspen.core.data_store.ObjectMetadata
-import com.ibm.aspen.core.read.FullObject
-import com.ibm.aspen.core.read.ByteRange
-import com.ibm.aspen.core.read.SingleKey
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.core.read.LargestKeyLessThan
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import com.ibm.aspen.core.read.KeyRange
+
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.data_store._
+import com.ibm.aspen.core.network.{StoreSideReadMessageReceiver, StoreSideReadMessenger}
 import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
-import com.ibm.aspen.core.read.OpportunisticRebuild
-import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.read.{CorruptedObject => _, _}
+
+import scala.concurrent.ExecutionContext
 
 class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
   
@@ -56,7 +31,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     }
     
     def partialKvoss(values: List[Value]): DataBuffer = {
-      new KeyValueObjectStoreState(None, None, None, None, values.map(v => (v.key -> v)).toMap).encode()
+      new KeyValueObjectStoreState(None, None, None, None, values.map(v => v.key -> v).toMap).encode()
     }
     
     def respond(md: ObjectMetadata, sizeOnStore: Int, odata: Option[DataBuffer], writeLocks: Set[UUID]): Unit = {
@@ -66,35 +41,33 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     }
 
     message.readType match {
-      case rt: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach { result => result match {
+      case _: MetadataOnly => store.getObjectMetadata(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, locks, writeLocks)) => respond(metadata, 0, None, writeLocks)
-      }}
+        case Right((metadata, _, writeLocks)) => respond(metadata, 0, None, writeLocks)
+      }
         
-      case rt: FullObject => store.getObject(message.objectPointer) foreach { result => result match {
+      case _: FullObject => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) => respond(metadata, data.size, Some(data), writeLocks)
-      }} 
+        case Right((metadata, data, _, writeLocks)) => respond(metadata, data.size, Some(data), writeLocks)
+      }
       
-      case rt: ByteRange => store.getObject(message.objectPointer) foreach { result => result match {
+      case rt: ByteRange => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) => 
+        case Right((metadata, data, _, writeLocks)) =>
           if (rt.offset + rt.length <= data.size)
             respond(metadata, data.size, Some(data.slice(rt.offset, rt.length)), writeLocks)
           else if (rt.offset < data.size)
             respond(metadata, data.size, Some(data.slice(rt.offset)), writeLocks)
           else
             respond(metadata, data.size, Some(DataBuffer.Empty), writeLocks)
-      }}
+      }
       
-      case rt: SingleKey => store.getObject(message.objectPointer) foreach { result => result match {
+      case rt: SingleKey => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) =>
+        case Right((metadata, data, _, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
-            
-            val includeMinMax = !kvos.keyInRange(rt.key, rt.ordering)
-            
+
             val values = kvos.idaEncodedContents.get(rt.key) match {
               case Some(v) => List(v)
               case None => Nil
@@ -105,15 +78,15 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
-      }}
+      }
       
-      case rt: LargestKeyLessThan => store.getObject(message.objectPointer) foreach { result => result match {
+      case rt: LargestKeyLessThan => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) =>
+        case Right((metadata, data, _, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
             
-            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
+            val (_, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
                 case None => if (rt.ordering.compare(t._1, rt.key) < 0) Some(t._2) else None
@@ -129,15 +102,15 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
-      }}
+      }
       
-      case rt: LargestKeyLessThanOrEqualTo => store.getObject(message.objectPointer) foreach { result => result match {
+      case rt: LargestKeyLessThanOrEqualTo => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) =>
+        case Right((metadata, data, _, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
             
-            val (includeMinMax, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
+            val (_, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
               val okey = kvos.idaEncodedContents.foldLeft(init){ (o,t) => o match {
                 case None => if (rt.ordering.compare(t._1, rt.key) <= 0) Some(t._2) else None
@@ -153,11 +126,11 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
-      }}
+      }
       
-      case rt: KeyRange => store.getObject(message.objectPointer) foreach { result => result match {
+      case rt: KeyRange => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, locks, writeLocks)) =>
+        case Right((metadata, data, _, writeLocks)) =>
           try {
             val kvos = KeyValueObjectStoreState(data)
 
@@ -173,7 +146,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
           } catch {
             case _: Throwable => sendErrorResponse(new CorruptedObject)
           }
-      }}
+      }
     }
   }
 }

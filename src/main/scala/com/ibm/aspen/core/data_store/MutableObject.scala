@@ -1,15 +1,12 @@
 package com.ibm.aspen.core.data_store
 
 import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.DataBuffer
-import java.nio.ByteBuffer
+
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.objects.keyvalue.Key
-import scala.concurrent.Future
-import scala.concurrent.Promise
+
+import scala.concurrent.{Future, Promise}
 
 object MutableObject {
   val NullRevision = ObjectRevision(new UUID(0,0))
@@ -29,70 +26,87 @@ object MutableObject {
 abstract class MutableObject(
     val objectId: StoreObjectID, 
     initialOperation: UUID, 
-    loader: MutableObjectLoader) {
+    loader: MutableObjectLoader,
+    allocating: Boolean) {
   
   import MutableObject._
-  
   import loader.executionContext
-  
-  var revision: ObjectRevision = NullRevision
-  var refcount: ObjectRefcount = NullRefcount
-  var timestamp: HLCTimestamp = NullTimestamp 
-  protected var dataBuffer: DataBuffer = DataBuffer.Empty
+
+  // Synchronization for the following varialbes is provided by the enclosing DataStoreFrontend instance
   var objectRevisionReadLocks: Map[UUID, TransactionDescription] = Map()
   var objectRevisionWriteLock: Option[TransactionDescription] = None
   var objectRefcountReadLocks: Map[UUID, TransactionDescription] = Map()
   var objectRefcountWriteLock: Option[TransactionDescription] = None
-  var pendingOperations: Set[UUID] = Set(initialOperation)
   var deleted: Boolean = false
-  
+
+  // Synchronization for these variables is provided by the MutableObject instance
+  protected var meta: ObjectMetadata = ObjectMetadata(NullRevision, NullRefcount, NullTimestamp)
+  var pendingOperations: Set[UUID] = Set(initialOperation)
   private[this] var oerr: Option[ObjectReadError] = None
   private[this] var fmeta: Option[Future[Either[ObjectReadError, MutableObject]]] = None
   private[this] var fdata: Option[Future[Either[ObjectReadError, MutableObject]]] = None
 
-  def data: DataBuffer = dataBuffer
+  // Used to indicate that the values we have in-memory are authoritative. Once set, reads from
+  // disk will not overwrite what we have in memory. The primary case this is used for is to guard
+  // against slow reads where the commit happens before the read completes. Here the commit will
+  // set one or both of these values to True and the eventual read result will be discarded as
+  // obsolete
+  private[this] var authoritativeMeta: Boolean = allocating
+  private[this] var authoritativeData: Boolean = allocating
 
-  def metadata = ObjectMetadata(revision, refcount, timestamp)
+  def data: DataBuffer
 
-  protected def setState(meta: ObjectMetadata, content: DataBuffer): Unit = {
-    metadata = meta
-    dataBuffer = content
+  /** Called when state is loaded from the store */
+  protected def stateLoadedFromBackingStore(m: ObjectMetadata, odb: Option[DataBuffer]): Unit
+
+
+  def revision: ObjectRevision = synchronized { meta.revision }
+  def refcount: ObjectRefcount = synchronized { meta.refcount }
+  def timestamp: HLCTimestamp = synchronized { meta.timestamp }
+
+  def metadata: ObjectMetadata = synchronized { meta }
+
+  def setMetadata(m: ObjectMetadata): Unit = synchronized {
+    meta = m
+  }
+
+  protected def setFullyLoaded(): Unit = synchronized {
     val p = Promise[Either[ObjectReadError, MutableObject]]()
     p.success(Right(this))
     fmeta = Some(p.future)
     fdata = Some(p.future)
   }
 
-  def metadata_=(m: ObjectMetadata) {
-    revision = m.revision
-    refcount = m.refcount
-    timestamp = m.timestamp
+  def metadataLoaded: Boolean = synchronized {
+    fmeta match {
+      case None => false
+      case Some(f) => f.isCompleted
+    }
   }
 
-  def metadataLoaded: Boolean = fmeta match {
-    case None => false
-    case Some(f) => f.isCompleted
+  def dataLoaded: Boolean = synchronized {
+    fdata match {
+      case None => false
+      case Some(f) => f.isCompleted
+    }
   }
 
-  def dataLoaded: Boolean = fdata match {
-    case None => false
-    case Some(f) => f.isCompleted
+  def bothLoaded: Boolean = synchronized {
+    (fmeta, fdata) match {
+      case (Some(fm), Some(fd)) => fm.isCompleted && fd.isCompleted
+      case _ => false
+    }
   }
 
-  def bothLoaded: Boolean = (fmeta, fdata) match {
-    case (Some(fm), Some(fd)) => fm.isCompleted && fd.isCompleted
-    case _ => false
-  }
+  def beginOperation(uuid: UUID): Unit = synchronized { pendingOperations += uuid }
 
-  def beginOperation(uuid: UUID): Unit = pendingOperations += uuid
-
-  def completeOperation(uuid: UUID): Unit = {
+  def completeOperation(uuid: UUID): Unit = synchronized {
     pendingOperations -= uuid
     if (pendingOperations.isEmpty)
       loader.unload(this, None)
   }
 
-  def readError: Option[ObjectReadError] = oerr
+  def readError: Option[ObjectReadError] = synchronized { oerr }
 
   def getTransactionPreventingRevisionWriteLock(ignoreTxd: TransactionDescription): Option[TransactionDescription] = {
     val o = objectRevisionWriteLock match {
@@ -139,99 +153,88 @@ abstract class MutableObject(
 
   def writeLocks: Set[UUID] = objectRefcountWriteLock.foldLeft(objectRevisionWriteLock.foldLeft(Set[UUID]())((s, l) => s + l.transactionUUID))((s, l) => s + l.transactionUUID)
 
-  def keepUntilDone(fn: => Future[Unit]): Future[Unit] = {
+  protected def keepUntilDone(fn: => Future[Unit]): Future[Unit] = {
     val keepUntilCommitComplete = UUID.randomUUID()
     beginOperation(keepUntilCommitComplete)
     val f = fn
-    f onComplete {_ =>
-      loader.frontend.executeInSynchronizedBlock {
-        completeOperation(keepUntilCommitComplete)
-      }
-    }
+    f onComplete(_ => completeOperation(keepUntilCommitComplete))
     f
   }
 
-  def commitMetadata(): Future[Unit] = keepUntilDone(loader.backend.putObjectMetaData(objectId, ObjectMetadata(revision, refcount, timestamp)))
+  def commitMetadata(): Future[Unit] = synchronized {
+    authoritativeMeta = true
+    val keepUntilCommitComplete = UUID.randomUUID()
+    beginOperation(keepUntilCommitComplete)
+    val f = loader.backend.putObjectMetaData(objectId, meta)
+    f onComplete(_ => completeOperation(keepUntilCommitComplete))
+    f
+  }
 
-  def commitData(): Future[Unit] = keepUntilDone(loader.backend.putObjectData(objectId, data))
-
-  def commitBoth(): Future[Unit] = keepUntilDone(loader.backend.putObject(objectId, ObjectMetadata(revision, refcount, timestamp), data))
+  def commitBoth(): Future[Unit] = synchronized {
+    authoritativeMeta = true
+    authoritativeData = true
+    val keepUntilCommitComplete = UUID.randomUUID()
+    beginOperation(keepUntilCommitComplete)
+    val f = loader.backend.putObject(objectId, meta, data)
+    f onComplete(_ => completeOperation(keepUntilCommitComplete))
+    f
+  }
 
   def loadMetadata(): Future[Either[ObjectReadError, MutableObject]] = fmeta match {
     case Some(f) => f
     case None =>
 
-      val fm = loader.backend.getObjectMetaData(objectId) map { e =>
-        loader.frontend.executeInSynchronizedBlock {
-          e match {
-            case Left(err) =>
-              this.oerr = Some(err)
-              loader.unload(this, Some(err))
-              Left(err)
-
-            case Right(metadata) =>
-              this.metadata = metadata
-              Right(this)
+      val fm = loader.backend.getObjectMetaData(objectId) map {
+        case Left(err) =>
+          synchronized {
+            this.oerr = Some(err)
           }
-        }
+          loader.unload(this, Some(err))
+          Left(err)
+
+        case Right(metadata) =>
+          synchronized {
+            if (!authoritativeMeta) {
+              stateLoadedFromBackingStore(metadata, None)
+              authoritativeMeta = true
+            }
+          }
+          Right(this)
       }
 
       fmeta = Some(fm)
       fm
   }
 
-  def loadData(): Future[Either[ObjectReadError, MutableObject]] = fdata match {
-    case Some(f) => f
-    case None =>
-      val fd = loader.backend.getObjectData(objectId) map { e =>
-        loader.frontend.executeInSynchronizedBlock {
-          e match {
-            case Left(err) =>
-              this.oerr = Some(err)
-              loader.unload(this, Some(err))
-              Left(err)
-
-            case Right(data) =>
-              this.dataBuffer = data
-              Right(this)
-          }
-        }
-      }
-      fdata = Some(fd)
-      fd
-  }
-
   def loadBoth(): Future[Either[ObjectReadError, MutableObject]] = (fmeta, fdata) match {
-    case (None, None) =>
-      val f = loader.backend.getObject(objectId) map { e =>
-        loader.frontend.executeInSynchronizedBlock {
-          e match {
-            case Left(err) =>
-              this.oerr = Some(err)
-              loader.unload(this, Some(err))
-              Left(err)
+    case (Some(fm), Some(fd)) =>
+      fm flatMap { _ => fd }
 
-            case Right((metadata, data)) =>
-              this.metadata = metadata
-              this.dataBuffer = data
-              Right(this)
+    case _ =>
+      val f = loader.backend.getObject(objectId) map {
+
+        case Left(err) =>
+          synchronized {
+            this.oerr = Some(err)
           }
-        }
+          loader.unload(this, Some(err))
+          Left(err)
+
+        case Right((metadata, data)) =>
+          synchronized {
+            if (!authoritativeMeta || !authoritativeData) {
+              val m = if (authoritativeMeta) this.meta else metadata
+              val d = if (authoritativeData) None else Some(data)
+              stateLoadedFromBackingStore(m, d)
+            }
+          }
+          Right(this)
+
       }
 
       fmeta = Some(f)
       fdata = Some(f)
+
       f
-      
-    case (Some(fm), None) => 
-      val fd = loadData()
-      fm flatMap { _ => fd }
-      
-    case (None, Some(fd)) =>
-      val fm = loadMetadata()
-      fd flatMap { _ => fm }
-      
-    case (Some(fm), Some(fd)) => 
-      fm flatMap { _ => fd }
   }
 }

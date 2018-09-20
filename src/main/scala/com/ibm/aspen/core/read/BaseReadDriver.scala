@@ -1,37 +1,20 @@
 package com.ibm.aspen.core.read
 
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.network.ClientSideReadMessenger
 import java.util.UUID
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Promise
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.objects.StorePointer
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.ObjectEncodingError
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.ObjectState
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
-import com.ibm.aspen.core.data_store.Lock
-import com.ibm.aspen.core.objects.MetadataObjectState
+
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.data_store.{DataStoreID, KeyValueObjectStoreState, ObjectReadError}
 import com.ibm.aspen.core.ida.IDAError
-import com.ibm.aspen.core.data_store
-import com.ibm.aspen.core.data_store.ObjectReadError
-import scala.concurrent.duration._
-import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.network.ClientSideReadMessenger
+import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
 import org.apache.logging.log4j.scala.Logging
-import com.ibm.aspen.core.objects.keyvalue.Key
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.duration._
 
 class BaseReadDriver(
-    val getTransactionResult: (UUID) => Option[Boolean],
+    val getTransactionResult: UUID => Option[Boolean],
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val readType: ReadType,
@@ -52,20 +35,20 @@ class BaseReadDriver(
     case _ =>
   }
   
-  protected val promise = Promise[Either[ReadError, ObjectState]]
+  protected val promise: Promise[Either[ReadError, ObjectState]] = Promise()
   
-  protected var storeStates = Map[DataStoreID, StoreState]()
-  protected var errors = Map[DataStoreID, ObjectReadError.Value]()
+  protected var storeStates: Map[DataStoreID, StoreState] = Map()
+  protected var errors: Map[DataStoreID, ObjectReadError.Value] = Map()
   
   // Tuple is restoredObject plus the set of ObjectRevision for all contents of KeyValue objects. Empty set for DataObjects
   protected var restoredObject: Option[(ObjectState, Set[ObjectRevision])] = None
   protected var retryCount = 0
   
-  protected val readStartTs = System.currentTimeMillis()
+  protected val readStartTs: Long = System.currentTimeMillis()
   
-  def readResult = promise.future
+  def readResult: Future[Either[ReadError, ObjectState]] = promise.future
   
-  def begin() = sendReadRequests()
+  def begin(): Unit = sendReadRequests()
   
   def shutdown(): Unit = {}
   
@@ -107,20 +90,19 @@ class BaseReadDriver(
           if (k.revision != ss.revision || k.refcount != ss.refcount)
             true
           else
-            ss.asInstanceOf[KVObjectStoreState].kvoss.updateSet != currentUpdateSet
+            ss.asInstanceOf[KVObjectStoreState].kvoss.allUpdates != currentUpdateSet
           
-        case m: MetadataObjectState => false
+        case _: MetadataObjectState => false
       }
       
       if (repair && objectState.lastUpdateTimestamp > ss.lastUpdateTimestamp && objectState.lastUpdateTimestamp - ss.lastUpdateTimestamp > opportunisticRebuildDelay) {
         logger.info(s"Sending Opportunistic Rebuild to store ${storeId.poolIndex} for object ${objectPointer.uuid}")
-        
-        val arrIdx = objectPointer.getEncodedDataIndexForStore(storeId).get
+
         val data = objectState.getRebuildDataForStore(storeId).get
         
         val oldUpdates = ss match {
           case _: DataObjectStoreState => Set[ObjectRevision]()
-          case k: KVObjectStoreState => k.kvoss.updateSet
+          case k: KVObjectStoreState => k.kvoss.allUpdates
         }
         
         val msg = OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, 
@@ -180,7 +162,7 @@ class BaseReadDriver(
         // Encoding errors here will most likely be due to application-level bugs that corrupt the state of key-value objects. The stores
         // should guard against these kinds of errors but some insidious bug or another could cause this condition to be encountered.
         // TODO - Log a critical error. 
-        case t: ObjectEncodingError => addError( ObjectReadError.CorruptedObject )
+        case _: ObjectEncodingError => addError( ObjectReadError.CorruptedObject )
       }
     }
     
@@ -254,8 +236,8 @@ class BaseReadDriver(
       try {
         
         val objectState = objectPointer match {
-          case op: DataObjectPointer     => restoreDataObject()
-          case op: KeyValueObjectPointer => restoreKeyValueObject()
+          case _: DataObjectPointer     => restoreDataObject()
+          case _: KeyValueObjectPointer => restoreKeyValueObject()
         }
         
         restoredObject = Some((objectState._1, objectState._2))
@@ -270,8 +252,8 @@ class BaseReadDriver(
         promise.success(Right(objectState._1))
         
       } catch {
-        case e: IDAError => promise.success(Left(new CorruptedIDA(objectPointer)))
-        case e: ObjectEncodingError => promise.success(Left(new CorruptedContent(objectPointer)))
+        case _: IDAError => promise.success(Left(new CorruptedIDA(objectPointer)))
+        case _: ObjectEncodingError => promise.success(Left(new CorruptedContent(objectPointer)))
         case err: Throwable =>
           logger.error(s"Unexpected exception during object restoration: $err")
           com.ibm.aspen.util.printStack()
@@ -280,7 +262,7 @@ class BaseReadDriver(
     }
   }
   
-  def getMetadata = {
+  def getMetadata: (ObjectRevision, ObjectRefcount, HLCTimestamp, HLCTimestamp) = {
     // The current refcount is the one with the highest updateSerial
     val refcount = storeStates.foldLeft(ObjectRefcount(-1,0))((ref, t) => if (t._2.refcount.updateSerial > ref.updateSerial) t._2.refcount else ref)
     val revision = storeStates.head._2.revision
@@ -295,7 +277,7 @@ class BaseReadDriver(
     
     val sizeOnStore = storeStates.head._2.asInstanceOf[DataObjectStoreState].sizeOnStore
     
-    val segments = storeStates.filter(t => ! t._2.asInstanceOf[DataObjectStoreState].objectData.isEmpty).foldLeft(List[(Byte, DataBuffer)]()) { (l, t) =>
+    val segments = storeStates.filter(t => t._2.asInstanceOf[DataObjectStoreState].objectData.isDefined).foldLeft(List[(Byte, DataBuffer)]()) { (l, t) =>
       (t._1.poolIndex, t._2.asInstanceOf[DataObjectStoreState].objectData.get) :: l
     }
     
@@ -320,13 +302,13 @@ class BaseReadDriver(
   private def restoreKeyValueObject(): (ObjectState, Set[ObjectRevision]) = {
     val (revision, refcount, timestamp, readTime) = getMetadata
 
-    val lkvoss = storeStates.map(t => (t._1.poolIndex.asInstanceOf[Int] -> t._2.asInstanceOf[KVObjectStoreState].kvoss)).toList
+    val lkvoss = storeStates.map(t => t._1.poolIndex.asInstanceOf[Int] -> t._2.asInstanceOf[KVObjectStoreState].kvoss).toList
     
     def decode() = {
       
       val kvos = KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, readTime, lkvoss)
       
-      (kvos, kvos.updateSet)
+      (kvos, kvos.allUpdates)
     }
     
     val objectState = readType match {
@@ -376,7 +358,7 @@ object BaseReadDriver {
       readTimestamp: HLCTimestamp,
       objectData: Option[DataBuffer]) extends StoreState(storeId, revision, refcount, timestamp, readTimestamp) {
     
-    val kvoss = objectData match {
+    val kvoss: KeyValueObjectStoreState = objectData match {
       case None => new KeyValueObjectStoreState(None, None, None, None, Map())
       case Some(db) => KeyValueObjectStoreState(db)
     }
@@ -385,7 +367,7 @@ object BaseReadDriver {
   }
       
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
-      getTransactionResult: (UUID) => Option[Boolean],
+      getTransactionResult: UUID => Option[Boolean],
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,

@@ -1,4 +1,12 @@
 
+* Need to re-think the whole MutableObject structure
+   - It's racy. If load is called after commit, we may overwrite state that is mid-commit with old state
+   - Scrap the impl and come up with something cleaner
+   - Preserving the ability to fetch just metadata is nice but we could potentially handle that separately
+      - it's ONLY used for read optimizations. Never for transactions
+         - Some transactions could do without but leave that for a later optimization
+
+
 * Can we consolidte down to a single "DataObjectStoreState" and "KeyValueObjectStoreState" ?
    - ideally defined in the objects package
 

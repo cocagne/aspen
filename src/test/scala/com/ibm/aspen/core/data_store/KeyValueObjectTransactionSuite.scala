@@ -18,7 +18,6 @@ import com.ibm.aspen.core.DataBuffer
 import java.nio.ByteBuffer
 import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectStoreState
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue._
