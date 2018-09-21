@@ -3,7 +3,7 @@ package com.ibm.aspen.core.objects.keyvalue
 import java.util.UUID
 
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.data_store.{DataStoreID, KeyValueObjectStoreState}
+import com.ibm.aspen.core.data_store.{DataStoreID, StoreKeyValueObjectContent}
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectRefcount, ObjectRevision, StorePointer}
 import org.scalatest._
@@ -42,8 +42,8 @@ class KeyValueObjectStoreSuite extends FunSuite with Matchers {
   val ts = HLCTimestamp.now
   val rev = ObjectRevision(new UUID(1,2))
   
-  def encdec(ops: List[KeyValueOperation], okvoss: Option[KeyValueObjectStoreState]=None): KeyValueObjectStoreState = {
-    val kvoss = okvoss.getOrElse(KeyValueObjectStoreState())
+  def encdec(ops: List[KeyValueOperation], okvoss: Option[StoreKeyValueObjectContent]=None): StoreKeyValueObjectContent = {
+    val kvoss = okvoss.getOrElse(StoreKeyValueObjectContent())
     val enc = KeyValueOperation.encode(ops, ida)
     kvoss.update(enc(0), rev, ts)
   }

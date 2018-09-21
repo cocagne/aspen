@@ -5,21 +5,18 @@ import java.util.UUID
 
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.objects.keyvalue._
+import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.util.Varint
 
-sealed abstract class ObjectStoreState
 
-class DataObjectStoreState(val data: DataBuffer) extends ObjectStoreState
+class StoreKeyValueObjectContent(val minimum: Option[StoreKeyValueObjectContent.Min],
+                                 val maximum: Option[StoreKeyValueObjectContent.Max],
+                                 val left: Option[StoreKeyValueObjectContent.Left],
+                                 val right: Option[StoreKeyValueObjectContent.Right],
+                                 val idaEncodedContents: Map[Key, Value]) {
 
-class KeyValueObjectStoreState(val minimum: Option[KeyValueObjectStoreState.Min],
-                               val maximum: Option[KeyValueObjectStoreState.Max],
-                               val left: Option[KeyValueObjectStoreState.Left],
-                               val right: Option[KeyValueObjectStoreState.Right],
-                               val idaEncodedContents: Map[Key, Value]) extends ObjectStoreState {
-
-  import KeyValueObjectStoreState._
+  import StoreKeyValueObjectContent._
 
   def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {
     val minOk = minimum match {
@@ -33,12 +30,12 @@ class KeyValueObjectStoreState(val minimum: Option[KeyValueObjectStoreState.Min]
     minOk && maxOk
   }
 
-  def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): KeyValueObjectStoreState = {
+  def update(db: DataBuffer, txRevision: ObjectRevision, txTimestamp: HLCTimestamp): StoreKeyValueObjectContent = {
 
-    var tmin: Option[KeyValueObjectStoreState.Min] = minimum
-    var tmax: Option[KeyValueObjectStoreState.Max] = maximum
-    var tleft: Option[KeyValueObjectStoreState.Left] = left
-    var tright: Option[KeyValueObjectStoreState.Right] = right
+    var tmin: Option[StoreKeyValueObjectContent.Min] = minimum
+    var tmax: Option[StoreKeyValueObjectContent.Max] = maximum
+    var tleft: Option[StoreKeyValueObjectContent.Left] = left
+    var tright: Option[StoreKeyValueObjectContent.Right] = right
     var tpairs: Map[Key,Value] = idaEncodedContents
 
     KeyValueOperation.decode(db.asReadOnlyBuffer(), txRevision, txTimestamp).foreach {
@@ -56,7 +53,7 @@ class KeyValueObjectStoreState(val minimum: Option[KeyValueObjectStoreState.Min]
       case _: DeleteRight => tright = None
     }
 
-    new KeyValueObjectStoreState(tmin, tmax, tleft, tright, tpairs)
+    new StoreKeyValueObjectContent(tmin, tmax, tleft, tright, tpairs)
   }
 
   def allUpdates: Set[ObjectRevision] = {
@@ -79,9 +76,9 @@ class KeyValueObjectStoreState(val minimum: Option[KeyValueObjectStoreState.Min]
     i.foldLeft(HLCTimestamp(0))( (maxts, ts) =>  if (ts > maxts) ts else maxts)
   }
 
-  def encode(): DataBuffer = KeyValueObjectStoreState.encode(this)
+  def encode(): DataBuffer = StoreKeyValueObjectContent.encode(this)
 
-  def encodedSize: Int = KeyValueObjectStoreState.encodedSize(this)
+  def encodedSize: Int = StoreKeyValueObjectContent.encodedSize(this)
 }
 
 /** On disk format is a series of entries:
@@ -90,7 +87,7 @@ class KeyValueObjectStoreState(val minimum: Option[KeyValueObjectStoreState.Min]
   *     Key-Value pair data format: <varint-key-len><key><value>
   *
   */
-object KeyValueObjectStoreState {
+object StoreKeyValueObjectContent {
 
   case class Min(key: Key, revision: ObjectRevision, timestamp: HLCTimestamp)
   case class Max(key: Key, revision: ObjectRevision, timestamp: HLCTimestamp)
@@ -122,7 +119,7 @@ object KeyValueObjectStoreState {
 
   def encodedPairsSize(pairs: Map[Key,Value]): Int = pairs.foldLeft(0)((sz, t) => sz + encodedPairSize(t._1, t._2.value))
 
-  def encodedSize(kvoss: KeyValueObjectStoreState): Int = {
+  def encodedSize(kvoss: StoreKeyValueObjectContent): Int = {
     kvoss.minimum.map(m => encodedEntrySize(m.key.bytes)).getOrElse(0) +
       kvoss.maximum.map(m => encodedEntrySize(m.key.bytes)).getOrElse(0) +
       kvoss.left.map(l => encodedEntrySize(l.idaEncodedContent)).getOrElse(0) +
@@ -147,14 +144,14 @@ object KeyValueObjectStoreState {
     bb.put(value)
   }
 
-  def apply(): KeyValueObjectStoreState = new KeyValueObjectStoreState(None, None, None, None, Map())
+  def apply(): StoreKeyValueObjectContent = new StoreKeyValueObjectContent(None, None, None, None, Map())
 
-  def apply(db: DataBuffer): KeyValueObjectStoreState = {
+  def apply(db: DataBuffer): StoreKeyValueObjectContent = {
 
-    var min: Option[KeyValueObjectStoreState.Min] = None
-    var max: Option[KeyValueObjectStoreState.Max] = None
-    var left: Option[KeyValueObjectStoreState.Left] = None
-    var right: Option[KeyValueObjectStoreState.Right] = None
+    var min: Option[StoreKeyValueObjectContent.Min] = None
+    var max: Option[StoreKeyValueObjectContent.Max] = None
+    var left: Option[StoreKeyValueObjectContent.Left] = None
+    var right: Option[StoreKeyValueObjectContent.Right] = None
     var pairs: Map[Key,Value] = Map()
 
     val bb = db.asReadOnlyBuffer()
@@ -190,10 +187,10 @@ object KeyValueObjectStoreState {
       }
     }
 
-    new KeyValueObjectStoreState(min, max, left, right, pairs)
+    new StoreKeyValueObjectContent(min, max, left, right, pairs)
   }
 
-  def encode(kvoss: KeyValueObjectStoreState): DataBuffer = {
+  def encode(kvoss: StoreKeyValueObjectContent): DataBuffer = {
     val arr = new Array[Byte](encodedSize(kvoss))
     val bb = ByteBuffer.wrap(arr)
 
@@ -211,13 +208,13 @@ object KeyValueObjectStoreState {
 
   def getRebuildState(ida: IDA,
                       idaIndex: Int,
-                      kvos: KeyValueObjectState): KeyValueObjectStoreState = {
+                      kvos: KeyValueObjectState): StoreKeyValueObjectContent = {
     val min = kvos.minimum.map(m => Min(m.key, m.revision, m.timestamp))
     val max = kvos.maximum.map(m => Max(m.key, m.revision, m.timestamp))
     val lft = kvos.left.map( m => Left(ida.encode(m.content)(idaIndex), m.revision, m.timestamp))
     val rht = kvos.right.map( m => Right(ida.encode(m.content)(idaIndex), m.revision, m.timestamp))
     val cnt = kvos.contents.map(t => t._1 -> Value(t._1, ida.encode(t._2.value)(idaIndex), t._2.timestamp, t._2.revision))
 
-    new KeyValueObjectStoreState(min, max, lft, rht, cnt)
+    new StoreKeyValueObjectContent(min, max, lft, rht, cnt)
   }
 }

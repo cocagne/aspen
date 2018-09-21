@@ -3,7 +3,7 @@ package com.ibm.aspen.core.objects
 import java.util.UUID
 
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.data_store.{DataStoreID, KeyValueObjectStoreState}
+import com.ibm.aspen.core.data_store.{DataStoreID, StoreKeyValueObjectContent}
 import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, Value}
 
 sealed abstract class ObjectState(
@@ -114,18 +114,18 @@ class KeyValueObjectState(
     ) extends ObjectState(pointer, revision, refcount, timestamp, readTimestamp) {
   
   // Provide a rough approximation of the total size consumed on the store
-  def sizeOnStore: Int = contents.foldLeft(0)((sz, t) => sz + KeyValueObjectStoreState.idaEncodedPairSize(pointer.ida, t._1, t._2.value)) +
+  def sizeOnStore: Int = contents.foldLeft(0)((sz, t) => sz + StoreKeyValueObjectContent.idaEncodedPairSize(pointer.ida, t._1, t._2.value)) +
     minimum.map(m => 16 + 8 + 4 + m.key.bytes.length).getOrElse(0) + 
     maximum.map(m => 16 + 8 + 4 + m.key.bytes.length).getOrElse(0) +
     left.map(l => 16 + 8 + 4 + pointer.ida.calculateEncodedSegmentLength(l.content.length)).getOrElse(0) +
     right.map(r => 16 + 8 + 4 + pointer.ida.calculateEncodedSegmentLength(r.content.length)).getOrElse(0)
   
   def guessSizeOnStoreAfterUpdate(inserts: List[(Key,Array[Byte])], deletes: List[Key]): Int = {
-    val adds = inserts.foldLeft(0)((sz, t) => sz + KeyValueObjectStoreState.idaEncodedPairSize(pointer.ida, t._1, t._2))
+    val adds = inserts.foldLeft(0)((sz, t) => sz + StoreKeyValueObjectContent.idaEncodedPairSize(pointer.ida, t._1, t._2))
     val dels = deletes.foldLeft(0) { (sz, k) => 
       val x = contents.get(k) match {
         case None => 0
-        case Some(v) => KeyValueObjectStoreState.idaEncodedPairSize(pointer.ida, v.key, v.value)
+        case Some(v) => StoreKeyValueObjectContent.idaEncodedPairSize(pointer.ida, v.key, v.value)
       }
       sz + x
     }
@@ -239,7 +239,7 @@ class KeyValueObjectState(
   }
   
   def getRebuildDataForStore(storeId: DataStoreID): Option[DataBuffer] = pointer.getEncodedDataIndexForStore(storeId).map { idaIndex => 
-    KeyValueObjectStoreState.encode(KeyValueObjectStoreState.getRebuildState(pointer.ida, idaIndex, this))
+    StoreKeyValueObjectContent.encode(StoreKeyValueObjectContent.getRebuildState(pointer.ida, idaIndex, this))
   }
 }
 

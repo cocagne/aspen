@@ -17,12 +17,12 @@ class MutableKeyValueObject(objectId: StoreObjectID,
   private[this] var encodedData: DataBuffer = DataBuffer.Empty
 
   // if we have initial data, overwrite the data buffer with the converted content
-  protected var okvoss: Option[KeyValueObjectStoreState] = allocationState.map { t =>
+  protected var okvoss: Option[StoreKeyValueObjectContent] = allocationState.map { t =>
     val (meta, opsData, revision, ts) = t
 
     // State-modification operations are sent over the network. On disk is just the current state. For allocation we'll create
     // and empty object then apply the state-modification operations provided in the allocation message
-    val newKvoss = KeyValueObjectStoreState().update(opsData, revision, ts)
+    val newKvoss = StoreKeyValueObjectContent().update(opsData, revision, ts)
 
     this.meta = meta
     encodedData = newKvoss.encode()
@@ -66,25 +66,25 @@ class MutableKeyValueObject(objectId: StoreObjectID,
   }
     
   /** This MUST be called before using any of the variables defined in this class */
-  def storeState: KeyValueObjectStoreState = synchronized {
+  def storeState: StoreKeyValueObjectContent = synchronized {
     assert(bothLoaded)
     okvoss match {
       case Some(kvoss) => kvoss
       case None => 
-        val kvoss = KeyValueObjectStoreState(encodedData)
+        val kvoss = StoreKeyValueObjectContent(encodedData)
         okvoss = Some(kvoss)
         kvoss
     }
   }
   
-  def restore(meta: ObjectMetadata, kvoss: KeyValueObjectStoreState): Unit = synchronized {
+  def restore(meta: ObjectMetadata, kvoss: StoreKeyValueObjectContent): Unit = synchronized {
     this.meta = meta
     encodedData = kvoss.encode()
     okvoss = Some(kvoss)
   }
   
   def restore(meta: ObjectMetadata, data: DataBuffer): Unit = synchronized {
-    val kvoss = KeyValueObjectStoreState(data)
+    val kvoss = StoreKeyValueObjectContent(data)
     restore(meta, kvoss)
   }
   

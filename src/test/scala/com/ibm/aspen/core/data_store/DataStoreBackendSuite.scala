@@ -1,13 +1,15 @@
 package com.ibm.aspen.core.data_store
 
-import java.util.UUID
-
-import com.ibm.aspen.base.impl.TempDirSuiteBase
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision, StorePointer}
-
 import scala.concurrent._
 import scala.concurrent.duration._
+import org.scalatest._
+import com.ibm.aspen.base.impl.TempDirSuiteBase
+import com.ibm.aspen.core.DataBuffer
+import java.util.UUID
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.StorePointer
 
 object DataStoreBackendSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -28,36 +30,43 @@ abstract class DataStoreBackendSuite extends TempDirSuiteBase {
   import DataStoreBackendSuite._
   
   // To be initialized in preTest()
-  var backend: DataStoreBackend = _
+  var backend: DataStoreBackend = null
   
   override def preTempDirDeletion(): Unit = { await(backend.close()) }
   
   test("Alloc get put delete") {
     val arr = await(backend.allocateObject(u1, m1, d1)) match {
-      case Left(_) => fail("should not error")
-      case Right(x) => x
+      case Left(err) => fail("should not error")
+      case Right(arr) => arr
     }
     val o1 = StoreObjectID(u1, StorePointer(0,arr))
     
     await(backend.getObjectMetaData(o1)) should be (Right(m1))
-
+    await(backend.getObjectData(o1)) should be (Right(d1))
     await(backend.getObject(o1)) should be (Right((m1, d1)))
     
     await(backend.putObjectMetaData(o1, m2))
     
     await(backend.getObjectMetaData(o1)) should be (Right(m2))
-
+    await(backend.getObjectData(o1)) should be (Right(d1))
     await(backend.getObject(o1)) should be (Right((m2, d1)))
     
-
+    await(backend.putObjectData(o1, d2))
+    
+    await(backend.getObjectMetaData(o1)) should be (Right(m2))
+    await(backend.getObjectData(o1)) should be (Right(d2))
+    await(backend.getObject(o1)) should be (Right((m2, d2)))
+    
     await(backend.putObject(o1, m1, d1))
     
     await(backend.getObjectMetaData(o1)) should be (Right(m1))
+    await(backend.getObjectData(o1)) should be (Right(d1))
     await(backend.getObject(o1)) should be (Right((m1, d1)))
     
     await(backend.deleteObject(o1))
     
     await(backend.getObjectMetaData(o1)) should be (Left(new InvalidLocalPointer))
+    await(backend.getObjectData(o1)) should be (Left(new InvalidLocalPointer))
     await(backend.getObject(o1)) should be (Left(new InvalidLocalPointer))
   }
   
@@ -66,6 +75,7 @@ abstract class DataStoreBackendSuite extends TempDirSuiteBase {
     val o1 = StoreObjectID(u1, StorePointer(0,new Array[Byte](0)))
     
     await(backend.getObjectMetaData(o1)) should be (Left(new InvalidLocalPointer))
+    await(backend.getObjectData(o1)) should be (Left(new InvalidLocalPointer))
     await(backend.getObject(o1)) should be (Left(new InvalidLocalPointer))
   }
 }

@@ -3,7 +3,7 @@ package com.ibm.aspen.core.read
 import java.util.UUID
 
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.data_store.{DataStoreID, KeyValueObjectStoreState, ObjectReadError}
+import com.ibm.aspen.core.data_store.{DataStoreID, StoreKeyValueObjectContent, ObjectReadError}
 import com.ibm.aspen.core.ida.IDAError
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects._
@@ -358,9 +358,9 @@ object BaseReadDriver {
       readTimestamp: HLCTimestamp,
       objectData: Option[DataBuffer]) extends StoreState(storeId, revision, refcount, timestamp, readTimestamp) {
     
-    val kvoss: KeyValueObjectStoreState = objectData match {
-      case None => new KeyValueObjectStoreState(None, None, None, None, Map())
-      case Some(db) => KeyValueObjectStoreState(db)
+    val kvoss: StoreKeyValueObjectContent = objectData match {
+      case None => new StoreKeyValueObjectContent(None, None, None, None, Map())
+      case Some(db) => StoreKeyValueObjectContent(db)
     }
     
     def lastUpdateTimestamp: HLCTimestamp = kvoss.lastUpdateTimestamp

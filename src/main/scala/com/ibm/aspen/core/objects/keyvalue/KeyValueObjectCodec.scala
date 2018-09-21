@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.objects.keyvalue
 
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.data_store.KeyValueObjectStoreState
+import com.ibm.aspen.core.data_store.StoreKeyValueObjectContent
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectRefcount, ObjectRevision}
     
@@ -58,7 +58,7 @@ object KeyValueObjectCodec {
     count > ida.restoreThreshold || count + potentialResponses < ida.restoreThreshold
   }
   
-  def isRestorable(ida: IDA, storeStates: List[KeyValueObjectStoreState]): Boolean = {
+  def isRestorable(ida: IDA, storeStates: List[StoreKeyValueObjectContent]): Boolean = {
     val numResponses = storeStates.size
     isRestorable(storeStates.filter(_.minimum.isDefined).map(_.minimum.get.revision), numResponses, ida) &&
     isRestorable(storeStates.filter(_.maximum.isDefined).map(_.maximum.get.revision), numResponses, ida) &&
@@ -84,7 +84,7 @@ object KeyValueObjectCodec {
       refcount:ObjectRefcount, 
       timestamp: HLCTimestamp,
       readTimestamp: HLCTimestamp,
-      storeStates: List[(Int, KeyValueObjectStoreState)]): KeyValueObjectState = {
+      storeStates: List[(Int, StoreKeyValueObjectContent)]): KeyValueObjectState = {
     
     val ida = pointer.ida
     

@@ -1,14 +1,18 @@
 package com.ibm.aspen.core.data_store
 
-import java.nio.ByteBuffer
+import scala.concurrent.ExecutionContext
 import java.util.UUID
-
-import com.ibm.aspen.base.impl.BufferedConsistentRocksDB
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import java.nio.ByteBuffer
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.core.HLCTimestamp
+import scala.concurrent.Future
+import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.AllocationErrors
-import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision}
-
-import scala.concurrent.{ExecutionContext, Future}
+import com.ibm.aspen.base.impl.BufferedConsistentRocksDB
+import scala.Left
+import scala.Right
+import scala.annotation.implicitNotFound
 
 object RocksDBDataStoreBackend {
   val NullArray = new Array[Byte](0)
@@ -22,6 +26,9 @@ object RocksDBDataStoreBackend {
     bb.put(16, index)
     bb.array()
   }
+  
+  private def metadataKey(objectUUID:UUID) = tokey(objectUUID, MetadataIndex)
+  private def dataKey(objectUUID:UUID) = tokey(objectUUID, DataIndex)
   
   private def metadataKey(objectId:StoreObjectID) = tokey(objectId.objectUUID, MetadataIndex)
   private def dataKey(objectId:StoreObjectID) = tokey(objectId.objectUUID, DataIndex)
@@ -72,7 +79,7 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
   }
   
   override def deleteObject(objectId: StoreObjectID): Future[Unit] = allocating.get(objectId.objectUUID) match {
-    case Some(_) =>
+    case Some(t) => 
       allocating -= objectId.objectUUID
       Future.successful(())
     case None =>
@@ -83,14 +90,24 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
     allocating.get(objectId.objectUUID) match {
       case Some(t) => Future.successful(Right(t._1))
       case None =>
-        db.get(metadataKey(objectId)) map {
+        db.get(metadataKey(objectId)) map { o => o match {
           case None => Left(new InvalidLocalPointer)
           case Some(arr) => Right(bytesToMetadata(arr))
-        }
+        }}
     }
   }
   
-
+  override def getObjectData(objectId: StoreObjectID): Future[Either[ObjectReadError, DataBuffer]] = {
+    allocating.get(objectId.objectUUID) match {
+      case Some(t) => Future.successful(Right(t._2))
+      case None =>
+        db.get(dataKey(objectId)) map { o => o match {
+          case None => Left(new InvalidLocalPointer)
+          case Some(arr) => Right(DataBuffer(arr))
+        }}
+    }
+  }
+  
   override def getObject(objectId: StoreObjectID): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer)]] = {
     
     allocating.get(objectId.objectUUID) match {
@@ -98,18 +115,18 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
         //println(s"getObject $objectId (allocating)")
         Future.successful(Right(t))
       case None => for {
-        emetadata <- db.get(metadataKey(objectId)) map {
+        emetadata <- db.get(metadataKey(objectId)) map { o => o match {
           case None =>
             //println(s"getObject $objectId (NO METADATA)")
             Left(new InvalidLocalPointer)
           case Some(arr) => Right(bytesToMetadata(arr))
-        }
-        edata <- db.get(dataKey(objectId)) map {
+        }}
+        edata <- db.get(dataKey(objectId)) map { o => o match {
           case None => 
             //println(s"getObject $objectId (NO DATA)")
             Left(new InvalidLocalPointer)
           case Some(arr) => Right(DataBuffer(arr))
-        }
+        }}
       } yield {
         (emetadata, edata) match {
           case (Left(err), Left(_)) => Left(err)
@@ -129,7 +146,16 @@ class RocksDBDataStoreBackend(dbPath:String)(implicit override val executionCont
         db.put(metadataKey(objectId), metadataToBytes(metadata))
     }
   }
-
+  
+  override def putObjectData(objectId: StoreObjectID, data:DataBuffer): Future[Unit] = {
+    //println(s"put ObjectData $objectId")
+    allocating.get(objectId.objectUUID) match {
+      case Some(t) => putObject(objectId, t._1, data)
+      case None =>
+        db.put(dataKey(objectId), data.getByteArray())
+    }
+  }
+  
   override def putObject(objectId: StoreObjectID, metadata: ObjectMetadata, data: DataBuffer): Future[Unit] = {
     allocating.get(objectId.objectUUID) foreach { _ => allocating -= objectId.objectUUID } 
     //println(s"put Object $objectId")

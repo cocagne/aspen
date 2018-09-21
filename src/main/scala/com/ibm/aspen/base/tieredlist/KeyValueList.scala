@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, ObjectReader, Transaction}
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.data_store.KeyValueObjectStoreState
+import com.ibm.aspen.core.data_store.StoreKeyValueObjectContent
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectRevision}
 import com.ibm.aspen.core.objects.keyvalue._
 import com.ibm.aspen.core.transaction.KeyValueUpdate
@@ -225,7 +225,7 @@ object KeyValueList {
     
     scala.util.Sorting.quickSort(keys)(ordering)
     
-    val totalKVSize = rawPairs.foldLeft(0)((sz, t) => sz + KeyValueObjectStoreState.idaEncodedPairSize(kvos.pointer.ida, t._1, t._2))
+    val totalKVSize = rawPairs.foldLeft(0)((sz, t) => sz + StoreKeyValueObjectContent.idaEncodedPairSize(kvos.pointer.ida, t._1, t._2))
     
     def rfill(
         ops: List[KeyValueOperation], 
@@ -242,8 +242,8 @@ object KeyValueList {
       } else {
         val key = remainingKeys.head
         val value = rawPairs(key)
-        val pairSize = KeyValueObjectStoreState.idaEncodedPairSize(kvos.pointer.ida, key, value)
-        val minSize = KeyValueObjectStoreState.encodedMinimumSize(key)
+        val pairSize = StoreKeyValueObjectContent.idaEncodedPairSize(kvos.pointer.ida, key, value)
+        val minSize = StoreKeyValueObjectContent.encodedMinimumSize(key)
 
         if (objectSize + pairSize + minSize < maxSize) {
           val (ts, rev) = getInsertOptions(key)
@@ -266,7 +266,7 @@ object KeyValueList {
           case Some(t) =>
             val (max, rptr) = t
             val encodedRptr = rptr.toArray
-            val rsize = KeyValueObjectStoreState.encodedMaximumSize(max) + KeyValueObjectStoreState.encodedRightSize(kvos.pointer.ida, encodedRptr)
+            val rsize = StoreKeyValueObjectContent.encodedMaximumSize(max) + StoreKeyValueObjectContent.encodedRightSize(kvos.pointer.ida, encodedRptr)
             (SetMax(max) :: SetRight(encodedRptr) :: Nil, rsize)
         }
         

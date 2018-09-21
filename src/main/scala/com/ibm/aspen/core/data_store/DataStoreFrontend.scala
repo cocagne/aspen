@@ -31,6 +31,11 @@ class DataStoreFrontend(
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
 
+  def allOperationsCompleted(o: StoreObjectState): Unit = ???
+  def failedToRead(o: StoreObjectState, err: ObjectReadError): Unit = ???
+  def loadedObjectState(ometa: Option[ObjectMetadata], odata: Option[DataBuffer]): Unit = ???
+
+
   private[data_store] def executeInSynchronizedBlock[T](fn: => T): T = synchronized { fn }
 
   private[this] val objectLoader = new MutableObjectLoader(this, backend)

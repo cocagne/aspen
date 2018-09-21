@@ -31,7 +31,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
     }
     
     def partialKvoss(values: List[Value]): DataBuffer = {
-      new KeyValueObjectStoreState(None, None, None, None, values.map(v => v.key -> v).toMap).encode()
+      new StoreKeyValueObjectContent(None, None, None, None, values.map(v => v.key -> v).toMap).encode()
     }
     
     def respond(md: ObjectMetadata, sizeOnStore: Int, odata: Option[DataBuffer], writeLocks: Set[UUID]): Unit = {
@@ -66,7 +66,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, _, writeLocks)) =>
           try {
-            val kvos = KeyValueObjectStoreState(data)
+            val kvos = StoreKeyValueObjectContent(data)
 
             val values = kvos.idaEncodedContents.get(rt.key) match {
               case Some(v) => List(v)
@@ -84,7 +84,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, _, writeLocks)) =>
           try {
-            val kvos = KeyValueObjectStoreState(data)
+            val kvos = StoreKeyValueObjectContent(data)
             
             val (_, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
@@ -108,7 +108,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, _, writeLocks)) =>
           try {
-            val kvos = KeyValueObjectStoreState(data)
+            val kvos = StoreKeyValueObjectContent(data)
             
             val (_, kvlist: List[Value]) = if (kvos.keyInRange(rt.key, rt.ordering)) {
               val init: Option[Value] = None
@@ -132,7 +132,7 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         case Left(err) => sendErrorResponse(err)
         case Right((metadata, data, _, writeLocks)) =>
           try {
-            val kvos = KeyValueObjectStoreState(data)
+            val kvos = StoreKeyValueObjectContent(data)
 
             val kvlist = kvos.idaEncodedContents.foldLeft(List[Value]()){ (l, t) =>
               if ( rt.ordering.compare(t._1, rt.minimum) >= 0 && rt.ordering.compare(t._1, rt.maximum) <= 0 ) 

@@ -36,14 +36,16 @@ trait DataStoreBackend {
   def allocateObject(objectUUID: UUID, metadata: ObjectMetadata, data: DataBuffer): Future[Either[AllocationErrors.Value, Array[Byte]]]
   
   def deleteObject(objectId: StoreObjectID): Future[Unit]
-
-
+  
   def getObjectMetaData(objectId: StoreObjectID): Future[Either[ObjectReadError, ObjectMetadata]]
   
+  def getObjectData(objectId: StoreObjectID): Future[Either[ObjectReadError, DataBuffer]]
+  
   def getObject(objectId: StoreObjectID): Future[Either[ObjectReadError, (ObjectMetadata, DataBuffer)]]
-
-
+  
   def putObjectMetaData(objectId: StoreObjectID, metadata: ObjectMetadata): Future[Unit]
+  
+  def putObjectData(objectId: StoreObjectID, data:DataBuffer): Future[Unit]
   
   def putObject(objectId: StoreObjectID, metadata: ObjectMetadata, data: DataBuffer): Future[Unit]
 }

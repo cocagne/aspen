@@ -5,7 +5,7 @@ import java.util.UUID
 import com.ibm.aspen.base.MissedUpdateStrategy
 import com.ibm.aspen.base.tieredlist.{SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.data_store.{DataStore, KeyValueObjectStoreState}
+import com.ibm.aspen.core.data_store.{DataStore, StoreKeyValueObjectContent}
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectRevision, StorePointer}
 import com.ibm.aspen.core.objects.keyvalue.{ByteArrayKeyOrdering, Insert, Key, KeyValueOperation}
@@ -96,7 +96,7 @@ object Bootstrap {
       val falloc = hosts.map { t => {
         val (store, storeIndex) = t
         store.bootstrapAllocateNewObject(objectUUID, 
-            KeyValueObjectStoreState().update(enc(storeIndex), txRevision, timestamp).encode(),
+            StoreKeyValueObjectContent().update(enc(storeIndex), txRevision, timestamp).encode(),
             timestamp).map(sp => storePointers(storeIndex) = sp) 
       }}
       Future.sequence(falloc) map { _ =>
@@ -107,7 +107,7 @@ object Bootstrap {
     def overwriteKeyValueObject(pointer: KeyValueObjectPointer, initialContent: List[(Key, Array[Byte])]): Future[Unit] = {
       val inserts = initialContent.map(t => new Insert(t._1, t._2))
       val enc = KeyValueOperation.encode(inserts, bootstrapPoolIDA)
-      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, KeyValueObjectStoreState().update(enc(t._2), txRevision, timestamp).encode(), timestamp))).map(_=>())
+      Future.sequence(hosts.map(t => t._1.bootstrapOverwriteObject(pointer, StoreKeyValueObjectContent().update(enc(t._2), txRevision, timestamp).encode(), timestamp))).map(_=>())
     }
     
     def updateAllocationTree(allocTreeRoot: KeyValueObjectPointer, pointers: List[KeyValueObjectPointer]) : Future[Unit] = {

@@ -78,7 +78,7 @@ object KeyValueObjectTransactionSuite {
     }
   }
   
-  case class State(md: ObjectMetadata, kv: KeyValueObjectStoreState, locks: Set[Lock])
+  case class State(md: ObjectMetadata, kv: StoreKeyValueObjectContent, locks: Set[Lock])
   
   def k(i: Byte): Key = Key(List[Byte](i).toArray)
 }
@@ -113,7 +113,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val r = Await.result(ds.getObject(pointer), awaitDuration)
     r match {      
       case Left(_) => fail
-      case Right((md, data, locks, wlocks)) => State(md, KeyValueObjectStoreState(data), locks.toSet)
+      case Right((md, data, locks, wlocks)) => State(md, StoreKeyValueObjectContent(data), locks.toSet)
     }
   }
   

@@ -1,6 +1,7 @@
 package com.ibm.aspen.core.data_store
 
 import java.util.UUID
+
 import com.ibm.aspen.core.DataBuffer
 
 class MutableDataObject(objectId: StoreObjectID,
