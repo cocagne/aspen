@@ -1,23 +1,18 @@
 package com.ibm.aspen.base.task
 
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import scala.concurrent.Promise
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.keyvalue.Key
-import scala.concurrent.Future
 import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.base.ObjectReader
-import com.ibm.aspen.base.Transaction
+
+import com.ibm.aspen.base.{ObjectReader, Transaction}
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.objects.keyvalue.Delete
+import com.ibm.aspen.core.objects.keyvalue.{Delete, Insert, Key, Value}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object SteppedDurableTask {
 
-  val ReservedToKeyId = DurableTask.ReservedToKeyId + 5
+  val ReservedToKeyId: Int = DurableTask.ReservedToKeyId + 5
   
-  val StepKey = Key(ReservedToKeyId + 1)
+  val StepKey: Key = Key(ReservedToKeyId + 1)
   
   def encodeStep(step: Int): Array[Byte] = {
     val arr = new Array[Byte](4)
@@ -45,7 +40,7 @@ abstract class SteppedDurableTask(
   
   private val taskPromise = Promise[(ObjectRevision, Option[AnyRef])]()
   private var currentRevision = initialRevision
-  private var currentState = initialState.map(t => (t._1 -> t._2.value))
+  private var currentState: Map[Key, Array[Byte]] = initialState.map(t => t._1 -> t._2.value)
   private var currentStep: Int = initialState.get(StepKey) match {
     case None => 0
     case Some(v) => decodeStep(v.value)
@@ -62,7 +57,7 @@ abstract class SteppedDurableTask(
   def resume(): Unit = beginStep()
   
   def refreshTaskState(): Future[Unit] = reader.readObject(taskPointer.kvPointer) map { kvos => synchronized {
-    currentState = kvos.contents.map(t => (t._1 -> t._2.value))
+    currentState = kvos.contents.map(t => t._1 -> t._2.value)
     currentRevision = kvos.revision
     currentStep = initialState.get(StepKey) match {
       case None => 0
@@ -72,7 +67,7 @@ abstract class SteppedDurableTask(
   
   def completeStep(tx: Transaction, taskStateUpdates: List[(Key,Array[Byte])], taskStateDeletes: List[Key]=Nil): Unit = synchronized {
     
-    val nextStep = (StepKey -> encodeStep(currentStep+1))
+    val nextStep = StepKey -> encodeStep(currentStep+1)
     val deleteSet = taskStateDeletes.toSet
     val newContent = taskStateUpdates.foldLeft(currentState.filter(t => !deleteSet.contains(t._1)))((m, t) => m + t) + nextStep
           

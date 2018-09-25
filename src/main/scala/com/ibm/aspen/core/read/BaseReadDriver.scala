@@ -52,9 +52,10 @@ class BaseReadDriver(
   
   def shutdown(): Unit = {}
   
-  /** Sends a Read request to the specified store. Must be called from within a synchronized block */
-  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = clientMessenger.send( 
-      Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
+  /** Sends a Read request to the specified store. */
+  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = {
+      clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
+  }
       
   def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
     //storeStates.contains(storeId) || errors.contains(storeId)

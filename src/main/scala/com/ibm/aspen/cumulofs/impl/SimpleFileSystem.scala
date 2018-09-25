@@ -96,7 +96,7 @@ class SimpleFileSystem private (
   
   val fileLoader: FileLoader = new SimpleFileLoader
   
-  def getLocalTasksCompleted: Future[Unit] = localTaskGroup.getAllTasksComplete()
+  def getLocalTasksCompleted: Future[Unit] = localTaskGroup.whenAllTasksComplete()
   
   def getDataTableNodeSize(tierNumber: Int): Int = if (tierNumber < dataTableSizes.length) dataTableSizes(tierNumber) else {
     dataTableSizes(dataTableSizes.length-1)

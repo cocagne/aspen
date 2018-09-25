@@ -456,7 +456,7 @@ class KeyValueListSuite extends TestSystemSuite {
       kvos <- KeyValueList.fetchContainingNode(sys, lptr, ByteArrayKeyOrdering, target)
       
       toast <- KeyValueList.destroy(sys, lptr, prepareForDeletion)
-      
+
       f0 <- sys.readObject(l0).failed
      
     } yield {

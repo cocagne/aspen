@@ -1,39 +1,25 @@
 package com.ibm.aspen.base.task
 
-import com.ibm.aspen.core.objects.keyvalue.Key
 import java.util.UUID
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.keyvalue.Insert
+
+import com.ibm.aspen.base.{AspenSystem, ObjectAllocater, Transaction}
+import com.ibm.aspen.base.tieredlist.{MutableKeyValueObjectRootManager, MutableTieredKeyValueList, SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectPointer, ObjectRevision}
+import com.ibm.aspen.core.objects.keyvalue.{Insert, IntegerKeyOrdering, Key, Value}
 import com.ibm.aspen.util._
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.core.objects.keyvalue.Value
-import java.nio.ByteBuffer
-import scala.concurrent.Promise
+
 import scala.collection.immutable.Queue
-import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.base.tieredlist.SimpleTieredKeyValueListNodeAllocater
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
-import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 object LocalTaskGroup extends TaskGroupType {
-  val AllocaterKey = Key(Array[Byte](1))
-  val TaskListKey = Key(Array[Byte](2))
+  val AllocaterKey: Key = Key(Array[Byte](1))
+  val TaskListKey: Key = Key(Array[Byte](2))
   
-  val TaskListNodeSize = 16 * 1024 // TODO: Make this configurable?
-  val TaskListKVPairLimit = 20     // TODO: Make this configurable?
+  val TaskListNodeSize: Int = 16 * 1024 // TODO: Make this configurable?
+  val TaskListKVPairLimit: Int = 20     // TODO: Make this configurable?
   
-  val typeUUID = UUID.fromString("f3051f22-9052-4c71-a469-22047b9edd8b")
+  val typeUUID: UUID = UUID.fromString("f3051f22-9052-4c71-a469-22047b9edd8b")
   
   sealed abstract class ReusableTask {
     val taskNumber: Int
@@ -56,7 +42,9 @@ object LocalTaskGroup extends TaskGroupType {
       revision: ObjectRevision, 
       objectAllocaterUUID: UUID)(implicit t: Transaction, ec: ExecutionContext): Future[(TaskGroupPointer, Future[LocalTaskGroup])] = {
     
-    val content = List(Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)), Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
+    val content = List(
+      Insert(TaskGroupType.GroupTypeKey, uuid2byte(typeUUID)),
+      Insert(AllocaterKey, uuid2byte(objectAllocaterUUID)))
     
     val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
     val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(Array(objectAllocaterUUID), Array(TaskListNodeSize), Array(TaskListKVPairLimit))
@@ -111,7 +99,7 @@ object LocalTaskGroup extends TaskGroupType {
         
         val taskType = taskState.contents.get(DurableTask.TaskTypeKey) match {
           case None => DurableTask.IdleTaskType
-          case Some(v) => byte2uuid(v.value)
+          case Some(ttv) => byte2uuid(ttv.value)
         }
         
         if (taskType == DurableTask.IdleTaskType)
@@ -152,7 +140,7 @@ class LocalTaskGroup(
     initialTasks: List[LocalTaskGroup.ReusableTask])
     (implicit ec: ExecutionContext) extends TaskGroupExecutor with TaskGroupInterface {
     
-  val taskGroupType = LocalTaskGroup
+  val taskGroupType: LocalTaskGroup.type = LocalTaskGroup
   
   import LocalTaskGroup._
   
@@ -160,15 +148,15 @@ class LocalTaskGroup(
   
   protected var maxTaskNum: Int = initialTasks.foldLeft(0)( (max, rt) => if (rt.taskNumber > max) rt.taskNumber else max )
   
-  protected var idleTasks = List[IdleTask]()
-  protected var activeTasks = Map[Int, ActiveTask]()  
+  protected var idleTasks: List[IdleTask] = Nil
+  protected var activeTasks: Map[Int, ActiveTask] = Map()
   protected var noRemainingTasks: Option[Promise[Unit]] = None
   protected val idleTaskAllocater = new IdleTaskAllocater()
   
-  initialTasks.foreach { rt => rt match {
+  initialTasks.foreach {
     case t: IdleTask => idleTasks = t :: idleTasks
     case t: ActiveTask => activeTasks += (t.taskNumber -> t)
-  }}
+  }
   
   def resume(): Unit = synchronized {
     if (!running) {
@@ -186,21 +174,19 @@ class LocalTaskGroup(
     def allocateNext(): Unit = {
       val ((taskNumber, promise), newPending) = pending.dequeue
       pending = newPending
-     
-      val key = Key(taskNumber)
       
       val f = system.transactUntilSuccessful { implicit tx =>
         for {
-          mnode <- taskTree.fetchMutableNode(taskNumber)
+          mnode <- taskTree.fetchMutableNode(Key(taskNumber))
           newObject <- allocater.allocateKeyValueObject(mnode.kvos.pointer, mnode.kvos.revision, Nil, None)
-          txPrepped <- mnode.prepreUpdateTransaction(List((Key(taskNumber), newObject.toArray)), Nil, Nil)
+          _ <- mnode.prepreUpdateTransaction(List((Key(taskNumber), newObject.toArray)), Nil, Nil)
         } yield (newObject, tx.txRevision)        
       }
       
       f.foreach { t => synchronized { 
-        promise.success(new IdleTask(taskNumber, DurableTaskPointer(t._1), t._2))
+        promise.success(IdleTask(taskNumber, DurableTaskPointer(t._1), t._2))
         allocating = false
-        if (!pending.isEmpty)
+        if (pending.nonEmpty)
           allocateNext()
       }}
     }
@@ -216,7 +202,7 @@ class LocalTaskGroup(
     }
   }
   
-  def getAllTasksComplete(): Future[Unit] = synchronized { 
+  def whenAllTasksComplete(): Future[Unit] = synchronized {
     noRemainingTasks match {
       case Some(p) => p.future
       case None =>
@@ -230,7 +216,7 @@ class LocalTaskGroup(
     }
   }
   
-  protected def executeTask(at: ActiveTask): Unit = {
+  protected def executeTask(at: ActiveTask): Unit = synchronized {
     activeTasks += (at.taskNumber -> at)
     at.task.resume()
     at.task.completed foreach { t => synchronized {
@@ -275,7 +261,7 @@ class LocalTaskGroup(
       tx.update(it.taskPointer.kvPointer, Some(it.revision), Nil, content)
       
       tx.result.onComplete {
-        case Failure(reason) =>
+        case Failure(_) =>
           // Re-read the task revision to ensure we have the up-to-date version before putting it back into the idleTask list
           system.readObject(it.taskPointer.kvPointer) foreach { kvos =>
             synchronized {
@@ -286,7 +272,7 @@ class LocalTaskGroup(
         case Success(timestamp) => synchronized {
           
           val ttv = Value(DurableTask.TaskTypeKey, taskTypeArr, timestamp, tx.txRevision)
-          val content = initialState.map(t => (t._1 -> Value(t._1, t._2, timestamp, tx.txRevision))).toMap + (ttv.key -> ttv)
+          val content = initialState.map(t => t._1 -> Value(t._1, t._2, timestamp, tx.txRevision)).toMap + (ttv.key -> ttv)
           val task = taskType.createTask(system, it.taskPointer, tx.txRevision, content)
 
           executeTask(ActiveTask(it.taskNumber, it.taskPointer, task))
