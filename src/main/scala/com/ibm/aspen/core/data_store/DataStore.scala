@@ -101,8 +101,16 @@ trait DataStore {
    *  getObject
    */
   def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError, (ObjectMetadata, List[Lock], Set[UUID])]]
-  
-  
+
+
+  /** Returns the object data but not the object metadata.
+    *  This may be used to optimize reads on DataStores that separate object metadata from the data itself. Whenever read
+    *  and transaction requests can be satisfied without reading the object metadata, this method will be used instead of
+    *  getObject
+    */
+  def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]
+
+
   /** Attempts to locks all objects referenced by the transaction that are hosted by this store.
    *  
    *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,

@@ -117,7 +117,7 @@ class BaseReadDriver(
   }
   
   def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
-    
+
     def addError(err: ObjectReadError.Value): Unit = {
       //println(s"read error ${objectPointer.uuid}: $err from store ${response.fromStore}")
       errors += (response.fromStore -> err)
@@ -139,10 +139,17 @@ class BaseReadDriver(
         // to simplify handling, we'll just drop this message and immediately re-read. 
         ///
         if (cs.lockedWriteTransactions.forall(txuuid => getTransactionResult(txuuid).isEmpty)) {
-          
+
           val ss = objectPointer match {
             case _: DataObjectPointer => new DataObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.sizeOnStore, cs.objectData)
-            case _: KeyValueObjectPointer => new KVObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData)
+            case _: KeyValueObjectPointer =>
+              try {
+                new KVObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData)
+              } catch {
+                case t: Throwable =>
+                  println(s"Failed reading object ${objectPointer.uuid}. DataSize ${cs.objectData.get.size} Err $t")
+                  throw t
+              }
           }
           
           opportunisticRebuild(response.fromStore, ss)

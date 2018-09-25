@@ -136,7 +136,6 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val (ds, op0, op1) = initObjects()
     
     val txd = mktxd(KeyValueUpdate(op0, KeyValueUpdate.UpdateType.Update, Some(irev), Nil, initialTimestamp) :: Nil)
-                    
     val txdts = HLCTimestamp(txd.startTimestamp)
     
     val aleft = List[Byte](1,2).toArray

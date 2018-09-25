@@ -53,10 +53,10 @@ class TieredListSuite extends TestSystemSuite {
     right.foreach { m => ops = SetRight(m.toArray) :: ops }
     
     contents.foreach { t => ops = Insert(t._1, t._2) :: ops }
-    
+
     for {
       r <- sys.readObject(sys.radiclePointer)
-      
+
       // give transaction something to do
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
@@ -68,8 +68,7 @@ class TieredListSuite extends TestSystemSuite {
             TestSystem.DefaultIDA, 
             ops, 
             None)
-            
-      done <- tx.commit()
+      _ <- tx.commit()
     } yield kvp
   }
   
@@ -93,16 +92,18 @@ class TieredListSuite extends TestSystemSuite {
   
     val max0 = Key(Array[Byte](5))
     val target = Key(Array[Byte](9))
-    
+
     for {
       l1 <- alloc(Some(max0), None, None)
+
       l0 <- alloc(None, Some(max0), Some(l1))
-      
+
       tl = new TKVL(sys, 0, l0)
-      
+
       kvos <- tl.find(target)
     } yield {
-      kvos.pointer should be (l1) 
+
+      kvos.pointer should be (l1)
     }
   }
   
