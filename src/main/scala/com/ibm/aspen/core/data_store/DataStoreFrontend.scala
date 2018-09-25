@@ -158,28 +158,25 @@ class DataStoreFrontend(
     allocations.get(ars.allocationTransactionUUID) match {
       case None => Future.unit
       
-      case Some(lst) =>  
-        val flst = lst.map { mo => 
+      case Some(lst) =>
+        allocations -= ars.allocationTransactionUUID
 
-          // Allocation recovery could complete after transactions have already updated the object. Verify that the
-          // revision matches the allocation revision before trying to commit
-          if (commit && mo.revision == ObjectRevision(ars.allocationTransactionUUID)) {
-            val fcommitted = mo.commitBoth()
-            
-            fcommitted.onComplete { _ =>
-              synchronized {
-                mo.decref()
-              }
-            }
-
-            fcommitted
-          } else {
-            mo.decref()
+        val flst = lst.map { obj =>
+          if (commit)
+            obj.commitBoth()
+          else
             Future.successful(())
-          }
         }
         
-        Future.sequence(flst).map(_=>())
+        val fcomplete = Future.sequence(flst).map(_=>())
+
+        fcomplete.foreach { _ =>
+          synchronized {
+            lst.foreach(obj => obj.decref())
+          }
+        }
+
+        fcomplete
     }
   }
 
@@ -246,7 +243,11 @@ class DataStoreFrontend(
     val obj = loadObject(pointer, obj => obj.loadBoth())
     obj.loadBoth().map {
       case Left(err) => Left(err)
-      case Right(_) => Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+      case Right(_) =>
+        if (obj.deleted)
+          Left(new InvalidLocalPointer)
+        else
+          Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
     }
   }
 
@@ -255,7 +256,11 @@ class DataStoreFrontend(
     val obj = loadObject(pointer, obj => obj.loadMetadata())
     obj.loadMetadata().map {
       case Left(err) => Left(err)
-      case Right(_) => Right((obj.metadata, obj.locks, obj.writeLocks))
+      case Right(_) =>
+        if (obj.deleted)
+          Left(new InvalidLocalPointer)
+        else
+          Right((obj.metadata, obj.locks, obj.writeLocks))
     }
   }
 
@@ -264,7 +269,11 @@ class DataStoreFrontend(
     val obj = loadObject(pointer,obj => obj.loadData())
     obj.loadData().map {
       case Left(err) => Left(err)
-      case Right(_) => Right((obj.data, obj.locks, obj.writeLocks))
+      case Right(_) =>
+        if (obj.deleted)
+          Left(new InvalidLocalPointer)
+        else
+          Right((obj.data, obj.locks, obj.writeLocks))
     }
   }
 
