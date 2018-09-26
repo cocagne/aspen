@@ -1,78 +1,54 @@
 package com.ibm.aspen.core.transaction
 
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.transaction.paxos.PersistentState
-import com.ibm.aspen.core.transaction.paxos.Acceptor
-import com.ibm.aspen.core.transaction.paxos.Learner
-import com.ibm.aspen.core.transaction.paxos.Prepare
-import com.ibm.aspen.core.network.StoreSideTransactionMessenger
-import java.util.UUID
-import com.ibm.aspen.core.data_store.ObjectError
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.core.transaction.paxos.Accept
-import com.ibm.aspen.core.transaction.paxos.Accepted
-import scala.concurrent.Future
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.data_store.InvalidLocalPointer
-import com.ibm.aspen.core.data_store.CorruptedObject
-import com.ibm.aspen.core.data_store.ObjectMismatch
-import com.ibm.aspen.core.data_store.ObjectReadError
-import com.ibm.aspen.core.data_store.RevisionMismatch
-import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.data_store.RefcountMismatch
-import com.ibm.aspen.core.data_store.ObjectTransactionError
-import com.ibm.aspen.core.data_store.TransactionReadError
-import com.ibm.aspen.core.data_store.TransactionCollision
-import com.ibm.aspen.core.data_store.MissingUpdateContent
-import com.ibm.aspen.core.data_store.InsufficientFreeSpace
-import com.ibm.aspen.core.data_store.InvalidObjectType
-import com.ibm.aspen.core.data_store.KeyValueRequirementError
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.crl.CrashRecoveryLog
+import com.ibm.aspen.core.data_store._
+import com.ibm.aspen.core.network.StoreSideTransactionMessenger
+import com.ibm.aspen.core.transaction.paxos._
+
+import scala.concurrent.{ExecutionContext, Future}
 
 class Transaction(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
-    val onDiscard: (Transaction) => Unit,
+    val onDiscard: Transaction => Unit,
     val store: DataStore,
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
   
   import Transaction._
   
   val txd: TransactionDescription = trs.txd
-  
+
+  private[this] val acceptor = new Acceptor(store.storeId.poolIndex, trs.paxosAcceptorState)
+  private[this] val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
+
   private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates  
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
   private[this] var commitFuture: Option[Future[Unit]] = None
-  
-  private[this] val acceptor = new Acceptor(store.storeId.poolIndex, trs.paxosAcceptorState)
-  private[this] val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
-  
-  // NOTE: Call these methods only within synchronized{} blocks
-  private[this] def transactionStatus = learner.finalValue match {
-    case None => TransactionStatus.Unresolved
-    case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
-  }
+
   private[this] var resolved = false
   private[this] var discarded = false
   
   private[this] var heartbeatTimestamp: Long = 0
+
+  private[this] def transactionStatus: TransactionStatus.Value = learner.finalValue match {
+    case None => TransactionStatus.Unresolved
+    case Some(committed) => if (committed) TransactionStatus.Committed else TransactionStatus.Aborted
+  }
  
-  private def updateTimestamp() = synchronized { heartbeatTimestamp = System.currentTimeMillis() }
+  private def updateTimestamp(): Unit = synchronized { heartbeatTimestamp = System.currentTimeMillis() }
   
-  def lastHeartbeat = synchronized { heartbeatTimestamp }
+  def lastHeartbeat: Long = synchronized { heartbeatTimestamp }
   
   def heartbeatReceived(): Unit = updateTimestamp()
   
-  def getTransactionStatus(): TransactionStatus.Value = synchronized { transactionStatus }
+  def currentTransactionStatus(): TransactionStatus.Value = synchronized { transactionStatus }
   
   def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
     
     // Proposal ID 1 is always sent by the client initiating the transaction. We don't want to update
     // the timestamp for this since the client can't drive the transaction to completion and it'll 
-    // contiually re-transmit the request to work around connection issues. Prepares sent by stores,
+    // continually re-transmit the request to work around connection issues. Prepares sent by stores,
     // which will use a proposalId > 1 should up the the timestamp so we don't time out and also
     // attempt to drive the transaction forward.
     if (prepare.proposalId.number != 1)
@@ -98,37 +74,38 @@ class Transaction(
             
         messenger.send(response)
             
-      case Right(promise) =>
+      case Right(_) =>
         
         store.lockTransaction(txd, dataUpdates).foreach { errors => synchronized {
           
-          if (discarded) {
+          if (discarded && errors.isEmpty) {
             // It's possible for a slow load & lock operation to return long after the transaction has completed
             // and been discarded. If so, we'll simply ignore the message and release the lock if it was acquired.
-            if (errors.isEmpty)
-              store.discardTransaction(txd)
+            store.discardTransaction(txd)
             
           } else {
             
             txdisposition = txdisposition match {
               
-              case TransactionDisposition.Undetermined => if (errors.isEmpty) 
-                TransactionDisposition.VoteCommit else  TransactionDisposition.VoteAbort
+              case TransactionDisposition.Undetermined =>
+                if (errors.isEmpty) TransactionDisposition.VoteCommit else TransactionDisposition.VoteAbort
+
+              case TransactionDisposition.VoteAbort =>
+                // We can change our vote from Abort to Commit. An example scenario is two conflicting transactions. If
+                // one of them aborts, the conflict will be resolved so the next Prepare message for the remaining
+                // transaction will successfully lock our local objects to the transaction, thereby allowing us to
+                // change our vote.
+                if (errors.isEmpty) TransactionDisposition.VoteCommit else TransactionDisposition.VoteAbort
               
-              // We can change our vote from Abort to Commit. An example scenario is two conflicting transactions. If
-              // one of them aborts, the conflict will be resolved so the next Prepare message for the remaining
-              // transaction will successfully lock our local objects to the transaction, thereby allowing us to
-              // change our vote.
-              case TransactionDisposition.VoteAbort => if (errors.isEmpty) 
-                TransactionDisposition.VoteCommit else  TransactionDisposition.VoteAbort
-              
-              // Once we've voted to commit, we're committed to committing :-)
-              case TransactionDisposition.VoteCommit => TransactionDisposition.VoteCommit
+
+              case TransactionDisposition.VoteCommit =>
+                // Once we've voted to commit, we're committed to committing :-)
+                TransactionDisposition.VoteCommit
             }
               
-            val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
-            
-  
+            val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition,
+                                                         transactionStatus, acceptorState)
+
             val response = TxPrepareResponse(
                 prepare.from,
                 store.storeId, 
@@ -138,7 +115,7 @@ class Transaction(
                 recoveryState.disposition,
                 errors.map(createUpdateErrorResponse))
             
-            // Note: Saving the state can fail and in that event we cannot send the message since it would violate the
+            // Note: Saving the state can fail and if it does we cannot send the message as it would violate the
             //       Paxos safety requirements. Logging the failure here probably isn't a good idea as it is likely 
             //       that the node will be in this state for a significant period of time. Leave it to the 
             //       CrashRecoveryLog to do the appropriate logging. In the mean time, we should still do
@@ -153,14 +130,16 @@ class Transaction(
   }
 
   
-  def receiveAccept(msg: TxAccept): Unit = {
-    
+  def receiveAccept(msg: TxAccept): Unit = synchronized {
+
+    if (discarded)
+      return // old message
+
     updateTimestamp()
-    
-    val (paxosReply, acceptorState) = synchronized { 
-      (acceptor.receiveAccept(Accept(msg.proposalId, msg.value)), acceptor.persistentState) 
-    } 
-    
+
+    val paxosReply = acceptor.receiveAccept(Accept(msg.proposalId, msg.value))
+    val acceptorState = acceptor.persistentState
+
     paxosReply match {
       
       case Left(nack) =>
@@ -175,41 +154,36 @@ class Transaction(
         txd.originatingClient.foreach( client => messenger.send(client, response) )
         
       case Right(accept) =>
-        val recoveryState = synchronized {
-          TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition, transactionStatus, acceptorState)
-        }
+
+        val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition,
+          transactionStatus, acceptorState)
 
         val response = TxAcceptResponse(
-            msg.from,
-            store.storeId, 
-            txd.transactionUUID, 
-            msg.proposalId,
-            Right(TxAcceptResponse.Accepted(accept.proposalValue)))
-            
-        synchronized {
-          if (!discarded) {
-            // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
-            crl.saveTransactionRecoveryState(recoveryState).foreach{ _ => 
-              messenger.send(response)
-              txd.originatingClient.foreach( client => messenger.send(client, response) )
-            }
-          }
+          msg.from,
+          store.storeId,
+          txd.transactionUUID,
+          msg.proposalId,
+          Right(TxAcceptResponse.Accepted(accept.proposalValue)))
+
+        // Note: For the reasons explained in the receive_prepare() comment, ignore errors here as well
+        crl.saveTransactionRecoveryState(recoveryState).foreach { _ =>
+          messenger.send(response)
+          txd.originatingClient.foreach(client => messenger.send(client, response))
         }
     }
   }
   
-  def receiveAcceptResponse(msg: TxAcceptResponse): Option[Boolean] = msg.response match {
-    case Left(nack) => None
-    
-    case Right(accepted) => synchronized {
-      val previouslyResolved = learner.finalValue.isDefined
-      
-      learner.receiveAccepted(Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
-      
-      if (!previouslyResolved && learner.finalValue.isDefined) 
-        onResolution(learner.finalValue.get)
-      
-      learner.finalValue
+  def receiveAcceptResponse(msg: TxAcceptResponse): Option[Boolean] = synchronized {
+    msg.response match {
+      case Left(_) => None
+
+      case Right(accepted) =>
+
+        learner.receiveAccepted(Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
+
+        learner.finalValue.foreach(onResolution)
+
+        learner.finalValue
     }
   }
   
@@ -240,7 +214,7 @@ class Transaction(
     commitFuture.foreach(_ => discardTransactionState())
   }
   
-  private[this] def discardTransactionState(): Unit = {
+  private[this] def discardTransactionState(): Unit = if (!discarded) {
     discarded = true
     crl.discardTransactionState(store.storeId, txd)
     store.discardTransaction(txd)
@@ -252,7 +226,7 @@ object Transaction {
   def apply(
       crl: CrashRecoveryLog,
       messenger: StoreSideTransactionMessenger,
-      onDiscard: (Transaction) => Unit,
+      onDiscard: Transaction => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
       localUpdates: Option[List[LocalUpdate]])(implicit ec: ExecutionContext): Transaction = {
@@ -268,15 +242,15 @@ object Transaction {
   def apply(
       crl: CrashRecoveryLog, 
       messenger: StoreSideTransactionMessenger, 
-      onDiscard: (Transaction) => Unit,
+      onDiscard: Transaction => Unit,
       store: DataStore,
       trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, store, trs)
   
   def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
     case e: TransactionReadError => e.kind match {
-      case r: InvalidLocalPointer    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
-      case r: ObjectMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
-      case r: CorruptedObject        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
+      case _: InvalidLocalPointer    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
+      case _: ObjectMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
+      case _: CorruptedObject        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
     }                                
     case e: RevisionMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
     case e: RefcountMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)

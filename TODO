@@ -1,3 +1,12 @@
+sbt "test:testOnly *KeyValueListSuite"
+
+Test Hangs
+  - Definitely transactions that hang with some kind of race condition
+     - 100 sequential tx test w/o reads hangs frequently
+  - We occasionally see "Marking Missed Update"
+  - NO retries are done by transaction drivers
+  ... All this suggests that messages are somehow either being dropped or not processed
+
 
 * Need to re-think the whole MutableObject structure
    - It's racy. If load is called after commit, we may overwrite state that is mid-commit with old state

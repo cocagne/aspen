@@ -41,13 +41,13 @@ class SimpleReadDriver(
         getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
   
   private[this] var task: Option[BackgroundTask.ScheduledTask] = None
-  
+
   readResult.onComplete { _ => synchronized {
     task.foreach(_.cancel())
   }}
   
   override def begin(): Unit = synchronized {
-    task = Some(BackgroundTask.retryWithExponentialBackoff(tryNow=true, initialDelay=initialDelay, maxDelay=maxDelay) {
+    task = Some(BackgroundTask.RetryWithExponentialBackoff(tryNow=true, initialDelay=initialDelay, maxDelay=maxDelay) {
       super.begin()
       false
     })

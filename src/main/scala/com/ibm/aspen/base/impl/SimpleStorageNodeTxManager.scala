@@ -24,8 +24,8 @@ class SimpleStorageNodeTxManager(
   BackgroundTask.schedulePeriodic(heartbeatPeriod) {
     val now = System.currentTimeMillis()
     
-    getStores().valuesIterator.foreach { store =>
-      val (transactions, drivers) = store.getTransactions()
+    storesSnapshot.valuesIterator.foreach { store =>
+      val (transactions, drivers) = store.getTransactions
       
       drivers.valuesIterator.foreach { driver => driver.heartbeat() }
       

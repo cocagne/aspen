@@ -1,40 +1,29 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.base.Transaction
 import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.ObjectRefcount
-import scala.concurrent.Promise
-import scala.concurrent.Future
-import com.ibm.aspen.base.PostCommitTransactionModification
-import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.core.transaction.ClientTransactionManager
-import scala.concurrent.ExecutionContext
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.base.TransactionAborted
-import com.ibm.aspen.core.DataBuffer
+
+import com.ibm.aspen.base.{PostCommitTransactionModification, Transaction, TransactionAborted}
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.transaction.{ClientTransactionDriver, ClientTransactionManager, KeyValueUpdate}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 object BaseTransaction {
   def Factory(
       system: BasicAspenSystem,
       txManager: ClientTransactionManager,
-      chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
+      chooseDesignatedLeader: ObjectPointer => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
       transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) = new BaseTransaction(system, txManager, chooseDesignatedLeader, transactionDriverStrategy)
 }
 
 class BaseTransaction(
     val system: BasicAspenSystem,
     txManager: ClientTransactionManager,
-    chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
+    chooseDesignatedLeader: ObjectPointer => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
     transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) extends Transaction {
   
   val uuid: UUID = UUID.randomUUID()

@@ -3,22 +3,24 @@ package com.ibm.aspen.base.impl
 import scala.concurrent._
 import scala.concurrent.duration._
 import org.scalatest._
+
 import scala.language.postfixOps
 import com.ibm.aspen.base.NoRetry
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.DataBuffer
 import java.util.UUID
+
 import com.ibm.aspen.base.TestSystemSuite
 import com.ibm.aspen.base.TestSystem
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.tieredlist.KeyValueListPointer
-import com.ibm.aspen.core.objects.keyvalue.Value
+import com.ibm.aspen.core.objects.keyvalue.{Insert, Key, Value}
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.Key
 
 class BasicAspenSystemSuite extends TestSystemSuite {
   import Bootstrap._
@@ -51,7 +53,34 @@ class BasicAspenSystemSuite extends TestSystemSuite {
       o.data should be (d2)
     }
   }
-  
+
+  test("Test 100 Sequential KeyValue Object Transactions") {
+
+    val key = Key(1)
+
+    def rupdate(ptr: KeyValueObjectPointer, revision: ObjectRevision, count: Int): Future[Unit] =  {
+      if (count == 100)
+        Future.unit
+      else {
+        val tx = sys.newTransaction()
+        val arr = Array[Byte](count.asInstanceOf[Byte])
+        val ops = Insert(key, arr) :: Nil
+        tx.update(ptr, Some(revision), Nil, ops)
+        tx.commit()
+        tx.result.flatMap(_ => rupdate(ptr, tx.txRevision, count + 1))
+      }
+    }
+
+    for {
+      ptr <- kvalloc(Nil)
+      kvos <- sys.readObject(ptr)
+      _ <- rupdate(ptr, kvos.revision, 0)
+      kvos <- sys.readObject(ptr)
+    } yield {
+      kvos.contents(key).value(0) should be (99)
+    }
+  }
+
   test("Test Finalization Handler Logic") {
     
     val noRetry = new NoRetry

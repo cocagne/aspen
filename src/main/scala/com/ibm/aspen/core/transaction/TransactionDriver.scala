@@ -1,64 +1,65 @@
 package com.ibm.aspen.core.transaction
 
-import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
+
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.paxos.Proposer
-import com.ibm.aspen.core.transaction.paxos.Learner
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.transaction.paxos.{Learner, Proposer}
+
 import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.transaction.paxos.ProposalID
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
     val messenger: StoreSideTransactionMessenger, 
     val txd: TransactionDescription, 
     private val finalizerFactory: TransactionFinalizer.Factory,
-    private val onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) {
+    private val onComplete: UUID => Unit)(implicit ec: ExecutionContext) {
   
   import TransactionDriver._
   
-  def ida = txd.primaryObject.ida
+  def ida: IDA = txd.primaryObject.ida
   
-  protected val proposer = new Proposer(storeId.poolIndex, ida.width, ida.writeThreshold)
-  protected val learner = new Learner(ida.width, ida.writeThreshold)
-  protected val validAcceptorSet = txd.primaryObject.storePointers.iterator.map(sp => sp.poolIndex).toSet
-  protected val allObjects = txd.allReferencedObjectsSet
-  protected val primaryObjectDataStores = txd.primaryObjectDataStores
-  protected val allDataStores = txd.allDataStores.toList
+  protected val proposer: Proposer = new Proposer(storeId.poolIndex, ida.width, ida.writeThreshold)
+  protected val learner: Learner = new Learner(ida.width, ida.writeThreshold)
+  protected val validAcceptorSet: Set[Byte] = txd.primaryObject.storePointers.iterator.map(sp => sp.poolIndex).toSet
+  protected val allObjects: Set[ObjectPointer] = txd.allReferencedObjectsSet
+  protected val primaryObjectDataStores: Set[DataStoreID] = txd.primaryObjectDataStores
+  protected val allDataStores: List[DataStoreID] = txd.allDataStores.toList
   
-  protected var finalized = false
-  protected var peerDispositions = Map[DataStoreID, TransactionDisposition.Value]()
-  protected var acceptedPeers = Set[DataStoreID]()
+  protected var finalized: Boolean = false
+  protected var peerDispositions: Map[DataStoreID, TransactionDisposition.Value] = Map()
+  protected var acceptedPeers: Set[DataStoreID] = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
  
-  protected def isValidAcceptor(ds: DataStoreID) = ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
+  protected def isValidAcceptor(ds: DataStoreID): Boolean = {
+    ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
+  }
   
   def shutdown(): Unit = {}
   
-  def heartbeat(): Unit = messenger.send(allDataStores.map(toStoreId => TxHeartbeat(toStoreId, storeId, txd.transactionUUID)))
+  def heartbeat(): Unit = {
+    messenger.send(allDataStores.map(toStoreId => TxHeartbeat(toStoreId, storeId, txd.transactionUUID)))
+  }
       
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {
       proposer.updateHighestProposalId(msg.proposalId)
   }
   
-  
-  def receiveTxPrepareResponse(msg: TxPrepareResponse, txresult: (UUID) => Option[Boolean]): Unit = synchronized {
-    
+  def receiveTxPrepareResponse(msg: TxPrepareResponse,
+                               getCompletedTxResult: UUID => Option[Boolean]): Unit = synchronized {
+
     if (msg.proposalId != proposer.currentProposalId)
       return
-      
-//    if (!msg.errors.isEmpty) {
-//      msg.errors.foreach( err => println(s"C  ${msg.from.poolIndex} TxErr ${txd.transactionUUID} $err") )
-//    }
-      
+
     // If the response says there is a transaction collision with a transaction we know has successfully completed,
     // there's a race condition. Drop the response and re-send the prepare. Eventually it will either be successfully
     // processed or a different error will occur
-    val collisionsWithCompletedTransactions = !msg.errors.isEmpty && msg.errors.forall { e =>
+    val collisionsWithCompletedTransactions = msg.errors.nonEmpty && msg.errors.forall { e =>
       e.conflictingTransaction match {
         case None => false
-        case Some((txuuid, txts)) => txresult(txuuid) match { 
+        case Some((txuuid, _)) => getCompletedTxResult(txuuid) match {
           case None => false
           case Some(b) => b
         }
@@ -72,7 +73,7 @@ abstract class TransactionDriver(
     }
       
     msg.response match {
-      case Left(nack) => 
+      case Left(nack) =>
         onNack(nack.promisedId)
       
       case Right(promise) => 
@@ -88,29 +89,29 @@ abstract class TransactionDriver(
           
           // Before we can make a decision, we must ensure that we have a write-threshold number of replies for
           // each of the objects referenced by the transaction
-          for (op <- allObjects) {
+          for (ptr <- allObjects) {
             var nReplies = 0
             var nAbortVotes = 0
             var nCommitVotes = 0
             var canCommitObject = true
-            
-            op.storePointers.foreach(sp => peerDispositions.get(DataStoreID(op.poolUUID, sp.poolIndex)).foreach(disposition => {
+
+            ptr.storePointers.foreach(sp => peerDispositions.get(DataStoreID(ptr.poolUUID, sp.poolIndex)).foreach(disposition => {
               nReplies += 1
               disposition match {
                 case TransactionDisposition.VoteCommit => nCommitVotes += 1
-                case _ => nAbortVotes += 1
+                case _ =>
                   // TODO: We can be quite a bit smarter about choosing when we must abort
-                  //canCommitObject = false
+                  nAbortVotes += 1
               }
             }))
-            
-            if (nReplies < op.ida.writeThreshold)
+
+            if (nReplies < ptr.ida.writeThreshold)
               return
-            
-            if (nReplies != op.ida.width && nCommitVotes < op.ida.writeThreshold && op.ida.width - nAbortVotes >= op.ida.writeThreshold)
+
+            if (nReplies != ptr.ida.width && nCommitVotes < ptr.ida.writeThreshold && ptr.ida.width - nAbortVotes >= ptr.ida.writeThreshold)
               return
-              
-            if (op.ida.width - nAbortVotes < op.ida.writeThreshold)
+
+            if (ptr.ida.width - nAbortVotes < ptr.ida.writeThreshold)
               canCommitObject = false
               
             // Once canCommitTransaction flips to false, it stays there
@@ -130,7 +131,7 @@ abstract class TransactionDriver(
     if (msg.proposalId != proposer.currentProposalId)
       return
       
-    // We shouldn't ever receive an AcceptReponse from a non-acceptor but just to be safe...
+    // We shouldn't ever receive an AcceptResponse from a non-acceptor but just to be safe...
     if (!isValidAcceptor(msg.from))
       return 
       
@@ -143,36 +144,32 @@ abstract class TransactionDriver(
         
         val alreadyResolved = learner.finalValue.isDefined
         
-        learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value)) match {
-          case None => 
-          case Some(committed) =>
-            
-            if (!alreadyResolved) {
-              if (committed) {
+        val ocommitted = learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
 
-                val f = finalizerFactory.create(txd, messenger)
-                
-                f.complete foreach {
-                  _ => onFinalized(committed) 
-                }
-                finalizer = Some(f)
-              } else 
-                onFinalized(false)
-              
-              onResolution(committed)
+        if (!alreadyResolved) {
+          ocommitted.foreach { committed =>
+            if (committed) {
+
+              val f = finalizerFactory.create(txd, messenger)
+
+              f.complete foreach {
+                _ => onFinalized(committed)
+              }
+
+              finalizer = Some(f)
+            } else
+              onFinalized(false)
+
+            onResolution(committed)
           }
         }
-        
-        
     }
   }
   
   def receiveTxResolved(msg: TxResolved): Unit = {}
   
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
-    finalizer.foreach { f =>
-      f.updateCommittedPeer(msg.from)
-    }
+    finalizer.foreach(_.updateCommittedPeer(msg.from))
   }
   
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
@@ -216,19 +213,15 @@ abstract class TransactionDriver(
   }
   
   protected def sendAcceptMessages(): Unit = {
-    val poolUUID = txd.primaryObject.poolUUID
-    
-    val accept = synchronized {
+    synchronized {
       proposer.currentAcceptMessage().map(paxAccept => (paxAccept, acceptedPeers))
-    }
-    
-    accept.foreach(t => {
+    } foreach { t =>
       val (paxAccept, acceptedPeers) = t
-      val messages = primaryObjectDataStores.filter(!acceptedPeers.contains(_)).map(toStoreId => 
+      val messages = primaryObjectDataStores.filter(!acceptedPeers.contains(_)).map { toStoreId =>
         TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
-      ).toList
+      }.toList
       messenger.send(messages)
-    })
+    }
   }
   
   protected def onNack(promisedId: paxos.ProposalID): Unit = {
@@ -237,9 +230,13 @@ abstract class TransactionDriver(
   }
   
   protected def onResolution(committed: Boolean): Unit = {
-    val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map(toStoreId => TxResolved(toStoreId, storeId, txd.transactionUUID, committed)).toList
+    val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
+      TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
+    }.toList
     messenger.send(messages)
-    txd.originatingClient.foreach(clientId => messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed)))
+    txd.originatingClient.foreach { clientId =>
+      messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
+    }
   }
 }
 
@@ -253,7 +250,7 @@ object TransactionDriver {
         messenger:StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver
+        onComplete: UUID => Unit)(implicit ec: ExecutionContext): TransactionDriver
   }
   
   object noErrorRecoveryFactory extends Factory {
@@ -262,14 +259,14 @@ object TransactionDriver {
         messenger: StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) 
+        onComplete: UUID => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete)
     
     def create(
         storeId: DataStoreID,
         messenger:StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
+        onComplete: UUID => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
       new NoRecoveryTransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete)
     }
   }

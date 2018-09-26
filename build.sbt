@@ -49,6 +49,8 @@ lazy val root = (project in file(".")).
   
 testOptions  in Test += Tests.Argument(TestFrameworks.ScalaTest, "-W", "10", "5")
 
+//parallelExecution in Test := false
+
 sourceGenerators in Compile += Def.task {
   val base = (sourceManaged in Compile).value
   

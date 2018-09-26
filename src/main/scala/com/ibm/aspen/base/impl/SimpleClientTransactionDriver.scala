@@ -20,7 +20,7 @@ object SimpleClientTransactionDriver {
       txd: TransactionDescription, 
       updateData: Map[DataStoreID, List[LocalUpdate]]): ClientTransactionDriver = new SimpleClientTransactionDriver(retransmitDelay, messenger, txd, updateData)  
     
-    f _
+    f
   }
  
   
@@ -54,6 +54,7 @@ class SimpleClientTransactionDriver(
   }
   
   def retransmit(): Unit = synchronized {
+
     val poolUUID = txd.primaryObject.poolUUID
     val fromStore = DataStoreID(poolUUID, txd.designatedLeaderUID)
     val pid = ProposalID.initialProposal(txd.designatedLeaderUID)
