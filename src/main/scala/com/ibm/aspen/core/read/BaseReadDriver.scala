@@ -2,16 +2,17 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.data_store.{DataStoreID, StoreKeyValueObjectContent, ObjectReadError}
+import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError, StoreKeyValueObjectContent}
 import com.ibm.aspen.core.ida.IDAError
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import org.apache.logging.log4j.scala.Logging
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class BaseReadDriver(
     val getTransactionResult: UUID => Option[Boolean],
@@ -382,6 +383,25 @@ object BaseReadDriver {
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec)
+    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
+
+      var hung = false
+
+      val hangCheckTask: BackgroundTask.ScheduledTask = BackgroundTask.schedule(Duration(10, SECONDS)) {
+        val test = clientMessenger.system.map(_.getSystemAttribute("unittest.name").getOrElse("UNKNOWN TEST"))
+        println(s"**** HUNG READ: $test")
+        synchronized(hung = true)
+      }
+
+      readResult.foreach { _ =>
+        hangCheckTask.cancel()
+        synchronized {
+          if (hung) {
+            val test = clientMessenger.system.map(_.getSystemAttribute("unittest.name").getOrElse("UNKNOWN TEST"))
+            println(s"**** HUNG READ EVENTUALLY COMPLETED! : $test")
+          }
+        }
+      }(ec)
+    }
   }
 }

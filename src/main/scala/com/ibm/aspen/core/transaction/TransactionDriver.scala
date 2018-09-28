@@ -2,6 +2,7 @@ package com.ibm.aspen.core.transaction
 
 import java.util.UUID
 
+import com.ibm.aspen.base.impl.BackgroundTask
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
@@ -9,6 +10,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.paxos.{Learner, Proposer}
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.{Duration, SECONDS}
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
@@ -27,7 +29,8 @@ abstract class TransactionDriver(
   protected val allObjects: Set[ObjectPointer] = txd.allReferencedObjectsSet
   protected val primaryObjectDataStores: Set[DataStoreID] = txd.primaryObjectDataStores
   protected val allDataStores: List[DataStoreID] = txd.allDataStores.toList
-  
+
+  protected var resolved: Boolean = false
   protected var finalized: Boolean = false
   protected var peerDispositions: Map[DataStoreID, TransactionDisposition.Value] = Map()
   protected var acceptedPeers: Set[DataStoreID] = Set[DataStoreID]()
@@ -142,12 +145,15 @@ abstract class TransactionDriver(
       case Right(accepted) => 
         acceptedPeers += msg.from
         
-        val alreadyResolved = learner.finalValue.isDefined
+        val alreadyResolved = resolved
         
         val ocommitted = learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
 
-        if (!alreadyResolved) {
+        if (!alreadyResolved ) { // && acceptedPeers.size == txd.primaryObject.ida.width) {
+
           ocommitted.foreach { committed =>
+            resolved = true
+
             if (committed) {
 
               val f = finalizerFactory.create(txd, messenger)
@@ -259,7 +265,27 @@ object TransactionDriver {
         messenger: StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
         finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: UUID => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete)
+        onComplete: UUID => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) {
+
+      var hung = false
+
+      val hangCheckTask: BackgroundTask.ScheduledTask = BackgroundTask.schedule(Duration(10, SECONDS)) {
+        val test = messenger.system.map(_.getSystemAttribute("unittest.name").getOrElse("UNKNOWN TEST"))
+        println(s"**** HUNG TRANSACTION: $test")
+        synchronized(hung = true)
+      }
+
+      override protected def onFinalized(committed: Boolean): Unit = {
+        super.onFinalized(committed)
+        synchronized {
+          if (hung) {
+            val test = messenger.system.map(_.getSystemAttribute("unittest.name").getOrElse("UNKNOWN TEST"))
+            println(s"**** HUNG TRANSACTION EVENTUALLY COMPLETED! : $test")
+          }
+        }
+        hangCheckTask.cancel()
+      }
+    }
     
     def create(
         storeId: DataStoreID,

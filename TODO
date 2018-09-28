@@ -1,5 +1,10 @@
 sbt "test:testOnly *KeyValueListSuite"
 
+** HUNG Reads & Tests **
+  - Add 100% read, tx, FA complete to post-test system shutdown
+       .... we're seeing read/tx hang notifications after the test is reported as being successful
+
+
 Test Hangs
   - Definitely transactions that hang with some kind of race condition
      - 100 sequential tx test w/o reads hangs frequently

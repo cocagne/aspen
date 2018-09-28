@@ -113,20 +113,25 @@ class BasicAspenSystem(
   import Bootstrap._
   
   logger.debug("Constructing BasicAspenSystem")
+
+  private[this] var attributes: Map[String,String] = Map()
   
   val transactionCache: Cache[UUID,Boolean] = Scaffeine()
         .expireAfterWrite(Duration(5, MINUTES))
         .maximumSize(1000)
         .build[UUID, Boolean]()
         
-  protected val readManager = new ClientReadManager(transactionCache.getIfPresent _, net.readHandler)
+  protected val readManager = new ClientReadManager(this, transactionCache.getIfPresent, net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   
   
   protected var retryStrategies = Map[UUID, RetryStrategy](
       (FinalizationActionRetryStrategyUUID -> new ExponentialBackoffRetryStrategy(backoffLimit=10000, initialRetryDelay=3)))
-  
+
+  def getSystemAttribute(key: String): Option[String] = synchronized { attributes.get(key) }
+  def setSystemAttribute(key: String, value: String): Unit = synchronized{ attributes += key -> value }
+
   def getRetryStrategy(uuid: UUID): RetryStrategy = synchronized {
     retryStrategies.getOrElse(uuid, retryStrategy)
   }

@@ -16,17 +16,24 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   var sys: BasicAspenSystem = null
   
   import Bootstrap._
-  
+  /*
   before {
     ts = createNewTestSystem()
     sys = ts.aspenSystem
   }
-
+*/
   after {
 	  ts.synchronousWaitForTransactionsComplete()
     ts.shutdown()
     ts = null
     sys = null
+  }
+
+  override def withFixture(test: NoArgAsyncTest): FutureOutcome = {
+    ts = createNewTestSystem()
+    sys = ts.aspenSystem
+    sys.setSystemAttribute("unittest.name", test.name)
+    test()
   }
   
   def createNewTestSystem(): TestSystem = new TestSystem()

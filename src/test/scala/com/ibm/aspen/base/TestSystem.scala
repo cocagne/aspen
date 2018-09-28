@@ -1,43 +1,21 @@
 package com.ibm.aspen.base
 
-import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.crl.MemoryOnlyCRL
-import scala.concurrent.ExecutionContext.Implicits.global
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.base.impl.StorageNode
-import scala.concurrent.Future
-import com.ibm.aspen.core.network.TestNetwork
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.base.impl.BasicAspenSystem
-import com.ibm.aspen.core.network.ClientID
 import java.util.UUID
+
+import com.ibm.aspen.base.impl._
+import com.ibm.aspen.core.allocation.{AllocationRecoveryState, BaseAllocationDriver}
+import com.ibm.aspen.core.crl.{CrashRecoveryLog, MemoryOnlyCRL}
+import com.ibm.aspen.core.data_store.{DataStore, DataStoreFrontend, DataStoreID, MemoryOnlyDataStoreBackend}
+import com.ibm.aspen.core.ida.{IDA, Replication}
+import com.ibm.aspen.core.network.{ClientID, TestNetwork}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer}
 import com.ibm.aspen.core.read.BaseReadDriver
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.core.allocation.BaseAllocationDriver
-import com.ibm.aspen.base.impl.BaseTransaction
-import com.ibm.aspen.base.impl.BaseStoragePool
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import com.ibm.aspen.base.impl.Bootstrap
-import com.ibm.aspen.base.impl.BaseImplTypeRegistry
-import com.ibm.aspen.base.impl.BaseTransactionFinalizer
-import com.ibm.aspen.base.impl.StorageNodeTransactionManager
-import com.ibm.aspen.base.impl.StorageNodeAllocationManager
-import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.data_store.DataStoreFrontend
-import com.ibm.aspen.core.data_store.MemoryOnlyDataStoreBackend
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base.task.DurableTaskType
+import com.ibm.aspen.core.transaction.{ClientTransactionDriver, TransactionDriver, TransactionRecoveryState}
+
 import scala.annotation.tailrec
-import com.ibm.aspen.base.impl.PerStoreMissedUpdate
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration._
 
 object TestSystem {
   def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
@@ -62,8 +40,9 @@ class TestSystem(
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize) {
   
-  import scala.language.postfixOps
   import Bootstrap._
+
+  import scala.language.postfixOps
   
   var typeRegistries: List[TypeRegistry] = Nil
   
@@ -196,8 +175,11 @@ class TestSystem(
     sys0.shutdown()
     sys1.shutdown()
     sys2.shutdown()
+    Await.result(net.shutdown(), 1000 milliseconds)
     Await.result(Future.sequence(List(sn0.shutdown(), sn1.shutdown(), sn2.shutdown())), 1000 milliseconds)
   }
   
   val aspenSystem = sys0
+
+  net.setSystem(aspenSystem)
 }

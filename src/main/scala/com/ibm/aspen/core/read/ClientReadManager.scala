@@ -1,8 +1,12 @@
 package com.ibm.aspen.core.read
 
 import com.ibm.aspen.core.network.ClientSideReadMessenger
+
 import scala.concurrent.ExecutionContext
 import java.util.UUID
+
+import com.ibm.aspen.base.AspenSystem
+
 import scala.concurrent.Future
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.ObjectPointer
@@ -10,10 +14,12 @@ import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 import com.ibm.aspen.core.objects.ObjectState
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.Lock
+
 import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.BackgroundTask
 
 class ClientReadManager(
+    val system: AspenSystem,
     val getTransactionResult: (UUID) => Option[Boolean], 
     val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   

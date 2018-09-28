@@ -1,8 +1,10 @@
 package com.ibm.aspen.core.read
 
 import org.scalatest._
+
 import scala.concurrent.duration._
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
@@ -12,9 +14,12 @@ import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.read
+
 import scala.concurrent.Await
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
+
+import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
@@ -58,7 +63,9 @@ object BaseReadDriverSuite {
   
   class TMessenger extends ClientSideReadMessenger {
     var mlist = List[(DataStoreID,read.Message)]()
-    
+
+    def system: Option[AspenSystem] = None
+
     def send(message: read.Read): Unit = mlist = (message.toStore, message) :: mlist
     
     def send(message: read.OpportunisticRebuild): Unit = mlist = (message.toStore, message) :: mlist

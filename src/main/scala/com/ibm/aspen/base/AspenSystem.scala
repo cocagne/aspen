@@ -102,6 +102,9 @@ trait AspenSystem extends ObjectReader {
       transact(prepare)
     }
   }
+
+  def getSystemAttribute(key: String): Option[String]
+  def setSystemAttribute(key: String, value: String): Unit
   
   /** Immediately cancels all future activity scheduled for execution */
   def shutdown(): Unit

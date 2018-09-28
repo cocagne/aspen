@@ -2,6 +2,7 @@ package com.ibm.aspen.demo
 
 import com.ibm.aspen.core.data_store.DataStoreID
 import java.util.UUID
+
 import com.ibm.aspen.core.network.ClientSideNetwork
 import com.ibm.aspen.core.network.ClientSideReadHandler
 import com.ibm.aspen.core.network.ClientSideAllocationHandler
@@ -11,6 +12,8 @@ import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
 import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
 import com.ibm.aspen.core.network.ClientSideTransactionMessageReceiver
 import java.nio.ByteBuffer
+
+import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.allocation.Allocate
@@ -23,6 +26,12 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
     with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler {
   
   import NMessageEncoder._
+
+  private[this] var osystem: Option[AspenSystem] = None
+
+  def system: Option[AspenSystem] = synchronized(osystem)
+
+  def setSystem(s: AspenSystem): Unit = synchronized(osystem = Some(s))
   
   override val clientId = ClientID(UUID.randomUUID())
   

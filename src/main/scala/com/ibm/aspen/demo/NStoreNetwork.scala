@@ -10,8 +10,11 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
 import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.network.NetworkCodec
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
+
+import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
 import io.netty.channel.nio.NioEventLoopGroup
@@ -40,6 +43,12 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
    with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
   
   import NMessageEncoder._
+
+  private[this] var osystem: Option[AspenSystem] = None
+
+  def system: Option[AspenSystem] = synchronized(osystem)
+
+  def setSystem(s: AspenSystem): Unit = synchronized(osystem = Some(s))
   
   var or: Option[StoreSideReadMessageReceiver] = None
   var oa: Option[StoreSideAllocationMessageReceiver] = None

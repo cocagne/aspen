@@ -1,13 +1,11 @@
 package com.ibm.aspen.core.read
 
-import scala.concurrent.Future
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.network.ClientSideReadMessenger
 import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectState
-import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.data_store.Lock
+
+import com.ibm.aspen.core.network.ClientSideReadMessenger
+import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
+
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 
 trait ReadDriver {
@@ -36,5 +34,5 @@ object ReadDriver {
    * ,        readUUID:UUID,
    *          disableOpportunisticRebuild: Boolean)
    */
-  type Factory = ((UUID) => Option[Boolean], ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
+  type Factory = (UUID => Option[Boolean], ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
 }

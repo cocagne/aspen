@@ -4,6 +4,9 @@ import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
+
+import com.ibm.aspen.base.AspenSystem
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
 import com.ibm.aspen.core.read.ReadDriver
@@ -14,7 +17,7 @@ object SimpleReadDriver {
       val initialDelay: Duration, 
       val maxDelay: Duration)(implicit ec: ExecutionContext) {
     def apply(
-        getTransactionResult: (UUID) => Option[Boolean],
+        getTransactionResult: UUID => Option[Boolean],
         clientMessenger: ClientSideReadMessenger,
         objectPointer: ObjectPointer,
         readType: ReadType,
@@ -32,7 +35,7 @@ object SimpleReadDriver {
 class SimpleReadDriver(
     val initialDelay: Duration, 
     val maxDelay: Duration,
-    getTransactionResult: (UUID) => Option[Boolean],
+    getTransactionResult: UUID => Option[Boolean],
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
