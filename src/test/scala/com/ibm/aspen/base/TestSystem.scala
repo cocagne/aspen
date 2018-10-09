@@ -172,6 +172,7 @@ class TestSystem(
   recover(sys2, sn2)
   
   def shutdown(): Unit = {
+    Await.result(Future.sequence(List(sn0.idle, sn1.idle, sn2.idle)), 5000 milliseconds)
     sys0.shutdown()
     sys1.shutdown()
     sys2.shutdown()

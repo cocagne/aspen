@@ -77,6 +77,13 @@ class StorageNode(
     val ssnap = synchronized { stores }
     ssnap.values.foreach( _.pollAndRepairMissedUpdates(system) )
   }
+
+  def idle: Future[Unit] =  synchronized {
+    recoveredOption match {
+      case None => Future.unit
+      case Some(r) => Future.sequence(r.transactionManager.idle :: r.allocationManager.idle :: Nil).map(_=>())
+    }
+  }
     
   def shutdown(): Future[Unit] = synchronized {
     missedUpdatePoller.cancel()

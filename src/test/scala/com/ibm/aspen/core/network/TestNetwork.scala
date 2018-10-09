@@ -16,9 +16,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.LinkedBlockingQueue
 
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.transaction.TxAcceptResponse
-import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.transaction.TxPrepare
+import com.ibm.aspen.core.transaction._
 import com.ibm.aspen.core.read.ReadDriver
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.read.ReadError
@@ -26,12 +24,9 @@ import com.ibm.aspen.core.read.ReadResponse
 
 import scala.concurrent.Promise
 import com.ibm.aspen.core.read.BaseReadDriver
-import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.allocation.AllocationStatusRequest
 import com.ibm.aspen.core.allocation.AllocationStatusReply
-import com.ibm.aspen.core.transaction.TxPrepareResponse
 
 class TestNetwork {
 
@@ -45,7 +40,7 @@ class TestNetwork {
   case class ClientMessage(client: ClientID, deliver: CNet => Unit) extends NetAction
   case class StoreMessage(storeId: DataStoreID, deliver: SNet => Unit) extends NetAction
 
-  private val actionQueue = new LinkedBlockingQueue[NetAction]()
+  private val actionQueue = new LinkedBlockingQueue[List[NetAction]]()
   private val shutdownPromise = Promise[Unit]()
 
   private val deliveryThread = new Thread(() => bgThread(), "TestNetwork Message Deliver")
@@ -55,7 +50,7 @@ class TestNetwork {
   def bgThread(): Unit = {
     var done = false
     while (!done) {
-      actionQueue.take() match {
+      actionQueue.take().foreach {
         case _:Shutdown =>
           done = true
           shutdownPromise.success(())
@@ -73,7 +68,7 @@ class TestNetwork {
   }
 
   def shutdown(): Future[Unit] = {
-    actionQueue.put(Shutdown())
+    actionQueue.put(List(Shutdown()))
     shutdownPromise.future
   }
 
@@ -83,9 +78,9 @@ class TestNetwork {
   def get(storeId:DataStoreID): Option[SNet] = synchronized { stores.get(storeId) }
   def get(client: ClientID): Option[CNet] = synchronized { clients.get(client) }
 
-
-  private def cdeliver(client: ClientID, fn: CNet => Unit): Unit = actionQueue.put(ClientMessage(client, fn))
-  private def sdeliver(storeId: DataStoreID, fn: SNet => Unit): Unit = actionQueue.put(StoreMessage(storeId, fn))
+  private def cdeliver(client: ClientID, fn: CNet => Unit): Unit = actionQueue.put(ClientMessage(client, fn) :: Nil)
+  private def sdeliver(storeId: DataStoreID, fn: SNet => Unit): Unit = actionQueue.put(StoreMessage(storeId, fn) :: Nil)
+  private def multi(messages: List[StoreMessage]): Unit = actionQueue.put(messages)
 
   
   class SNet extends StoreSideNetwork 
@@ -131,6 +126,11 @@ class TestNetwork {
     
     def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
       sdeliver(message.to, _.t.foreach(t => t.receive(message, updateContent)))
+    }
+
+    override def send(messages: List[Message]): Unit = multi(messages.map(m => StoreMessage(m.to, sn => sn.t.foreach(t => t.receive(m, None)) )))
+    override def sendPrepares(messages: List[(TxPrepare, Option[List[LocalUpdate]])]): Unit = {
+      multi(messages.map(tpl => StoreMessage(tpl._1.to, sn => sn.t.foreach(t => t.receive(tpl._1, tpl._2)))))
     }
     
     def send(client: ClientID, message: allocation.ClientMessage): Unit = message match {

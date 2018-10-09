@@ -46,19 +46,19 @@ object KeyValueObjectCodec {
   def restore(
       ida: IDA, 
       l: List[(Int, ObjectRevision, HLCTimestamp, Array[Byte])]): Option[(ObjectRevision, HLCTimestamp, Array[Byte])] = {
-    getDecodeableRevision(ida.restoreThreshold, l).map { t =>
+    getDecodeableRevision(ida.consistentRestoreThreshold, l).map { t =>
       (t._1, t._2, ida.restoreArray(t._3))
     }
   }
   
   /** Returns True when either we have enough responses to restore the KVPair or it is impossible to restore the KVPair (deleted pair) */
   def isRestorable(l: List[ObjectRevision], numResponses: Int, ida: IDA): Boolean = {
-    val potentialResponses = ida.width - numResponses
     val (_, count) = getHigestRevisionCount(l)
-    count > ida.restoreThreshold || count + potentialResponses < ida.restoreThreshold
+    val missingRevisions = numResponses - l.size
+    count >= ida.consistentRestoreThreshold || missingRevisions > ida.width - ida.consistentRestoreThreshold
   }
   
-  def isRestorable(ida: IDA, storeStates: List[StoreKeyValueObjectContent]): Boolean = {
+  def isRestorable(ida: IDA, storeStates: List[StoreKeyValueObjectContent], debug:Boolean=false): Boolean = {
     val numResponses = storeStates.size
     isRestorable(storeStates.filter(_.minimum.isDefined).map(_.minimum.get.revision), numResponses, ida) &&
     isRestorable(storeStates.filter(_.maximum.isDefined).map(_.maximum.get.revision), numResponses, ida) &&
@@ -72,7 +72,13 @@ object KeyValueObjectCodec {
           }
           x + (t._1 -> lst)
         }
-      }.forall(t => isRestorable(t._2, numResponses, ida))
+      }.forall { t =>
+        val restorable = isRestorable(t._2, numResponses, ida)
+        if (debug)
+          println(s"   is restorable ${t._1}: $restorable. Width ${ida.width} Rest: ${ida.consistentRestoreThreshold} count ${getHigestRevisionCount(t._2)} num $numResponses")
+        //is restorable Key(cdea3f1b-61bf-41ef-be20-22dd56dd30b5): false. Width 3 Rest: 2 count (ef658e90-1a36-4d1a-ab95-7f4ac7e6c42f,2) num 3
+        restorable
+      }
     }
   }
   

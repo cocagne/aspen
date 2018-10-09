@@ -34,12 +34,12 @@ class BaseTransactionFinalizer(val system: BasicAspenSystem)(implicit ec: Execut
     }
     
     val complete: Future[Unit] = Future.sequence(falist.map(_.complete)).map(_=>())
-    
-    def updateCommittedPeer(peer: DataStoreID): Unit = falist.foreach { fa =>
-      fa match {
-        case ufah: UpdateableFinalizationAction => ufah.updateCommittedPeer(peer)
-        case _ =>
-      }
+
+    def debugStatus: List[(String, Boolean)] = falist.map(fa => fa.getClass.getName -> fa.complete.isCompleted)
+
+    def updateCommittedPeer(peer: DataStoreID): Unit = falist.foreach {
+      case ufah: UpdateableFinalizationAction => ufah.updateCommittedPeer(peer)
+      case _ =>
     }
     
     /** Called when a TxFinalized message is received. */ 

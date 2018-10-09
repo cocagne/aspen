@@ -1,5 +1,35 @@
 sbt "test:testOnly *KeyValueListSuite"
 
+*** MESSENGERS
+  - Override multi-send functions in  TestNetwork. That might help
+
+* The reason it's always store 2 is because store 2 *walways* has its messages delivered last (iterate through list)
+   - And the TX will always act immediately upon detection of success, which can happen BEFORE the message to store 2
+     is delivered.
+
+* For missed TX completion
+  - Could be a bug in delivery of Accepted message to FA
+  - Intermittent nature suggests Future callack timing issues?
+  - BUT the fact that revisions don't always match suggests it COULD be a real miss
+
+* For reads
+  - Restoring 3 different things: Revision, Refcount, & Data
+     - For DataObjects, revision+data are paired
+     - For KeyValue objects, revision and data are independent
+        - can't drop data for non-matching revisions
+        - each KV pair is independently versioned
+        - Tx for updating revision can be independent of data. So "behind" on revision object slices may contain
+          up-to-date KV pairs
+
+* WHEN FA IS CRAEATED, dump Tx state to terminal
+  - Need to figure out why these aren't completing
+
+* Need to revamp read implementation. Something in here isn't right. Shouldn't be possible to hang
+
+* Transactions are hung in missed update FA
+  - Which is hung in a read
+    - Which is only started because the TX didn't get updates from all peers
+
 ** HUNG Reads & Tests **
   - Add 100% read, tx, FA complete to post-test system shutdown
        .... we're seeing read/tx hang notifications after the test is reported as being successful

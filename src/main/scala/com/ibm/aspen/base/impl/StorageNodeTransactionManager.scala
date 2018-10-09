@@ -8,7 +8,7 @@ import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
 import com.ibm.aspen.core.network.{StoreSideTransactionMessageReceiver, StoreSideTransactionMessenger}
 import com.ibm.aspen.core.transaction._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
 
 
@@ -27,7 +27,11 @@ class StorageNodeTransactionManager(
                                                       
   private[this] val resultCache = Scaffeine().maximumSize(1000)
                                              .build[UUID, Boolean]()
-                                             
+
+  def idle: Future[Unit] = synchronized {
+    Future.sequence(stores.valuesIterator.map(_.idle).toList).map(_=>())
+  }
+
   def shutdown(): Future[Unit] = synchronized {
     Future.sequence( stores.valuesIterator.map( s => s.shutdown() ) ).map(_ => ())
   }
@@ -72,10 +76,18 @@ class StorageNodeTransactionManager(
   }
   
   protected class StoreState(val store: DataStore, txRecoveryState: List[TransactionRecoveryState]) {
+    private[this] var opIdle: Option[Promise[Unit]] = None
     private[this] var transactionDrivers: Map[UUID, TransactionDriver] = Map()
     private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs => 
       trs.txd.transactionUUID -> Transaction(crl, messenger, onTransactionDiscarded, store, trs.txd, trs.localUpdates)
     }.toMap
+
+    def idle: Future[Unit] = synchronized {
+      opIdle match {
+        case None => Future.unit
+        case Some(p) => p.future
+      }
+    }
     
     def shutdown(): Future[Unit] = synchronized {
       transactionDrivers.valuesIterator.foreach( d => d.shutdown() )
@@ -94,13 +106,27 @@ class StorageNodeTransactionManager(
     
     def onTransactionDiscarded(t: Transaction): Unit = synchronized { transactions -= t.txd.transactionUUID }
   
-    def onTransactionDriverComplete(txuuid: UUID): Unit = synchronized { transactionDrivers -= txuuid }
+    def onTransactionDriverComplete(txuuid: UUID): Unit = synchronized {
+      transactionDrivers -= txuuid
+
+      opIdle.foreach { p =>
+        opIdle = None
+        p.success(())
+      }
+    }
     
     def driveTransaction(txd: TransactionDescription): TransactionDriver = synchronized {
-      val driver = driverFactory.create(store.storeId, messenger, txd, finalizerFactory, onTransactionDriverComplete)
-      
+      val driver = driverFactory.create(store.storeId, messenger, txd, finalizerFactory)
+
       transactionDrivers += (txd.transactionUUID -> driver)
-      
+
+      opIdle match {
+        case Some(_) =>
+        case None => opIdle = Some(Promise[Unit]())
+      }
+
+      driver.complete.foreach(txd => onTransactionDriverComplete(txd.transactionUUID))
+
       driver
     }
     

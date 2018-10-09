@@ -77,7 +77,8 @@ enum UpdateError:byte
     CorruptedObject,
     InsufficientFreeSpace,
     InvalidObjectType,
-    KeyValueRequirementError
+    KeyValueRequirementError,
+    TransactionTimestampError
 }
 
 enum DataUpdateOperation:byte {

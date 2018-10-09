@@ -21,7 +21,8 @@ final case class Key(bytes: Array[Byte]) {
       val bb = ByteBuffer.wrap(bytes)
       val m = bb.getLong()
       val l = bb.getLong()
-      s"Key($m,$l)"
+      val uuid = new UUID(m,l)
+      s"Key($uuid)"
     }
     else
       s"Key(${com.ibm.aspen.util.printableArray(bytes)})"

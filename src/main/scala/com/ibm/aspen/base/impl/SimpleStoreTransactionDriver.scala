@@ -19,8 +19,8 @@ class SimpleStoreTransactionDriver(
     storeId: DataStoreID,
     messenger: StoreSideTransactionMessenger, 
     txd: TransactionDescription, 
-    finalizerFactory: TransactionFinalizer.Factory,
-    onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) {
+    finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
+  storeId, messenger, txd, finalizerFactory) {
  
   private[this] var backoffDelay = initialDelay
   private[this] var nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }

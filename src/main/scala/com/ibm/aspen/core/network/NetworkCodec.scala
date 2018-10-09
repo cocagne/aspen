@@ -286,6 +286,7 @@ object NetworkCodec {
     case UpdateError.InsufficientFreeSpace    => P.UpdateError.InsufficientFreeSpace
     case UpdateError.InvalidObjectType        => P.UpdateError.InvalidObjectType
     case UpdateError.KeyValueRequirementError => P.UpdateError.KeyValueRequirementError
+    case UpdateError.TransactionTimestampError => P.UpdateError.TransactionTimestampError
   }
   def decodeUpdateErrore(e: Byte): UpdateError.Value = e match {
     case P.UpdateError.MissingUpdateData        => UpdateError.MissingUpdateData
@@ -298,6 +299,7 @@ object NetworkCodec {
     case P.UpdateError.InsufficientFreeSpace    => UpdateError.InsufficientFreeSpace
     case P.UpdateError.InvalidObjectType        => UpdateError.InvalidObjectType
     case P.UpdateError.KeyValueRequirementError => UpdateError.KeyValueRequirementError
+    case P.UpdateError.TransactionTimestampError => UpdateError.TransactionTimestampError
   }
   
   

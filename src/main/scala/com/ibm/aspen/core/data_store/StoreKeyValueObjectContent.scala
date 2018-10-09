@@ -18,6 +18,13 @@ class StoreKeyValueObjectContent(val minimum: Option[StoreKeyValueObjectContent.
 
   import StoreKeyValueObjectContent._
 
+  def debugPrint(): Unit = {
+    println(s"Min $minimum Max $maximum")
+    println(s"Left $left Right $right")
+
+    idaEncodedContents.values.toList.sortWith((a,b) => ByteArrayKeyOrdering.compare(a.key, b.key) > 0).foreach(v => println(s"   Key ${v.key} Rev ${v.revision}"))
+  }
+
   def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {
     val minOk = minimum match {
       case None => true

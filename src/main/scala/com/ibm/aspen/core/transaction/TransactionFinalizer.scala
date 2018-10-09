@@ -17,6 +17,11 @@ trait TransactionFinalizer {
    *  via this callback. 
    */
   def updateCommittedPeer(peer: DataStoreID): Unit
+
+  /**
+    * @return List of (test-class-name, is-complete)
+    */
+  def debugStatus: List[(String, Boolean)]
   
   /** Called when a TxFinalized message is received. */ 
   def cancel(): Unit

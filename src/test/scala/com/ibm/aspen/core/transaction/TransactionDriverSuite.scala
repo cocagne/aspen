@@ -50,7 +50,12 @@ object TransactionDriverSuite {
     messenger: StoreSideTransactionMessenger, 
     initialPrepare: TxPrepare, 
     finalizerFactory: TransactionFinalizer.Factory,
-    onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare.txd, finalizerFactory, onComplete)
+    onComplete: (UUID) => Unit) extends TransactionDriver(storeId, messenger, initialPrepare.txd, finalizerFactory) {
+    override protected def onFinalized(committed: Boolean): Unit = {
+      super.onFinalized(committed)
+      onComplete(txd.transactionUUID)
+    }
+  }
   
   class TFinalizer(autoComplete: Boolean = true) extends TransactionFinalizer with TransactionFinalizer.Factory {
     var cancelled = false
@@ -60,6 +65,8 @@ object TransactionDriverSuite {
     override def cancel(): Unit = cancelled = true
     
     def complete: Future[Unit] = if (autoComplete) Future.successful(()) else Promise[Unit]().future
+
+    def debugStatus: List[(String, Boolean)] = Nil
     
     override def create(txd: TransactionDescription, messenger: StoreSideTransactionMessenger): TransactionFinalizer = {
       created = true

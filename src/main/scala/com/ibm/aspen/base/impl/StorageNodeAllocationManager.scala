@@ -43,10 +43,18 @@ class StorageNodeAllocationManager(
   
   protected[this] var allocations = Map[Key, Map[UUID,Value]]()
   protected[this] var stores = Map[DataStoreID, DataStore]()
+  private[this] var opIdle: Option[Promise[Unit]] = None
     
   protected[this] def getStore(sid: DataStoreID) = synchronized { stores.get(sid) }
   
   def shutdown(): Unit = {}
+
+  def idle: Future[Unit] = synchronized {
+    opIdle match {
+      case None => Future.unit
+      case Some(p) => p.future
+    }
+  }
   
   def addStore(store: DataStore): Unit = { 
     val lars = crl.getAllocationRecoveryStateForStore(store.storeId)
@@ -65,7 +73,7 @@ class StorageNodeAllocationManager(
     val value = allocations.get(key) match {
       case None =>
         val v = createValue()
-        allocations += (key -> Map((ars.newObjectUUID -> v)))
+        allocations += (key -> Map(ars.newObjectUUID -> v))
         v
         
       case Some(m) => m.get(ars.newObjectUUID) match {
@@ -77,18 +85,31 @@ class StorageNodeAllocationManager(
           v
       }
     }
+
+    opIdle match {
+      case Some(_) =>
+      case None => opIdle = Some(Promise[Unit]())
+    }
+
     value.saved
   }
   
   protected def stopTracking(storeId: DataStoreID, transactionUUID: UUID, committed: Boolean): Unit = synchronized {
     val key = Key(storeId, transactionUUID)
     
-    allocations.get(key).foreach{ m =>
+    allocations.get(key).foreach { m =>
       allocations -= key
-      
+
       m.values.foreach { v =>
         v.store.allocationResolved(v.ars, committed).foreach { _ =>
           crl.discardAllocationState(v.ars)
+        }
+      }
+
+      if (allocations.isEmpty) {
+        opIdle.foreach { p =>
+          opIdle = None
+          p.success(())
         }
       }
     }

@@ -191,7 +191,7 @@ class Transaction(
   protected def onResolution(txCommitted: Boolean): Unit = if (!resolved) {
     resolved = true
     
-    if (txCommitted) 
+    if (txCommitted)
       commitFuture = Some(store.commitTransactionUpdates(txd, localUpdates))
     else
       discardTransactionState()
@@ -201,8 +201,11 @@ class Transaction(
     // May learn of successful commit from TransactionDriver rather than by way of Paxos
     onResolution(msg.committed)
     
-    if (msg.committed)
-      messenger.send(TxCommitted(msg.from, store.storeId, txd.transactionUUID)) 
+    if (msg.committed) {
+      commitFuture.foreach { fcommit =>
+        fcommit.foreach(_ => messenger.send(TxCommitted(msg.from, store.storeId, txd.transactionUUID)))
+      }
+    }
   }
   
   def receiveFinalized(msg: TxFinalized): Unit = synchronized {
@@ -260,6 +263,7 @@ object Transaction {
     case e: InsufficientFreeSpace    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InsufficientFreeSpace, None, None, None)
     case e: InvalidObjectType        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidObjectType, None, None, None)
     case e: KeyValueRequirementError => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.KeyValueRequirementError, None, None, None)
+    case e: TransactionTimestampError => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.TransactionTimestampError, None, None, None)
   }
   
 }

@@ -18,9 +18,8 @@ object SimpleFixedDelayTransactionDriver {
           storeId: DataStoreID,
           messenger:StoreSideTransactionMessenger, 
           txd: TransactionDescription, 
-          finalizerFactory: TransactionFinalizer.Factory,
-          onComplete: (UUID) => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
-        new SimpleFixedDelayTransactionDriver(retryDelay, storeId, messenger, txd, finalizerFactory, onComplete)
+          finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext): TransactionDriver = {
+        new SimpleFixedDelayTransactionDriver(retryDelay, storeId, messenger, txd, finalizerFactory)
       }
     }
   }
@@ -31,8 +30,8 @@ class SimpleFixedDelayTransactionDriver(
     storeId: DataStoreID,
     messenger: StoreSideTransactionMessenger, 
     txd: TransactionDescription, 
-    finalizerFactory: TransactionFinalizer.Factory,
-    onComplete: (UUID) => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) {
+    finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
+  storeId, messenger, txd, finalizerFactory) {
   
   private[this] var scheduledRetry = BackgroundTask.schedulePeriodic(retryDelay, callNow=false) {
     nextRound()

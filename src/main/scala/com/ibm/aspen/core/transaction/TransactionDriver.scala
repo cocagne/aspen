@@ -9,15 +9,14 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.paxos.{Learner, Proposer}
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration.{Duration, SECONDS}
 
 abstract class TransactionDriver(
     val storeId: DataStoreID,
     val messenger: StoreSideTransactionMessenger, 
     val txd: TransactionDescription, 
-    private val finalizerFactory: TransactionFinalizer.Factory,
-    private val onComplete: UUID => Unit)(implicit ec: ExecutionContext) {
+    private val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) {
   
   import TransactionDriver._
   
@@ -35,6 +34,19 @@ abstract class TransactionDriver(
   protected var peerDispositions: Map[DataStoreID, TransactionDisposition.Value] = Map()
   protected var acceptedPeers: Set[DataStoreID] = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
+
+  private val completionPromise: Promise[TransactionDescription] = Promise()
+
+  def complete: Future[TransactionDescription] = completionPromise.future
+
+  def printState(): Unit = synchronized {
+    println(s"Transaction ${txd.transactionUUID}")
+    println(s"  Objects: ${txd.requirements.map(_.objectPointer)}")
+    println(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}")
+    println(s"  Peer Dispositions: $peerDispositions")
+    println(s"  Accepted Peers: $acceptedPeers")
+    println(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}")
+  }
  
   protected def isValidAcceptor(ds: DataStoreID): Boolean = {
     ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
@@ -188,15 +200,15 @@ abstract class TransactionDriver(
   protected def onFinalized(committed: Boolean): Unit = synchronized {
     if (!finalized) {
       finalized = true
-      
-      onComplete(txd.transactionUUID)
-      
+
       txd.originatingClient.foreach(client => {
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))
       })
       
       val messages = allDataStores.map(toStoreId => TxFinalized(toStoreId, storeId, txd.transactionUUID, committed))
       messenger.send(messages)
+
+      completionPromise.success(txd)
     }
   }
   
@@ -255,8 +267,7 @@ object TransactionDriver {
         storeId: DataStoreID,
         messenger:StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
-        finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: UUID => Unit)(implicit ec: ExecutionContext): TransactionDriver
+        finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext): TransactionDriver
   }
   
   object noErrorRecoveryFactory extends Factory {
@@ -264,14 +275,15 @@ object TransactionDriver {
         storeId: DataStoreID,
         messenger: StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
-        finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: UUID => Unit)(implicit ec: ExecutionContext) extends TransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete) {
+        finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
+      storeId, messenger, txd, finalizerFactory) {
 
       var hung = false
 
       val hangCheckTask: BackgroundTask.ScheduledTask = BackgroundTask.schedule(Duration(10, SECONDS)) {
         val test = messenger.system.map(_.getSystemAttribute("unittest.name").getOrElse("UNKNOWN TEST"))
         println(s"**** HUNG TRANSACTION: $test")
+        printState()
         synchronized(hung = true)
       }
 
@@ -291,9 +303,8 @@ object TransactionDriver {
         storeId: DataStoreID,
         messenger:StoreSideTransactionMessenger, 
         txd: TransactionDescription, 
-        finalizerFactory: TransactionFinalizer.Factory,
-        onComplete: UUID => Unit)(implicit ec: ExecutionContext): TransactionDriver = {
-      new NoRecoveryTransactionDriver(storeId, messenger, txd, finalizerFactory, onComplete)
+        finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext): TransactionDriver = {
+      new NoRecoveryTransactionDriver(storeId, messenger, txd, finalizerFactory)
     }
   }
 }

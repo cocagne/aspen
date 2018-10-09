@@ -82,3 +82,6 @@ case class InvalidObjectType(objectPointer: ObjectPointer) extends ObjectTransac
 
 /** Indicates that a KeyValue requirement was not satisfied */
 case class KeyValueRequirementError(objectPointer: ObjectPointer, key: Key) extends ObjectTransactionError
+
+/** Indicates that the transaction timestamp is less than the timestamp of the object/kv-pair */
+case class TransactionTimestampError(objectPointer: ObjectPointer) extends ObjectTransactionError

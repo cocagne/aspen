@@ -134,8 +134,10 @@ class BaseTransaction(
               promise.failure(cause)
             case Success(committed) =>
               if (committed) {
+                val ts = HLCTimestamp(txd.startTimestamp)
+                HLCTimestamp.update(ts)
                 system.transactionCache.put(txd.transactionUUID, true)
-                promise.success(HLCTimestamp(txd.startTimestamp)) 
+                promise.success(ts)
               } else 
                 promise.failure(TransactionAborted(txd))
               
