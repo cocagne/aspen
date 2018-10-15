@@ -1,36 +1,33 @@
 package com.ibm.aspen.core.read
 
-import com.ibm.aspen.core.network.ClientSideReadMessenger
-
-import scala.concurrent.ExecutionContext
 import java.util.UUID
 
 import com.ibm.aspen.base.AspenSystem
-
-import scala.concurrent.Future
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
-import com.ibm.aspen.core.objects.ObjectState
-import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.data_store.Lock
-
-import scala.concurrent.duration._
 import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.core.network.{ClientSideReadMessageReceiver, ClientSideReadMessenger}
+import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
+
+import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 
 class ClientReadManager(
     val system: AspenSystem,
-    val getTransactionResult: (UUID) => Option[Boolean], 
+    val getTransactionResult: UUID => Option[Boolean],
     val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
   private[this] var completionTimes = Map[UUID, (Long, ReadDriver)]()
-  
-  val pruneStaleReadsTask = BackgroundTask.schedulePeriodic(Duration(1, SECONDS), callNow=false) {
+
+  /** To facilitate Opportunistic Rebuild, we'll hold on to reads after they complete until we either hear from all
+    * stores or pass a fixed delay after resolving the read. This way, read responses received after the consistent
+    * read threshold is achieved will still make their way to the read driver and potentially result in opportunistic
+    * rebuild messages.
+    */
+  val pruneStaleReadsTask: BackgroundTask.ScheduledTask = BackgroundTask.schedulePeriodic(Duration(1, SECONDS)) {
     val completionSnap = synchronized { completionTimes }
     val now = System.nanoTime()/1000000
     val prune = completionSnap.filter( t => (now - t._2._1) > t._2._2.opportunisticRebuildDelay.toMillis )
-    if (!prune.isEmpty) { synchronized {
+    if (prune.nonEmpty) { synchronized {
       prune.foreach { t =>
         completionTimes -= t._1
         outstandingReads -= t._1

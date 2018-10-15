@@ -21,6 +21,13 @@ object KeyValueObjectCodec {
     
     if (count >= ida.consistentRestoreThreshold) Some(revision) else None
   }
+
+  /** Returns True when either we have enough responses to restore the KVPair or it is impossible to restore the KVPair (deleted pair) */
+  def isRestorable(l: List[ObjectRevision], numResponses: Int, ida: IDA): Boolean = {
+    val (_, count) = getHigestRevisionCount(l)
+    val potentialResponses = ida.width - l.size
+    count >= ida.consistentRestoreThreshold || count + potentialResponses < ida.consistentRestoreThreshold
+  }
   
   /** Converts to Map[(item, count)] then selects the item with the highest count */
   def getCurrentReplicatedValue[T](l: List[T]): T = {
@@ -51,15 +58,12 @@ object KeyValueObjectCodec {
     }
   }
   
-  /** Returns True when either we have enough responses to restore the KVPair or it is impossible to restore the KVPair (deleted pair) */
-  def isRestorable(l: List[ObjectRevision], numResponses: Int, ida: IDA): Boolean = {
-    val (_, count) = getHigestRevisionCount(l)
-    val missingRevisions = numResponses - l.size
-    count >= ida.consistentRestoreThreshold || missingRevisions > ida.width - ida.consistentRestoreThreshold
-  }
+
   
-  def isRestorable(ida: IDA, storeStates: List[StoreKeyValueObjectContent], debug:Boolean=false): Boolean = {
-    val numResponses = storeStates.size
+  def isRestorable(ida: IDA,
+                   storeStates: List[StoreKeyValueObjectContent],
+                   numResponses: Int,
+                   debug:Boolean=false): Boolean = {
     isRestorable(storeStates.filter(_.minimum.isDefined).map(_.minimum.get.revision), numResponses, ida) &&
     isRestorable(storeStates.filter(_.maximum.isDefined).map(_.maximum.get.revision), numResponses, ida) &&
     isRestorable(storeStates.filter(_.left.isDefined).map(_.left.get.revision), numResponses, ida) &&
