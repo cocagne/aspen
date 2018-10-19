@@ -35,6 +35,8 @@ object HLCTimestamp {
   }
   
   def now: HLCTimestamp = HLCTimestamp()
+
+  val Zero = HLCTimestamp(0)
   
   def apply(longValue: Long): HLCTimestamp = new HLCTimestamp(longValue)
   

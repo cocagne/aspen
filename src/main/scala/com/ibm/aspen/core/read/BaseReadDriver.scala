@@ -41,7 +41,7 @@ class BaseReadDriver(
   protected var storeStates: Map[DataStoreID, StoreState] = Map()
   protected var errors: Map[DataStoreID, ObjectReadError.Value] = Map()
 
-  //private var completedTransactions: Set[UUID] = Set()
+  private var completedTransactions: Set[UUID] = Set()
   
   // Tuple is restoredObject plus the set of ObjectRevision for all contents of KeyValue objects. Empty set for DataObjects
   protected var restoredObject: Option[(ObjectState, Set[ObjectRevision])] = None
@@ -87,6 +87,17 @@ class BaseReadDriver(
   }
   */
 
+  private def discardResponse(storeId: DataStoreID): Unit = {
+    storeStates -= storeId
+    sendReadRequest(storeId)
+  }
+
+  // Filters the responses and discards + reread any that have revisions known to be behind
+  private def discardOldResponses(): Unit = {
+    val maxTs = storeStates.foldLeft(HLCTimestamp(0))((t, ss) => if (ss._2.timestamp > t) ss._2.timestamp else t)
+    storeStates.filter(t => t._2.timestamp != maxTs).foreach(t => discardResponse(t._1))
+  }
+
   def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
 
     def addError(err: ObjectReadError.Value): Unit = {
@@ -115,7 +126,7 @@ class BaseReadDriver(
 
           val ss = objectPointer match {
             case _: DataObjectPointer => new DataObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.sizeOnStore, cs.objectData)
-            case _: KeyValueObjectPointer => new KVObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData)
+            case _: KeyValueObjectPointer => new KeyValueObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData)
           }
 
           addState(response.fromStore, ss)
@@ -160,6 +171,16 @@ class BaseReadDriver(
     *
     */
   private def attemptRestore(): Unit = if (storeStates.size >= objectPointer.ida.consistentRestoreThreshold) {
+    /*
+    Can find highest object revision & throw out + reread all responses with lower versions.
+    Can also discard and reread responses with locks that are known complete.
+
+    KV forall
+      if numResponses > consist threshold:
+        if have > consistent threshold. True
+        else if One or more locks with matching revision exist, allocation. Return false
+        else true
+     */
 
     val (singleRevision: Map[DataStoreID, StoreState], opportunisticRebuildCandidates: Map[DataStoreID, StoreState]) = {
 
@@ -187,7 +208,7 @@ class BaseReadDriver(
       case _: DataObjectPointer => true
       case _: KeyValueObjectPointer =>
         // TODO have isRestorable return opportunistic KV rebuilds
-        val kvObjectStates = storeStates.valuesIterator.map(_.asInstanceOf[KVObjectStoreState].kvoss).toList
+        val kvObjectStates = storeStates.valuesIterator.map(_.asInstanceOf[KeyValueObjectStoreState].kvoss).toList
         KeyValueObjectCodec.isRestorable(objectPointer.ida, kvObjectStates, storeStates.size + errors.size)
     })
 
@@ -243,49 +264,49 @@ class BaseReadDriver(
     val refcount = singleRevision.foldLeft(ObjectRefcount(-1,0))((ref, t) => if (t._2.refcount.updateSerial > ref.updateSerial) t._2.refcount else ref)
     val revision = singleRevision.head._2.revision
     val timestamp = singleRevision.head._2.timestamp
-    
+
     val readTime = singleRevision.foldLeft(HLCTimestamp.now)((maxts, ss) => if (ss._2.readTimestamp > maxts) ss._2.readTimestamp else maxts)
 
     (revision, refcount, timestamp, readTime)
   }
-  
+
   private def restoreDataObject(singleRevision: Map[DataStoreID, StoreState]) : (ObjectState, Set[ObjectRevision]) = {
     val (revision, refcount, timestamp, readTime) = getMetadata(singleRevision)
-    
+
     val sizeOnStore = singleRevision.head._2.asInstanceOf[DataObjectStoreState].sizeOnStore
-    
+
     val segments = singleRevision.filter(t => t._2.asInstanceOf[DataObjectStoreState].objectData.isDefined).foldLeft(List[(Byte, DataBuffer)]()) { (l, t) =>
       (t._1.poolIndex, t._2.asInstanceOf[DataObjectStoreState].objectData.get) :: l
     }
-    
+
     try {
       // If something goes wrong with the IDA, it'll throw an IDAError exception
       val objectState = readType match {
         case _: MetadataOnly => MetadataObjectState(objectPointer, revision, refcount, timestamp, readTime)
-        case _: FullObject => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, readTime, sizeOnStore, objectPointer.ida.restore(segments)) 
+        case _: FullObject => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, readTime, sizeOnStore, objectPointer.ida.restore(segments))
         case _: ByteRange => DataObjectState(objectPointer.asInstanceOf[DataObjectPointer], revision, refcount, timestamp, readTime, sizeOnStore, objectPointer.ida.restore(segments))
         case _ => throw new Exception("Invalid Read Type")
       }
       (objectState, Set())
     } catch {
-      case t: IDAError => 
+      case t: IDAError =>
         logger.error(s"IDA ERROR Segments: $segments")
         throw t
     }
   }
-  
+
   private def restoreKeyValueObject(singleRevision: Map[DataStoreID, StoreState]): (ObjectState, Set[ObjectRevision]) = {
     val (revision, refcount, timestamp, readTime) = getMetadata(singleRevision)
 
-    val lkvoss = storeStates.map(t => t._1.poolIndex.asInstanceOf[Int] -> t._2.asInstanceOf[KVObjectStoreState].kvoss).toList
-    
+    val lkvoss = storeStates.map(t => t._1.poolIndex.asInstanceOf[Int] -> t._2.asInstanceOf[KeyValueObjectStoreState].kvoss).toList
+
     def decode() = {
-      
+
       val kvos = KeyValueObjectCodec.decode(objectPointer.asInstanceOf[KeyValueObjectPointer], revision, refcount, timestamp, readTime, lkvoss)
-      
+
       (kvos, kvos.allUpdates)
     }
-    
+
     val objectState = readType match {
       case _: MetadataOnly       => (MetadataObjectState(objectPointer, revision, refcount, timestamp, readTime), Set[ObjectRevision]())
       case _: FullObject         => decode()
@@ -294,7 +315,7 @@ class BaseReadDriver(
       case _: KeyRange           => decode()
       case _ => throw new Exception("Invalid Read Type")
     }
-    
+
     (objectState._1, objectState._2)
   }
 
@@ -312,7 +333,7 @@ class BaseReadDriver(
           if (k.revision != ss.revision || k.refcount != ss.refcount)
             true
           else
-            ss.asInstanceOf[KVObjectStoreState].kvoss.allUpdates != currentUpdateSet
+            ss.asInstanceOf[KeyValueObjectStoreState].kvoss.allUpdates != currentUpdateSet
 
         case _: MetadataObjectState => false
       }
@@ -324,7 +345,7 @@ class BaseReadDriver(
 
         val oldUpdates = ss match {
           case _: DataObjectStoreState => Set[ObjectRevision]()
-          case k: KVObjectStoreState => k.kvoss.allUpdates
+          case k: KeyValueObjectStoreState => k.kvoss.allUpdates
         }
 
         val msg = OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer,
@@ -340,57 +361,10 @@ class BaseReadDriver(
 }
 
 object BaseReadDriver {
-  
+
   val DefaultOpportunisticRebuildDelay = Duration(5, SECONDS)
-  
-  abstract class StoreState(
-      val storeId: DataStoreID,
-      val revision: ObjectRevision,
-      val refcount: ObjectRefcount,
-      val timestamp: HLCTimestamp,
-      val readTimestamp: HLCTimestamp) {
-    
-    def lastUpdateTimestamp: HLCTimestamp
 
-    def printDebug(): Unit
-  }
-  
-  class DataObjectStoreState(
-      storeId: DataStoreID,
-      revision: ObjectRevision,
-      refcount: ObjectRefcount,
-      timestamp: HLCTimestamp,
-      readTimestamp: HLCTimestamp,
-      val sizeOnStore: Int,
-      val objectData: Option[DataBuffer]) extends StoreState(storeId, revision, refcount, timestamp, readTimestamp) {
-    
-    def lastUpdateTimestamp: HLCTimestamp = timestamp
 
-    def printDebug(): Unit = println(s"  DOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
-
-  }
-  
-  class KVObjectStoreState(
-      storeId: DataStoreID,
-      revision: ObjectRevision,
-      refcount: ObjectRefcount,
-      timestamp: HLCTimestamp,
-      readTimestamp: HLCTimestamp,
-      objectData: Option[DataBuffer]) extends StoreState(storeId, revision, refcount, timestamp, readTimestamp) {
-    
-    val kvoss: StoreKeyValueObjectContent = objectData match {
-      case None => new StoreKeyValueObjectContent(None, None, None, None, Map())
-      case Some(db) => StoreKeyValueObjectContent(db)
-    }
-    
-    def lastUpdateTimestamp: HLCTimestamp = kvoss.lastUpdateTimestamp
-
-    def printDebug(): Unit = {
-      println(s"  KVOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
-      kvoss.debugPrint()
-    }
-  }
-      
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
       getTransactionResult: UUID => Option[Boolean],
       clientMessenger: ClientSideReadMessenger,
@@ -411,9 +385,8 @@ object BaseReadDriver {
           storeStates(sid).printDebug()
         }
 
-        KeyValueObjectCodec.isRestorable(objectPointer.ida,
-          storeStates.valuesIterator.map(ss => ss.asInstanceOf[KVObjectStoreState].kvoss).toList,
-          debug=true)
+       // KeyValueObjectCodec.isRestorable(objectPointer.ida,
+       //   storeStates.valuesIterator.map(ss => ss.asInstanceOf[KeyValueObjectStoreState].kvoss).toList)
 
         synchronized(hung = true)
       }
