@@ -126,7 +126,7 @@ class BaseReadDriver(
 
           val ss = objectPointer match {
             case _: DataObjectPointer => new DataObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.sizeOnStore, cs.objectData)
-            case _: KeyValueObjectPointer => new KeyValueObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData)
+            case _: KeyValueObjectPointer => new KeyValueObjectStoreState(response.fromStore, cs.revision, cs.refcount, cs.timestamp, response.readTime, cs.objectData, cs.lockedWriteTransactions)
           }
 
           addState(response.fromStore, ss)

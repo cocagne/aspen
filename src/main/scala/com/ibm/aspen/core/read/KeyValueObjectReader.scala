@@ -67,7 +67,7 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
       case Some(r) => m + (t._1 -> Value(t._1, pointer.ida.restoreArray(r.slices), r.timestamp, r.revision))
     }}
 
-    new KeyValueObjectState(pointer, revision, refcount, timestamp, readTime, min, max, left, right, contents)
+    endResult = Some(Right(new KeyValueObjectState(pointer, revision, refcount, timestamp, readTime, min, max, left, right, contents)))
   }
   catch {
     case _:NotRestorable => ()
@@ -86,21 +86,27 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
       else h
     }._2
 
-    val matching = segments.filter(_.revision == highestRevision)
+    val matches = segments.filter(_.revision == highestRevision)
+    val matching = matches.size
+    val mismatching = storeStates.size - matching
 
-    if (matching.size < threshold) {
+    //println(s"Highest Revision: $highestRevision, matching size ${matching}. Matching: $matches")
+
+    if (matching < threshold) {
       // If we cannot restore even though we have a threshold number of responses, we need to determine whether
       // the item has been deleted or we need to wait for more responses. Deletion is determined by ruling out
       // the possibility of partial allocation. To do this, we check to see if any other store has a locked transaction
       // matching the revision of the item. If so, the item is most likely in the process of being allocated and we'll
       // need the allocation to complete before the item can be restored.
       //
-      if (anyStoreHasLocked(highestRevision, storeStates))
+      val potential = width - matching - mismatching
+
+      if (matching + potential >= threshold || anyStoreHasLocked(highestRevision, storeStates))
         throw NotRestorable()
       else
         None // Item deleted
     } else {
-      Some(Restorable(highestRevision, matching.head.timestamp, matching.map(s => s.storeID.poolIndex -> s.data)))
+      Some(Restorable(highestRevision, matches.head.timestamp, matches.map(s => s.storeID.poolIndex -> s.data)))
     }
   }
 }

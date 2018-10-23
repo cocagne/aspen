@@ -8,7 +8,7 @@ import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRefcount, ObjectRevision}
 import org.scalatest.{FunSuite, Matchers}
 
-object ObjectReaderSuite {
+object DataObjectReaderSuite {
   class TestReader(pointer: DataObjectPointer, reread: DataStoreID => Unit)
     extends ObjectReader[DataObjectPointer, DataObjectStoreState](false, pointer, reread) {
 
@@ -61,8 +61,8 @@ object ObjectReaderSuite {
 
 }
 
-class ObjectReaderSuite extends FunSuite with Matchers {
-  import ObjectReaderSuite._
+class DataObjectReaderSuite extends FunSuite with Matchers {
+  import DataObjectReaderSuite._
 /*
 final case class ReadResponse(
     fromStore: DataStoreID,
