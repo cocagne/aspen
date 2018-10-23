@@ -112,8 +112,6 @@ object KeyValueObjectReaderSuite {
 
 class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   import KeyValueObjectReaderSuite._
-  // Do initial tests with min
-  // **** Possibly abstract to single-op-test? Then test min and test max become calls to generic impl
 
   test("Resolve empty object") {
     val r = TestReader(ida3, _ => ())
@@ -238,6 +236,32 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
         c.size should be (2)
         c(ka) should be (Value(ka, bar, t1, r1))
         c(kc) should be (Value(kc, baz, t2, r2))
+    }
+  }
+
+  test("Resolve multiple kv pair, upreved intermixed 5-way with deletion and min/max") {
+    val r = TestReader(ida5, _ => ())
+    r.ok(0, v0, Set(), a0, c0, max1)
+    r.result should be (None)
+    r.ok(1, v0, Set(), a1, c1, min0, max1)
+    r.result should be (None)
+    r.ok(2, v0, Set(), a1, b1, c2, min0, max0)
+    r.result should be (None)
+    r.ok(3, v0, Set(), a1, b0, c2, min0)
+    r.result should be (None)
+    r.ok(4, v0, Set(), c2, max1)
+    r.result should not be (None)
+    r.result.get match {
+      case Left(_) => fail()
+      case Right(os) =>
+        val kvoss = os.asInstanceOf[KeyValueObjectState]
+        val c = kvoss.contents
+        c.size should be (2)
+        c(ka) should be (Value(ka, bar, t1, r1))
+        c(kc) should be (Value(kc, baz, t2, r2))
+        kvoss.minimum should be (Some(KeyValueObjectState.Min(kfoo, r0, t0)))
+        kvoss.maximum should be (Some(KeyValueObjectState.Max(kbar, r1, t1)))
+
     }
   }
 
