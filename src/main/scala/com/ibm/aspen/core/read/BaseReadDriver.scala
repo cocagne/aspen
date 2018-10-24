@@ -26,7 +26,16 @@ class BaseReadDriver(
     )(implicit ec: ExecutionContext) extends ReadDriver with Logging {
   
   import BaseReadDriver._
-  
+
+  /*
+
+  How to know which stores to reread from
+     - Readers could maintain a rereadCandidates: Set[DataStoreID]
+        on reception of new message, clear the store from the set
+        While trying to restore, if we see that the store is behind on any slice/kv-pair/min/max/whatever, put in set
+
+   */
+
   // Detect invalid combinations
   (objectPointer, readType) match {
     case (_:DataObjectPointer,     _:SingleKey)          => assert(false)

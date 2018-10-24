@@ -14,6 +14,13 @@ abstract class ObjectReader[PointerType <: ObjectPointer, StoreStateType <: Stor
 
   protected var responses: Map[DataStoreID, Either[ObjectReadError.Value, StoreStateType]] = Map()
   protected var endResult: Option[Either[ObjectReadError.Value, ObjectState]] = None
+  protected var knownBehind: Map[DataStoreID, HLCTimestamp] = Map()
+
+  /** Returns the map of store ids that are known to have returned responses with out-of-date results. The value
+    * is the read time of the returned read response. If a reread is also out-of-date the timestamp value will be
+    * updated. If the response is fully up-to-date, the store's entry will be removed from the map
+    */
+  def rereadCandidates: Map[DataStoreID, HLCTimestamp] = knownBehind
 
   def result: Option[Either[ObjectReadError.Value, ObjectState]] = endResult
 
@@ -31,6 +38,8 @@ abstract class ObjectReader[PointerType <: ObjectPointer, StoreStateType <: Stor
   }}
 
   def receiveReadResponse(response:ReadResponse): Option[Either[ObjectReadError.Value, ObjectState]] = {
+    knownBehind -= response.fromStore // Start fresh for this node
+
     response.result match {
       case Left(err) => responses += response.fromStore -> Left(err)
 
@@ -82,7 +91,14 @@ abstract class ObjectReader[PointerType <: ObjectPointer, StoreStateType <: Stor
       case Right(ss) => if (ss.timestamp > t._2) (ss.revision, ss.timestamp) else t
     }}
 
-    val storeStates = responses.values.collect{ case Right(ss) if ss.revision == mostRecent._1 => ss }.toList
+    //val storeStates = responses.values.collect{ case Right(ss) if ss.revision == mostRecent._1 => ss }.toList
+
+    val storeStates = responses.valuesIterator.collect { case Right(ss) => ss }.filter { ss =>
+      if (mostRecent._1 == ss.revision) true else {
+        knownBehind += ss.storeId -> ss.readTimestamp
+        false
+      }
+    }.toList
 
     if (storeStates.size >= threshold) {
       // The current refcount is the one with the highest updateSerial

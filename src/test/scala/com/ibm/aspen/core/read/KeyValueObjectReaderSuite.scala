@@ -119,6 +119,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     r.result should be (None)
     r.ok(1, v0, Set())
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set())
   }
 
   test("Resolve single kv pair, simple") {
@@ -127,6 +128,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     r.result should be (None)
     r.ok(1, v0, Set(), a0)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set())
     r.result.get match {
       case Left(_) => fail()
       case Right(os) => os.asInstanceOf[KeyValueObjectState].contents.head._2 should be (Value(ka, foo, t0, r0))
@@ -137,10 +139,13 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     val r = TestReader(ida3, _ => ())
     r.ok(0, v0, Set(), a0)
     r.result should be (None)
+    r.rereadCandidates.keySet should be (Set())
     r.ok(1, v0, Set(), a1)
     r.result should be (None)
+    r.rereadCandidates.keySet should be (Set(s0))
     r.ok(2, v0, Set(), a1)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set(s0))
     r.result.get match {
       case Left(_) => fail()
       case Right(os) => os.asInstanceOf[KeyValueObjectState].contents.head._2 should be (Value(ka, bar, t1, r1))
@@ -153,6 +158,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     r.result should be (None)
     r.ok(1, v0, Set(), b0, a0)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set())
     r.result.get match {
       case Left(_) => fail()
       case Right(os) =>
@@ -168,6 +174,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     r.result should be (None)
     r.ok(1, v0, Set(), c1, b0, a0)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set())
     r.result.get match {
       case Left(_) => fail()
       case Right(os) =>
@@ -182,10 +189,13 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     val r = TestReader(ida3, _ => ())
     r.ok(0, v0, Set(), a0, b1)
     r.result should be (None)
+    r.rereadCandidates.keySet should be (Set())
     r.ok(1, v0, Set(), a1, b0)
     r.result should be (None)
+    r.rereadCandidates.keySet.subsetOf(Set(s0, s1)) should be (true)
     r.ok(2, v0, Set(), a1, b1)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set(s0, s1))
     r.result.get match {
       case Left(_) => fail()
       case Right(os) =>
@@ -207,6 +217,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     r.result should be (None)
     r.ok(4, v0, Set(), b1, c2)
     r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set(s0, s1, s3))
     r.result.get match {
       case Left(_) => fail()
       case Right(os) =>
