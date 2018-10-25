@@ -95,7 +95,13 @@ class BaseReadDriver(
             case Left(ObjectReadError.InvalidLocalPointer) => Left(new InvalidObject(objectPointer))
             case Left(_) => Left(new CorruptedObject(objectPointer))
             case Right(os) =>
-              HLCTimestamp.update(os.timestamp)
+              // Ensure any commit transactions will use timestamps after all read objects last update time
+              os match {
+                case dos: DataObjectState => HLCTimestamp.update(dos.timestamp)
+                case kvos: KeyValueObjectState => HLCTimestamp.update(kvos.lastUpdateTimestamp)
+                case mos: MetadataObjectState => HLCTimestamp.update(mos.timestamp)
+              }
+
               Right(os)
           }
           promise.success(result)

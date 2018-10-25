@@ -101,9 +101,9 @@ object DataObjectState {
 }
 
 class KeyValueObjectState(
-    override val pointer: KeyValueObjectPointer, 
+    override val pointer: KeyValueObjectPointer,
     revision:ObjectRevision,
-    refcount:ObjectRefcount, 
+    refcount:ObjectRefcount,
     timestamp: HLCTimestamp,
     readTimestamp: HLCTimestamp,
     val minimum: Option[KeyValueObjectState.Min],
@@ -220,7 +220,9 @@ class KeyValueObjectState(
             right.map(_.timestamp).iterator ++
             contents.iterator.map(_._2.timestamp)
             
-    i.foldLeft(timestamp)( (maxts, ts) =>  if (ts > maxts) ts else maxts)
+    val maxContentTs = i.foldLeft(timestamp)( (maxts, ts) =>  if (ts > maxts) ts else maxts)
+
+    if (maxContentTs > timestamp) maxContentTs else timestamp
   }
   
   override def toString: String = {

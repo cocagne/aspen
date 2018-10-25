@@ -1,108 +1,18 @@
 sbt "test:testOnly *KeyValueListSuite"
 
-*** MESSENGERS
-  - Override multi-send functions in  TestNetwork. That might help
+Rebuild Rewrite
+  - DataStore has rebuild(message: ObjectRebuildContent): Future[Boolean]
+     - subclasses of ObjectRebuildContent for Data vs KV
+  - Content contains "if rev of this is XX set state to YY"
+  - Manually test rebuild via crafted messages passed to DataStore instance
+  - Read has store state
 
-* The reason it's always store 2 is because store 2 *walways* has its messages delivered last (iterate through list)
-   - And the TX will always act immediately upon detection of success, which can happen BEFORE the message to store 2
-     is delivered.
-
-* For missed TX completion
-  - Could be a bug in delivery of Accepted message to FA
-  - Intermittent nature suggests Future callack timing issues?
-  - BUT the fact that revisions don't always match suggests it COULD be a real miss
-
-* For reads
-  - Restoring 3 different things: Revision, Refcount, & Data
-     - For DataObjects, revision+data are paired
-     - For KeyValue objects, revision and data are independent
-        - can't drop data for non-matching revisions
-        - each KV pair is independently versioned
-        - Tx for updating revision can be independent of data. So "behind" on revision object slices may contain
-          up-to-date KV pairs
-
-* WHEN FA IS CRAEATED, dump Tx state to terminal
-  - Need to figure out why these aren't completing
-
-* Need to revamp read implementation. Something in here isn't right. Shouldn't be possible to hang
-
-* Transactions are hung in missed update FA
-  - Which is hung in a read
-    - Which is only started because the TX didn't get updates from all peers
-
-** HUNG Reads & Tests **
-  - Add 100% read, tx, FA complete to post-test system shutdown
-       .... we're seeing read/tx hang notifications after the test is reported as being successful
-
-
-Test Hangs
-  - Definitely transactions that hang with some kind of race condition
-     - 100 sequential tx test w/o reads hangs frequently
-  - We occasionally see "Marking Missed Update"
-  - NO retries are done by transaction drivers
-  ... All this suggests that messages are somehow either being dropped or not processed
-
-
-* Need to re-think the whole MutableObject structure
-   - It's racy. If load is called after commit, we may overwrite state that is mid-commit with old state
-   - Scrap the impl and come up with something cleaner
-   - Preserving the ability to fetch just metadata is nice but we could potentially handle that separately
-      - it's ONLY used for read optimizations. Never for transactions
-         - Some transactions could do without but leave that for a later optimization
-
-
-* Can we consolidte down to a single "DataObjectStoreState" and "KeyValueObjectStoreState" ?
-   - ideally defined in the objects package
-
-Store KVOS data: is a list of Value(key: Key, value: Array[Byte], timestamp: HLCTimestamp, revision: ObjectRevision)
-Store DOS data: Rev,TS,Data
-
-** can use object read timestamp to ensure that object state is more recent that local state
-   - Necessary for deletes. If successfully read object is *after* the state of a key that has apparently been
-     removed and that key is not currently locked (which would cause rebuild of that key to fail) then it can
-     be safely removed.
-
-Rebuilder takes rebuild(storeState, currentObject): List[RebuildAction]
-  - For client-side, opportunistic rebuild this results in a Message to store with encoded rebuild action
-  - For server-side, this results in a call to DataStore rebuild(objectPointer, List[RebuildAction])
-
-How to test?
-  - Call rebuild IFace directly with customized storeState
-  - Verify that RebuildAction is correct
-  - Then verify that individual stores apply RebuildActions to local store state correctly
-      - May want to borrow from low-level message handling tests to verify that locks are delt with appropriately
-      - Also avoids complexity of full-system tests
-
-* What if we did a more conservative rebuild impl? Treat all rebuilds as "opportunistic".
-    - Store ONLY supports:
-         rebuild(op: ObjectPointer, localRev: ObjectRevision, readTimestamp: HLCTimestamp, actions: List[RebuildActions]): Future[Boolean]
-
-         XXX rebuildDelete(op: ObjectPointer, localRevision: ObjectRevision): Future[Boolean]
-         XXX rebuild(dop: DataObjectPointer, localRev: ObjectRevision, ts:Timestamp, data: DataBuffer): Future[Boolean]
-         XXX rebuild(kop: KeyValueObjectPointer,  localRev: ObjectRevision, ts:Timestamp,
-                 add: List[KVRebuildAdd(Key,Rev,TS,Data)]
-                 update: List[(Key,ObjectRevision,ObjectRevision,TS,Data)],
-                 remove: List[(Key,Rev)]): Future[Boolean]
-
-    - If local state matches and isn't locked, save and return true. else return false
-       - for opportunistic rebuild, ignore return code
-       - for missedUpdateTree failure means we'll try again later
-
-    * Opportunistic Rebuild calls this directly
-    * Missed Update reads object and local state. If local state doesn't match, call rebuild.
-
-
-* Rebuilder is an explicit Interface
-   DataStoreFrontend takes a factory function to creat one
-     - constructor takes pointer to DataStoreFrontend
-   DataStoreFrontend Has A Rebuilder instance
-     - Opportunistic messages are relayed to rebuilder instance
-   Rebuilder does its thing and calls
-      - getObject(rebuildUUID)
-      - tryRebuild(rebuildUUID, requiredRevision, requriedRefcount, metadata, data): Boolean
-          - If object matches requirements, save and return true. else dont and return false
-   ** Only synchronization requried is in tryRebuild
-      - which is guaranteed to have the object in question already loaded in memory (return false if not)
+  **** Messages generated by read would be different than messages generated by store
+  **** Does this need to be a local thing?
+     |-> how would remote rebuilder effeciently and correctly determine success?
+  ** Need to think this through from local and reader perspectives
+     |-> doesn't *have* to be identical. It'd be handy though
+     |-> Seems like there should be an elegant solution
 
 * Remove 5 file op retry limit from SimpleBaseFile
 
@@ -112,12 +22,6 @@ How to test?
    - KeyValueRevisionGuard
       - uses revision of kv-pair instead of top-level object revisio
 
-* Need Rebuild & Opportunistic Rebuild unit tests
-   - Refactor the design
-   - Create a DataStoreRebuilder
-      - This contains all the logic for opportunistic/error tree
-      - Uses frontend API (may need custom methods)
-   - For tests, use frontend API to force-overwrite the object state for that store
 
 Base Transaction Messaging (failure free)
 1 Client -> All Stores (Prepare)
