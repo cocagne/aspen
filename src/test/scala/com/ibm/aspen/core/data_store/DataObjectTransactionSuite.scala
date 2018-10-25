@@ -39,12 +39,12 @@ object DataObjectTransactionSuite {
   val allocRev = ObjectRevision.Null
   val oneRef = ObjectRefcount(0,1)
   
-  val timestamp = HLCTimestamp.now
+  def timestamp: HLCTimestamp = HLCTimestamp.now
   
   def mkObjPtr(objUUID:UUID, sp:StorePointer) = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), (sp::Nil).toArray)
   
   def mktxd(reqs: List[TransactionRequirement], txdUUID:UUID=txUUID) = {
-    TransactionDescription(txdUUID, 100, allocObj, 0, reqs, Nil)
+    TransactionDescription(txdUUID, timestamp.asLong, allocObj, 0, reqs, Nil)
   }
   
   def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, DataBuffer(ByteBuffer.allocate(0)))))
@@ -160,10 +160,12 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
+
+    val ts = timestamp
     
-    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, allocObj, allocRev)
+    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, ts, txUUID, allocObj, allocRev)
             
-    val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, timestamp), icontent, Nil, Set())
+    val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, ts), icontent, Nil, Set())
     
     futureResponse flatMap { either => either match {
       case Right(ars) => ds.getObject(mkObjPtr(uuid0, ars.storePointer)).flatMap(er => er match {
@@ -475,6 +477,8 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val op0 = mkObjPtr(uuid0, sp0)
     val op1 = mkObjPtr(uuid1, sp1)
     val txd = mktxd(DataUpdate(op0, irev, DataUpdateOperation.Overwrite) :: Nil)
+
+    val txd1ts = HLCTimestamp(txd.startTimestamp)
                      
     val tx2UUID = new UUID(99,99)
     
@@ -488,16 +492,16 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     errs.isEmpty should be (true)
     
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0))
-    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent1))
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0), ignoreTimestamp = true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent1), ignoreTimestamp = true)
     
     // Commit different Tx. Data revision should stay the same on op0 but refcount should change for op1
     Await.result(ds.commitTransactionUpdates(txd2, lu), awaitDuration)
     
-    val txdts = HLCTimestamp(txd2.startTimestamp)
-    
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0))
-    checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
+    val txd2ts = HLCTimestamp(txd2.startTimestamp)
+
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), Some(icontent0), ignoreTimestamp = true)
+    checkState(ds, op1, ObjectMetadata(irev, newRef, txd2ts), Nil, Some(icontent1))
   }
   
   test("Commit Unlocked Transaction with Missing Data") {
@@ -517,7 +521,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val txdts = HLCTimestamp(txd.startTimestamp)
     
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent0))
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil, Some(icontent0), ignoreTimestamp = true)
     checkState(ds, op1, ObjectMetadata(irev, newRef, txdts), Nil, Some(icontent1))
   }
   
@@ -583,8 +587,8 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
-    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), ignoreTimestamp = true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), ignoreTimestamp = true)
     
     val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
     
@@ -606,8 +610,8 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionReadLock(txd)))
-    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)))
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), List(RevisionReadLock(txd)), ignoreTimestamp = true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RevisionWriteLock(txd)), ignoreTimestamp = true)
     
     val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
     
@@ -631,8 +635,8 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     errs should be (Nil)
     
-    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil)
-    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RefcountWriteLock(txd)))
+    checkState(ds, op0, ObjectMetadata(irev, oneRef, timestamp), Nil, ignoreTimestamp = true)
+    checkState(ds, op1, ObjectMetadata(irev, oneRef, timestamp), List(RefcountWriteLock(txd)), ignoreTimestamp = true)
     
     val txd2 = mktxd(RefcountUpdate(op1, oneRef, newRef) :: Nil, new UUID(99,99))
     

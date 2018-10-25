@@ -45,7 +45,7 @@ object KeyValueObjectTransactionSuite {
   def mkObjPtr(objUUID:UUID, sp:StorePointer) = KeyValueObjectPointer(objUUID, poolUUID, None, ida, (sp::Nil).toArray)
   
   def mktxd(reqs: List[TransactionRequirement], txdUUID:UUID=txUUID) = {
-    TransactionDescription(txdUUID, 100, allocObj, 0, reqs, Nil)
+    TransactionDescription(txdUUID, HLCTimestamp.now.asLong, allocObj, 0, reqs, Nil)
   }
   
   def lu(op: ObjectPointer, db: DataBuffer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(op.uuid, db)))

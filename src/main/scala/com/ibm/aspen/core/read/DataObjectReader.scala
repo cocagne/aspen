@@ -5,7 +5,7 @@ import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 
 class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, reread: DataStoreID => Unit)
-  extends ObjectReader[DataObjectPointer, DataObjectStoreState](metadataOnly, pointer, reread) {
+  extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](metadataOnly, pointer, reread) {
 
   override protected def createObjectState(storeId:DataStoreID, readTime: HLCTimestamp, cs: ReadResponse.CurrentState): DataObjectStoreState = {
     new DataObjectStoreState(storeId, cs.revision, cs.refcount, cs.timestamp, readTime, cs.sizeOnStore, cs.objectData)

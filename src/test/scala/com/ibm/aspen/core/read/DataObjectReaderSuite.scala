@@ -10,7 +10,7 @@ import org.scalatest.{FunSuite, Matchers}
 
 object DataObjectReaderSuite {
   class TestReader(pointer: DataObjectPointer, reread: DataStoreID => Unit)
-    extends ObjectReader[DataObjectPointer, DataObjectStoreState](false, pointer, reread) {
+    extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](false, pointer, reread) {
 
     var rstates: Option[List[StoreState]] = None
 

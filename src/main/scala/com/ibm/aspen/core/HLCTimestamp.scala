@@ -42,12 +42,16 @@ object HLCTimestamp {
   
   def apply(): HLCTimestamp = synchronized {
     val n = HLCTimestamp(getWallTime)
-    
-     if (n > last)
+
+    val oldLast = last
+
+    if (n > last)
       last = n
     else
       last = HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
-    
+
+    assert(last > oldLast)
+
     last
   }
   

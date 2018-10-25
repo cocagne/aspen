@@ -1,7 +1,5 @@
 package com.ibm.aspen.core.read
 
-import java.util.UUID
-
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
@@ -17,7 +15,7 @@ object KeyValueObjectReader {
 }
 
 class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer, reread: DataStoreID => Unit)
-  extends ObjectReader[KeyValueObjectPointer, KeyValueObjectStoreState](metadataOnly, pointer, reread) {
+  extends BaseObjectReader[KeyValueObjectPointer, KeyValueObjectStoreState](metadataOnly, pointer, reread) {
 
   import KeyValueObjectReader._
 

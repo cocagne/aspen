@@ -176,22 +176,24 @@ class MutableTieredListSuite extends TestSystemSuite {
     val bulk = new Array[Byte](50)
     
     implicit val tx = sys.newTransaction()
-    
+
     for {
       l0 <- alloc(None, None, None, List((key0 -> bulk), (key1 -> bulk), (key2 -> bulk), (key3 -> bulk)))
-      
+
       tkvl <- mk(l0, kvPairLimit=4)
-      
+
       node0 <- tkvl.fetchMutableNode(target)
       
       inserts = List((key4,bulk), (target,value))
       deletes = Nil
       requirements = Nil
-      
+
       txPrepped <- node0.prepreUpdateTransaction(inserts, deletes, requirements)
+
       txDone <- tx.commit()
-      
+
       finalizersDone <- waitForTransactionsComplete()
+
 
       ovalue0 <- tkvl.get(target)
       

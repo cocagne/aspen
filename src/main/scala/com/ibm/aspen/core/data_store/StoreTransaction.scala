@@ -301,8 +301,9 @@ class StoreTransaction(val store: DataStoreFrontend,
           if (obj.revision != du.requiredRevision)
             err(RevisionMismatch(pointer, du.requiredRevision, obj.revision))
 
-          if (obj.timestamp > HLCTimestamp(txd.startTimestamp))
+          if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
             err(TransactionTimestampError(pointer))
+          }
 
           dataUpdates.get(obj.objectId.objectUUID) match {
             case None => err(MissingUpdateContent(pointer))
@@ -346,8 +347,9 @@ class StoreTransaction(val store: DataStoreFrontend,
                 if (obj.revision != requiredRevision)
                   err(RevisionMismatch(pointer, requiredRevision, obj.revision))
 
-                if (obj.timestamp > HLCTimestamp(txd.startTimestamp))
+                if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
                   err(TransactionTimestampError(pointer))
+                }
               }
 
               dataUpdates.get(obj.objectId.objectUUID) match {
@@ -389,8 +391,9 @@ class StoreTransaction(val store: DataStoreFrontend,
                     val ov = kvoss.idaEncodedContents.get(req.key)
 
                     ov.foreach { v =>
-                      if (v.timestamp > HLCTimestamp(txd.startTimestamp))
+                      if (v.timestamp > HLCTimestamp(txd.startTimestamp)) {
                         err(TransactionTimestampError(pointer))
+                      }
                     }
 
                     kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
@@ -425,7 +428,7 @@ class StoreTransaction(val store: DataStoreFrontend,
 
       }
     }
-
+    //errors.foreach{e => println(s"ERR ${storeId.poolIndex}: $e")}
     errors
   }
 
