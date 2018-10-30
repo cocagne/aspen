@@ -20,43 +20,46 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
   def >(rhs: HLCTimestamp): Boolean = compareTo(rhs) > 0
   def <(rhs: HLCTimestamp): Boolean = compareTo(rhs) < 0
   
-  override def toString(): String = s"HLCTimestamp($longValue)"
+  override def toString: String = s"HLCTimestamp($longValue)"
 }
 
 object HLCTimestamp {
   
-  private def getWallTime(): Long = System.currentTimeMillis() << 16
-  
-  private[this] var last: HLCTimestamp = HLCTimestamp(getWallTime)
-  
+  private def currentWallTime: Long = System.currentTimeMillis() << 16
+
+  private[this] var last: HLCTimestamp = HLCTimestamp(currentWallTime)
+
   def update(seen: HLCTimestamp): Unit = synchronized {
-    if (seen > last) 
+    if (seen > last)
       last = seen
   }
-  
+
   def now: HLCTimestamp = HLCTimestamp()
 
   val Zero = HLCTimestamp(0)
-  
+
   def apply(longValue: Long): HLCTimestamp = new HLCTimestamp(longValue)
-  
+
   def apply(): HLCTimestamp = synchronized {
-    val n = HLCTimestamp(getWallTime)
+    val n = HLCTimestamp(currentWallTime)
 
     val oldLast = last
 
     if (n > last)
       last = n
-    else
-      last = HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
+    else {
+      val wall = last.asLong & ~0xFFFFL
+      val logical = (last.asLong & 0xFFFF) + 1
+      last = HLCTimestamp(wall | logical)
+    }
 
     assert(last > oldLast)
 
     last
   }
-  
+
   def happensAfter(ts: HLCTimestamp): HLCTimestamp = synchronized {
-    val n = HLCTimestamp(getWallTime)
+    val n = HLCTimestamp(currentWallTime)
     
     if (ts > last)
       last = ts
