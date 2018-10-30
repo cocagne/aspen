@@ -2,9 +2,10 @@ package com.ibm.aspen.core.data_store
 
 import java.util.UUID
 
-import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.{AspenSystem, ObjectReader}
 import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.read.OpportunisticRebuild
 import com.ibm.aspen.core.transaction._
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
@@ -304,4 +305,53 @@ class DataStoreFrontend(
       }
     }
   }
+
+  def preRebuildRevampRepairDataObject(reader: ObjectReader, pointer: DataObjectPointer): Future[Boolean] = pointer.getStorePointer(storeId) match {
+    case None => Future.successful(false)
+
+    case Some(storePointer) =>
+      val objectId = StoreObjectID(pointer.uuid, storePointer)
+
+      case class Snap(doss: DataObjectStoreState) {
+        val snapRevision: ObjectRevision = doss.revision
+      }
+
+      def repair(osnap: Option[Snap], dos: DataObjectState): Future[Boolean] = synchronized {
+
+        val meta = ObjectMetadata(dos.revision, dos.refcount, dos.timestamp)
+
+        osnap match {
+          case None => backend.putObject(objectId, meta, dos.getRebuildDataForStore(storeId).get).map(_ => true)
+
+          case Some(snap) =>
+
+            val fresult = if (snap.doss.revision == snap.snapRevision && snap.doss.locks.isEmpty)
+              backend.putObject(objectId, meta, dos.getRebuildDataForStore(storeId).get).map(_ => true)
+            else
+              Future.successful(false)
+
+            fresult.foreach(_ => snap.doss.decref())
+
+            fresult
+        }
+      }
+
+      val fsnap = loadObject(pointer, obj => {
+        obj.incref()
+        obj.loadBoth()
+      }).loadBoth().map {
+        case Left(_) => None
+        case Right(os) => synchronized {
+          Some(Snap(os.asInstanceOf[DataObjectStoreState]))
+        }
+      }
+
+      for {
+        osnap <- fsnap
+        dos <- reader.readObject(pointer)
+        result <- repair(osnap, dos)
+      } yield result
+  }
+
+
 }

@@ -1,5 +1,19 @@
 sbt "test:testOnly *KeyValueListSuite"
 
+Local Rebuild Take 2
+  - At beginning of rebuild load local state
+  - If no locks, set Rebuilding flag which prevents all Tx locks until cleared
+     |-> ALSO incr refcount
+  - Otherwise, set PendingRebuild: Option[Promise[Unit]]
+     |-> When locks goes empty, set rebuilding and trigger promise
+  - Rebuild process is then guaranteed that the local object will not change during rebuild process and that we
+    won't violate any promises.
+  - Read begins *after* lock happens so read state will always be more current than local state
+  - Read full object and set local state to full object content.
+     |-> No need to differentiate between Data & KV objects
+  - Decr refcount on finish
+  - Can optimize later
+
 
 Opportunistic Rebuild
   - Cannot reliably repair deleted KV pairs
@@ -14,26 +28,6 @@ Opportunistic Rebuild
   - Manually test rebuild via crafted messages passed to DataStore instance
   - Manually test creation of ObjectRebuildContent via custom ReadResponse messages passed to object reader
      - reuse methods in KeyValueObjectReaderSuite
-
-
-Local Rebuild
-  - This is the more reliable method
-  - Read local state & snapshot (key,revision,ts) tuples (for deletion detection)
-  - Afterwards Read Object (guarantees that object read occurrs after local key,rev,ts snapshot)
-      - Delete all local keys not in read object. IFF rev matches snapshot version && not locked
-      - For each key in object, update IFF rev matches snapshot version && not locked
-      - Track whether all desired updates are made. Rebuild Complete if ALL made or no changes need to be made else
-        it will need to be re-done (tx interrupted rebuild process)
-  - Impl as
-       * snapshotStateForRepair(pointer)
-       * repair(snapshotState, currentObjectState)
-    - allows for unit tests
-  - Wrapper method is
-      * BeginRepairOperation(repairUUID) (to hold object in memory)
-      * snapshotState
-      * readObject
-      * repair
-      * if total success, update repair list. Else continue on
 
 
 * Remove 5 file op retry limit from SimpleBaseFile
