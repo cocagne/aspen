@@ -204,6 +204,8 @@ class StoreTransaction(val store: DataStoreFrontend,
               }
           }
       }
+
+      obj.releasedLocks()
     }
 
     unblockDelayedTransactions()
@@ -294,138 +296,142 @@ class StoreTransaction(val store: DataStoreFrontend,
     obj.loadError match {
       case Some(readErr) => err(TransactionReadError(pointer, readErr))
 
-      case None => requirement match {
-        case du: DataUpdate =>
-          obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+      case None =>
 
-          if (obj.revision != du.requiredRevision)
-            err(RevisionMismatch(pointer, du.requiredRevision, obj.revision))
+        if (obj.rebuildPreventsTransactionFromCommitting(txd))
+          err(RebuildCollision(pointer))
 
-          if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
-            err(TransactionTimestampError(pointer))
-          }
+        requirement match {
+          case du: DataUpdate =>
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
 
-          dataUpdates.get(obj.objectId.objectUUID) match {
-            case None => err(MissingUpdateContent(pointer))
+            if (obj.revision != du.requiredRevision)
+              err(RevisionMismatch(pointer, du.requiredRevision, obj.revision))
 
-            case Some(data) =>
-              val haveSpace = du.operation match {
-                case DataUpdateOperation.Overwrite => store.backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
-                case DataUpdateOperation.Append    => store.backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
-              }
-              if (!haveSpace)
-                err(InsufficientFreeSpace(pointer))
-          }
+            if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
+              err(TransactionTimestampError(pointer))
+            }
 
+            dataUpdates.get(obj.objectId.objectUUID) match {
+              case None => err(MissingUpdateContent(pointer))
 
-        case ru: RefcountUpdate =>
-          obj.getTransactionPreventingRefcountWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
-
-          if (obj.refcount != ru.requiredRefcount)
-            err(RefcountMismatch(pointer, ru.requiredRefcount, obj.refcount))
-
-
-        case vb: VersionBump =>
-          obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
-
-          if (obj.revision != vb.requiredRevision)
-            err(RevisionMismatch(pointer, vb.requiredRevision, obj.revision))
-
-        case rl: RevisionLock =>
-          obj.getTransactionPreventingRevisionReadLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
-
-          if (obj.revision != rl.requiredRevision)
-            err(RevisionMismatch(pointer, rl.requiredRevision, obj.revision))
-
-        case kv: KeyValueUpdate =>
-          obj match {
-            case kvobj: KeyValueObjectStoreState =>
-
-              kv.requiredRevision.foreach { requiredRevision =>
-                obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
-
-                if (obj.revision != requiredRevision)
-                  err(RevisionMismatch(pointer, requiredRevision, obj.revision))
-
-                if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
-                  err(TransactionTimestampError(pointer))
+              case Some(data) =>
+                val haveSpace = du.operation match {
+                  case DataUpdateOperation.Overwrite => store.backend.haveFreeSpaceForOverwrite(obj.objectId, obj.data.size, data.size)
+                  case DataUpdateOperation.Append    => store.backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
                 }
-              }
+                if (!haveSpace)
+                  err(InsufficientFreeSpace(pointer))
+            }
 
-              dataUpdates.get(obj.objectId.objectUUID) match {
-                case None => err(MissingUpdateContent(pointer))
 
-                case Some(data) =>
-                  val haveSpace = kv.updateType match {
-                    case KeyValueUpdate.UpdateType.Update =>
+          case ru: RefcountUpdate =>
+            obj.getTransactionPreventingRefcountWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
 
-                      val meetsSizeRequirement = requirement.objectPointer.size match {
-                        case None => true
-                        case Some(maxSize) =>
-                          val kvoss = obj.asInstanceOf[KeyValueObjectStoreState].kvcontent
+            if (obj.refcount != ru.requiredRefcount)
+              err(RefcountMismatch(pointer, ru.requiredRefcount, obj.refcount))
 
-                          val updatedKvoss = kvoss.update(data, ObjectRevision(txd.transactionUUID), HLCTimestamp(txd.startTimestamp))
 
-                          updatedKvoss.encodedSize <= maxSize
-                      }
-                      meetsSizeRequirement && store.backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
-                  }
+          case vb: VersionBump =>
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
 
-                  if (!haveSpace)
-                    err(InsufficientFreeSpace(pointer))
-              }
+            if (obj.revision != vb.requiredRevision)
+              err(RevisionMismatch(pointer, vb.requiredRevision, obj.revision))
 
-              if (kv.requirements.nonEmpty) {
+          case rl: RevisionLock =>
+            obj.getTransactionPreventingRevisionReadLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
 
-                val kvoss = kvobj.kvcontent
+            if (obj.revision != rl.requiredRevision)
+              err(RevisionMismatch(pointer, rl.requiredRevision, obj.revision))
 
-                val objectLocked = kvobj.objectRevisionWriteLock match {
-                  case None => false
-                  case Some(lockedTxd) => lockedTxd.transactionUUID != txd.transactionUUID
-                }
+          case kv: KeyValueUpdate =>
+            obj match {
+              case kvobj: KeyValueObjectStoreState =>
 
-                if (objectLocked) {
-                  err(TransactionCollision(pointer, kvobj.objectRevisionWriteLock.get))
-                } else {
-                  kv.requirements.foreach { req =>
-                    val ov = kvoss.idaEncodedContents.get(req.key)
+                kv.requiredRevision.foreach { requiredRevision =>
+                  obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
 
-                    ov.foreach { v =>
-                      if (v.timestamp > HLCTimestamp(txd.startTimestamp)) {
-                        err(TransactionTimestampError(pointer))
-                      }
-                    }
+                  if (obj.revision != requiredRevision)
+                    err(RevisionMismatch(pointer, requiredRevision, obj.revision))
 
-                    kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
-                      if (lockedTxd.transactionUUID != txd.transactionUUID)
-                        err(KeyValueRequirementError(pointer, req.key))
-                    }
-
-                    req.tsRequirement match {
-                      case KeyValueUpdate.TimestampRequirement.Equals => ov match {
-                        case None => err(KeyValueRequirementError(pointer, req.key))
-                        case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(pointer, req.key))
-                      }
-                      case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
-                        case None => err(KeyValueRequirementError(pointer, req.key))
-                        case Some(v) => if (req.timestamp.asLong >= v.timestamp.asLong) err(KeyValueRequirementError(pointer, req.key))
-                      }
-                      case KeyValueUpdate.TimestampRequirement.Exists => ov match {
-                        case None => err(KeyValueRequirementError(pointer, req.key))
-                        case Some(_) =>
-                      }
-                      case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
-                        case None =>
-                        case Some(_) => err(KeyValueRequirementError(pointer, req.key))
-                      }
-                    }
+                  if (obj.timestamp > HLCTimestamp(txd.startTimestamp)) {
+                    err(TransactionTimestampError(pointer))
                   }
                 }
-              }
 
-            case _ => err(InvalidObjectType(pointer))
-          }
+                dataUpdates.get(obj.objectId.objectUUID) match {
+                  case None => err(MissingUpdateContent(pointer))
 
+                  case Some(data) =>
+                    val haveSpace = kv.updateType match {
+                      case KeyValueUpdate.UpdateType.Update =>
+
+                        val meetsSizeRequirement = requirement.objectPointer.size match {
+                          case None => true
+                          case Some(maxSize) =>
+                            val kvoss = obj.asInstanceOf[KeyValueObjectStoreState].kvcontent
+
+                            val updatedKvoss = kvoss.update(data, ObjectRevision(txd.transactionUUID), HLCTimestamp(txd.startTimestamp))
+
+                            updatedKvoss.encodedSize <= maxSize
+                        }
+                        meetsSizeRequirement && store.backend.haveFreeSpaceForAppend(obj.objectId, obj.data.size, obj.data.size + data.size)
+                    }
+
+                    if (!haveSpace)
+                      err(InsufficientFreeSpace(pointer))
+                }
+
+                if (kv.requirements.nonEmpty) {
+
+                  val kvoss = kvobj.kvcontent
+
+                  val objectLocked = kvobj.objectRevisionWriteLock match {
+                    case None => false
+                    case Some(lockedTxd) => lockedTxd.transactionUUID != txd.transactionUUID
+                  }
+
+                  if (objectLocked) {
+                    err(TransactionCollision(pointer, kvobj.objectRevisionWriteLock.get))
+                  } else {
+                    kv.requirements.foreach { req =>
+                      val ov = kvoss.idaEncodedContents.get(req.key)
+
+                      ov.foreach { v =>
+                        if (v.timestamp > HLCTimestamp(txd.startTimestamp)) {
+                          err(TransactionTimestampError(pointer))
+                        }
+                      }
+
+                      kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
+                        if (lockedTxd.transactionUUID != txd.transactionUUID)
+                          err(KeyValueRequirementError(pointer, req.key))
+                      }
+
+                      req.tsRequirement match {
+                        case KeyValueUpdate.TimestampRequirement.Equals => ov match {
+                          case None => err(KeyValueRequirementError(pointer, req.key))
+                          case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(pointer, req.key))
+                        }
+                        case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
+                          case None => err(KeyValueRequirementError(pointer, req.key))
+                          case Some(v) => if (req.timestamp.asLong >= v.timestamp.asLong) err(KeyValueRequirementError(pointer, req.key))
+                        }
+                        case KeyValueUpdate.TimestampRequirement.Exists => ov match {
+                          case None => err(KeyValueRequirementError(pointer, req.key))
+                          case Some(_) =>
+                        }
+                        case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
+                          case None =>
+                          case Some(_) => err(KeyValueRequirementError(pointer, req.key))
+                        }
+                      }
+                    }
+                  }
+                }
+
+              case _ => err(InvalidObjectType(pointer))
+            }
       }
     }
     //errors.foreach{e => println(s"ERR ${storeId.poolIndex}: $e")}

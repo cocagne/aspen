@@ -1,5 +1,7 @@
 sbt "test:testOnly *KeyValueListSuite"
 
+Test Rebuild Process
+
 Local Rebuild Take 2
   - At beginning of rebuild load local state
   - If no locks, set Rebuilding flag which prevents all Tx locks until cleared
@@ -11,6 +13,8 @@ Local Rebuild Take 2
   - Read begins *after* lock happens so read state will always be more current than local state
   - Read full object and set local state to full object content.
      |-> No need to differentiate between Data & KV objects
+     |-> Update IN-MEM state then flush to backend
+         |-> forgot this part last time
   - Decr refcount on finish
   - Can optimize later
 

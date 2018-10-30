@@ -337,8 +337,8 @@ class CodecSuite extends FunSuite with Matchers {
     val uuid2 = new UUID(2,2)
     
     val txtpl = (txd2.transactionUUID, HLCTimestamp(txd2.startTimestamp))
-    val e1 = UpdateErrorResponse(uuid1, UpdateError.Collision, Some(ObjectRevision(new UUID(0,1))), Some(ObjectRefcount(1,1)), Some(txtpl))
-    val e2 = UpdateErrorResponse(uuid2, UpdateError.Collision, None, None, None)
+    val e1 = UpdateErrorResponse(uuid1, UpdateError.TransactionCollision, Some(ObjectRevision(new UUID(0,1))), Some(ObjectRefcount(1,1)), Some(txtpl))
+    val e2 = UpdateErrorResponse(uuid2, UpdateError.TransactionCollision, None, None, None)
     
     val prep = TxPrepareResponse(
         to,

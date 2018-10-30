@@ -281,7 +281,8 @@ object NetworkCodec {
     case UpdateError.InvalidLocalPointer      => P.UpdateError.InvalidLocalPointer
     case UpdateError.RevisionMismatch         => P.UpdateError.RevisionMismatch
     case UpdateError.RefcountMismatch         => P.UpdateError.RefcountMismatch
-    case UpdateError.Collision                => P.UpdateError.Collision
+    case UpdateError.TransactionCollision     => P.UpdateError.TransactionCollision
+    case UpdateError.RebuildCollision         => P.UpdateError.RebuildCollision
     case UpdateError.CorruptedObject          => P.UpdateError.CorruptedObject
     case UpdateError.InsufficientFreeSpace    => P.UpdateError.InsufficientFreeSpace
     case UpdateError.InvalidObjectType        => P.UpdateError.InvalidObjectType
@@ -294,7 +295,8 @@ object NetworkCodec {
     case P.UpdateError.InvalidLocalPointer      => UpdateError.InvalidLocalPointer
     case P.UpdateError.RevisionMismatch         => UpdateError.RevisionMismatch
     case P.UpdateError.RefcountMismatch         => UpdateError.RefcountMismatch
-    case P.UpdateError.Collision                => UpdateError.Collision
+    case P.UpdateError.TransactionCollision     => UpdateError.TransactionCollision
+    case P.UpdateError.RebuildCollision         => UpdateError.RebuildCollision
     case P.UpdateError.CorruptedObject          => UpdateError.CorruptedObject
     case P.UpdateError.InsufficientFreeSpace    => UpdateError.InsufficientFreeSpace
     case P.UpdateError.InvalidObjectType        => UpdateError.InvalidObjectType

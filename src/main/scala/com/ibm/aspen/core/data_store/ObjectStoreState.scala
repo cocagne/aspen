@@ -68,6 +68,46 @@ sealed abstract class ObjectStoreState(val frontend: DataStoreFrontend,
   def refcount: ObjectRefcount = meta.refcount
   def timestamp: HLCTimestamp = meta.timestamp
 
+  /** When set, a rebuild operation is either queued or in-progress. All locks should be denied and no modifications
+    * are allowed while this flag is outstanding
+    */
+  private[this] var orebuildPromise: Option[Promise[Unit]] = None
+  private[this] var preRebuildLocks: Set[UUID] = Set()
+
+  def rebuilding: Boolean = orebuildPromise.nonEmpty
+
+  def rebuildPreventsTransactionFromCommitting(txd: TransactionDescription): Boolean = {
+    rebuilding && ! preRebuildLocks.contains(txd.transactionUUID)
+  }
+
+  /** Sets the rebuild flag, increments the refcount to ensure the object isn't released from memory before the
+    * rebuild operation completes, and returns a future that will complete after the data is loaded an all locks
+    * have been released. Note that the data/metadata NOT guaranteed to have been loaded yet.
+    */
+  def beginRebuild(): Future[Unit] = {
+    assert(!rebuilding)
+    incref()
+    val currentLocks = locks
+    val p = Promise[Unit]()
+    orebuildPromise = Some(p)
+    preRebuildLocks = currentLocks.map(l => l.txd.transactionUUID).toSet
+    if (currentLocks.isEmpty)
+      p.success(())
+    p.future
+  }
+
+  def completeRebuild(): Unit = {
+    orebuildPromise = None
+    preRebuildLocks = Set()
+    decref()
+  }
+
+  // Called when locks for a requirement referencing this object is released
+  def releasedLocks(): Unit = orebuildPromise.foreach { p =>
+    if (!p.isCompleted && locks.isEmpty)
+      p.success(())
+  }
+
   protected def dataUpdated(): Unit = {}
 
   protected def convertAllocationData(metadata: ObjectMetadata, allocData: DataBuffer): DataBuffer = allocData

@@ -306,52 +306,52 @@ class DataStoreFrontend(
     }
   }
 
-  def preRebuildRevampRepairDataObject(reader: ObjectReader, pointer: DataObjectPointer): Future[Boolean] = pointer.getStorePointer(storeId) match {
+  def rebuildObject(reader: ObjectReader, pointer: ObjectPointer): Future[Boolean] = pointer.getStorePointer(storeId) match {
     case None => Future.successful(false)
 
     case Some(storePointer) =>
       val objectId = StoreObjectID(pointer.uuid, storePointer)
+      val obj = loadObject(pointer, _.loadBoth())
 
-      case class Snap(doss: DataObjectStoreState) {
-        val snapRevision: ObjectRevision = doss.revision
-      }
+      def rebuild(os: ObjectState): Future[Boolean] = synchronized {
 
-      def repair(osnap: Option[Snap], dos: DataObjectState): Future[Boolean] = synchronized {
+        val meta = ObjectMetadata(os.revision, os.refcount, os.timestamp)
 
-        val meta = ObjectMetadata(dos.revision, dos.refcount, dos.timestamp)
+        obj.loadError match {
+          case Some(_) => backend.putObject(objectId, meta, os.getRebuildDataForStore(storeId).get).map(_ => true)
 
-        osnap match {
-          case None => backend.putObject(objectId, meta, dos.getRebuildDataForStore(storeId).get).map(_ => true)
+          case None =>
 
-          case Some(snap) =>
+            obj.metadata = meta
+            obj.data = os.getRebuildDataForStore(storeId).get
 
-            val fresult = if (snap.doss.revision == snap.snapRevision && snap.doss.locks.isEmpty)
-              backend.putObject(objectId, meta, dos.getRebuildDataForStore(storeId).get).map(_ => true)
-            else
-              Future.successful(false)
-
-            fresult.foreach(_ => snap.doss.decref())
-
-            fresult
+            obj.commitBoth().map(_ => true)
         }
       }
 
-      val fsnap = loadObject(pointer, obj => {
-        obj.incref()
-        obj.loadBoth()
-      }).loadBoth().map {
-        case Left(_) => None
-        case Right(os) => synchronized {
-          Some(Snap(os.asInstanceOf[DataObjectStoreState]))
+      if (obj.rebuilding)
+        Future.successful(false)
+      else {
+        /*
+        The beginRebuild call prevents future transactions from modifying the local object state while the rebuild
+        process is active. The returned future from the call completes when all outstanding transactions to which we've
+        made promises (active locks) have completed. AFTER that point, we read the current state of the object so the
+        read content is guaranteed to be more up-to-date than our local state. We then derive our local state from the
+        full object and overwrite our previous state
+        */
+        val frebuild = for {
+          _ <- obj.loadBoth()
+          _ <- obj.beginRebuild()
+          os <- reader.readObject(pointer)
+          result <- rebuild(os)
+        } yield {
+          result
         }
-      }
 
-      for {
-        osnap <- fsnap
-        dos <- reader.readObject(pointer)
-        result <- repair(osnap, dos)
-      } yield result
+        // Unconditionally release rebuild lock when process completes
+        frebuild onComplete( _ => obj.completeRebuild() )
+
+        frebuild
+      }
   }
-
-
 }

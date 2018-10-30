@@ -364,7 +364,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
+                UpdateErrorResponse(op.uuid, UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -438,7 +438,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.Collision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
+                UpdateErrorResponse(op.uuid, UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { 
       

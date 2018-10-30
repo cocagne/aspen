@@ -85,3 +85,6 @@ case class KeyValueRequirementError(objectPointer: ObjectPointer, key: Key) exte
 
 /** Indicates that the transaction timestamp is less than the timestamp of the object/kv-pair */
 case class TransactionTimestampError(objectPointer: ObjectPointer) extends ObjectTransactionError
+
+/** Indicates that the transaction timestamp is less than the timestamp of the object/kv-pair */
+case class RebuildCollision(objectPointer: ObjectPointer) extends ObjectTransactionError
