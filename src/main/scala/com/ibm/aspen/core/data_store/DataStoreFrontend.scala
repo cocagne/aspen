@@ -329,7 +329,9 @@ class DataStoreFrontend(
         }
       }
 
-      if (obj.rebuilding)
+      val alreadyRebuilding = synchronized { obj.rebuilding }
+
+      if (alreadyRebuilding)
         Future.successful(false)
       else {
         /*
@@ -340,8 +342,8 @@ class DataStoreFrontend(
         full object and overwrite our previous state
         */
         val frebuild = for {
-          _ <- obj.loadBoth()
-          _ <- obj.beginRebuild()
+          _ <- synchronized { obj.loadBoth() }
+          _ <- synchronized { obj.beginRebuild() }
           os <- reader.readObject(pointer)
           result <- rebuild(os)
         } yield {
@@ -349,7 +351,7 @@ class DataStoreFrontend(
         }
 
         // Unconditionally release rebuild lock when process completes
-        frebuild onComplete( _ => obj.completeRebuild() )
+        frebuild onComplete( _ => synchronized { obj.completeRebuild() })
 
         frebuild
       }
