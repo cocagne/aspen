@@ -1,13 +1,14 @@
 package com.ibm.aspen.base
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
 import java.util.UUID
-import com.ibm.aspen.core.objects.StorePointer
+
 import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.objects.ObjectPointer
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object MissedUpdateIterator {
-  case class Entry(objectUUID: UUID, storePointer: StorePointer, timestamp: HLCTimestamp)
+  case class Entry(objectUUID: UUID, pointer: ObjectPointer, timestamp: HLCTimestamp)
 }
 
 trait MissedUpdateIterator {

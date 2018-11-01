@@ -2,16 +2,17 @@ package com.ibm.aspen.core.data_store
 
 import java.util.UUID
 
-import com.ibm.aspen.base.{AspenSystem, ObjectReader}
+import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.base.{AspenSystem, MissedUpdateIterator, ObjectReader}
 import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.objects._
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.read.OpportunisticRebuild
+import com.ibm.aspen.core.read.{InvalidObject, OpportunisticRebuild}
 import com.ibm.aspen.core.transaction._
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import org.apache.logging.log4j.{LogManager, Logger}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 class DataStoreFrontend(
     val storeId: DataStoreID,
@@ -24,6 +25,7 @@ class DataStoreFrontend(
     val alloc:Logger  = LogManager.getLogger(this.getClass.getName + ".alloc")
     val read:Logger  = LogManager.getLogger(this.getClass.getName + ".read")
     val tx:Logger  = LogManager.getLogger(this.getClass.getName + ".tx")
+    val rebuild:Logger  = LogManager.getLogger(this.getClass.getName + ".rebuild")
   }
   
   override implicit val executionContext: ExecutionContext = backend.executionContext
@@ -31,7 +33,6 @@ class DataStoreFrontend(
 
   // TODO FIX REBUILD
   def opportunisticRebuild(message: OpportunisticRebuild): Unit = {}
-  def pollAndRepairMissedUpdates(system: AspenSystem): Unit = {}
 
 
   // The content of the following two maps are managed by instances of the StoreTransaction class
@@ -47,6 +48,8 @@ class DataStoreFrontend(
 
   // maps Object UUID to StoreObjectState
   private[this] var loadedObjects = Map[UUID, ObjectStoreState]()
+
+  private[this] var repairing: Boolean = false
   
   override val initialized: Future[DataStore] = synchronized {
     
@@ -313,20 +316,71 @@ class DataStoreFrontend(
       val objectId = StoreObjectID(pointer.uuid, storePointer)
       val obj = loadObject(pointer, _.loadBoth())
 
-      def rebuild(os: ObjectState): Future[Boolean] = synchronized {
 
-        val meta = ObjectMetadata(os.revision, os.refcount, os.timestamp)
+      def rebuild(): Future[Boolean] = {
+        val p = Promise[Boolean]()
 
-        obj.loadError match {
-          case Some(_) => backend.putObject(objectId, meta, os.getRebuildDataForStore(storeId).get).map(_ => true)
+        reader.readObject(pointer) onComplete {
+          case Failure(_: InvalidObject) =>
+            synchronized {
+              log.rebuild.debug(s"Rebuild complete for deleted object ${pointer.uuid}")
+              obj.deleted = true
+              obj.completeRebuild()
+              p.completeWith(backend.deleteObject(obj.objectId).map(_ => true))
+            }
 
-          case None =>
+          case Failure(_: com.ibm.aspen.core.read.CorruptedObject) =>
+            synchronized {
+              log.rebuild.error(s"Failed to repair CorruptedObject: ${pointer.uuid}")
+              obj.completeRebuild()
+              p.success(false)
+            }
 
-            obj.metadata = meta
-            obj.data = os.getRebuildDataForStore(storeId).get
+          case Failure(exception) =>
+            synchronized {
+              log.rebuild.error(s"Unexpected read error during rebuild of object ${pointer.uuid}: $exception")
+              obj.completeRebuild()
+              p.success(false)
+            }
 
-            obj.commitBoth().map(_ => true)
+          case Success(os) =>
+            synchronized {
+              val meta = ObjectMetadata(os.revision, os.refcount, os.timestamp)
+
+              obj.loadError match {
+                case Some(_) =>
+                  backend.putObject(objectId, meta, os.getRebuildDataForStore(storeId).get) onComplete {
+                    case Failure(_) =>
+                      synchronized {
+                        log.rebuild.debug(s"Failed to rebuild missed allocation of object ${pointer.uuid}")
+                        obj.completeRebuild()
+                        p.success(false)
+                      }
+
+                    case Success(_) =>
+                      synchronized {
+                        log.rebuild.debug(s"Rebuild complete for missed allocation of object ${pointer.uuid}")
+                        obj.completeRebuild()
+                        p.success(true)
+                      }
+                  }
+
+                case None =>
+                  obj.metadata = meta
+                  obj.data = os.getRebuildDataForStore(storeId).get
+
+                  obj.commitBoth().map { _ =>
+                    synchronized {
+                      log.rebuild.debug(s"Rebuild complete for missed update of object ${pointer.uuid}")
+                      obj.completeRebuild()
+                      p.success(true)
+                    }
+                  }
+              }
+            }
         }
+
+        p.future
       }
 
       val alreadyRebuilding = synchronized { obj.rebuilding }
@@ -334,6 +388,7 @@ class DataStoreFrontend(
       if (alreadyRebuilding)
         Future.successful(false)
       else {
+        log.rebuild.debug(s"Beginning rebuilding of object ${pointer.uuid}")
         /*
         The beginRebuild call prevents future transactions from modifying the local object state while the rebuild
         process is active. The returned future from the call completes when all outstanding transactions to which we've
@@ -341,19 +396,58 @@ class DataStoreFrontend(
         read content is guaranteed to be more up-to-date than our local state. We then derive our local state from the
         full object and overwrite our previous state
         */
-        val frebuild = for {
+        for {
           _ <- synchronized { obj.loadBoth() }
           _ <- synchronized { obj.beginRebuild() }
-          os <- reader.readObject(pointer)
-          result <- rebuild(os)
-        } yield {
-          result
-        }
-
-        // Unconditionally release rebuild lock when process completes
-        frebuild onComplete( _ => synchronized { obj.completeRebuild() })
-
-        frebuild
+          result <- rebuild()
+        } yield result
       }
+  }
+
+  private def repairNext(mui: MissedUpdateIterator, system: AspenSystem): Unit = {
+    mui.fetchNext().map { _ =>
+      mui.entry match {
+        case None =>
+          log.rebuild.debug("Completed pass over missed updates log")
+          synchronized { repairing = false }
+
+        case Some(entry) =>
+          rebuildObject(system, entry.pointer) onComplete {
+            case Failure(exception) =>
+              log.rebuild.info(s"Error encountered during rebuild of object ${entry.objectUUID}: $exception")
+              repairNext(mui, system)
+
+            case Success(result) =>
+              if (result) {
+                log.rebuild.debug(s"Marking successful rebuild of object ${entry.objectUUID}")
+                mui.markRepaired() onComplete {
+                  case Failure(exception) =>
+                    log.rebuild.debug(s"Failed to mark object ${entry.objectUUID} as repaired: $exception")
+                    repairNext(mui, system)
+
+                  case Success(_) =>
+                    log.rebuild.debug(s"Completed marking successful rebuild of object ${entry.objectUUID}")
+                    repairNext(mui, system)
+                }
+              } else {
+                log.rebuild.debug(s"Failed to rebuild ${entry.objectUUID}. Continuing to next missed update")
+                repairNext(mui, system)
+              }
+          }
+      }
+    }.failed.foreach { _ =>
+      synchronized {
+        repairing = false
+      }
+    }
+  }
+
+  def pollAndRepairMissedUpdates(system: AspenSystem): Unit = synchronized {
+    if (!repairing) {
+      log.rebuild.debug("Beginning pass over missed updates log")
+      system.getStoragePool(storeId.poolUUID).foreach { pool =>
+        repairNext(pool.createMissedUpdateIterator(storeId.poolIndex), system)
+      }
+    }
   }
 }

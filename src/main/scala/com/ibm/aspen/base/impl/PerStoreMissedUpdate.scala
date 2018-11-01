@@ -165,7 +165,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
         var highestKey = Key.AbsoluteMinimum
         
         def load(kvos: KeyValueObjectState): List[Entry] = {
-          val entries = kvos.contents.valuesIterator.map(v => Entry(byte2uuid(v.key.bytes), StorePointer.decode(v.value), v.timestamp)).
+          val entries = kvos.contents.valuesIterator.map(v => Entry(byte2uuid(v.key.bytes), ObjectPointer(v.value), v.timestamp)).
             toList.filter( e => tree.keyOrdering.compare(e.objectUUID, highestKey) > 0 ).
             sortWith((a,b) => tree.keyOrdering.compare(a.objectUUID, b.objectUUID) < 0)
           if (!entries.isEmpty)
@@ -191,7 +191,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     }
     
     def entry: Option[Entry] = synchronized { 
-      if (entries.isEmpty) None else Some(entries.head) 
+      entries.headOption
     }
     
     def fetchNext()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
@@ -240,18 +240,17 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     }
     
     val objKey = Key(obj.uuid)
+    val value = obj.toArray
     
     system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful(onAttemptFailure _) {
       system.transact { implicit tx =>
         // Prevent potentially infinite recursion
         tx.disableMissedUpdateTracking()
-        
-        val value = obj.getStorePointer(DataStoreID(obj.poolUUID, storeIndex)).get.encode()
-        
+
         for {
           tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
           node <- tl.fetchMutableNode(objKey)
-          prep <- node.prepreUpdateTransaction(List((objKey -> value)), Nil, Nil)
+          prep <- node.prepreUpdateTransaction(List(objKey -> value), Nil, Nil)
         } yield ()
       }
     }
