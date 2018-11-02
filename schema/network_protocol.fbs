@@ -319,14 +319,11 @@ table ReadResponse {
 table OpportunisticRebuild {
    toStore: DataStoreID;
    fromClient: [byte];
-   objectPointer: ObjectPointer;
-   oldRevision: ObjectRevision;
-   oldRefcount: ObjectRefcount;
-   oldUpdates: [byte];
-   newRevision: ObjectRevision;
-   newRefcount: ObjectRefcount;
-   newTimestamp: long;
-   newData: [byte];
+   pointer: ObjectPointer;
+   revision: ObjectRevision;
+   refcount: ObjectRefcount;
+   timestamp: long;
+   data: [byte];
 }
 
 //---------------------------------------------------------------------------

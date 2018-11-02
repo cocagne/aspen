@@ -35,6 +35,8 @@ class BaseReadDriver(
   }
 
   protected var retryCount = 0
+
+  private var rebuildsSent: Set[DataStoreID] = Set()
   
   protected val promise: Promise[Either[ReadError, ObjectState]] = Promise()
   
@@ -46,14 +48,9 @@ class BaseReadDriver(
   
   /** Sends a Read request to the specified store. */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = {
-      clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
+    clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
   }
-      
-  def receivedReplyFrom(storeId: DataStoreID): Boolean = synchronized {
-    //storeStates.contains(storeId) || errors.contains(storeId)
-    false
-  }
-      
+
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
     logger.info(s"sending read requests for object ${objectPointer.uuid}.")
@@ -62,14 +59,16 @@ class BaseReadDriver(
       if (retryCount > 3)
         println(s"RESENDING READ REQUEST")
     }
-    objectPointer.storePointers.foreach(sp => {
-      val storeId = DataStoreID(objectPointer.poolUUID, sp.poolIndex)
-      if (!receivedReplyFrom(storeId))
-        sendReadRequest(storeId)
-    })
+    objectPointer.storePointers.foreach(sp => sendReadRequest(DataStoreID(objectPointer.poolUUID, sp.poolIndex)))
   }
 
-
+  protected def sendOpportunisticRebuild(storeId: DataStoreID, os: ObjectState): Unit = {
+    if (!rebuildsSent.contains(storeId)) {
+      rebuildsSent += storeId
+      clientMessenger.send(OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, os.revision,
+        os.refcount, os.timestamp, os.getRebuildDataForStore(storeId).get))
+    }
+  }
 
   def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
 
@@ -102,9 +101,18 @@ class BaseReadDriver(
                 case mos: MetadataObjectState => HLCTimestamp.update(mos.timestamp)
               }
 
+              objectReader.rereadCandidates.keysIterator.foreach(sendOpportunisticRebuild(_, os))
+
               Right(os)
           }
           promise.success(result)
+        }
+
+        e match {
+          case Right(os) =>
+            if (objectReader.rereadCandidates.contains(response.fromStore))
+              sendOpportunisticRebuild(response.fromStore, os)
+          case _ =>
         }
       }
     }

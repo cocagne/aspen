@@ -1197,30 +1197,18 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:OpportunisticRebuild): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Read.createFromClientVector(builder, o.fromClient.serialized)
-    val optr = encode(builder, o.objectPointer)
-    builder.createUnintializedVector(1, o.newData.size, 1).put(o.newData.asReadOnlyBuffer())
-    val newData = builder.endVector()
-    
-    val updates = if (o.oldUpdateSet.isEmpty) -1 else {
-      val bb = builder.createUnintializedVector(1, o.oldUpdateSet.size * 16, 1)
-      o.oldUpdateSet.foreach { r => 
-        bb.putLong(r.lastUpdateTxUUID.getMostSignificantBits)
-        bb.putLong(r.lastUpdateTxUUID.getLeastSignificantBits)
-      }
-      builder.endVector()
-    }
-    
+    val optr = encode(builder, o.pointer)
+    builder.createUnintializedVector(1, o.data.size, 1).put(o.data.asReadOnlyBuffer())
+    val data = builder.endVector()
+
     P.OpportunisticRebuild.startOpportunisticRebuild(builder)
     P.OpportunisticRebuild.addToStore(builder, toStore)
     P.OpportunisticRebuild.addFromClient(builder, clientData)
-    P.OpportunisticRebuild.addObjectPointer(builder, optr)
-    P.OpportunisticRebuild.addOldRevision(builder, encodeObjectRevision(builder, o.oldRevision))
-    P.OpportunisticRebuild.addOldRefcount(builder, encode(builder, o.oldRefcount))
-    if (updates > 0) P.OpportunisticRebuild.addOldUpdates(builder, updates)
-    P.OpportunisticRebuild.addNewRevision(builder, encodeObjectRevision(builder, o.newRevision))
-    P.OpportunisticRebuild.addNewRefcount(builder, encode(builder, o.newRefcount))
-    P.OpportunisticRebuild.addNewTimestamp(builder, o.newTimestamp.asLong)
-    P.OpportunisticRebuild.addNewData(builder, newData)
+    P.OpportunisticRebuild.addPointer(builder, optr)
+    P.OpportunisticRebuild.addRevision(builder, encodeObjectRevision(builder, o.revision))
+    P.OpportunisticRebuild.addRefcount(builder, encode(builder, o.refcount))
+    P.OpportunisticRebuild.addTimestamp(builder, o.timestamp.asLong)
+    P.OpportunisticRebuild.addData(builder, data)
     P.OpportunisticRebuild.endOpportunisticRebuild(builder)
   }
   
@@ -1228,34 +1216,17 @@ object NetworkCodec {
     val toStore = decode(n.toStore())
     val fromClient = new Array[Byte](n.fromClientLength())
     n.fromClientAsByteBuffer().get(fromClient)
-    val objectPointer = decode(n.objectPointer())
-    val oldRevision = decode(n.oldRevision())
-    val oldRefcount = decode(n.oldRefcount())
+    val pointer = decode(n.pointer())
+    val revision = decode(n.revision())
+    val refcount = decode(n.refcount())
+    val timestamp = HLCTimestamp(n.timestamp())
     
-    var updates = Set[ObjectRevision]()
-    
-    if (n.oldUpdatesLength() > 0) {
-      val bb = n.oldUpdatesAsByteBuffer()
-      bb.limit(bb.position() + n.oldUpdatesLength())
-      
-      while (bb.remaining() > 0) {
-        val msb = bb.getLong()
-        val lsb = bb.getLong()
-        updates += ObjectRevision(new UUID(msb, lsb)) 
-      }
-    }
-    
-    val newRevision = decode(n.newRevision())
-    val newRefcount = decode(n.newRefcount())
-    val newTimestamp = HLCTimestamp(n.newTimestamp())
-    
-    val buff = ByteBuffer.allocateDirect(n.newDataLength())
-    buff.put(n.newDataAsByteBuffer())
+    val buff = ByteBuffer.allocateDirect(n.dataLength())
+    buff.put(n.dataAsByteBuffer())
     buff.position(0)
     
-    val newData = DataBuffer(buff)
+    val data = DataBuffer(buff)
     
-    OpportunisticRebuild(toStore, ClientID(fromClient), objectPointer, oldRevision, oldRefcount, 
-        updates, newRevision, newRefcount, newTimestamp, newData)
+    OpportunisticRebuild(toStore, ClientID(fromClient), pointer, revision, refcount, timestamp, data)
   }
 }

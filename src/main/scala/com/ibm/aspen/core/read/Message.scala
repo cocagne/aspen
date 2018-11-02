@@ -33,14 +33,11 @@ final case class ReadResponse(
 final case class OpportunisticRebuild(
     toStore: DataStoreID,
     fromClient: ClientID,
-    objectPointer: ObjectPointer,
-    oldRevision: ObjectRevision,
-    oldRefcount: ObjectRefcount,
-    oldUpdateSet: Set[ObjectRevision],
-    newRevision: ObjectRevision,
-    newRefcount: ObjectRefcount,
-    newTimestamp: HLCTimestamp,
-    newData: DataBuffer) extends Message {
+    pointer: ObjectPointer,
+    revision: ObjectRevision,
+    refcount: ObjectRefcount,
+    timestamp: HLCTimestamp,
+    data: DataBuffer) extends Message {
 }
 
 

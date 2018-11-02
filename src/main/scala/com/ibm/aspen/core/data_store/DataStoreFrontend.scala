@@ -383,25 +383,26 @@ class DataStoreFrontend(
         p.future
       }
 
-      val alreadyRebuilding = synchronized { obj.rebuilding }
+      /*
+      The beginRebuild call prevents future transactions from modifying the local object state while the rebuild
+      process is active. The returned future from the call completes when all outstanding transactions to which we've
+      made promises (active locks) have completed. AFTER that point, we read the current state of the object so the
+      read content is guaranteed to be more up-to-date than our local state. We then derive our local state from the
+      full object and overwrite our previous state
+      */
+      for {
+        _ <- synchronized { obj.loadBoth() }
 
-      if (alreadyRebuilding)
-        Future.successful(false)
-      else {
-        log.rebuild.debug(s"Beginning rebuilding of object ${pointer.uuid}")
-        /*
-        The beginRebuild call prevents future transactions from modifying the local object state while the rebuild
-        process is active. The returned future from the call completes when all outstanding transactions to which we've
-        made promises (active locks) have completed. AFTER that point, we read the current state of the object so the
-        read content is guaranteed to be more up-to-date than our local state. We then derive our local state from the
-        full object and overwrite our previous state
-        */
-        for {
-          _ <- synchronized { obj.loadBoth() }
-          _ <- synchronized { obj.beginRebuild() }
-          result <- rebuild()
-        } yield result
-      }
+        doRebuild <- synchronized {
+          if (!obj.rebuilding) {
+            log.rebuild.debug(s"Beginning rebuilding of object ${pointer.uuid}")
+            obj.beginRebuild().map(_=>true)
+          } else
+            Future.successful(false)
+        }
+
+        result <- if (doRebuild) rebuild() else Future.successful(false)
+      } yield result
   }
 
   private def repairNext(mui: MissedUpdateIterator, system: AspenSystem): Unit = {
