@@ -1,38 +1,5 @@
 sbt "test:testOnly *KeyValueListSuite"
 
-Test Rebuild Process
-
-Local Rebuild Take 2
-  - At beginning of rebuild load local state
-  - If no locks, set Rebuilding flag which prevents all Tx locks until cleared
-     |-> ALSO incr refcount
-  - Otherwise, set PendingRebuild: Option[Promise[Unit]]
-     |-> When locks goes empty, set rebuilding and trigger promise
-  - Rebuild process is then guaranteed that the local object will not change during rebuild process and that we
-    won't violate any promises.
-  - Read begins *after* lock happens so read state will always be more current than local state
-  - Read full object and set local state to full object content.
-     |-> No need to differentiate between Data & KV objects
-     |-> Update IN-MEM state then flush to backend
-         |-> forgot this part last time
-  - Decr refcount on finish
-  - Can optimize later
-
-
-Opportunistic Rebuild
-  - Cannot reliably repair deleted KV pairs
-     - Ex read 2 of 5 immediate. Allocation Tx starts, is successful, read 3 completes.
-     - Successfully allocated KV is in read 3 but not 1 and 2. Will look like deleted pair
-     - Space leak
-     - Will get cleaned up via local repair
-
-  - DataStore has rebuild(message: ObjectRebuildContent): Future[Boolean]
-     - subclasses of ObjectRebuildContent for Data vs KV
-  - Content contains "if rev of this is XX set state to YY"
-  - Manually test rebuild via crafted messages passed to DataStore instance
-  - Manually test creation of ObjectRebuildContent via custom ReadResponse messages passed to object reader
-     - reuse methods in KeyValueObjectReaderSuite
-
 
 * Remove 5 file op retry limit from SimpleBaseFile
 
@@ -75,26 +42,6 @@ This may not be a problem in practice
        - Single message to all stores hosted on the same LAN
        - Single message to each host
 
-* Reads
-
-   - AspenSystem tracks recently successful transactions on a Set[TxUUID] basis
-   - During read, check locked transactions to see if they're in the recently-completed set. If yes, promote to full version
-      - do this immediately upon message reception, before any processing takes place
-      - rest of the logic just uses the final object revision
-   - Also promote lock if any other read shows that revision as a committed version
-      - Relies on Paxos commitment ensuring answer cannot change.
-      - For the first to commit, Accepted messages must be sent by a write-threshold
-   - Restoring keys works just like restoring objects
-      - isRestorable(reads: List[Option[ObjectRevision]): Option[Boolean]
-         - Returns None if recoverability cannot be determined
-         - Some(true) for recoverable Some(false) for unrecoverable
-      - Use isRestorable on top-level object revision for both KV and Data
-         - KV additionally does this check on all KV pairs
-            - only need non-none values for all KV pairs
-            
-            
-** Think-through KV rebuild process to ensure it's logically correct
-
 
 * Need to separate Long-term from near-term
    - Supporting arbitrarily-sized KV objects would be great in the long run but not much of a near-term win
@@ -117,20 +64,6 @@ This may not be a problem in practice
        - Could use DataToKVAdapter to adapt a raw data backend (like file) to parse/encode
          KV pairs during read/write.
    - kvGet
-   
-
-* RACE CONDITION
-   - Will want a common function for restoring an object (either a full data object or
-     just the Value associated with a key)
-         - Needs to take IDA thresholds & outstanding transactions into account
-         
-   - Client can see TX commits and issues read that reads OLD version
-       - stores haven't yet realized they should commit
-       
-   - Could fix this by reading current state plus VoteCommit state
-       - Look at current versions + vote commit state when restoring
-       
-   - This could be the source of transient failures. Commit + ReadOldVersion + commit ... VersionMismatch
 
 
 Basic Error Handling
