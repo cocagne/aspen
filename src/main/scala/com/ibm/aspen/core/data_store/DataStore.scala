@@ -142,6 +142,6 @@ trait DataStore {
   /** Called when an OpportunisticRebuild message is sent by a reader that noticed this store has
    *  missed an update to a hosted object
    */
-  def opportunisticRebuild(message: OpportunisticRebuild): Unit
+  def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit]
 }
 

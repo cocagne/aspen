@@ -68,7 +68,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def pollAndRepairMissedUpdates(system: AspenSystem): Unit = ()
   
-  def opportunisticRebuild(message: OpportunisticRebuild): Unit = ()
+  def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = Future.unit
 }
 
 object NullDataStore {

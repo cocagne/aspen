@@ -7,9 +7,10 @@ import com.ibm.aspen.base.ObjectReader
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.allocation.{DataAllocationOptions, KeyValueAllocationOptions}
 import com.ibm.aspen.core.ida.Replication
+import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.objects._
-import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, Value}
-import com.ibm.aspen.core.read.ReadDriver
+import com.ibm.aspen.core.objects.keyvalue._
+import com.ibm.aspen.core.read.{OpportunisticRebuild, ReadDriver}
 import com.ibm.aspen.core.transaction._
 import org.scalatest.{AsyncFunSuite, Matchers}
 
@@ -108,12 +109,130 @@ class RebuildSuite extends AsyncFunSuite with Matchers {
     }
   }
 
-  def initKVObject(): Future[(DataStoreFrontend, KeyValueObjectPointer)] = {
+  def initKVObject(omin: Option[KeyValueObjectState.Min]=None, omap: Option[Map[Key,Value]]=None): Future[(DataStoreFrontend, KeyValueObjectPointer)] = {
     val ds = newStore
 
-    ds.allocate(objUUID, new KeyValueAllocationOptions, None, allocRef, DataBuffer.Empty, allocTs, allocUUID, allocObj, allocRev) flatMap {
+    var ops: List[KeyValueOperation] = Nil
+
+    omin.foreach { m =>
+      ops = SetMin(m.key, Some(m.timestamp), Some(m.revision)) :: ops
+    }
+
+    omap.foreach { m =>
+      m.values.foreach { v =>
+        ops = Insert(v.key, v.value, Some(v.timestamp), Some(v.revision)) :: ops
+      }
+    }
+
+    val data = if (ops.isEmpty) DataBuffer.Empty else KeyValueOperation.encode(ops, Replication(3,2))(0)
+
+    ds.allocate(objUUID, new KeyValueAllocationOptions, None, allocRef, data, allocTs, allocUUID, allocObj, allocRev) flatMap {
       case Right(ars0) => Future.successful((ds, mkKVObjPtr(ars0.storePointer)))
       case Left(_) => throw new Exception("Returned failure instead of store pointer")
+    }
+  }
+  /*final case class OpportunisticRebuild(
+    toStore: DataStoreID,
+    fromClient: ClientID,
+    pointer: ObjectPointer,
+    revision: ObjectRevision,
+    refcount: ObjectRefcount,
+    timestamp: HLCTimestamp,
+    data: DataBuffer) extends Message {
+}*/
+
+  test("Successful opportunistic rebuild") {
+    val d2 = DataBuffer(Array[Byte](1,2))
+    for {
+      (ds, ptr) <- initDataObject(DataBuffer.Empty)
+      i <- ds.getObject(ptr)
+      o = OpportunisticRebuild(ds.storeId, ClientID(objUUID), ptr, rev2, ref2, ts2, d2)
+      _ <- ds.opportunisticRebuild(o)
+      f <- ds.getObject(ptr)
+    } yield {
+      i should be (Right((allocMeta, DataBuffer.Empty, List(), Set())))
+      f should be (Right((meta2, d2, List(), Set())))
+    }
+  }
+
+  test("Update refcount but not data in opportunistic rebuild") {
+    val d2 = DataBuffer(Array[Byte](1,2))
+    for {
+      (ds, ptr) <- initDataObject(DataBuffer.Empty)
+      i <- ds.getObject(ptr)
+      o = OpportunisticRebuild(ds.storeId, ClientID(objUUID), ptr, rev2, ref2, allocTs, d2)
+      _ <- ds.opportunisticRebuild(o)
+      f <- ds.getObject(ptr)
+    } yield {
+      i should be (Right((allocMeta, DataBuffer.Empty, List(), Set())))
+      f should be (Right((allocMeta.copy(refcount = ref2), DataBuffer.Empty, List(), Set())))
+    }
+  }
+
+  test("Unsuccessful opportunistic rebuild") {
+    val d2 = DataBuffer(Array[Byte](1,2))
+    for {
+      (ds, ptr) <- initDataObject(DataBuffer.Empty)
+      i <- ds.getObject(ptr)
+      o = OpportunisticRebuild(ds.storeId, ClientID(objUUID), ptr, rev2, allocRef, allocTs, d2)
+      _ <- ds.opportunisticRebuild(o)
+      f <- ds.getObject(ptr)
+    } yield {
+      i should be (Right((allocMeta, DataBuffer.Empty, List(), Set())))
+      f should be (Right((allocMeta, DataBuffer.Empty, List(), Set())))
+    }
+  }
+
+  test("KeyValue opportunistic rebuild") {
+    val minKey = Key(Array[Byte](1,2))
+    val min = KeyValueObjectState.Min(minKey, rev2, ts2)
+    val k1 = Key(Array[Byte](3,4))
+    val v = Value(k1, Array[Byte](5,6), ts2, rev2)
+    val m = Map(k1->v)
+    val imin = KeyValueObjectState.Min(minKey, allocRev, allocTs)
+    val imap = Map(k1->Value(k1, Array[Byte](), allocTs, allocRev))
+    for {
+      (ds, ptr) <- initKVObject(Some(imin), Some(imap))
+      i <- ds.getObject(ptr)
+      os = new KeyValueObjectState(ptr, rev2, ref2, ts2, ts2, Some(min), None, None, None, m)
+      o = OpportunisticRebuild(ds.storeId, ClientID(objUUID), ptr, rev2, ref2, ts2, os.getRebuildDataForStore(ds.storeId).get)
+      _ <- ds.opportunisticRebuild(o)
+      f <- ds.getObject(ptr)
+    } yield {
+      i match {
+        case Left(_) => fail()
+        case Right((meta, data, _, _)) =>
+          meta should be (allocMeta)
+          val kvoss = StoreKeyValueObjectContent(data)
+          kvoss.minimum match {
+            case None => fail()
+            case Some(m2) =>
+              m2.key should be (imin.key)
+              m2.timestamp should be (imin.timestamp)
+              m2.revision should be (imin.revision)
+          }
+          kvoss.maximum should be (None)
+          kvoss.left should be (None)
+          kvoss.right should be (None)
+          kvoss.idaEncodedContents should be (imap)
+      }
+      f match {
+        case Left(_) => fail()
+        case Right((meta, data, _, _)) =>
+          meta should be (meta2)
+          val kvoss = StoreKeyValueObjectContent(data)
+          kvoss.minimum match {
+            case None => fail()
+            case Some(m2) =>
+              m2.key should be (minKey)
+              m2.timestamp should be (ts2)
+              m2.revision should be (rev2)
+          }
+          kvoss.maximum should be (None)
+          kvoss.left should be (None)
+          kvoss.right should be (None)
+          kvoss.idaEncodedContents should be (m)
+      }
     }
   }
 

@@ -2,9 +2,10 @@ package com.ibm.aspen.core.data_store
 
 import java.util.UUID
 
-import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision, StorePointer}
+import com.ibm.aspen.core.read.OpportunisticRebuild
 import com.ibm.aspen.core.transaction.TransactionDescription
 
 import scala.concurrent.{Future, Promise}
@@ -107,6 +108,13 @@ sealed abstract class ObjectStoreState(val frontend: DataStoreFrontend,
     if (!p.isCompleted && locks.isEmpty)
       p.success(())
   }
+
+  def opportunisticRebuild(msg: OpportunisticRebuild): Future[Unit] = loadBoth().map {
+    case Left(_) => ()
+    case Right(_) => doOpportunisticRebuild(msg)
+  }
+
+  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit
 
   protected def dataUpdated(): Unit = {}
 
@@ -272,6 +280,21 @@ class DataObjectStoreState(frontend: DataStoreFrontend,
   def overwriteData(overwrite: DataBuffer): Unit = data = overwrite
 
   def appendData(append: DataBuffer): Unit = data = this.db.append(append)
+
+  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit = if (locks.isEmpty) {
+    var commit = false
+    if (refcount.updateSerial < msg.refcount.updateSerial) {
+      meta = meta.copy(refcount=msg.refcount)
+      commit = true
+    }
+    if (revision != msg.revision && msg.timestamp > timestamp) {
+      meta = meta.copy(revision = msg.revision, timestamp = msg.timestamp)
+      data = msg.data
+      commit = true
+    }
+    if (commit)
+      commitBoth()
+  }
 }
 
 class KeyValueObjectStoreState(frontend: DataStoreFrontend,
@@ -325,6 +348,73 @@ class KeyValueObjectStoreState(frontend: DataStoreFrontend,
     super.getTransactionPreventingRevisionReadLock(ignoreTxd) match {
       case Some(txd) => Some(txd)
       case None => if (keyRevisionWriteLocks.isEmpty) None else Some(keyRevisionWriteLocks.head._2)
+    }
+  }
+
+  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit = if (locks.isEmpty) {
+    // TODO: Evaluate locks on a per-item basis rather than requiring no locks at all
+    var commit = false
+
+    if (refcount.updateSerial < msg.refcount.updateSerial) {
+      meta = meta.copy(refcount=msg.refcount)
+      commit = true
+    }
+    if (revision != msg.revision && msg.timestamp > timestamp) {
+      meta = meta.copy(revision = msg.revision, timestamp = msg.timestamp)
+      commit = true
+    }
+
+    val m = StoreKeyValueObjectContent(msg.data)
+    val l = kvcontent
+
+    val minimum = (m.minimum, l.minimum) match {
+      case (Some(mm), Some(ll)) => if (mm.revision != ll.revision && mm.timestamp > ll.timestamp) {
+        commit = true
+        Some(mm)
+      } else Some(ll)
+      case (_, x) => x
+    }
+
+    val maximum = (m.maximum, l.maximum) match {
+      case (Some(mm), Some(ll)) => if (mm.revision != ll.revision && mm.timestamp > ll.timestamp) {
+        commit = true
+        Some(mm)
+      } else Some(ll)
+      case (_, x) => x
+    }
+
+    val left = (m.left, l.left) match {
+      case (Some(mm), Some(ll)) => if (mm.revision != ll.revision && mm.timestamp > ll.timestamp) {
+        commit = true
+        Some(mm)
+      } else Some(ll)
+      case (_, x) => x
+    }
+
+    val right = (m.right, l.right) match {
+      case (Some(mm), Some(ll)) => if (mm.revision != ll.revision && mm.timestamp > ll.timestamp) {
+        commit = true
+        Some(mm)
+      } else Some(ll)
+      case (_, x) => x
+    }
+
+    val contents = l.idaEncodedContents.valuesIterator.foldLeft(Map[Key,Value]()) { (c, v) =>
+      val x = m.idaEncodedContents.get(v.key) match {
+        case None => v.key -> v
+        case Some(mv) => if (mv.revision != v.revision && mv.timestamp > v.timestamp) {
+          commit = true
+          mv.key -> mv
+        } else v.key -> v
+      }
+      c + x
+    }
+
+    if (commit) {
+      val newContent = new StoreKeyValueObjectContent(minimum, maximum, left, right, contents)
+      ocontent = Some(newContent)
+      db = newContent.encode()
+      commitBoth()
     }
   }
 }

@@ -31,10 +31,6 @@ class DataStoreFrontend(
   override implicit val executionContext: ExecutionContext = backend.executionContext
 
 
-  // TODO FIX REBUILD
-  def opportunisticRebuild(message: OpportunisticRebuild): Unit = {}
-
-
   // The content of the following two maps are managed by instances of the StoreTransaction class
   protected[data_store] var activeTransactions = Map[UUID, StoreTransaction]()
   protected[data_store] var lockedTransactions = Map[UUID, StoreTransaction]()
@@ -307,6 +303,10 @@ class DataStoreFrontend(
         st.commit().map( _ => st.releaseObjects() )
       }
     }
+  }
+
+  def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = {
+    loadObject(message.pointer, obj => obj.loadBoth()).opportunisticRebuild(message)
   }
 
   def rebuildObject(reader: ObjectReader, pointer: ObjectPointer): Future[Boolean] = pointer.getStorePointer(storeId) match {
