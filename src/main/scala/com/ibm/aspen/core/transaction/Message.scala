@@ -1,8 +1,9 @@
 package com.ibm.aspen.core.transaction
 
+import java.util.UUID
+
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
-import java.util.UUID
 
 sealed abstract class Message {
   val to: DataStoreID

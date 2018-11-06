@@ -7,15 +7,18 @@ import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.paxos.PersistentState
 import com.ibm.aspen.core.transaction.paxos.ProposalID
+
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import java.io.File
+
 import scala.concurrent.ExecutionContext
 import java.nio.ByteBuffer
 import java.util.UUID
+
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.{AllocationRecoveryState, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
@@ -116,7 +119,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val ars = AllocationRecoveryState(
             storeId, 
             sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1), 
-            txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
+            txdts, uuid2, ObjectAllocationRevisionGuard(obj, ObjectRevision(new UUID(0,2))))
     
     newCRL()
     
@@ -159,8 +162,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     java.util.Arrays.equals(b.objectData.getByteArray(), a.objectData.getByteArray()) should be (true)
     b.initialRefcount should be (a.initialRefcount)
     n.allocationTransactionUUID should be (ars.allocationTransactionUUID)
-    n.allocatingObject should be (ars.allocatingObject)
-    n.allocatingObjectRevision should be (ars.allocatingObjectRevision)
+    n.revisionGuard should be (ars.revisionGuard)
     
     1 should be (1)
   }
@@ -188,7 +190,7 @@ class RocksDBCrashRecoveryLogSuite extends TempDirSuiteBase {
     val ars = AllocationRecoveryState(
             storeId, 
             sp, uuid1, ObjectType.Data, Some(5), DataBuffer(d2), ObjectRefcount(1,1), 
-            txdts, uuid2, obj, ObjectRevision(new UUID(0,2)))
+            txdts, uuid2, ObjectAllocationRevisionGuard(obj, ObjectRevision(new UUID(0,2))))
     
     newCRL()
     

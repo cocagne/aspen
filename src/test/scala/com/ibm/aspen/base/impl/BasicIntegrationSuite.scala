@@ -3,25 +3,28 @@ package com.ibm.aspen.base.impl
 import scala.concurrent._
 import scala.concurrent.duration._
 import org.scalatest._
+
 import scala.language.postfixOps
 import com.ibm.aspen.base.NoRetry
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.io.File
+
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.TestNetwork
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.network.ClientID
 import java.util.UUID
+
 import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.core.allocation.BaseAllocationDriver
+import com.ibm.aspen.core.allocation.{AllocationRecoveryState, BaseAllocationDriver, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.data_store.DataStore
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TestSystem
@@ -68,7 +71,7 @@ class BasicIntegrationSuite extends TestSystemSuite {
     def allocObj(r: KeyValueObjectState): Future[ObjectPointer] = {
       implicit val tx = sys.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys.lowLevelAllocateDataObject(r.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+      val ffp = sys.lowLevelAllocateDataObject(ObjectAllocationRevisionGuard(r.pointer, ObjectRevision.Null), BootstrapStoragePoolUUID,
                                     None, TestSystem.DefaultIDA, d)
       allocCount += 1
       

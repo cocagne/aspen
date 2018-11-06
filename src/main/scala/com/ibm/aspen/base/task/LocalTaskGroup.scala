@@ -51,7 +51,7 @@ object LocalTaskGroup extends TaskGroupType {
     
     for {
       allocater <- system.getObjectAllocater(objectAllocaterUUID)
-      taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil, None)
+      taskListRoot <- allocater.allocateKeyValueObject(allocatingObject, revision, Nil)
       root = TieredKeyValueListRoot(0, IntegerKeyOrdering, taskListRoot, allocaterType, allocaterConfig)
       fullContent = Insert(TaskListKey, root.toArray) :: content
       groupPointer <- allocater.allocateKeyValueObject(allocatingObject, revision, fullContent)
@@ -178,7 +178,7 @@ class LocalTaskGroup(
       val f = system.transactUntilSuccessful { implicit tx =>
         for {
           mnode <- taskTree.fetchMutableNode(Key(taskNumber))
-          newObject <- allocater.allocateKeyValueObject(mnode.kvos.pointer, mnode.kvos.revision, Nil, None)
+          newObject <- allocater.allocateKeyValueObject(mnode.kvos.pointer, mnode.kvos.revision, Nil)
           _ <- mnode.prepreUpdateTransaction(List((Key(taskNumber), newObject.toArray)), Nil, Nil)
         } yield (newObject, tx.txRevision)        
       }

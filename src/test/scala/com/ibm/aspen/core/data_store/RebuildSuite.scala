@@ -5,7 +5,7 @@ import java.util.UUID
 
 import com.ibm.aspen.base.ObjectReader
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
-import com.ibm.aspen.core.allocation.{DataAllocationOptions, KeyValueAllocationOptions}
+import com.ibm.aspen.core.allocation.{DataAllocationOptions, KeyValueAllocationOptions, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.network.ClientID
 import com.ibm.aspen.core.objects._
@@ -103,7 +103,7 @@ class RebuildSuite extends AsyncFunSuite with Matchers {
   def initDataObject(icontent: DataBuffer): Future[(DataStoreFrontend, DataObjectPointer)] = {
     val ds = newStore
 
-    ds.allocate(objUUID, new DataAllocationOptions, None, allocRef, icontent, allocTs, allocUUID, allocObj, allocRev) flatMap {
+    ds.allocate(objUUID, new DataAllocationOptions, None, allocRef, icontent, allocTs, allocUUID, ObjectAllocationRevisionGuard(allocObj, allocRev)) flatMap {
       case Right(ars0) => Future.successful((ds, mkDataObjPtr(ars0.storePointer)))
       case Left(_) => throw new Exception("Returned failure instead of store pointer")
     }
@@ -126,7 +126,7 @@ class RebuildSuite extends AsyncFunSuite with Matchers {
 
     val data = if (ops.isEmpty) DataBuffer.Empty else KeyValueOperation.encode(ops, Replication(3,2))(0)
 
-    ds.allocate(objUUID, new KeyValueAllocationOptions, None, allocRef, data, allocTs, allocUUID, allocObj, allocRev) flatMap {
+    ds.allocate(objUUID, new KeyValueAllocationOptions, None, allocRef, data, allocTs, allocUUID, ObjectAllocationRevisionGuard(allocObj, allocRev)) flatMap {
       case Right(ars0) => Future.successful((ds, mkKVObjPtr(ars0.storePointer)))
       case Left(_) => throw new Exception("Returned failure instead of store pointer")
     }

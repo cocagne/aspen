@@ -342,6 +342,8 @@ table Allocate {
   allocationTransactionUUID: UUID;
   allocatingObject: ObjectPointer;
   allocatingObjectRevision: ObjectRevision;
+  allocatingObjectKey: [byte];
+  isKeyGuard: bool;
 }
 
 enum AllocationError:byte {

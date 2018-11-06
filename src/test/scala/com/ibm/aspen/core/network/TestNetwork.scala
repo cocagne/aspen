@@ -1,32 +1,13 @@
 package com.ibm.aspen.core.network
 
-import scala.concurrent._
-import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
-import com.ibm.aspen.core.read
-import com.ibm.aspen.core.allocation
-import com.ibm.aspen.core.transaction
-import com.ibm.aspen.core.data_store.DataStoreID
-import java.util.UUID
-
-import com.ibm.aspen.base.impl.StorageNode
-
-import scala.concurrent.Future
-import java.nio.ByteBuffer
 import java.util.concurrent.LinkedBlockingQueue
 
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.{allocation, read, transaction}
 import com.ibm.aspen.core.transaction._
-import com.ibm.aspen.core.read.ReadDriver
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.read.ReadError
-import com.ibm.aspen.core.read.ReadResponse
 
-import scala.concurrent.Promise
-import com.ibm.aspen.core.read.BaseReadDriver
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
+import scala.concurrent.{Future, Promise}
 
 class TestNetwork {
 
@@ -137,10 +118,7 @@ class TestNetwork {
       case m: allocation.Allocate => sdeliver(m.toStore, _.a.foreach(a => a.receive(m)))
       case m: allocation.AllocateResponse => cdeliver(client, _.a.foreach(a => a.receive(m)))
     }
-    
-    def send(message: AllocationStatusRequest): Unit = sdeliver(message.to, _.a.foreach(a => a.receive(message)))
-    def send(message: AllocationStatusReply): Unit = sdeliver(message.to, _.a.foreach(a => a.receive(message)))
-    
+
     def send(client: ClientID, message: read.ReadResponse): Unit = cdeliver(client, _.r.foreach(r => r.receive(message)))
   }
   

@@ -10,6 +10,7 @@ import com.ibm.aspen.core.ida.ReedSolomon
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
+
 import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.UpdateType
 import com.ibm.aspen.core.transaction.TransactionDisposition
@@ -28,32 +29,24 @@ import com.ibm.aspen.core.transaction.TxPrepareResponse
 import com.ibm.aspen.core.transaction.TxAccept
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.allocation.AllocationErrors
+import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import com.ibm.aspen.core.read.OpportunisticRebuild
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.transaction.TxResolved
 import com.ibm.aspen.core.transaction.TxCommitted
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationObjectStatus
 import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.allocation.DataAllocationOptions
-import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
-import com.ibm.aspen.core.allocation.DataAllocationOptions
-import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
 import com.ibm.aspen.core.data_store.Lock
 import com.ibm.aspen.core.data_store.RevisionWriteLock
 import com.ibm.aspen.core.data_store.RevisionReadLock
@@ -856,9 +849,16 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:Allocate): Int = {
     val toStore = encode(builder, o.toStore)
     val clientData = P.Allocate.createFromClientVector(builder, o.fromClient.serialized)
-    val allocObj = encode(builder, o.allocatingObject)
+    val allocObj = encode(builder, o.revisionGuard.pointer)
     builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
     val objectData = builder.endVector()
+
+    val (key, isKeyGuard) = o.revisionGuard match {
+      case _: ObjectAllocationRevisionGuard => (-1, false)
+      case kv: KeyValueAllocationRevisionGuard =>
+        builder.createUnintializedVector(1, kv.key.bytes.length, 1).put(kv.key.bytes)
+        (builder.endVector(), true)
+    }
     
     P.Allocate.startAllocate(builder)
     P.Allocate.addToStore(builder, toStore)
@@ -876,7 +876,12 @@ object NetworkCodec {
     P.Allocate.addTimestamp(builder, o.timestamp.asLong)
     P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
     P.Allocate.addAllocatingObject(builder, allocObj)
-    P.Allocate.addAllocatingObjectRevision(builder, encodeObjectRevision(builder, o.allocatingObjectRevision))
+    P.Allocate.addAllocatingObjectRevision(builder, encodeObjectRevision(builder, o.revisionGuard.revision))
+    P.Allocate.addIsKeyGuard(builder, isKeyGuard)
+
+    if (isKeyGuard)
+      P.Allocate.addAllocatingObjectKey(builder, key)
+
     P.Allocate.endAllocate(builder)
   }
   def decode(n: P.Allocate): Allocate = {
@@ -887,6 +892,16 @@ object NetworkCodec {
     val allocationTransactionUUID = decode(n.allocationTransactionUUID())
     val allocatingObject = decode(n.allocatingObject())
     val allocatingObjectRevision = decode(n.allocatingObjectRevision())
+
+    val revisionGuard = if (n.isKeyGuard) {
+      val kbytes = new Array[Byte](n.allocatingObjectKeyLength())
+      n.allocatingObjectKeyAsByteBuffer().get(kbytes)
+      KeyValueAllocationRevisionGuard(allocatingObject.asInstanceOf[KeyValueObjectPointer],
+        Key(kbytes), allocatingObjectRevision)
+    } else {
+      ObjectAllocationRevisionGuard(allocatingObject, allocatingObjectRevision)
+    }
+
     val timestamp = HLCTimestamp(n.timestamp())
     
     val newObjectUUID = decode(n.newObjectUUID())
@@ -901,7 +916,7 @@ object NetworkCodec {
     }
         
     Allocate(toStore, ClientID(fromClient), newObjectUUID, options, objectSize, initialRefcount, DataBuffer(objectData), timestamp,
-        allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+        allocationTransactionUUID, revisionGuard)
   }
   
   def encode(builder:FlatBufferBuilder, o:AllocateResponse): Int = {
@@ -936,57 +951,7 @@ object NetworkCodec {
     }
     AllocateResponse(fromStoreId, allocationTransactionUUID, newObjectUUID, result)
   }
-  
-  def encode(builder:FlatBufferBuilder, o:AllocationStatusRequest): Int = {
-    val to = encode(builder, o.to)
-    val from = encode(builder, o.from)
-    val priPtr = encode(builder, o.primaryObject)
-    
-    P.AllocationStatusRequest.startAllocationStatusRequest(builder)
-    P.AllocationStatusRequest.addTo(builder, to)
-    P.AllocationStatusRequest.addFrom(builder, from)
-    P.AllocationStatusRequest.addPrimaryObject(builder, priPtr)
-    P.AllocationStatusRequest.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
-    P.AllocationStatusRequest.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
-    P.AllocationStatusRequest.endAllocationStatusRequest(builder)
-  }
-  def decode(n: P.AllocationStatusRequest): AllocationStatusRequest = {
-    val to = decode(n.to())
-    val from = decode(n.from())
-    val priPtr = decode(n.primaryObject())
-    val txUUID = decode(n.allocationTransactionUUID())
-    val newObjectUUID = decode(n.newObjectUUID())
-    
-    AllocationStatusRequest(to, from, priPtr, txUUID, newObjectUUID)
-  }
-  
-  def encode(builder:FlatBufferBuilder, o:AllocationStatusReply): Int = {
-    val to = encode(builder, o.to)
-    val from = encode(builder, o.from)
-    val objectStatus = encode(builder, o.objectStatus)
-    
-    P.AllocationStatusReply.startAllocationStatusReply(builder)
-    P.AllocationStatusReply.addTo(builder, to)
-    P.AllocationStatusReply.addFrom(builder, from)
-    P.AllocationStatusReply.addAllocationTransactionUuid(builder, encode(builder, o.allocationTransactionUUID))
-    P.AllocationStatusReply.addNewObjectUUID(builder, encode(builder, o.newObjectUUID))
-    o.transactionStatus.foreach { status =>
-      P.AllocationStatusReply.addKnown(builder, 1)
-      P.AllocationStatusReply.addTransactionStatus(builder, encodeTransactionStatus(status))  
-    }
-    P.AllocationStatusReply.addObjectStatus(builder, objectStatus)
-    P.AllocationStatusReply.endAllocationStatusReply(builder)
-  }
-  def decode(n: P.AllocationStatusReply): AllocationStatusReply = {
-    val to = decode(n.to())
-    val from = decode(n.from())
-    val txUUID = decode(n.allocationTransactionUuid())
-    val newObjectUUID = decode(n.newObjectUUID())
-    val transactionStatus = if (n.known() == 0) None else Some(decodeTransactionStatus(n.transactionStatus()))
-    val objectStatus = decode(n.objectStatus())
-        
-    AllocationStatusReply(to, from, txUUID, newObjectUUID, transactionStatus, objectStatus)
-  }
+
   
   //-----------------------------------------------------------------------------------------------
   // Read Messages

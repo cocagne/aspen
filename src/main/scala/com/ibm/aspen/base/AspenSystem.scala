@@ -1,26 +1,17 @@
 package com.ibm.aspen.base
 
-import com.ibm.aspen.core.objects.ObjectPointer
-import scala.concurrent.Future
 import java.util.UUID
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.read.ReadDriver
-import java.nio.ByteBuffer
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.transaction.ClientTransactionDriver
+
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.base.task.DurableTaskType
+import com.ibm.aspen.core.allocation.AllocationRevisionGuard
 import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.network.ClientID
+import com.ibm.aspen.core.objects.{DataObjectPointer, KeyValueObjectPointer, ObjectPointer}
+import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.transaction.ClientTransactionDriver
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait AspenSystem extends ObjectReader {
   
@@ -42,22 +33,18 @@ trait AspenSystem extends ObjectReader {
   def registerRetryStrategy(uuid: UUID, strategy: RetryStrategy): Unit
   
   def lowLevelAllocateDataObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      poolUUID: UUID,
-      objectSize: Option[Int],
-      objectIDA: IDA,
-      initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
+        revisionGuard: AllocationRevisionGuard,
+        poolUUID: UUID,
+        objectSize: Option[Int],
+        objectIDA: IDA,
+        initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer]
   
   def lowLevelAllocateKeyValueObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
-      poolUUID: UUID,
-      objectSize: Option[Int],
-      objectIDA: IDA,
-      initialContent: List[KeyValueOperation],
-      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
+        revisionGuard: AllocationRevisionGuard,
+        poolUUID: UUID,
+        objectSize: Option[Int],
+        objectIDA: IDA,
+        initialContent: List[KeyValueOperation])(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
@@ -97,7 +84,7 @@ trait AspenSystem extends ObjectReader {
       transact(prepare)
     }
   }
-  def transactUntilSuccessfulWithRecovery[T](onCommitFailure: (Throwable) => Future[Unit])(prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
+  def transactUntilSuccessfulWithRecovery[T](onCommitFailure: Throwable => Future[Unit])(prepare: Transaction => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     retryStrategy.retryUntilSuccessful(onCommitFailure) {
       transact(prepare)
     }

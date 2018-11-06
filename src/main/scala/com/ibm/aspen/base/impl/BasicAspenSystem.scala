@@ -1,82 +1,28 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.base.AspenSystem
 import java.util.UUID
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.network.ClientSideReadMessenger
-import com.ibm.aspen.core.read.ClientReadManager
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.ObjectPointer
-import scala.concurrent.Future
-import com.ibm.aspen.base.StoragePool
-import com.ibm.aspen.core.read.ReadDriver
-import com.ibm.aspen.base.Transaction
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.core.transaction.ClientTransactionManager
-import com.ibm.aspen.core.allocation.ClientAllocationManager
-import com.ibm.aspen.core.allocation.AllocationDriver
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.network.NetworkCodec
-import com.ibm.aspen.base.UnsupportedIDA
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.StoreAllocationError
-import com.ibm.aspen.base.RetryStrategy
-import com.google.flatbuffers.FlatBufferBuilder
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.network.ClientSideNetwork
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.base.ObjectAllocater
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.base.task.TaskGroupExecutor
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.util.uuid2byte
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.read.FullObject
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import com.ibm.aspen.core.read.SingleKey
-import com.ibm.aspen.core.read.LargestKeyLessThan
-import com.ibm.aspen.core.read.KeyRange
-import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.base.ObjectSizeExceeded
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.base.AggregateTypeRegistry
-import com.ibm.aspen.base.task.DurableTaskType
-import com.ibm.aspen.base.TypeRegistry
-import com.ibm.aspen.base.FinalizationActionHandler
-import com.ibm.aspen.base.task.TaskGroupType
-import com.ibm.aspen.base.StorageHost
+
+import com.github.blemale.scaffeine.{Cache, Scaffeine}
+import com.ibm.aspen.base._
+import com.ibm.aspen.base.tieredlist.{MutableKeyValueObjectRootManager, MutableTKVLRootManager, MutableTieredKeyValueList}
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.allocation.{AllocationDriver, AllocationRevisionGuard, ClientAllocationManager}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.base.MissedUpdateStrategy
-import com.ibm.aspen.base.MissedUpdateHandler
-import com.ibm.aspen.base.MissedUpdateHandlerFactory
-import com.ibm.aspen.base.MissedUpdateIterator
-import com.ibm.aspen.base.ObjectAllocaterFactory
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.network.{ClientID, ClientSideNetwork}
+import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.objects.keyvalue.{Key, KeyOrdering, KeyValueOperation}
+import com.ibm.aspen.core.read._
+import com.ibm.aspen.core.transaction.{ClientTransactionDriver, ClientTransactionManager}
 import org.apache.logging.log4j.scala.Logging
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
-import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
-import com.ibm.aspen.base.tieredlist.MutableTKVLRootManager
-import com.github.blemale.scaffeine.Cache
-import com.github.blemale.scaffeine.Scaffeine
+
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
-import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 
 
 object BasicAspenSystem {
   
   import scala.language.implicitConversions
-  
-  import com.ibm.aspen.util.uuid2byte
   
   /** Used by allocation finalizers instead of the one passed in to the constructor.
    *  
@@ -84,19 +30,19 @@ object BasicAspenSystem {
    *  is normal even during unit tests. Insert/Remove retries are necessary to work around the conflicts. When 
    *  AssertOnRetry is used, these retries are flagged as errors instead of normal operation.
    */
-  val FinalizationActionRetryStrategyUUID = UUID.fromString("b32975fd-cdf2-41a8-891f-87d8ae179664")
+  val FinalizationActionRetryStrategyUUID: UUID = UUID.fromString("b32975fd-cdf2-41a8-891f-87d8ae179664")
   
   type TransactionFactory = (BasicAspenSystem,
                              ClientTransactionManager,  
-                             (ObjectPointer) => Byte, // Choose the designatedLeader for the Tx based on online/offline peer knowledge
+                             ObjectPointer => Byte, // Choose the designatedLeader for the Tx based on online/offline peer knowledge
                              Option[ClientTransactionDriver.Factory] // Strategy for driving the Tx to completion. Default will be used if None
                              ) => Transaction
 }
 
 // StoragePool UUID 0000 is used for bootstrapping pool
 class BasicAspenSystem(
-    val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
-    val getStorageHostFn: (DataStoreID) => Future[StorageHost],
+    val chooseDesignatedLeader: ObjectPointer => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions
+    val getStorageHostFn: DataStoreID => Future[StorageHost],
     val net: ClientSideNetwork,
     val defaultReadDriverFactory: ReadDriver.Factory,
     val defaultTransactionDriverFactory: ClientTransactionDriver.Factory,
@@ -110,7 +56,6 @@ class BasicAspenSystem(
     )(implicit ec: ExecutionContext) extends AspenSystem with Logging {
   
   import BasicAspenSystem._
-  import Bootstrap._
   
   logger.debug("Constructing BasicAspenSystem")
 
@@ -126,8 +71,8 @@ class BasicAspenSystem(
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   
   
-  protected var retryStrategies = Map[UUID, RetryStrategy](
-      (FinalizationActionRetryStrategyUUID -> new ExponentialBackoffRetryStrategy(backoffLimit=10000, initialRetryDelay=3)))
+  protected var retryStrategies: Map[UUID, RetryStrategy] = Map[UUID, RetryStrategy](
+      FinalizationActionRetryStrategyUUID -> new ExponentialBackoffRetryStrategy(backoffLimit=10000, initialRetryDelay=3))
 
   def getSystemAttribute(key: String): Option[String] = synchronized { attributes.get(key) }
   def setSystemAttribute(key: String, value: String): Unit = synchronized{ attributes += key -> value }
@@ -157,7 +102,7 @@ class BasicAspenSystem(
   net.transactionHandler.setReceiver(txManager)
   net.allocationHandler.setReceiver(allocManager)
   
-  def clientId = net.clientId
+  def clientId: ClientID = net.clientId
   
   val typeRegistry: TypeRegistry = userTypeRegistry match {
     case None => BaseImplTypeRegistry(this)
@@ -191,43 +136,43 @@ class BasicAspenSystem(
       objectPointer:DataObjectPointer, 
       readStrategy: Option[ReadDriver.Factory],
       disableOpportunisticRebuild:Boolean): Future[DataObjectState] = readManager.read(objectPointer, FullObject(), false, disableOpportunisticRebuild,
-          readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
+          readStrategy.getOrElse(defaultReadDriverFactory)).map {
             case Left(err) => throw err
             case Right(os) => os.asInstanceOf[DataObjectState]
-          })
+          }
           
   def readObject(
       pointer:KeyValueObjectPointer, 
       readStrategy: Option[ReadDriver.Factory],
       disableOpportunisticRebuild:Boolean): Future[KeyValueObjectState] = readManager.read(pointer, FullObject(), false, disableOpportunisticRebuild, 
-          readStrategy.getOrElse(defaultReadDriverFactory)).map(r => r match {
+          readStrategy.getOrElse(defaultReadDriverFactory)).map {
             case Left(err) => throw err
             case Right(os) => os.asInstanceOf[KeyValueObjectState]
-          })
+          }
           
   def readSingleKey(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
-      SingleKey(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
+      SingleKey(key, comparison), false, false, defaultReadDriverFactory).map {
         case Left(err) => throw err
         case Right(os) => os.asInstanceOf[KeyValueObjectState]
-      })
+      }
       
   def readLargestKeyLessThan(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
-      LargestKeyLessThan(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
+      LargestKeyLessThan(key, comparison), false, false, defaultReadDriverFactory).map {
         case Left(err) => throw err
         case Right(os) => os.asInstanceOf[KeyValueObjectState]
-      })
+      }
       
   def readLargestKeyLessThanOrEqualTo(pointer: KeyValueObjectPointer, key: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
-      LargestKeyLessThanOrEqualTo(key, comparison), false, false, defaultReadDriverFactory).map(r => r match {
+      LargestKeyLessThanOrEqualTo(key, comparison), false, false, defaultReadDriverFactory).map {
         case Left(err) => throw err
         case Right(os) => os.asInstanceOf[KeyValueObjectState]
-      })
+      }
       
   def readKeyRange(pointer: KeyValueObjectPointer, minimum: Key, maximum: Key, comparison: KeyOrdering): Future[KeyValueObjectState] = readManager.read(pointer, 
-      KeyRange(minimum, maximum, comparison), false, false, defaultReadDriverFactory).map(r => r match {
+      KeyRange(minimum, maximum, comparison), false, false, defaultReadDriverFactory).map {
         case Left(err) => throw err
         case Right(os) => os.asInstanceOf[KeyValueObjectState]
-      })
+      }
           
   def newTransaction(): Transaction = transactionFactory(this, txManager, chooseDesignatedLeader, None)
   
@@ -236,19 +181,17 @@ class BasicAspenSystem(
   }
   
   def lowLevelAllocateDataObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
+      revisionGuard: AllocationRevisionGuard,
       poolUUID: UUID, 
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: DataBuffer,
-      afterTimestamp: Option[HLCTimestamp])(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
+      initialContent: DataBuffer)(implicit t: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     
     val encoded = objectIDA.encode(initialContent)
     
     try {
       
-      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw new ObjectSizeExceeded(maxSize, encoded(0).size))
+      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw ObjectSizeExceeded(maxSize, encoded(0).size))
     
     } catch {
       case err: ObjectSizeExceeded => return Future.failed(err)
@@ -257,30 +200,28 @@ class BasicAspenSystem(
     for {
       pool <- getStoragePool(poolUUID)
       
-      result <- allocManager.allocateDataObject(net.allocationHandler, t, pool, objectSize, objectIDA, encoded, afterTimestamp, ObjectRefcount(0,1), 
-                                                allocatingObject, allocatingObjectRevision)
+      result <- allocManager.allocateDataObject(net.allocationHandler, t, pool, objectSize, objectIDA, encoded,
+        ObjectRefcount(0,1), revisionGuard)
     } yield {
       result match {
-        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
+        case Left(errmap) => throw StoreAllocationError(revisionGuard, poolUUID, objectSize, objectIDA, errmap)
         case Right(newObjPtr) => newObjPtr
       }
     }
   }
   
   def lowLevelAllocateKeyValueObject(
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision,
+      revisionGuard: AllocationRevisionGuard,
       poolUUID: UUID,
       objectSize: Option[Int],
       objectIDA: IDA,
-      initialContent: List[KeyValueOperation],
-      afterTimestamp: Option[HLCTimestamp] = None)(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
+      initialContent: List[KeyValueOperation])(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]  = {
     
     val encoded = KeyValueOperation.encode(initialContent, objectIDA)
     
     try {
       
-      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw new ObjectSizeExceeded(maxSize, encoded(0).size))
+      objectSize.foreach(maxSize => if (encoded(0).size > maxSize) throw ObjectSizeExceeded(maxSize, encoded(0).size))
     
     } catch {
       case err: ObjectSizeExceeded => return Future.failed(err)
@@ -289,11 +230,11 @@ class BasicAspenSystem(
     for {
       pool <- getStoragePool(poolUUID)
       
-      result <- allocManager.allocateKeyValueObject(net.allocationHandler, t, pool, objectSize, objectIDA, afterTimestamp, ObjectRefcount(0,1),
-                                                    allocatingObject, allocatingObjectRevision, encoded)
+      result <- allocManager.allocateKeyValueObject(net.allocationHandler, t, pool, objectSize, objectIDA,
+        ObjectRefcount(0,1), revisionGuard, encoded)
     } yield {
       result match {
-        case Left(errmap) => throw new StoreAllocationError(allocatingObject, allocatingObjectRevision, poolUUID, objectSize, objectIDA, errmap)
+        case Left(errmap) => throw StoreAllocationError(revisionGuard, poolUUID, objectSize, objectIDA, errmap)
         case Right(newObjPtr) => newObjPtr
       }
     }
@@ -303,7 +244,7 @@ class BasicAspenSystem(
     for {
       spTree <- storagePoolTree
       v <- spTree.get(poolUUID)
-      if (v.isDefined)
+      if v.isDefined
       pool <- getStoragePool(KeyValueObjectPointer(v.get.value))
     } yield pool
   }
@@ -341,7 +282,7 @@ class BasicAspenSystem(
         println(s"*************** Unknown Allocater UUID: $allocaterUUID")
         com.ibm.aspen.util.printStack()
         println("*********************************************************************")
-        Future.failed(new Exception(s"Unknown Object Allocater: ${allocaterUUID}"))
+        Future.failed(new Exception(s"Unknown Object Allocater: $allocaterUUID"))
       case Some(f) => f.create(this)
     }
   }

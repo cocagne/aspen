@@ -20,6 +20,5 @@ case class AllocationRecoveryState(
   initialRefcount: ObjectRefcount,
   timestamp: HLCTimestamp,
   allocationTransactionUUID: UUID,
-  allocatingObject: ObjectPointer,
-  allocatingObjectRevision: ObjectRevision 
+  revisionGuard: AllocationRevisionGuard
 )

@@ -4,6 +4,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import org.scalatest._
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.StorePointer
@@ -13,15 +14,16 @@ import com.ibm.aspen.core.transaction.DataUpdate
 import com.ibm.aspen.core.transaction.DataUpdateOperation
 import com.ibm.aspen.core.transaction.RefcountUpdate
 import com.ibm.aspen.core.transaction.TransactionDescription
+
 import scala.util.Success
 import scala.util.Failure
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.allocation.{Allocate, DataAllocationOptions, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.transaction.VersionBump
 import com.ibm.aspen.core.transaction.TransactionRequirement
 import com.ibm.aspen.core.transaction.RevisionLock
@@ -67,9 +69,11 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
 
     implicit val executionContext = ExecutionContext.Implicits.global
-    
-    val f = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent0, timestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(ars0) => ds.allocate(uuid1, new DataAllocationOptions, None, oneRef, icontent1, timestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
+
+    val rguard = ObjectAllocationRevisionGuard(allocObj, allocRev)
+
+    val f = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent0, timestamp, allocUUID, rguard) flatMap { either => either match {
+      case Right(ars0) => ds.allocate(uuid1, new DataAllocationOptions, None, oneRef, icontent1, timestamp, allocUUID, rguard).flatMap(er => er match {
         case Right(ars1) => Future.successful((ds, ars0.storePointer, ars1.storePointer))
         case Left(err) => fail("Returned failure instead of object content")
       })
@@ -148,7 +152,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val icontent = DataBuffer(List[Byte](1,2,3).toArray)
     
-    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, allocObj, allocRev)
+    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, timestamp, txUUID, ObjectAllocationRevisionGuard(allocObj, allocRev))
             
     futureResponse map { either => either match {
       case Right(ars) => ars.storePointer.poolIndex should be (ds.storeId.poolIndex)
@@ -163,7 +167,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
 
     val ts = timestamp
     
-    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, ts, txUUID, allocObj, allocRev)
+    val futureResponse = ds.allocate(uuid0, new DataAllocationOptions, None, oneRef, icontent, ts, txUUID, ObjectAllocationRevisionGuard(allocObj, allocRev))
             
     val expected = (ObjectMetadata(ObjectRevision(txUUID), oneRef, ts), icontent, Nil, Set())
     

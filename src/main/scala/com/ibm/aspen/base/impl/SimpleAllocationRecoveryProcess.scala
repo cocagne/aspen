@@ -1,39 +1,52 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.allocation.AllocationStatusReply
-import com.ibm.aspen.core.network.StoreSideAllocationMessenger
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.allocation.AllocationObjectStatus
-import scala.concurrent.duration.Duration
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Promise
-import scala.concurrent.Future
-import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
-import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import java.util.UUID
-import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.util.uuid2byte
+
+import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
+import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.crl.CrashRecoveryLog
+import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
+import com.ibm.aspen.core.network.StoreSideAllocationMessenger
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.duration.Duration
 
 /** Implements the Allocation Recovery Process.
- * 
- * Error retry mechanism is left to subclasses to implement.
- * 
- * General approach is to use a background task that periodically queries status of the allocating object.
- * Its purpose is to determine whether the revision of the object has changed and, if not, to force it to
- * change.
- * 
- * Once the revision is known to have changed AND the transaction status in a threshold number of replies
- * is seen to be "Unknown" (which means the transaction has definitely completed), we attempt to look up
- * each object in the allocation tree. Once we have an exists/not-exists, we give this information over
- * to the data store for commit and remove from the CRL when done.
- * 
- *     Note: It is possible for an allocation transaction to succeed but for some or all of the objects
- *           to have been deleted before this recovery process completes. Example, Alloc 5 objects, crash,
- *           delete 2 objects, recover. In that case 3 objects should be committed and 2 discarded.
+  *
+  * Error retry mechanism is left to subclasses to implement.
+  *
+  * Get rid of AllocationStatus request/reply. Replace with Tx status request/response
+  *
+  * 1. Wait a minimum amount of time before beginning recovery process to avoid the case where the client
+  *    is building the allocation transaction but hasn't yet started it. If we run too early, we'll bump
+  *    the revision and force the allocation Tx to fail
+  *
+  * 2. Wait for > writeThreshold status responses of "Unknown" or a single cached "Complete - Commited/Aborted"
+  *
+  * 3. If known commit/abort, act
+  *
+  * 4. waitForRevisionChange()
+  *      read revision
+  *      if revision == guardRevision:
+  *         versionBump()
+  *      else
+  *         pRevisionChanged.complete(())
+  *
+  * 5. lookup object UUID in allocation tree. If present, keep allocation else discard
+  *
+  * General approach is to use a background task that periodically queries status of the allocating object.
+  * Its purpose is to determine whether the revision of the object has changed and, if not, to force it to
+  * change.
+  *
+  * Once the revision is known to have changed AND the transaction status in a threshold number of replies
+  * is seen to be "Unknown" (which means the transaction has definitely completed), we attempt to look up
+  * each object in the allocation tree. Once we have an exists/not-exists, we give this information over
+  * to the data store for commit and remove from the CRL when done.
+  *
+  *     Note: It is possible for an allocation transaction to succeed but for some or all of the objects
+  *           to have been deleted before this recovery process completes. Example, Alloc 5 objects, crash,
+  *           delete 2 objects, recover. In that case 3 objects should be committed and 2 discarded.
  */
 class SimpleAllocationRecoveryProcess(
     val statusQueryPeriod: Duration,
@@ -43,14 +56,19 @@ class SimpleAllocationRecoveryProcess(
     val store: DataStore,
     val ars: AllocationRecoveryState)(implicit ec: ExecutionContext) {
 
+  private[this] val promise = Promise[Boolean]()
+
+  def done: Future[Boolean] = promise.future
+
+/*
   private[this] var replies = Map[DataStoreID, AllocationStatusReply]()
   private[this] var revisionChanged = false
   private[this] var resolving = false
   private[this] var bumpingVersion = false
-  private[this] val promise = Promise[Boolean]()
+
   private[this] val retryStrategy = new ExponentialBackoffRetryStrategy
   
-  def done: Future[Boolean] = promise.future
+
   
   private[this] val queryTask = BackgroundTask.schedulePeriodic(statusQueryPeriod) { synchronized {
     replies = Map()
@@ -140,4 +158,5 @@ class SimpleAllocationRecoveryProcess(
       }
     } 
   }
+  */
 }

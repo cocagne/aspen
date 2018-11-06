@@ -2,25 +2,21 @@ package com.ibm.aspen.core.network
 
 import org.scalatest._
 import com.google.flatbuffers.FlatBufferBuilder
-
 import com.ibm.aspen.core.network.{protocol => P}
 import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.ida._
 import com.ibm.aspen.core.transaction._
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.paxos.ProposalID
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.allocation.AllocationErrors
+import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.read.Read
 import com.ibm.aspen.core.read.ReadResponse
 import com.ibm.aspen.core.read.ReadError
 import java.nio.ByteBuffer
 import java.util.UUID
+
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.allocation.DataAllocationOptions
 import com.ibm.aspen.core.data_store.RevisionWriteLock
 import com.ibm.aspen.core.read.FullObject
 import com.ibm.aspen.core.data_store.ObjectReadError
@@ -249,7 +245,7 @@ class CodecSuite extends FunSuite with Matchers {
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val ts = HLCTimestamp.now
-    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  op, rev)
+    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  ObjectAllocationRevisionGuard(op, rev))
     
     val builder = new FlatBufferBuilder(1024)
     
@@ -281,7 +277,7 @@ class CodecSuite extends FunSuite with Matchers {
     val op = DataObjectPointer(objUUID, poolUUID, None, Replication(3,2), new Array[StorePointer](0))
     val storeId = DataStoreID(poolUUID, 3)
     val ts = HLCTimestamp.now
-    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  op, rev)
+    val a1 = Allocate(storeId, c1, objUUID, new DataAllocationOptions, s1, ref, d1, ts, txUUID,  ObjectAllocationRevisionGuard(op, rev))
     
     val builder = new FlatBufferBuilder(1024)
     

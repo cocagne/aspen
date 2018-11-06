@@ -97,7 +97,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       tier: Int, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     fs.getDataTableNodeAllocater(tier).flatMap { allocater =>
-      allocater.allocateDataObject(allocObj, allocRev, content, None)
+      allocater.allocateDataObject(allocObj, allocRev, content)
     }
   }
   
@@ -106,7 +106,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       allocRev: ObjectRevision, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     fs.defaultSegmentAllocater().flatMap { allocater =>
-      allocater.allocateDataObject(allocObj, allocRev, content, None)
+      allocater.allocateDataObject(allocObj, allocRev, content)
     }
   }
   

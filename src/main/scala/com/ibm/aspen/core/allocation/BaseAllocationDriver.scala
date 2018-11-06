@@ -35,8 +35,7 @@ class BaseAllocationDriver (
     val timestamp: HLCTimestamp,
     val initialRefcount: ObjectRefcount,
     val allocationTransactionUUID: UUID,
-    val allocatingObject: ObjectPointer,
-    val allocatingObjectRevision: ObjectRevision
+    val revisionGuard: AllocationRevisionGuard
     ) extends AllocationDriver {
   
   private[this] val promise = Promise[Either[Map[Byte,AllocationErrors.Value], ObjectPointer]]
@@ -57,7 +56,7 @@ class BaseAllocationDriver (
       val storeId = DataStoreID(poolUUID, storeIndex)
       
       val msg = Allocate(storeId, messenger.clientId, newObjectUUID, options, objectSize, initialRefcount, objectData, timestamp,
-                         allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+                         allocationTransactionUUID, revisionGuard)
                          
       messenger.send(storeId, msg)
     }
@@ -105,10 +104,9 @@ object BaseAllocationDriver {
                timestamp: HLCTimestamp,
                initialRefcount: ObjectRefcount,
                allocationTransactionUUID: UUID,
-               allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): BaseAllocationDriver = {
+               revisionGuard: AllocationRevisionGuard): BaseAllocationDriver = {
       new BaseAllocationDriver(messenger, poolUUID, newObjectUUID, objectSize, objectIDA, objectData, options, timestamp,  
-                           initialRefcount, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+                           initialRefcount, allocationTransactionUUID, revisionGuard)
     }
   }
   

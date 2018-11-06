@@ -39,6 +39,8 @@ table CRLAllocationRecoveryState {
     allocationTransactionUUID: com.ibm.aspen.core.network.protocol.UUID;
     allocatingObject: com.ibm.aspen.core.network.protocol.ObjectPointer;
     allocatingObjectRevision: com.ibm.aspen.core.network.protocol.ObjectRevision;
+    allocatingObjectKey: [byte];
+    isKeyGuard: bool;
 } 
 
 table CRLEntry {

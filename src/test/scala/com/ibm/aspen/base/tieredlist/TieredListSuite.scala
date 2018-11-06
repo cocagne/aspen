@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.SetMin
@@ -22,6 +23,7 @@ import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
 import com.ibm.aspen.base.ObjectReader
+import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.StorePointer
 
@@ -61,13 +63,12 @@ class TieredListSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-            sys.radiclePointer, 
-            ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+            ObjectRevision(UUID.randomUUID())),
             BootstrapStoragePoolUUID, 
             None,
             TestSystem.DefaultIDA, 
-            ops, 
-            None)
+            ops)
       _ <- tx.commit()
     } yield kvp
   }

@@ -18,6 +18,7 @@ import com.ibm.aspen.base.TestSystem
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.tieredlist.KeyValueListPointer
+import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 import com.ibm.aspen.core.objects.keyvalue.{Insert, Key, Value}
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectState
@@ -41,7 +42,7 @@ class BasicAspenSystemSuite extends TestSystemSuite {
     for {
       radicle <- sys.radicle
       
-      fp <- sys.lowLevelAllocateDataObject(radicle.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+      fp <- sys.lowLevelAllocateDataObject(ObjectAllocationRevisionGuard(radicle.pointer, ObjectRevision.Null), BootstrapStoragePoolUUID,
                                     None, TestSystem.DefaultIDA, d)
       _=tx.overwrite(fp, tx.txRevision, d2)
       
@@ -88,7 +89,7 @@ class BasicAspenSystemSuite extends TestSystemSuite {
     def allocObj(radicle: KeyValueObjectState): Future[ObjectPointer] = {
       implicit val tx = sys.newTransaction()
       val d = DataBuffer(ByteBuffer.allocate(5))
-      val ffp = sys.lowLevelAllocateDataObject(radicle.pointer, ObjectRevision.Null, BootstrapStoragePoolUUID,
+      val ffp = sys.lowLevelAllocateDataObject(ObjectAllocationRevisionGuard(radicle.pointer, ObjectRevision.Null), BootstrapStoragePoolUUID,
                                     None, TestSystem.DefaultIDA, d)
       
       for {

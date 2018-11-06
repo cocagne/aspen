@@ -1,43 +1,14 @@
 package com.ibm.aspen.demo
 
-import com.ibm.aspen.core.network.StoreSideNetwork
-import com.ibm.aspen.core.network.StoreSideReadHandler
-import com.ibm.aspen.core.network.StoreSideAllocationHandler
-import com.ibm.aspen.core.network.StoreSideTransactionHandler
-import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
-import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
-import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
-import com.ibm.aspen.core.network.protocol.Message
-import com.ibm.aspen.core.network.NetworkCodec
 import java.nio.ByteBuffer
-
-import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
 
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.data_store.DataStoreID
-import io.netty.channel.nio.NioEventLoopGroup
-import com.ibm.aspen.core.transaction.TxAcceptResponse
-import com.ibm.aspen.core.transaction.TxResolved
-import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.TxPrepareResponse
-import com.ibm.aspen.core.transaction.TxAccept
-import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
-import com.ibm.aspen.core.transaction.{Message => TransactionMessage}
-import com.ibm.aspen.core.allocation.{Message => AllocationMessage}
-import com.ibm.aspen.core.read.{Message => ReadMessage}
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.read.Read
-import com.ibm.aspen.core.read.ReadResponse
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.read
-import com.ibm.aspen.core.allocation
+import com.ibm.aspen.core.network._
+import com.ibm.aspen.core.network.protocol.Message
+import com.ibm.aspen.core.{DataBuffer, allocation, read}
+import com.ibm.aspen.core.transaction.{LocalUpdate, TxAcceptResponse, TxFinalized, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
 
 class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreSideNetwork 
    with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
@@ -160,14 +131,6 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       val message = NetworkCodec.decode(p.allocate())
       a.foreach(receiver => receiver.receive(message))
     }
-    else if (p.allocateStatus() != null) {
-      val message = NetworkCodec.decode(p.allocateStatus())
-      a.foreach(receiver => receiver.receive(message))
-    }
-    else if (p.allocateStatusResponse() != null) {
-      val message = NetworkCodec.decode(p.allocateStatusResponse())
-      a.foreach(receiver => receiver.receive(message))
-    }
     else if (p.opportunisticRebuild() != null) {
       val message = NetworkCodec.decode(p.opportunisticRebuild())
       r.foreach(receiver => receiver.receive(message))
@@ -225,15 +188,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
   def send(client: ClientID, message: allocation.ClientMessage): Unit = {
     connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
   }
-  
-  def send(message: AllocationStatusRequest): Unit = {
-    stores(message.to).send(encodeMessage(message))
-  }
-  
-  def send(message: AllocationStatusReply): Unit = {
-    stores(message.to).send(encodeMessage(message))
-  } 
-  
+
   def send(client: ClientID, message: read.ReadResponse): Unit = {
     connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
   }

@@ -1,22 +1,20 @@
 package com.ibm.aspen.core.data_store
 
 import scala.concurrent._
-
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.allocation.AllocationErrors
+import com.ibm.aspen.core.allocation._
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.allocation.AllocationOptions
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.read.OpportunisticRebuild
 
@@ -37,7 +35,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   
   def bootstrapOverwriteObject(objectPointer: ObjectPointer, newContent: DataBuffer, timestamp: HLCTimestamp): Future[Unit] = Future.successful(())
-  
+
   def allocate(newObjectUUID: UUID,
                options: AllocationOptions,
                objectSize: Option[Int],
@@ -45,8 +43,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
                objectData: DataBuffer,
                timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
-               allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = {
+               revisionGuard: AllocationRevisionGuard): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = {
     Future.successful(Left(AllocationErrors.InsufficientSpace))
   }
   

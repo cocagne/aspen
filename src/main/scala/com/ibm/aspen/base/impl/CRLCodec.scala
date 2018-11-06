@@ -5,15 +5,18 @@ import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.core.transaction.TransactionDisposition
 import com.ibm.aspen.core.transaction.TransactionStatus
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.transaction.LocalUpdate
 import java.util.UUID
+
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.allocation.{AllocationRecoveryState, AllocationRevisionGuard, KeyValueAllocationRevisionGuard, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.ObjectType
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectType}
+import com.ibm.aspen.core.objects.keyvalue.Key
 
 object CRLCodec {
   import com.ibm.aspen.core.network.NetworkCodec
@@ -219,8 +222,14 @@ object CRLCodec {
     val storePointer = NetworkCodec.encode(builder, o.storePointer)
     builder.createUnintializedVector(1, o.objectData.size, 1).put(o.objectData.asReadOnlyBuffer())
     val objectData = builder.endVector()
-    val allocatingObject = NetworkCodec.encode(builder, o.allocatingObject)
-    
+    val allocatingObject = NetworkCodec.encode(builder, o.revisionGuard.pointer)
+
+    val (key, isKeyGuard) = o.revisionGuard match {
+      case _: ObjectAllocationRevisionGuard => (-1, false)
+      case kv: KeyValueAllocationRevisionGuard =>
+        builder.createUnintializedVector(1, kv.key.bytes.length, 1).put(kv.key.bytes)
+        (builder.endVector(), true)
+    }
     
     C.CRLAllocationRecoveryState.startCRLAllocationRecoveryState(builder)
     C.CRLAllocationRecoveryState.addDataStoreID(builder, storeId)
@@ -235,7 +244,11 @@ object CRLCodec {
     C.CRLAllocationRecoveryState.addTimestamp(builder, o.timestamp.asLong)
     C.CRLAllocationRecoveryState.addAllocationTransactionUUID(builder, NetworkCodec.encode(builder, o.allocationTransactionUUID))
     C.CRLAllocationRecoveryState.addAllocatingObject(builder, allocatingObject)
-    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encodeObjectRevision(builder, o.allocatingObjectRevision))
+    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encodeObjectRevision(builder, o.revisionGuard.revision))
+
+    if (isKeyGuard)
+      C.CRLAllocationRecoveryState.addAllocatingObjectKey(builder, key)
+
     C.CRLAllocationRecoveryState.endCRLAllocationRecoveryState(builder)
   }
   def decode(e: C.CRLAllocationRecoveryState): AllocationRecoveryState = {
@@ -244,6 +257,15 @@ object CRLCodec {
     val allocatingObject = NetworkCodec.decode(e.allocatingObject())
     val allocatingObjectRevision = NetworkCodec.decode(e.allocatingObjectRevision())
     val timestamp = HLCTimestamp(e.timestamp())
+
+    val revisionGuard: AllocationRevisionGuard = if (e.isKeyGuard) {
+      val kbytes = new Array[Byte](e.allocatingObjectKeyLength())
+      e.allocatingObjectKeyAsByteBuffer().get(kbytes)
+      KeyValueAllocationRevisionGuard(allocatingObject.asInstanceOf[KeyValueObjectPointer],
+        Key(kbytes), allocatingObjectRevision)
+    } else {
+      ObjectAllocationRevisionGuard(allocatingObject, allocatingObjectRevision)
+    }
     
     val storePointer = NetworkCodec.decode(e.storePointer())
     val newObjectUUID = NetworkCodec.decode(e.newObjectUUID())
@@ -255,6 +277,6 @@ object CRLCodec {
     val initialRefcount = NetworkCodec.decode(e.initialRefcount())
     
     AllocationRecoveryState(dataStoreId, storePointer, newObjectUUID, objectType, objectSize, DataBuffer(data), initialRefcount, 
-        timestamp, allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+        timestamp, allocationTransactionUUID, revisionGuard)
   }
 }

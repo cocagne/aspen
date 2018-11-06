@@ -11,12 +11,14 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.SetMin
 import com.ibm.aspen.core.objects.keyvalue.SetMax
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.base.impl.SinglePoolObjectAllocater
+import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.keyvalue.Insert
 import com.ibm.aspen.core.objects.KeyValueObjectState
@@ -44,13 +46,12 @@ class KeyValueListSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-            sys.radiclePointer, 
-            ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+            ObjectRevision(UUID.randomUUID())),
             BootstrapStoragePoolUUID, 
             None,
             TestSystem.DefaultIDA, 
-            ops, 
-            None)
+            ops)
             
       done <- tx.commit()
     } yield kvp

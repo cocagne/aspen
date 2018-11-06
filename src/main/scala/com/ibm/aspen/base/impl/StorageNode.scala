@@ -1,48 +1,14 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.core.crl.CrashRecoveryLog
-import com.ibm.aspen.core.network.StoreSideTransactionMessenger
-import com.ibm.aspen.core.transaction
-import com.ibm.aspen.core.allocation
-import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.core.transaction.TransactionFinalizer
-import com.ibm.aspen.core.network.StoreSideReadMessenger
-import com.ibm.aspen.core.network.StoreSideAllocationMessenger
-import com.ibm.aspen.core.network.StoreSideTransactionMessageReceiver
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.network.StoreSideReadMessageReceiver
-import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
-import com.ibm.aspen.core.data_store.DataStore
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.data_store.ObjectError
-import com.ibm.aspen.core.read.ReadError
-import com.ibm.aspen.core.read.ReadResponse
-import java.nio.ByteBuffer
-import scala.concurrent.Future
-import com.ibm.aspen.core.read.Read
-import com.ibm.aspen.core.allocation.Allocate
-import scala.util.Success
-import scala.util.Failure
-import scala.concurrent.Promise
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.data_store.InvalidLocalPointer
-import com.ibm.aspen.core.data_store.ObjectMismatch
-import com.ibm.aspen.core.data_store.CorruptedObject
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.transaction.{Message => TransactionMessage}
-import java.util.UUID
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.transaction.TxResolved
-import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.allocation.AllocationErrors
-import com.ibm.aspen.core.network.StoreSideNetwork
-import com.ibm.aspen.core.network.StoreSideAllocationMessageReceiver
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
-import scala.concurrent.duration._
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.crl.CrashRecoveryLog
+import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
+import com.ibm.aspen.core.network.{StoreSideAllocationMessageReceiver, StoreSideNetwork, StoreSideTransactionMessageReceiver}
+import com.ibm.aspen.core.transaction.{LocalUpdate, TxFinalized, TxResolved, Message => TransactionMessage}
+
+import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
 
 /** Represents a storage node that hosts multiple DataStore instances.
  *  
@@ -122,12 +88,6 @@ class StorageNode(
   }
   
   override def receive(message: Allocate): Unit = recovered.foreach(r => r.allocationManager.receive(message))
-  
-  override def receive(message: AllocationStatusRequest): Unit = recovered.foreach { r =>
-    val status = r.transactionManager.getTransactionStatus(message.to, message.allocationTransactionUUID)
-    r.allocationManager.receive(message, status)
-  }
-  override def receive(message: AllocationStatusReply): Unit = recovered.foreach(r => r.allocationManager.receive(message))
     
   override def receive(message: TransactionMessage, updateContent: Option[List[LocalUpdate]]): Unit = recovered.foreach { r =>
     message match {

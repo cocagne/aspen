@@ -4,9 +4,9 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import org.scalatest._
 import com.ibm.aspen.base.TestSystem
-
 import com.ibm.aspen.core.HLCTimestamp
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.core.objects.keyvalue.Key
@@ -25,6 +25,7 @@ import com.ibm.aspen.core.objects.keyvalue.SetLeft
 import com.ibm.aspen.core.objects.keyvalue.SetRight
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.base.TransactionAborted
+import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 
 class BasicKeyValueSuite extends TestSystemSuite {
   import Bootstrap._
@@ -48,13 +49,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil, 
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil)
           
       done <- tx.commit()
       
@@ -101,13 +101,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx1.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil, 
-          None)(tx1, executionContext)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil)(tx1, executionContext)
           
       done <- tx1.commit()
       
@@ -161,13 +160,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx1.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil, 
-          None)(tx1, executionContext)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Nil)(tx1, executionContext)
           
       done <- tx1.commit()
       
@@ -203,13 +201,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil)
           
       done <- tx.commit()
       
@@ -252,13 +249,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil)
           
       done <- tx.commit()
       
@@ -295,13 +291,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil,
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Nil)
           
       done <- tx.commit()
       
@@ -339,13 +334,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil,
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil)
           
       done <- tx.commit()
       
@@ -389,13 +383,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil, 
-          None)
+          SetMin(minimum) :: SetMax(maximum) :: SetLeft(left) :: SetRight(right) :: Insert(Key(k1),k1) :: Insert(Key(k2),k2) :: Insert(Key(k3),k3) :: Nil)
           
       done <- tx.commit()
       
@@ -444,13 +437,12 @@ class BasicKeyValueSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-          sys.radiclePointer, 
-          ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+          ObjectRevision(UUID.randomUUID())),
           BootstrapStoragePoolUUID, 
           None,
           TestSystem.DefaultIDA, 
-          ops, 
-          None)
+          ops)
           
       done <- tx.commit()
       

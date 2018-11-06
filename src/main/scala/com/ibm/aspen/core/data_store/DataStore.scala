@@ -1,27 +1,15 @@
 package com.ibm.aspen.core.data_store
 
 import java.util.UUID
-import com.ibm.aspen.core.transaction.TransactionDescription
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.allocation.AllocationErrors
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.transaction.TransactionDisposition
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.transaction.DataUpdate
-import com.ibm.aspen.core.transaction.RefcountUpdate
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.transaction.VersionBump
-import com.ibm.aspen.core.allocation.AllocationOptions
+
 import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.allocation._
+import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRefcount, StorePointer}
 import com.ibm.aspen.core.read.OpportunisticRebuild
+import com.ibm.aspen.core.transaction.{LocalUpdate, TransactionDescription, TransactionRecoveryState}
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object DataStore {
   trait Factory {
@@ -72,8 +60,7 @@ trait DataStore {
                objectData: DataBuffer,
                timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
-               allocatingObject: ObjectPointer,
-               allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]
+               revisionGuard: AllocationRevisionGuard): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]
   
   /** Called by the AllocationManager when the commit transaction is resolved. The AllocationRecoveryState will
    *  be deleted after the returned future completes

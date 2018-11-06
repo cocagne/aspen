@@ -2,10 +2,9 @@ package com.ibm.aspen.base.impl
 
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
+
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.{ Duration, MILLISECONDS }
-import java.util.UUID
-import com.ibm.aspen.core.allocation.AllocationStatusReply
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 
 class SimpleStorageNodeAllocationManager(
@@ -45,12 +44,12 @@ class SimpleStorageNodeAllocationManager(
       }
     }
   }}
-  
+  /*
   override def receive(message: AllocationStatusReply): Unit = synchronized {
     recoveryProcesses.get(Key(message.to, message.allocationTransactionUUID)).foreach { rp =>
       rp.receive(message)
     }
   }
-  
+  */
   override def shutdown(): Unit = bgTask.cancel()
 }

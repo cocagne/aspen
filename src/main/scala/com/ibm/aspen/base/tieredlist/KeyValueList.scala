@@ -259,7 +259,7 @@ object KeyValueList {
         remainingSize: Int,
         allocated: List[(Key, KeyValueObjectPointer)]): Future[(List[(Key, KeyValueObjectPointer)], List[Key])] = {
       
-      allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil, None) flatMap { newPtr =>
+      allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, Nil) flatMap { newPtr =>
         
         val (rops: List[KeyValueOperation], rsize) = right match {
           case None => (Nil, 0)

@@ -1,35 +1,13 @@
 package com.ibm.aspen.demo
 
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.network.protocol.Message
 import java.nio.ByteBuffer
-import com.ibm.aspen.core.network.NetworkCodec
-import com.ibm.aspen.core.read
-import com.ibm.aspen.core.allocation
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.transaction.TxAcceptResponse
-import com.ibm.aspen.core.transaction.TxResolved
-import com.ibm.aspen.core.transaction.TxFinalized
-import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.allocation.AllocationStatusRequest
-import com.ibm.aspen.core.allocation.AllocationStatusReply
-import java.util.UUID
-import com.ibm.aspen.core.DataBuffer
+
 import com.google.flatbuffers.FlatBufferBuilder
-import com.ibm.aspen.core.transaction.TxPrepareResponse
-import com.ibm.aspen.core.transaction.TxAccept
-import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.util.uuid2byte
-import com.ibm.aspen.core.transaction.{Message => TransactionMessage}
-import com.ibm.aspen.core.allocation.{Message => AllocationMessage}
-import com.ibm.aspen.core.read.{Message => ReadMessage}
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.AllocateResponse
-import com.ibm.aspen.core.read.Read
-import com.ibm.aspen.core.read.ReadResponse
-import com.ibm.aspen.core.transaction.TxCommitted
-import com.ibm.aspen.core.read.OpportunisticRebuild
+import com.ibm.aspen.core.allocation.{Allocate, AllocateResponse, Message => AllocationMessage}
+import com.ibm.aspen.core.network.NetworkCodec
+import com.ibm.aspen.core.network.protocol.Message
+import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, ReadResponse, Message => ReadMessage}
+import com.ibm.aspen.core.transaction.{LocalUpdate, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
 
 object NMessageEncoder {
   
@@ -161,26 +139,6 @@ object NMessageEncoder {
     
         Message.startMessage(builder)
         Message.addAllocateResponse(builder, o)
-
-        Message.finishMessageBuffer(builder, Message.endMessage(builder))
-        
-        builder.sizedByteArray()
-        
-      case m: AllocationStatusRequest =>
-        val o = NetworkCodec.encode(builder, m)
-    
-        Message.startMessage(builder)
-        Message.addAllocateStatus(builder, o)
-
-        Message.finishMessageBuffer(builder, Message.endMessage(builder))
-        
-        builder.sizedByteArray()
-        
-      case m: AllocationStatusReply =>
-        val o = NetworkCodec.encode(builder, m)
-    
-        Message.startMessage(builder)
-        Message.addAllocateStatusResponse(builder, o)
 
         Message.finishMessageBuffer(builder, Message.endMessage(builder))
         

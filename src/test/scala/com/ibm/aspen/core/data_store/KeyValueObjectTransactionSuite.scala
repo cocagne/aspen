@@ -4,6 +4,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import org.scalatest._
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.ida.Replication
@@ -16,8 +17,8 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import java.nio.ByteBuffer
-import com.ibm.aspen.core.allocation.Allocate
-import com.ibm.aspen.core.allocation.KeyValueAllocationOptions
+
+import com.ibm.aspen.core.allocation.{Allocate, KeyValueAllocationOptions, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.core.objects.keyvalue._
@@ -94,9 +95,11 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val ds = newStore
 
     implicit val executionContext = ExecutionContext.Implicits.global
-    
-    val f = ds.allocate(uuid0, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, allocObj, allocRev) flatMap { either => either match {
-      case Right(ars0) => ds.allocate(uuid1, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, allocObj, allocRev).flatMap(er => er match {
+
+    val rguard = ObjectAllocationRevisionGuard(allocObj, allocRev)
+
+    val f = ds.allocate(uuid0, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, rguard) flatMap { either => either match {
+      case Right(ars0) => ds.allocate(uuid1, new KeyValueAllocationOptions, None, oneRef, DataBuffer.Empty, initialTimestamp, allocUUID, rguard).flatMap(er => er match {
         case Right(ars1) => 
           val op0 = mkObjPtr(uuid0, ars0.storePointer)
           val op1 = mkObjPtr(uuid1, ars1.storePointer)

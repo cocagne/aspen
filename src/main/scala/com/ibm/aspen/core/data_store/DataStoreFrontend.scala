@@ -2,7 +2,6 @@ package com.ibm.aspen.core.data_store
 
 import java.util.UUID
 
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
 import com.ibm.aspen.base.{AspenSystem, MissedUpdateIterator, ObjectReader}
 import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.objects._
@@ -32,12 +31,12 @@ class DataStoreFrontend(
 
 
   // The content of the following two maps are managed by instances of the StoreTransaction class
-  protected[data_store] var activeTransactions = Map[UUID, StoreTransaction]()
-  protected[data_store] var lockedTransactions = Map[UUID, StoreTransaction]()
+  protected[data_store] var activeTransactions: Map[UUID, StoreTransaction] = Map[UUID, StoreTransaction]()
+  protected[data_store] var lockedTransactions: Map[UUID, StoreTransaction] = Map[UUID, StoreTransaction]()
   
   // Maps UUIDs of locked transactions to unlocked transactions that have a good chance of
   // locking if they re-attempt the lock after the locked transactions complete.
-  protected[data_store] var delayedTransactions = Map[UUID, Set[StoreTransaction]]()
+  protected[data_store] var delayedTransactions: Map[UUID, Set[StoreTransaction]] = Map[UUID, Set[StoreTransaction]]()
   
   // maps Transaction UUIDs to the list of objects being allocated in that transaction
   private[this] var allocations = Map[UUID, List[ObjectStoreState]]()
@@ -110,8 +109,7 @@ class DataStoreFrontend(
       objectData: DataBuffer,
       timestamp: HLCTimestamp,
       allocationTransactionUUID: UUID,
-      allocatingObject: ObjectPointer,
-      allocatingObjectRevision: ObjectRevision): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
+      revisionGuard: AllocationRevisionGuard): Future[Either[AllocationErrors.Value, AllocationRecoveryState]] = synchronized {
     
     val objectType = options match {
       case _: DataAllocationOptions => ObjectType.Data
@@ -128,7 +126,7 @@ class DataStoreFrontend(
         val sp = new StorePointer(storeId.poolIndex, arr)
         
         val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp, 
-                                          allocationTransactionUUID, allocatingObject, allocatingObjectRevision)
+                                          allocationTransactionUUID, revisionGuard)
                                           
         loadAllocatedObject(ars)
         

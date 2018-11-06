@@ -2,9 +2,11 @@ package com.ibm.aspen.base.task
 
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.KeyValueObjectState
+
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.Insert
@@ -16,9 +18,11 @@ import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.base.TypeRegistry
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.objects.keyvalue.Value
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Promise
 import com.ibm.aspen.base.TypeFactory
+import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 
 class LocalTaskGroupSuite extends TestSystemSuite { 
   import Bootstrap._
@@ -38,13 +42,12 @@ class LocalTaskGroupSuite extends TestSystemSuite {
       meh = tx.bumpVersion(sys.radiclePointer, r.revision)
       
       kvp <- sys.lowLevelAllocateKeyValueObject(
-            sys.radiclePointer, 
-            ObjectRevision(UUID.randomUUID()), 
+        ObjectAllocationRevisionGuard(sys.radiclePointer,
+            ObjectRevision(UUID.randomUUID())),
             BootstrapStoragePoolUUID, 
             None,
             TestSystem.DefaultIDA, 
-            ops, 
-            None)
+            ops)
             
       done <- tx.commit()
     } yield kvp
