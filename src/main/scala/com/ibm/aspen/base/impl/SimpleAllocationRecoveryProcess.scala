@@ -4,10 +4,17 @@ import java.util.UUID
 
 import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
 import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.core.allocation.AllocationRecoveryState
+import com.ibm.aspen.core.HLCTimestamp
+import com.ibm.aspen.core.allocation.{AllocationRecoveryState, KeyValueAllocationRevisionGuard, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
 import com.ibm.aspen.core.network.StoreSideAllocationMessenger
+import com.ibm.aspen.core.network.protocol.TransactionRequirement
+import com.ibm.aspen.core.objects.ObjectRevision
+import com.ibm.aspen.core.objects.keyvalue.Insert
+import com.ibm.aspen.core.read.InvalidObject
+import com.ibm.aspen.core.transaction.{KeyValueUpdate, TransactionStatus}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration.Duration
@@ -49,18 +56,84 @@ import scala.concurrent.duration.Duration
   *           delete 2 objects, recover. In that case 3 objects should be committed and 2 discarded.
  */
 class SimpleAllocationRecoveryProcess(
-    val statusQueryPeriod: Duration,
+                                     /*
     val system: BasicAspenSystem,
-    val allocMessenger: StoreSideAllocationMessenger,
+    val querier: TransactionStatusQuerier,
+    val statusQueryInitialRetryDelay: Duration,
     val crl: CrashRecoveryLog,
     val store: DataStore,
-    val ars: AllocationRecoveryState)(implicit ec: ExecutionContext) {
+    val ars: AllocationRecoveryState
+    */
+                                     )(implicit ec: ExecutionContext) extends Logging {
 
   private[this] val promise = Promise[Boolean]()
 
   def done: Future[Boolean] = promise.future
-
 /*
+  querier.queryFinalizedTransactionStatus(store.storeId,
+    statusQueryInitialRetryDelay, ars.revisionGuard.pointer, ars.allocationTransactionUUID).foreach {
+
+    case None => // Transaction either hasn't begun or has completed and been forgotten
+      recover()
+    case Some(TransactionStatus.Committed) => promise.success(true)
+    case Some(TransactionStatus.Aborted) => promise.success(false)
+    case Some(TransactionStatus.Unresolved) =>
+      logger.error("Illegal Unresolved status for finalized transaction")
+      recover()
+  }
+
+  private def recover(): Unit = {
+
+  }
+
+
+  private def getOrForceAllocatingObjectRevisionChange(): Future[Unit] = {
+    val retryStrategy = new ExponentialBackoffRetryStrategy()
+
+    val getObjectRevision: () => Future[Option[ObjectRevision]] = ars.revisionGuard match {
+      case kv: KeyValueAllocationRevisionGuard =>
+        def read(): Future[Option[ObjectRevision]] = {
+          system.readObject(kv.pointer).map { kvos => kvos.contents.get(kv.key).map(v => v.revision) }.recover {
+            case _: InvalidObject => None
+          }
+        }
+
+        read
+
+      case d: ObjectAllocationRevisionGuard =>
+        def read(): Future[Option[ObjectRevision]] = {
+          system.readObject(d.pointer).map(dos => Some(dos.revision)).recover { case _: InvalidObject => None }
+        }
+
+        read
+    }
+
+    val bumpVersion: (HLCTimestamp, Array[Byte]) => Future[Boolean] = ars.revisionGuard match {
+      case kv: KeyValueAllocationRevisionGuard =>
+        def bump(currentTs: HLCTimestamp, currentValue: Array[Byte]): Future[Boolean] = {
+          system.transact { tx =>
+            val requirement = KeyValueUpdate.KVRequirement(kv.key, currentTs, KeyValueUpdate.TimestampRequirement.Equals)
+            val op = Insert(kv.key, currentValue)
+            tx.update(kv.pointer, requiredRevision = None, requirements=requirement :: Nil, operations=op :: Nil)
+            Future.successful(true)
+          }.recover {
+            case _ => false
+          }
+        }
+    }
+
+  }
+  */
+/*
+
+  Maybe pass in a function to get the transaction state
+     - method on StorageNodeTransactionManager
+     - use exponential backoff to request status
+     - immediately return on first commit/abort seen
+     - otherwise wait for a threshold of None or Pending
+
+
+
   private[this] var replies = Map[DataStoreID, AllocationStatusReply]()
   private[this] var revisionChanged = false
   private[this] var resolving = false

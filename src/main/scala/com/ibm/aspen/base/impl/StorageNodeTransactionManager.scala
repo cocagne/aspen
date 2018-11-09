@@ -6,18 +6,47 @@ import com.github.blemale.scaffeine.Scaffeine
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
 import com.ibm.aspen.core.network.{StoreSideTransactionMessageReceiver, StoreSideTransactionMessenger}
-import com.ibm.aspen.core.transaction._
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.transaction.{TransactionStatus, _}
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
+object StorageNodeTransactionManager {
+
+  class StatusRequest(val initialRetryDelay: Duration,
+                      val txmgr: StorageNodeTransactionManager,
+                      val requestingStore: DataStoreID,
+                      val primaryObject: ObjectPointer,
+                      val transactionUUID: UUID,
+                      val requireFinalized: Boolean)(implicit ec: ExecutionContext) {
+
+    val requestUUID: UUID = UUID.randomUUID()
+    val promise: Promise[Option[TransactionStatus.Value]] = Promise()
+    var responses: Map[DataStoreID, Option[TransactionStatus.Value]] = Map()
+
+    val retransmitTask: BackgroundTask.ScheduledTask = BackgroundTask.RetryWithExponentialBackoff(
+      tryNow=false, initialRetryDelay, Duration(1,MINUTES)) {
+      txmgr.sendStatusRequests(this)
+      false
+    }
+
+    txmgr.sendStatusRequests(this)
+
+    promise.future.onComplete(_ => retransmitTask.cancel())
+  }
+
+}
 
 class StorageNodeTransactionManager(
     val crl: CrashRecoveryLog, 
     val txresult: UUID => Option[Boolean],
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
-    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends StoreSideTransactionMessageReceiver {
+    val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext)
+  extends StoreSideTransactionMessageReceiver with TransactionStatusQuerier {
+
+  import StorageNodeTransactionManager._
   
   private[this] var stores = Map[DataStoreID, StoreState]()
  
@@ -27,6 +56,8 @@ class StorageNodeTransactionManager(
                                                       
   private[this] val resultCache = Scaffeine().maximumSize(1000)
                                              .build[UUID, Boolean]()
+
+  private[this] var statusRequests: Map[UUID, StatusRequest] = Map()
 
   def idle: Future[Unit] = synchronized {
     Future.sequence(stores.valuesIterator.map(_.idle).toList).map(_=>())
@@ -56,6 +87,39 @@ class StorageNodeTransactionManager(
     // Do this in a synchronized block to serialize updates to the cached list
     val l = prepareResponseCache.getIfPresent(m.transactionUUID).getOrElse(Nil)
     prepareResponseCache.put(m.transactionUUID, m :: l)
+  }
+
+  private def sendStatusRequests(req: StatusRequest): Unit = req.primaryObject.storePointers.foreach { sp =>
+    val to = DataStoreID(req.primaryObject.poolUUID, sp.poolIndex)
+    messenger.send(TxStatusRequest(to, req.requestingStore, req.transactionUUID, req.requestUUID))
+  }
+
+  def queryTransactionStatus(requestingStore: DataStoreID,
+                             initialRetryDelay: Duration,
+                             primaryObject: ObjectPointer,
+                             transactionUUID: UUID): Future[Option[TransactionStatus.Value]] = synchronized {
+    val req = new StatusRequest(initialRetryDelay: Duration, txmgr = this, requestingStore, primaryObject,
+      transactionUUID, requireFinalized = false)
+
+    statusRequests += req.requestUUID -> req
+    req.promise.future
+  }
+
+  /** The future completes when either a finalized commit is seen, an abort resolution is seen, or the number of
+    * "unknown transaction" responses equals or exceeds the object's consistent restore threshold. Note that if this
+    * method is called before the stores hosting the target object begin processing the transaction, the promise
+    * could complete. Which would falsely indicate that the transaction had been completed, finalized, and forgotten.
+    * Users of this method must ensure correct operation in that case.
+    */
+  def queryFinalizedTransactionStatus(requestingStore: DataStoreID,
+                                      initialRetryDelay: Duration,
+                                      primaryObject: ObjectPointer,
+                                      transactionUUID: UUID): Future[Option[TransactionStatus.Value]] = synchronized {
+    val req = new StatusRequest(initialRetryDelay: Duration, txmgr = this, requestingStore, primaryObject,
+      transactionUUID, requireFinalized = true)
+
+    statusRequests += req.requestUUID -> req
+    req.promise.future
   }
   
   /** (unit test only) returns true if all transactions are complete */
@@ -201,6 +265,64 @@ class StorageNodeTransactionManager(
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxFinalized(m) )
           
         case m: TxHeartbeat => getTransaction(m.transactionUUID).foreach( _.heartbeatReceived() )
+
+        case m: TxStatusRequest =>
+          val ostatus = resultCache.getIfPresent(m.transactionUUID) match {
+            case Some(result) =>
+              val finalized = getTransaction(m.transactionUUID).isEmpty
+              val status = if (result) TransactionStatus.Committed else TransactionStatus.Aborted
+              Some(TxStatusResponse.TxStatus(status, finalized))
+
+            case None => getTransaction(m.transactionUUID) match {
+              case Some(_) => Some(TxStatusResponse.TxStatus(TransactionStatus.Unresolved, finalized = false))
+              case None => None
+            }
+          }
+          messenger.send(TxStatusResponse(m.from, store.storeId, m.transactionUUID, m.requestUUID, ostatus))
+
+        case m: TxStatusResponse => synchronized {
+          statusRequests.get(m.requestUUID).foreach { r =>
+            r.responses += m.from -> m.status.map(_.status)
+
+            def complete(ostatus: Option[TransactionStatus.Value]): Unit = {
+              statusRequests -= r.requestUUID
+              r.promise.success(ostatus)
+            }
+
+            m.status match {
+              case Some(s) =>
+                if (s.finalized)
+                  complete(Some(s.status))
+
+              case _=>
+            }
+
+            if (!r.promise.isCompleted) {
+              case class Counts(unknown: Int, pending: Int, committed: Int, aborted: Int)
+
+              val counts = r.responses.valuesIterator.foldLeft(Counts(0,0,0,0)) { (c, o) =>
+                o match {
+                  case Some(TransactionStatus.Unresolved) => c.copy(pending = c.pending + 1)
+                  case Some(TransactionStatus.Committed) => c.copy(committed = c.committed + 1)
+                  case Some(TransactionStatus.Aborted) => c.copy(aborted = c.aborted + 1)
+                  case Some(_) => c // should be impossible
+                  case None => c.copy(unknown = c.unknown + 1)
+                }
+              }
+
+              if (counts.unknown >= r.primaryObject.ida.consistentRestoreThreshold)
+                complete(None)
+              else if (!r.requireFinalized) {
+                if (counts.committed > 0)
+                  complete(Some(TransactionStatus.Committed))
+                else if (counts.aborted > 0)
+                  complete(Some(TransactionStatus.Aborted))
+                else if (counts.pending >= r.primaryObject.ida.consistentRestoreThreshold)
+                  complete(Some(TransactionStatus.Unresolved))
+              }
+            }
+          }
+        }
       }
     }
   }

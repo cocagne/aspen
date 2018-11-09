@@ -32,7 +32,7 @@ class SimpleStorageNodeAllocationManager(
       val (key, m) = t
       m.values.foreach { value =>
         if (Duration(now - value.lastHeartbeatTimestamp, MILLISECONDS) > allocationTimeout && ! recovers.contains(key)) {
-          val rp = new SimpleAllocationRecoveryProcess(statusQueryPeriod, system, allocationMessenger, crl, value.store, value.ars)
+          val rp = new SimpleAllocationRecoveryProcess()
           
           recoveryProcesses += (key -> rp)
           

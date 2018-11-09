@@ -7,7 +7,7 @@ import com.ibm.aspen.core.allocation.{Allocate, AllocateResponse, Message => All
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, ReadResponse, Message => ReadMessage}
-import com.ibm.aspen.core.transaction.{LocalUpdate, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
+import com.ibm.aspen.core.transaction.{LocalUpdate, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, TxStatusRequest, TxStatusResponse, Message => TransactionMessage}
 
 object NMessageEncoder {
   
@@ -93,6 +93,26 @@ object NMessageEncoder {
 
         Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
+        builder.sizedByteArray()
+
+      case m: TxStatusRequest =>
+        val o = NetworkCodec.encode(builder, m)
+
+        Message.startMessage(builder)
+        Message.addHeartbeat(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+
+        builder.sizedByteArray()
+
+      case m: TxStatusResponse =>
+        val o = NetworkCodec.encode(builder, m)
+
+        Message.startMessage(builder)
+        Message.addHeartbeat(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+
         builder.sizedByteArray()
     }
     

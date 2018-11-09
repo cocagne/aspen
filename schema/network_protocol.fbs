@@ -248,6 +248,23 @@ table TxHeartbeat {
    transaction_uuid: UUID;
 }
 
+table TxStatusRequest {
+   to: DataStoreID;
+   from: DataStoreID;
+   transaction_uuid: UUID;
+   request_uuid: UUID;
+}
+
+table TxStatusResponse {
+   to: DataStoreID;
+   from: DataStoreID;
+   transaction_uuid: UUID;
+   request_uuid: UUID;
+   status: TransactionStatus;
+   have_status: bool;
+   is_finalized: bool;
+}
+
 //---------------------------------------------------------------------------
 //- Read Messages
 //---------------------------------------------------------------------------

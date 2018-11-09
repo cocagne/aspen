@@ -1,14 +1,20 @@
 sbt "test:testOnly *KeyValueListSuite"
 
+* AllocationRevisionGuard => AllocationResolutionStrategy
+   - Use TypeRegistry for decode
+   - add resolveCommitOrAbort(system: AspenSystem): Future[Boolean]
+      |-> future to commit/abort
+   - add encode(): Array[Byte]
+
+
+* Problem with allocation into TieredList
+  - key/value can move out of the "allocation object"
+  - how to resolve old alloc on moved kv pair?
+
+
+
 
 * Remove 5 file op retry limit from SimpleBaseFile
-
-
-* Allocation Strategy Refactor
-   - Need to switch to RevisionGuard for allocation
-   - ObjectRevisionGuard - top level object revision guard (data or kvobj)
-   - KeyRevisionGuard - revision of kv-pair
-   - May be able to do this with an overloaded allocation method that takes (KeyValueObjectPointer, key, revision, ...)
 
 
 Base Transaction Messaging (failure free)

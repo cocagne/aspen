@@ -1,75 +1,19 @@
 package com.ibm.aspen.core.network
 
-import com.ibm.aspen.core.network.{protocol => P}
-import com.google.flatbuffers.FlatBufferBuilder
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.core.ida.ReedSolomon
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.objects.ObjectPointer
+import java.nio.{ByteBuffer, ByteOrder}
 import java.util.UUID
 
-import com.ibm.aspen.core.transaction.TransactionStatus
-import com.ibm.aspen.core.transaction.UpdateType
-import com.ibm.aspen.core.transaction.TransactionDisposition
-import com.ibm.aspen.core.transaction.UpdateError
-import com.ibm.aspen.core.transaction.DataUpdateOperation
-import com.ibm.aspen.core.transaction.DataUpdate
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.transaction.RefcountUpdate
-import com.ibm.aspen.core.transaction.SerializedFinalizationAction
-import com.ibm.aspen.core.transaction.TransactionDescription
-import com.ibm.aspen.core.transaction.UpdateErrorResponse
-import com.ibm.aspen.core.transaction.paxos.ProposalID
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.TxPrepareResponse
-import com.ibm.aspen.core.transaction.TxAccept
-import com.ibm.aspen.core.transaction.TxAcceptResponse
-import com.ibm.aspen.core.transaction.TxFinalized
+import com.google.flatbuffers.FlatBufferBuilder
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.allocation._
-import com.ibm.aspen.core.read.Read
-import com.ibm.aspen.core.read.ReadResponse
-import com.ibm.aspen.core.read.ReadError
-import com.ibm.aspen.core.read.OpportunisticRebuild
-import java.nio.ByteBuffer
-
-import com.ibm.aspen.core.transaction.TxResolved
-import com.ibm.aspen.core.transaction.TxCommitted
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.transaction.TxHeartbeat
-import com.ibm.aspen.core.transaction.VersionBump
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.data_store.Lock
-import com.ibm.aspen.core.data_store.RevisionWriteLock
-import com.ibm.aspen.core.data_store.RevisionReadLock
-import com.ibm.aspen.core.data_store.RefcountReadLock
-import com.ibm.aspen.core.data_store.RefcountWriteLock
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.read.ReadType
-import com.ibm.aspen.core.read.MetadataOnly
-import com.ibm.aspen.core.read.FullObject
-import com.ibm.aspen.core.read.ByteRange
-import com.ibm.aspen.core.read.SingleKey
-import com.ibm.aspen.core.read.LargestKeyLessThan
-import com.ibm.aspen.core.read.KeyRange
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.IntegerKeyOrdering
-import com.ibm.aspen.core.objects.keyvalue.LexicalKeyOrdering
-import com.ibm.aspen.core.read.LargestKeyLessThanOrEqualTo
-import com.ibm.aspen.core.data_store.ObjectReadError
-import com.ibm.aspen.core.transaction.RevisionLock
-import java.nio.ByteOrder
+import com.ibm.aspen.core.data_store._
+import com.ibm.aspen.core.ida.{IDA, ReedSolomon, Replication}
+import com.ibm.aspen.core.network.{protocol => P}
+import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.objects.keyvalue._
+import com.ibm.aspen.core.read._
+import com.ibm.aspen.core.transaction._
+import com.ibm.aspen.core.transaction.paxos.ProposalID
 
 
 
@@ -842,6 +786,58 @@ object NetworkCodec {
     
     TxHeartbeat(to, from, transactionUUID)
   }
+
+  def encode(builder:FlatBufferBuilder, o:TxStatusRequest): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+
+    P.TxStatusRequest.startTxStatusRequest(builder)
+    P.TxStatusRequest.addTo(builder, to)
+    P.TxStatusRequest.addFrom(builder, from)
+    P.TxStatusRequest.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxStatusRequest.addRequestUuid(builder, encode(builder, o.requestUUID))
+    P.TxStatusRequest.endTxStatusRequest(builder)
+  }
+  def decode(n: P.TxStatusRequest): TxStatusRequest = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    val requestUUID = decode(n.requestUuid())
+
+    TxStatusRequest(to, from, transactionUUID, requestUUID)
+  }
+
+  def encode(builder:FlatBufferBuilder, o:TxStatusResponse): Int = {
+    val to = encode(builder, o.to)
+    val from = encode(builder, o.from)
+
+    P.TxStatusResponse.startTxStatusResponse(builder)
+    P.TxStatusResponse.addTo(builder, to)
+    P.TxStatusResponse.addFrom(builder, from)
+    P.TxStatusResponse.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    P.TxStatusResponse.addRequestUuid(builder, encode(builder, o.requestUUID))
+    val haveStatus = o.status match {
+      case None => false
+      case Some(s) =>
+        P.TxStatusResponse.addStatus(builder, encodeTransactionStatus(s.status))
+        P.TxStatusResponse.addIsFinalized(builder, s.finalized)
+        true
+    }
+    P.TxStatusResponse.addHaveStatus(builder, haveStatus)
+    P.TxStatusResponse.endTxStatusResponse(builder)
+  }
+  def decode(n: P.TxStatusResponse): TxStatusResponse = {
+    val to = decode(n.to())
+    val from = decode(n.from())
+    val transactionUUID = decode(n.transactionUuid())
+    val requestUUID = decode(n.requestUuid())
+    val ostatus = if (n.haveStatus) {
+      Some(TxStatusResponse.TxStatus(decodeTransactionStatus(n.status()), n.isFinalized))
+    } else None
+
+    TxStatusResponse(to, from, transactionUUID, requestUUID, ostatus)
+  }
+
   //-----------------------------------------------------------------------------------------------
   // Allocation Messages
   //-----------------------------------------------------------------------------------------------

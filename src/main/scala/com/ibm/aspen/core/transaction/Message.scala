@@ -69,4 +69,21 @@ final case class TxFinalized(
 final case class TxHeartbeat(
     to: DataStoreID,
     from: DataStoreID,
-    transactionUUID: UUID) extends Message 
+    transactionUUID: UUID) extends Message
+
+final case class TxStatusRequest(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID,
+    requestUUID: UUID) extends Message
+
+final case class TxStatusResponse(
+    to: DataStoreID,
+    from: DataStoreID,
+    transactionUUID: UUID,
+    requestUUID: UUID,
+    status: Option[TxStatusResponse.TxStatus]) extends Message
+
+object TxStatusResponse {
+  case class TxStatus(status: TransactionStatus.Value, finalized: Boolean)
+}
