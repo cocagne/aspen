@@ -6,7 +6,7 @@ import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.allocation.{Allocate, AllocateResponse, Message => AllocationMessage}
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.network.protocol.Message
-import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, ReadResponse, Message => ReadMessage}
+import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, ReadResponse, TransactionCompletionQuery, TransactionCompletionResponse, Message => ReadMessage}
 import com.ibm.aspen.core.transaction.{LocalUpdate, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, TxStatusRequest, TxStatusResponse, Message => TransactionMessage}
 
 object NMessageEncoder {
@@ -206,6 +206,26 @@ object NMessageEncoder {
 
         Message.finishMessageBuffer(builder, Message.endMessage(builder))
         
+        builder.sizedByteArray()
+
+      case m: TransactionCompletionQuery =>
+        val o = NetworkCodec.encode(builder, m)
+
+        Message.startMessage(builder)
+        Message.addTransactionCompletionQuery(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+
+        builder.sizedByteArray()
+
+      case m: TransactionCompletionResponse =>
+        val o = NetworkCodec.encode(builder, m)
+
+        Message.startMessage(builder)
+        Message.addTransactionCompletionResponse(builder, o)
+
+        Message.finishMessageBuffer(builder, Message.endMessage(builder))
+
         builder.sizedByteArray()
     }
     

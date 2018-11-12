@@ -120,6 +120,7 @@ class TestNetwork {
     }
 
     def send(client: ClientID, message: read.ReadResponse): Unit = cdeliver(client, _.r.foreach(r => r.receive(message)))
+    def send(client: ClientID, message: read.TransactionCompletionResponse): Unit = cdeliver(client, _.r.foreach(r => r.receive(message)))
   }
   
   class CNet(override val clientId: ClientID) extends ClientSideNetwork 
@@ -152,6 +153,7 @@ class TestNetwork {
     def send(toStore: DataStoreID, message: allocation.Allocate): Unit = sdeliver(toStore, _.a.foreach(a => a.receive(message)))
     def send(message: read.Read): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
     def send(message: read.OpportunisticRebuild): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
+    def send(message: read.TransactionCompletionQuery): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
     def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = sdeliver(message.to, sn => {
       val oarr = if (updateContent.isEmpty) None else Some(updateContent)
       sn.t.foreach(t => t.receive(message, oarr))

@@ -343,6 +343,19 @@ table OpportunisticRebuild {
    data: [byte];
 }
 
+table TransactionCompletionQuery {
+  toStore: DataStoreID;
+  fromClient: [byte];
+  queryUUID: UUID;
+  transactionUUID: UUID;
+}
+
+table TransactionCompletionResponse {
+  fromStore: DataStoreID;
+  queryUUID: UUID;
+  isComplete: bool;
+}
+
 //---------------------------------------------------------------------------
 //- Allocation Messages
 //---------------------------------------------------------------------------
@@ -426,6 +439,8 @@ table Message {
   read: Read;
   read_response: ReadResponse;
   opportunisticRebuild: OpportunisticRebuild;
+  transactionCompletionQuery: TransactionCompletionQuery;
+  transactionCompletionResponse: TransactionCompletionResponse;
 }
 
 root_type Message;

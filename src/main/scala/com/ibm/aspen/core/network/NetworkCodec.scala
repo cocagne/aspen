@@ -872,7 +872,7 @@ object NetworkCodec {
     P.Allocate.addTimestamp(builder, o.timestamp.asLong)
     P.Allocate.addAllocationTransactionUUID(builder, encode(builder, o.allocationTransactionUUID))
     P.Allocate.addAllocatingObject(builder, allocObj)
-    P.Allocate.addAllocatingObjectRevision(builder, encodeObjectRevision(builder, o.revisionGuard.revision))
+    P.Allocate.addAllocatingObjectRevision(builder, encodeObjectRevision(builder, o.revisionGuard.requiredRevision))
     P.Allocate.addIsKeyGuard(builder, isKeyGuard)
 
     if (isKeyGuard)
@@ -1157,7 +1157,7 @@ object NetworkCodec {
   
   def encode(builder:FlatBufferBuilder, o:OpportunisticRebuild): Int = {
     val toStore = encode(builder, o.toStore)
-    val clientData = P.Read.createFromClientVector(builder, o.fromClient.serialized)
+    val clientData = P.OpportunisticRebuild.createFromClientVector(builder, o.fromClient.serialized)
     val optr = encode(builder, o.pointer)
     builder.createUnintializedVector(1, o.data.size, 1).put(o.data.asReadOnlyBuffer())
     val data = builder.endVector()
@@ -1189,5 +1189,45 @@ object NetworkCodec {
     val data = DataBuffer(buff)
     
     OpportunisticRebuild(toStore, ClientID(fromClient), pointer, revision, refcount, timestamp, data)
+  }
+
+  def encode(builder:FlatBufferBuilder, o:TransactionCompletionQuery): Int = {
+    val toStore = encode(builder, o.toStore)
+    val clientData = P.TransactionCompletionQuery.createFromClientVector(builder, o.fromClient.serialized)
+
+    P.TransactionCompletionQuery.startTransactionCompletionQuery(builder)
+    P.TransactionCompletionQuery.addToStore(builder, toStore)
+    P.TransactionCompletionQuery.addFromClient(builder, clientData)
+    P.TransactionCompletionQuery.addQueryUUID(builder, encode(builder, o.queryUUID))
+    P.TransactionCompletionQuery.addTransactionUUID(builder, encode(builder, o.transactionUUID))
+    P.TransactionCompletionQuery.endTransactionCompletionQuery(builder)
+  }
+
+  def decode(n: P.TransactionCompletionQuery): TransactionCompletionQuery = {
+    val toStore = decode(n.toStore())
+    val fromClient = new Array[Byte](n.fromClientLength())
+    n.fromClientAsByteBuffer().get(fromClient)
+    val queryUUID = decode(n.queryUUID())
+    val transactionUUID = decode(n.transactionUUID())
+
+    TransactionCompletionQuery(toStore, ClientID(fromClient), queryUUID, transactionUUID)
+  }
+
+  def encode(builder:FlatBufferBuilder, o:TransactionCompletionResponse): Int = {
+    val fromStore = encode(builder, o.fromStore)
+
+    P.TransactionCompletionResponse.startTransactionCompletionResponse(builder)
+    P.TransactionCompletionResponse.addFromStore(builder, fromStore)
+    P.TransactionCompletionResponse.addQueryUUID(builder, encode(builder, o.queryUUID))
+    P.TransactionCompletionResponse.addIsComplete(builder, o.isComplete)
+    P.TransactionCompletionResponse.endTransactionCompletionResponse(builder)
+  }
+  
+  def decode(n: P.TransactionCompletionResponse): TransactionCompletionResponse = {
+    val fromStore = decode(n.fromStore())
+    val queryUUID = decode(n.queryUUID())
+    val isComplete = n.isComplete
+
+    TransactionCompletionResponse(fromStore, queryUUID, isComplete)
   }
 }

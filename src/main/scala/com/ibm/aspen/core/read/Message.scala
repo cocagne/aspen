@@ -30,18 +30,8 @@ final case class ReadResponse(
     readTime: HLCTimestamp,
     result: Either[ObjectReadError.Value, ReadResponse.CurrentState]) extends Message
     
-final case class OpportunisticRebuild(
-    toStore: DataStoreID,
-    fromClient: ClientID,
-    pointer: ObjectPointer,
-    revision: ObjectRevision,
-    refcount: ObjectRefcount,
-    timestamp: HLCTimestamp,
-    data: DataBuffer) extends Message {
-}
 
 
-    
 object ReadResponse {
   case class CurrentState(
       revision: ObjectRevision,
@@ -66,3 +56,23 @@ object ReadResponse {
     }
   }
 }
+
+final case class OpportunisticRebuild(
+                                       toStore: DataStoreID,
+                                       fromClient: ClientID,
+                                       pointer: ObjectPointer,
+                                       revision: ObjectRevision,
+                                       refcount: ObjectRefcount,
+                                       timestamp: HLCTimestamp,
+                                       data: DataBuffer) extends Message
+
+final case class TransactionCompletionQuery(
+                                             toStore: DataStoreID,
+                                             fromClient: ClientID,
+                                             queryUUID: UUID,
+                                             transactionUUID: UUID) extends Message
+
+final case class TransactionCompletionResponse(
+                                           fromStore: DataStoreID,
+                                           queryUUID: UUID,
+                                           isComplete: Boolean) extends Message

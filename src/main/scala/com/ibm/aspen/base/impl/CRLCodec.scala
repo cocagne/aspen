@@ -244,7 +244,7 @@ object CRLCodec {
     C.CRLAllocationRecoveryState.addTimestamp(builder, o.timestamp.asLong)
     C.CRLAllocationRecoveryState.addAllocationTransactionUUID(builder, NetworkCodec.encode(builder, o.allocationTransactionUUID))
     C.CRLAllocationRecoveryState.addAllocatingObject(builder, allocatingObject)
-    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encodeObjectRevision(builder, o.revisionGuard.revision))
+    C.CRLAllocationRecoveryState.addAllocatingObjectRevision(builder, NetworkCodec.encodeObjectRevision(builder, o.revisionGuard.requiredRevision))
 
     if (isKeyGuard)
       C.CRLAllocationRecoveryState.addAllocatingObjectKey(builder, key)

@@ -135,6 +135,10 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       val message = NetworkCodec.decode(p.opportunisticRebuild())
       r.foreach(receiver => receiver.receive(message))
     }
+    else if (p.transactionCompletionQuery() != null) {
+      val message = NetworkCodec.decode(p.transactionCompletionQuery())
+      r.foreach(receiver => receiver.receive(message))
+    }
     else {
       println("Unknown Message!")
     }
@@ -190,6 +194,10 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
   }
 
   def send(client: ClientID, message: read.ReadResponse): Unit = {
+    connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
+  }
+
+  def send(client: ClientID, message: read.TransactionCompletionResponse): Unit = {
     connectionMgr.sendMessageToClient(client.uuid, encodeMessage(message))
   }
 }

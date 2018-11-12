@@ -8,6 +8,8 @@ trait ClientSideReadMessenger {
   
   def send(msg: read.OpportunisticRebuild): Unit
 
+  def send(msg: read.TransactionCompletionQuery): Unit
+
   def system: Option[AspenSystem]
   
   /** Identifies the local Client associated with this instance */

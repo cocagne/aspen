@@ -24,6 +24,20 @@ trait AspenSystem extends ObjectReader {
   def newTransaction(): Transaction
   
   def newTransaction(transactionDriverStrategy: ClientTransactionDriver.Factory): Transaction = newTransaction()
+
+  /** Note there is a potential race condition that users of this method must take care to avoid. The returned
+    * future will trigger when a consistent threshold number of stores respond that they do not know of the
+    * transaction. This can occur either after the transaction has finished all finalization actions and
+    * dropped all transaction state from memory (probably the desired case) OR if the stores have not yet
+    * started processing the transaction. A safe time to call this method is after a transaction is known to
+    * have committed, which obviously guarantees that the stores have already begun processing the
+    * transaction.
+    *
+    * @param pointer Object modified as part of the transaction
+    * @param transactionUUID UUID of the transaction
+    * @return Future that will complete when the transaction has finished finalization
+    */
+  def getTransactionFinalized(pointer: ObjectPointer, transactionUUID: UUID): Future[Unit]
   
   /** Returns the retry strategy associated with the specified UUID or the default retryStrategy if not
    *  matching UUID is found

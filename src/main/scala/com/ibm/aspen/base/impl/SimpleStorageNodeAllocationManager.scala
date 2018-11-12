@@ -32,7 +32,7 @@ class SimpleStorageNodeAllocationManager(
       val (key, m) = t
       m.values.foreach { value =>
         if (Duration(now - value.lastHeartbeatTimestamp, MILLISECONDS) > allocationTimeout && ! recovers.contains(key)) {
-          val rp = new SimpleAllocationRecoveryProcess()
+          val rp = new SimpleAllocationRecoveryProcess(system, value.ars)
           
           recoveryProcesses += (key -> rp)
           
@@ -44,12 +44,6 @@ class SimpleStorageNodeAllocationManager(
       }
     }
   }}
-  /*
-  override def receive(message: AllocationStatusReply): Unit = synchronized {
-    recoveryProcesses.get(Key(message.to, message.allocationTransactionUUID)).foreach { rp =>
-      rp.receive(message)
-    }
-  }
-  */
+
   override def shutdown(): Unit = bgTask.cancel()
 }

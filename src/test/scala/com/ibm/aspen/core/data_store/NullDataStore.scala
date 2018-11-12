@@ -28,7 +28,9 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   override val executionContext: ExecutionContext = ExecutionContext.global
   
   val initialized: Future[DataStore] = Future.successful(this)
-  
+
+  def transactionInProgress(transactionUUID: UUID): Boolean = false
+
   def close(): Future[Unit] = Future.successful(())
   
   def bootstrapAllocateNewObject(objectUUID: UUID, initialContent: DataBuffer, timestamp: HLCTimestamp): Future[StorePointer] = Future.successful(new StorePointer(0, new Array[Byte](0)))

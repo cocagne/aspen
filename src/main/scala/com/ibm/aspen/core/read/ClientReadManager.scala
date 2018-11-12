@@ -4,10 +4,11 @@ import java.util.UUID
 
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.{ClientSideReadMessageReceiver, ClientSideReadMessenger}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
 
 class ClientReadManager(
@@ -17,6 +18,31 @@ class ClientReadManager(
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
   private[this] var completionTimes = Map[UUID, (Long, ReadDriver)]()
+  private[this] var completionQueries = Map[UUID, CompletionQuery]()
+
+  private class CompletionQuery(val pointer: ObjectPointer, val transactionUUID: UUID) {
+    val queryUUID: UUID = UUID.randomUUID()
+    val promise: Promise[Unit] = Promise()
+    var responses: Map[DataStoreID, Boolean] = Map()
+
+    private val retransmitTask = BackgroundTask.RetryWithExponentialBackoff(tryNow = true, Duration(10, SECONDS), Duration(3, MINUTES)) {
+      pointer.hostingStores.foreach { storeId =>
+        clientMessenger.send(TransactionCompletionQuery(storeId, clientMessenger.clientId, queryUUID, transactionUUID))
+      }
+      false
+    }
+
+    completionQueries += queryUUID -> this
+
+    def update(storeId: DataStoreID, complete: Boolean): Unit = {
+      responses += storeId -> complete
+      if (responses.valuesIterator.count(b => b) >= pointer.ida.consistentRestoreThreshold) {
+        completionQueries -= queryUUID
+        retransmitTask.cancel()
+        promise.success(())
+      }
+    }
+  }
 
   /** To facilitate Opportunistic Rebuild, we'll hold on to reads after they complete until we either hear from all
     * stores or pass a fixed delay after resolving the read. This way, read responses received after the consistent
@@ -35,7 +61,7 @@ class ClientReadManager(
     }}
   }
   
-  def receive(m: ReadResponse): Unit = { 
+  override def receive(m: ReadResponse): Unit = {
     synchronized { outstandingReads.get(m.readUUID) } foreach {
       driver =>
         val wasCompleted = driver.readResult.isCompleted
@@ -51,7 +77,11 @@ class ClientReadManager(
             completionTimes += (m.readUUID -> (System.nanoTime()/1000000, driver))
         }}
     }
-  }  
+  }
+
+  override def receive(m: TransactionCompletionResponse): Unit = synchronized {
+    completionQueries.get(m.queryUUID).foreach(_.update(m.fromStore, m.isComplete))
+  }
   
   
   def shutdown(): Unit = {
@@ -81,5 +111,10 @@ class ClientReadManager(
     driver.begin()
 
     driver.readResult
+  }
+
+  def getTransactionFinalized(pointer: ObjectPointer, transactionUUID: UUID): Future[Unit] = {
+    val q = new CompletionQuery(pointer, transactionUUID)
+    q.promise.future
   }
 }

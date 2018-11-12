@@ -1,18 +1,8 @@
 sbt "test:testOnly *KeyValueListSuite"
 
-* AllocationRevisionGuard => AllocationResolutionStrategy
-   - Use TypeRegistry for decode
-   - add resolveCommitOrAbort(system: AspenSystem): Future[Boolean]
-      |-> future to commit/abort
-   - add encode(): Array[Byte]
 
-
-* Problem with allocation into TieredList
-  - key/value can move out of the "allocation object"
-  - how to resolve old alloc on moved kv pair?
-
-
-
+Allocating into TKVL *may* not be possible. Need to handle all cases in which a key doesn't exist, is deleted,
+and is migrated. Could be tricky to guarantee forced failure in all situations.
 
 * Remove 5 file op retry limit from SimpleBaseFile
 

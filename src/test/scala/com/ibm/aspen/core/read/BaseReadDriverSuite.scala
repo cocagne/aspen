@@ -69,6 +69,8 @@ object BaseReadDriverSuite {
     def send(message: read.Read): Unit = mlist = (message.toStore, message) :: mlist
     
     def send(message: read.OpportunisticRebuild): Unit = mlist = (message.toStore, message) :: mlist
+
+    def send(message: read.TransactionCompletionQuery): Unit = ()
     
     def clear() = mlist = Nil
     

@@ -6,4 +6,5 @@ import com.ibm.aspen.core.DataBuffer
 
 trait StoreSideReadMessenger {
   def send(client: ClientID, message: read.ReadResponse): Unit
+  def send(client: ClientID, message: read.TransactionCompletionResponse): Unit
 }

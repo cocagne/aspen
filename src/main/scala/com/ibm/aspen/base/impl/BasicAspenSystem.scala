@@ -74,6 +74,10 @@ class BasicAspenSystem(
   protected var retryStrategies: Map[UUID, RetryStrategy] = Map[UUID, RetryStrategy](
       FinalizationActionRetryStrategyUUID -> new ExponentialBackoffRetryStrategy(backoffLimit=10000, initialRetryDelay=3))
 
+  def getTransactionFinalized(pointer: ObjectPointer, transactionUUID: UUID): Future[Unit] = {
+    readManager.getTransactionFinalized(pointer, transactionUUID)
+  }
+
   def getSystemAttribute(key: String): Option[String] = synchronized { attributes.get(key) }
   def setSystemAttribute(key: String, value: String): Unit = synchronized{ attributes += key -> value }
 

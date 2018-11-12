@@ -23,6 +23,11 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
   def receive(message: OpportunisticRebuild): Unit = getStore(message.toStore).foreach { store => 
     store.opportunisticRebuild(message)
   }
+
+  def receive(message: TransactionCompletionQuery): Unit = getStore(message.toStore).foreach { store =>
+    val isComplete = !store.transactionInProgress(message.transactionUUID)
+    messenger.send(message.fromClient, TransactionCompletionResponse(message.toStore, message.queryUUID, isComplete))
+  }
       
   def receive(message: Read): Unit = getStore(message.toStore).foreach { store => 
 

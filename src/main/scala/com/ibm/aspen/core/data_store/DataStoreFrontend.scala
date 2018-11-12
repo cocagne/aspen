@@ -63,6 +63,10 @@ class DataStoreFrontend(
 
     Future.sequence(ftxrecovery).map(_=> this)
   }
+
+  override def transactionInProgress(transactionUUID: UUID): Boolean = synchronized {
+    activeTransactions.contains(transactionUUID)
+  }
   
   override def close(): Future[Unit] = synchronized {
     backend.close()

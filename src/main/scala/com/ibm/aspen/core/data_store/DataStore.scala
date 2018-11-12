@@ -61,6 +61,11 @@ trait DataStore {
                timestamp: HLCTimestamp,
                allocationTransactionUUID: UUID,
                revisionGuard: AllocationRevisionGuard): Future[Either[AllocationErrors.Value, AllocationRecoveryState]]
+
+  /** Returns true if the specified transaction UUID is known and not yet finalized
+    *
+    */
+  def transactionInProgress(transactionUUID: UUID): Boolean
   
   /** Called by the AllocationManager when the commit transaction is resolved. The AllocationRecoveryState will
    *  be deleted after the returned future completes
