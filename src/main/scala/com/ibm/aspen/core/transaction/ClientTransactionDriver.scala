@@ -1,12 +1,11 @@
 package com.ibm.aspen.core.transaction
 
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.transaction.paxos.Learner
-import com.ibm.aspen.core.network.ClientSideTransactionMessenger
-import com.ibm.aspen.core.transaction.paxos.ProposalID
+import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.DataStoreID
-import scala.concurrent.Promise
-import scala.concurrent.Future
+import com.ibm.aspen.core.network.ClientSideTransactionMessenger
+import com.ibm.aspen.core.transaction.paxos.{Learner, ProposalID}
+
+import scala.concurrent.{Future, Promise}
 
 object ClientTransactionDriver {
   type Factory = (ClientSideTransactionMessenger, TransactionDescription, Map[DataStoreID, List[LocalUpdate]]) => ClientTransactionDriver
@@ -23,13 +22,18 @@ class ClientTransactionDriver(
     val updateData: Map[DataStoreID, List[LocalUpdate]]) {
   
   protected val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
-  protected val promise = Promise[Boolean]()
+  protected val promise: Promise[Boolean] = Promise()
   
   def result: Future[Boolean] = promise.future
   
   def begin(): Unit = sendPrepareMessages()
   
   def shutdown(): Unit = {}
+
+  private def complete(committed: Boolean): Unit = if (!promise.isCompleted) {
+    HLCTimestamp.update(HLCTimestamp(txd.startTimestamp))
+    promise.success(committed)
+  }
   
   def receive(acceptResponse: TxAcceptResponse): Unit = synchronized {
     if (promise.isCompleted)
@@ -40,24 +44,16 @@ class ClientTransactionDriver(
       case Right(accepted) => 
         learner.receiveAccepted(paxos.Accepted(acceptResponse.from.poolIndex, acceptResponse.proposalId, accepted.value)) match {
           case None => 
-          case Some(committed) => 
-            if (!promise.isCompleted)
-              promise.success(committed)
+          case Some(committed) => complete(committed)
         }   
     }
   }
   
   def receive(prepareResponse: TxPrepareResponse): Unit = {}
   
-  def receive(finalized: TxFinalized): Unit = synchronized {
-    if (!promise.isCompleted)
-      promise.success(finalized.committed)
-  }
-  
-  def receive(resolved: TxResolved): Unit = synchronized {
-    if (!promise.isCompleted)
-      promise.success(resolved.committed)
-  }
+  def receive(finalized: TxFinalized): Unit = synchronized { complete(finalized.committed) }
+
+  def receive(resolved: TxResolved): Unit = synchronized { complete(resolved.committed) }
   
   protected def sendPrepareMessages(): Unit = {
     val poolUUID = txd.primaryObject.poolUUID
