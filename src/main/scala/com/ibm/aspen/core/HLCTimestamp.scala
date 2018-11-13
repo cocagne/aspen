@@ -27,11 +27,11 @@ object HLCTimestamp {
   
   private def currentWallTime: Long = System.currentTimeMillis() << 16
 
-  private[this] var last: HLCTimestamp = HLCTimestamp(currentWallTime)
+  private[this] var lastObserved: HLCTimestamp = HLCTimestamp(currentWallTime)
 
   def update(seen: HLCTimestamp): Unit = synchronized {
-    if (seen > last)
-      last = seen
+    if (seen > lastObserved)
+      lastObserved = seen
   }
 
   def now: HLCTimestamp = HLCTimestamp()
@@ -40,37 +40,23 @@ object HLCTimestamp {
 
   def apply(longValue: Long): HLCTimestamp = new HLCTimestamp(longValue)
 
-  def apply(): HLCTimestamp = synchronized {
+  def apply(): HLCTimestamp = synchronized { happensAfter(lastObserved) }
+
+  def happensAfter(ts: HLCTimestamp): HLCTimestamp = {
     val n = HLCTimestamp(currentWallTime)
 
-    val oldLast = last
-
-    if (n > last)
-      last = n
+    val next = if (n > ts)
+      n
     else {
-      val wall = last.asLong & ~0xFFFFL
-      val logical = (last.asLong & 0xFFFF) + 1
-      last = HLCTimestamp(wall | logical)
+      val wall = ts.asLong & ~0xFFFFL
+      val logical = (ts.asLong & 0xFFFF) + 1
+      HLCTimestamp(wall | logical)
     }
 
-    assert(last > oldLast)
+    if (!(next > ts)) {
+      println(s"INVALID HLC!!!! Old $ts New $next")
+    }
 
-    last
-  }
-
-  def happensAfter(ts: HLCTimestamp): HLCTimestamp = synchronized {
-    val n = HLCTimestamp(currentWallTime)
-    
-    if (ts > last)
-      last = ts
-
-    val newTs = if (last.wallTime >= n.wallTime && last.logical > n.logical) 
-      HLCTimestamp(((last.wallTime << 16) | last.logical) + 1)
-    else
-      now
-      
-    last = newTs
-    
-    last
+    next
   }
 }
