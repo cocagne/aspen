@@ -80,13 +80,21 @@ object RebuildSuite {
 
     var pallow = Promise[Unit]()
 
+    var pread = Promise[Unit]()
+
+    def completeWhenReadStarted: Future[Unit] = pread.future
+
     def allowRead(): Unit = pallow.success(())
 
     override def readObject(pointer:DataObjectPointer, readStrategy: Option[ReadDriver.Factory], disableOpportunisticRebuild:Boolean): Future[DataObjectState] = {
+      if (!pread.isCompleted)
+        pread.success(())
       pallow.future.flatMap(_ => super.readObject(pointer, readStrategy, disableOpportunisticRebuild))
     }
 
     override def readObject(pointer:KeyValueObjectPointer, readStrategy: Option[ReadDriver.Factory], disableOpportunisticRebuild:Boolean): Future[KeyValueObjectState] = {
+      if (!pread.isCompleted)
+        pread.success(())
       pallow.future.flatMap(_ => super.readObject(pointer, readStrategy, disableOpportunisticRebuild))
     }
   }
@@ -340,6 +348,8 @@ class RebuildSuite extends AsyncFunSuite with Matchers {
       o = DataObjectState(ptr, rev2, ref2, ts2, ts2, 2, d2)
       delayedReader = new DelayedReader(o)
       frebuild = ds.rebuildObject(delayedReader, ptr)
+
+      _ <- delayedReader.completeWhenReadStarted
 
       txd = mktxd(DataUpdate(ptr, allocRev, DataUpdateOperation.Overwrite) :: Nil)
       errs <- ds.lockTransaction(txd, mklu(ptr))
