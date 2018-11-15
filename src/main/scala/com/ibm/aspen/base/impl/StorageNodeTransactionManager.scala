@@ -158,7 +158,7 @@ class StorageNodeTransactionManager(
       store.close()
     }
     
-    def allTransactionsComplete: Boolean = synchronized { transactions.isEmpty }
+    def allTransactionsComplete: Boolean = synchronized { store.allTransactionsComplete }
     
     def getTransaction(txUUID: UUID): Option[Transaction] = synchronized { transactions.get(txUUID) }
     

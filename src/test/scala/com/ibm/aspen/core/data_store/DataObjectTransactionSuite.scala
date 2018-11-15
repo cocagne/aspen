@@ -308,7 +308,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd), TransactionReadError(op3, InvalidLocalPointer())))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, Some(irev)), TransactionReadError(op3, InvalidLocalPointer())))
   }
   
   test("Lock With Revision and Refcount Errors") {
@@ -390,7 +390,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, Some(irev)), TransactionCollision(op1, txd, None)))
   }
   
   test("RevisionLock Causes Update Collisions") {
@@ -410,7 +410,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
         
     val errs2 = Await.result(ds.lockTransaction(txd2, mklu(op0)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd), TransactionCollision(op1, txd)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, Some(irev)), TransactionCollision(op1, txd, None)))
   }
   
   test("Commit Unlocked Transaction") {
@@ -598,7 +598,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
     
-    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd), new TransactionCollision(op1, txd)))
+    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd, Some(irev)), new TransactionCollision(op1, txd, Some(irev))))
   }
   
   test("Fail lock on RevisionLock collision") {
@@ -621,7 +621,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
     
-    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd), new TransactionCollision(op1, txd)))
+    errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd, Some(irev)), new TransactionCollision(op1, txd, Some(irev))))
   }
   
   test("Fail lock on refcount collision") {
@@ -646,6 +646,6 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
     
-    errs2.toSet should be (Set(new TransactionCollision(op1, txd)))
+    errs2.toSet should be (Set(new TransactionCollision(op1, txd, None)))
   }
 }

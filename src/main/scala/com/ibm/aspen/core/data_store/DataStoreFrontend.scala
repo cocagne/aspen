@@ -37,6 +37,8 @@ class DataStoreFrontend(
   // Maps UUIDs of locked transactions to unlocked transactions that have a good chance of
   // locking if they re-attempt the lock after the locked transactions complete.
   protected[data_store] var delayedTransactions: Map[UUID, Set[StoreTransaction]] = Map[UUID, Set[StoreTransaction]]()
+
+  def allTransactionsComplete: Boolean = activeTransactions.isEmpty && lockedTransactions.isEmpty && delayedTransactions.isEmpty
   
   // maps Transaction UUIDs to the list of objects being allocated in that transaction
   private[this] var allocations = Map[UUID, List[ObjectStoreState]]()

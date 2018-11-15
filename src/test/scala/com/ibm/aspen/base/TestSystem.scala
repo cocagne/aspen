@@ -3,6 +3,7 @@ package com.ibm.aspen.base
 import java.util.UUID
 
 import com.ibm.aspen.base.impl._
+import com.ibm.aspen.core.TestActionContext
 import com.ibm.aspen.core.allocation.{AllocationRecoveryState, BaseAllocationDriver}
 import com.ibm.aspen.core.crl.{CrashRecoveryLog, MemoryOnlyCRL}
 import com.ibm.aspen.core.data_store.{DataStore, DataStoreFrontend, DataStoreID, MemoryOnlyDataStoreBackend}
@@ -13,62 +14,70 @@ import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.{ClientTransactionDriver, TransactionDriver, TransactionRecoveryState}
 
 import scala.annotation.tailrec
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
+/**
+  * ClientTransactionDriver - Could prevent future from triggering until the Tx is finalized and all stores
+  *                           have dropped their FA content
+  *
+  * Single background thread for handling all stores and network message delivery?
+  */
 object TestSystem {
-  def memoryStoreFactory(storeId: DataStoreID): (DataStore, CrashRecoveryLog) = {
+  def memoryStoreFactory(storeId: DataStoreID, tac: TestActionContext): (DataStore, CrashRecoveryLog) = {
     val ds = new DataStoreFrontend(storeId, 
-      new MemoryOnlyDataStoreBackend()(ExecutionContext.Implicits.global), Nil, Nil)
+      new MemoryOnlyDataStoreBackend()(tac.executionContext), Nil, Nil)
     (ds, new MemoryOnlyCRL)
   }
 
-  val DefaultIDA = new Replication(3,2)
+  val DefaultIDA = Replication(3,2)
   
   val DefaultSystemTreeNodeSize = 2048
   
-  val NoRetry = new AssertOnRetry //new com.ibm.aspen.base.NoRetry
+  val NoRetry = new AssertOnRetry
 }
 
 /** Provides a fully-functional AspenSystem for testing application-level operations
  *  Defaults to memory-only data store but may use other stores via the constructor param  
  */
 class TestSystem(
-    val storeFactory: (DataStoreID) => (DataStore, CrashRecoveryLog) = TestSystem.memoryStoreFactory,
-    val noRetry: RetryStrategy = TestSystem.NoRetry,
+    val storeFactory: (DataStoreID, TestActionContext) => (DataStore, CrashRecoveryLog) = TestSystem.memoryStoreFactory,
+    val oretryStrategy: Option[RetryStrategy] = None,
     val bootstrapPoolIDA: IDA = TestSystem.DefaultIDA,
     val systemTreeNodeSize: Int = TestSystem.DefaultSystemTreeNodeSize) {
   
   import Bootstrap._
 
+  val tac: TestActionContext = new TestActionContext
+
   import scala.language.postfixOps
-  
+  import tac.executionContext
+
+  val net = new TestNetwork(Some(tac))
+
   var typeRegistries: List[TypeRegistry] = Nil
   
-  def getRegistries() = synchronized { typeRegistries }
-  
-  def synchronousWaitForTransactionsComplete(ostack: Option[String]=None): Unit = {
-    val stack = ostack match {
-      case None => com.ibm.aspen.util.getStack()
-      case Some(s) => s
-    }
-    var count = 0
-    while (!sn0.allTransactionsComplete && !sn1.allTransactionsComplete && !sn2.allTransactionsComplete && count < 100) {
-      count += 1
-      Thread.sleep(5) 
-    }
-        
-    if (count > 100) {
-      throw new Exception(s"Finalization Actions Timed Out. Stack:\n$stack")
-    }
+  def registries: List[TypeRegistry] = synchronized { typeRegistries }
+
+  def checkTransactionsComplete(): Boolean = synchronized {
+    sn0.allTransactionsComplete && sn1.allTransactionsComplete && sn2.allTransactionsComplete
   }
   
   def waitForTransactionsComplete(): Future[Unit] = {
-    val stack = com.ibm.aspen.util.getStack()
-    Future {
-      synchronousWaitForTransactionsComplete(Some(stack))
+    //val stack = com.ibm.aspen.util.getStack()
+    val p = Promise[Unit]()
+    val pollDelay = Duration(5, MILLISECONDS)
+
+    def check(): Unit = {
+      if (checkTransactionsComplete())
+        p.success(())
+      else
+        tac.schedule(pollDelay)(check())
     }
+
+    tac.schedule(pollDelay)(check())
+
+    p.future
   }
   
   object userTypeRegistry extends TypeRegistry {
@@ -103,19 +112,21 @@ class TestSystem(
     
       def ownsStore(storeId: DataStoreID)(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(true)
     }
+
+    val retryStrategy = oretryStrategy.getOrElse(new ExponentialBackoffRetryStrategy(200, 15)) // 100ms max backoff, 10ms initial backoff
     
     val sys = new BasicAspenSystem(
-        chooseDesignatedLeader = (o:ObjectPointer) => 0,
+        chooseDesignatedLeader = (_:ObjectPointer) => 0,
         getStorageHostFn = (_:DataStoreID) => Future.successful(Host),
         net = new net.CNet(clientId),
-        defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = BaseReadDriver.noErrorRecoveryReadDriver(tac.executionContext),
         defaultTransactionDriverFactory = ClientTransactionDriver.noErrorRecoveryFactory,
         defaultAllocationDriverFactory = BaseAllocationDriver.NoErrorRecoveryAllocationDriver,
         transactionFactory = BaseTransaction.Factory,
         storagePoolFactory = BaseStoragePool.Factory,
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
-        retryStrategy = noRetry,
+        retryStrategy = retryStrategy,
         userTypeRegistry = Some(userTypeRegistry)
         )
     
@@ -135,15 +146,13 @@ class TestSystem(
     (sys, storageNode)
   }
   
-  val (store0, crl0) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 0))
-  val (store1, crl1) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 1))
-  val (store2, crl2) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 2))
+  val (store0, crl0) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 0), tac)
+  val (store1, crl1) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 1), tac)
+  val (store2, crl2) = storeFactory(DataStoreID(BootstrapStoragePoolUUID, 2), tac)
   
-  val missedUpdateStrategy = PerStoreMissedUpdate.getStrategy(Array(BootstrapObjectAllocaterUUID), Array(8192), Array(1000))
+  val missedUpdateStrategy: MissedUpdateStrategy = PerStoreMissedUpdate.getStrategy(Array(BootstrapObjectAllocaterUUID), Array(8192), Array(1000))
   
-  val radiclePointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA, missedUpdateStrategy), 500 milliseconds)
-  
-  val net = new TestNetwork
+  val radiclePointer: KeyValueObjectPointer = Await.result(Bootstrap.initializeNewSystem(List(store0, store1, store2), bootstrapPoolIDA, missedUpdateStrategy), 500 milliseconds)
   
   val (sys0, sn0) = mkStorageNode(store0, crl0, net, radiclePointer)
   val (sys1, sn1) = mkStorageNode(store1, crl1, net, radiclePointer)
@@ -154,9 +163,7 @@ class TestSystem(
   Await.result(sys2.radicle, 1000 milliseconds)
   
   def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
-    
-    val faRegistry = BaseImplTypeRegistry(sys)
-    
+
     val finalizerFactory = new BaseTransactionFinalizer(sys)
     
     def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
@@ -176,11 +183,11 @@ class TestSystem(
     sys0.shutdown()
     sys1.shutdown()
     sys2.shutdown()
-    Await.result(net.shutdown(), 1000 milliseconds)
     Await.result(Future.sequence(List(sn0.shutdown(), sn1.shutdown(), sn2.shutdown())), 1000 milliseconds)
+    Await.result(tac.shutdown(), 1000 milliseconds)
   }
   
-  val aspenSystem = sys0
+  val aspenSystem: BasicAspenSystem = sys0
 
   net.setSystem(aspenSystem)
 }

@@ -64,6 +64,7 @@ class BasicAspenSystemSuite extends TestSystemSuite {
         Future.unit
       else {
         val tx = sys.newTransaction()
+        //println(s"Tx $count - ${tx.uuid}")
         val arr = Array[Byte](count.asInstanceOf[Byte])
         val ops = Insert(key, arr) :: Nil
         tx.update(ptr, Some(revision), Nil, ops)

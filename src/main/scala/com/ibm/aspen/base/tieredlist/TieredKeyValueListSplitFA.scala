@@ -56,44 +56,19 @@ object TieredKeyValueListSplitFA extends Logging {
       inserted: List[KeyValueListPointer])
       
   class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
-    
+
     def createNewTier(
         mtkvl: MutableTieredKeyValueList,
         newRootTier: Int,
         inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
       mtkvl.rootManager.prepareRootUpdate(newRootTier, mtkvl.allocater, inserted)
     }
-    /*
-    def insertIntoExistingTier(
-        mtkvl: MutableTieredKeyValueList,
-        right: KeyValueListPointer): Future[Unit] = system.transact { implicit tx =>
-        
-      def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {
-        addFinalizationAction(tx, mtkvl, c.targetTier+1, left, inserted)
-      }
-      
-      def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {}
-      
-      for {
-        kvos <- mtkvl.fetchContainingNode(right.minimum, c.targetTier) 
-        
-        allocater <- mtkvl.allocater.tierNodeAllocater(c.targetTier)
-        
-        nodeSizeLimit = mtkvl.allocater.tierNodeSizeLimit(c.targetTier)
-        nodeKVPairLimit = mtkvl.allocater.tierNodeKVPairLimit(c.targetTier)
-        inserts = List((right.minimum, right.pointer.toArray))
-        deletes = Nil
-        requirements = Nil
 
-        ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
-
-      } yield ()
-    }*/
     
     def insertIntoExistingTier(
         mtkvl: MutableTieredKeyValueList,
         toInsert: List[KeyValueListPointer]) : Future[Unit] = if (toInsert.isEmpty) Future.successful(()) else {
-      
+
       implicit val tx = system.newTransaction()
       
       def onSplit(left: KeyValueListPointer, inserted: List[KeyValueListPointer]): Unit = {

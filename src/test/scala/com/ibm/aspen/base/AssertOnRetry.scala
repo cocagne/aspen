@@ -7,8 +7,9 @@ import scala.util.Failure
 import scala.concurrent.ExecutionContext
 import java.io.StringWriter
 import java.io.PrintWriter
+import scala.concurrent.ExecutionContext.Implicits.global
 
-class AssertOnRetry(implicit ec: ExecutionContext) extends RetryStrategy {
+class AssertOnRetry extends RetryStrategy {
   def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
     val p = Promise[T]()
     val stack = com.ibm.aspen.util.getStack()

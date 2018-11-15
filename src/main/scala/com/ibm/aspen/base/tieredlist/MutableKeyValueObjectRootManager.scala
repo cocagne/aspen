@@ -21,7 +21,7 @@ class MutableKeyValueObjectRootManager(
     containingObject: KeyValueObjectPointer,
     treeKey: Key,
     initialRoot: TieredKeyValueListRoot) extends KeyValueObjectRootManager(system, containingObject, treeKey, initialRoot) with TieredKeyValueListMutableRootManager {
-  
+
   val typeUUID: UUID = MutableKeyValueObjectRootManager.typeUUID
   
   def serialize(): Array[Byte] = {
@@ -37,7 +37,7 @@ class MutableKeyValueObjectRootManager(
       newRootTier: Int,
       allocater: TieredKeyValueListNodeAllocater,
       inserted: List[KeyValueListPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
-    
+
     val fkvos = reader.readSingleKey(containingObject, treeKey, root.keyOrdering)
     val falloc = allocater.tierNodeAllocater(newRootTier)
     val iops = Insert(Key.AbsoluteMinimum, root.rootNode.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
@@ -57,7 +57,8 @@ class MutableKeyValueObjectRootManager(
             throw new TierAlreadyCreated
           val newRoot = currentRoot.copy(topTier = newRootTier, rootNode = newRootPointer)
           val req = KeyValueUpdate.KVRequirement(treeKey, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
-          tx.update(containingObject, None, req, Insert(treeKey, newRoot.toArray) :: Nil)
+
+          tx.update(containingObject, Some(kvos.revision), req, Insert(treeKey, newRoot.toArray) :: Nil)
           
           tx.result.foreach { _ => synchronized {
             troot = newRoot

@@ -2,7 +2,7 @@ package com.ibm.aspen.base
 
 import org.scalatest._
 
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
 import com.ibm.aspen.base.impl.BasicAspenSystem
 import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
@@ -13,6 +13,8 @@ import java.util.UUID
 import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
 import com.ibm.aspen.core.objects.keyvalue.Insert
+
+import scala.concurrent.duration._
 
 class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   var ts: TestSystem = null
@@ -26,7 +28,7 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   }
 */
   after {
-	  ts.synchronousWaitForTransactionsComplete()
+    Await.result(ts.waitForTransactionsComplete(), Duration(5000, MILLISECONDS))
     ts.shutdown()
     ts = null
     sys = null

@@ -227,33 +227,30 @@ class StoreTransaction(val store: DataStoreFrontend,
           logger.warn(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
           errors.foreach( err => logger.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
         }
-        //          if (true) {
-        //            println(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
-        //            errors.foreach( err => println(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
-        //          }
 
-        val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
-          case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
-          case _ => m
-        }}
-
-        val mismatches = errors.foldLeft(Set[UUID]()) { (s, e) => e match {
-          case r: RevisionMismatch => s + r.objectPointer.uuid
-          case _ => s
-        }}
+//        if (true) {
+//          println(s"$storeId tx: ${txd.transactionUUID} not locking due to errors:")
+//          errors.foreach( err => println(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
+//        }
 
         val probablyMissedCommitOfLockedTx = errors.forall {
-          case r: RevisionMismatch => collisions.get(r.objectPointer.uuid) match {
-            case None => false
-            case Some(lockedRev) => r.required.lastUpdateTxUUID == lockedRev
-          }
+          case r: RevisionMismatch => store.lockedTransactions.contains(r.required.lastUpdateTxUUID)
 
-          case c: TransactionCollision => mismatches.contains(c.objectPointer.uuid)
+          case c: TransactionCollision => c.requiredRevision match {
+            case None => false
+            case Some(requiredRevision) => requiredRevision.lastUpdateTxUUID == c.lockedTransaction.transactionUUID
+          }
 
           case _ => false
         }
 
+        // Probably miss if requiredRevision is locked
         if (probablyMissedCommitOfLockedTx) {
+          val collisions = errors.foldLeft(Map[UUID,UUID]()) { (m, e) => e match {
+            case c: TransactionCollision => m + (c.objectPointer.uuid -> c.lockedTransaction.transactionUUID)
+            case _ => m
+          }}
+
           collisions.values.foreach { lockedTxUUID =>
             val dset = store.delayedTransactions.getOrElse(lockedTxUUID, Set()) + this
 
@@ -270,6 +267,7 @@ class StoreTransaction(val store: DataStoreFrontend,
         lockRequests.foreach(p => p.success(errors))
         lockRequests = Nil
       } else {
+        //println(s"$storeId tx: ${txd.transactionUUID} delaying action until transactions complete: $waitingForTransactions")
         logger.info(s"$storeId tx: ${txd.transactionUUID} delaying action until transactions complete: $waitingForTransactions")
         op.foreach { p =>
           lockRequests = p :: lockRequests
@@ -303,7 +301,7 @@ class StoreTransaction(val store: DataStoreFrontend,
 
         requirement match {
           case du: DataUpdate =>
-            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd, Some(du.requiredRevision))) }
 
             if (obj.revision != du.requiredRevision)
               err(RevisionMismatch(pointer, du.requiredRevision, obj.revision))
@@ -326,20 +324,20 @@ class StoreTransaction(val store: DataStoreFrontend,
 
 
           case ru: RefcountUpdate =>
-            obj.getTransactionPreventingRefcountWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+            obj.getTransactionPreventingRefcountWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd, None)) }
 
             if (obj.refcount != ru.requiredRefcount)
               err(RefcountMismatch(pointer, ru.requiredRefcount, obj.refcount))
 
 
           case vb: VersionBump =>
-            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+            obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd, Some(vb.requiredRevision))) }
 
             if (obj.revision != vb.requiredRevision)
               err(RevisionMismatch(pointer, vb.requiredRevision, obj.revision))
 
           case rl: RevisionLock =>
-            obj.getTransactionPreventingRevisionReadLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+            obj.getTransactionPreventingRevisionReadLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd, None)) }
 
             if (obj.revision != rl.requiredRevision)
               err(RevisionMismatch(pointer, rl.requiredRevision, obj.revision))
@@ -349,7 +347,7 @@ class StoreTransaction(val store: DataStoreFrontend,
               case kvobj: KeyValueObjectStoreState =>
 
                 kv.requiredRevision.foreach { requiredRevision =>
-                  obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd)) }
+                  obj.getTransactionPreventingRevisionWriteLock(txd) foreach { lockedTxd => err(TransactionCollision(pointer, lockedTxd, Some(requiredRevision))) }
 
                   if (obj.revision != requiredRevision)
                     err(RevisionMismatch(pointer, requiredRevision, obj.revision))
@@ -392,7 +390,7 @@ class StoreTransaction(val store: DataStoreFrontend,
                   }
 
                   if (objectLocked) {
-                    err(TransactionCollision(pointer, kvobj.objectRevisionWriteLock.get))
+                    err(TransactionCollision(pointer, kvobj.objectRevisionWriteLock.get, None))
                   } else {
                     kv.requirements.foreach { req =>
                       val ov = kvoss.idaEncodedContents.get(req.key)
@@ -442,7 +440,7 @@ class StoreTransaction(val store: DataStoreFrontend,
   def commit(): Future[Unit] = if (committed)
     Future.unit
   else {
-
+    //println(s"$storeId tx: ${txd.transactionUUID} Committing")
     logger.info(s"$storeId tx: ${txd.transactionUUID} Committing")
     committed = true
 
@@ -543,7 +541,7 @@ class StoreTransaction(val store: DataStoreFrontend,
       }
     }
 
-    Future.sequence { csmap.valuesIterator.map { cs =>
+    val fcommit = Future.sequence { csmap.valuesIterator.map { cs =>
       if (cs.deleteObject) {
         cs.obj.deleted = true
         store.backend.deleteObject(cs.obj.objectId)
@@ -561,5 +559,9 @@ class StoreTransaction(val store: DataStoreFrontend,
           Future.successful(())
       }
     }}.map(_ => ())
+
+    fcommit.foreach(_ => releaseObjects())
+
+    fcommit
   }
 }

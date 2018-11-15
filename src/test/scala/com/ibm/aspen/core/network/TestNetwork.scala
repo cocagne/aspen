@@ -1,72 +1,50 @@
 package com.ibm.aspen.core.network
 
-import java.util.concurrent.LinkedBlockingQueue
-
 import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.{allocation, read, transaction}
 import com.ibm.aspen.core.transaction._
+import com.ibm.aspen.core.{TestActionContext, allocation, read, transaction}
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 
-class TestNetwork {
+class TestNetwork(otac: Option[TestActionContext] = None) {
+
+  val tac: TestActionContext = otac.getOrElse(new TestActionContext)
 
   private var stores = Map[DataStoreID, SNet]()
   private var clients = Map[ClientID, CNet]()
-
-  sealed abstract class NetAction
-
-  case class Shutdown() extends NetAction
-
-  case class ClientMessage(client: ClientID, deliver: CNet => Unit) extends NetAction
-  case class StoreMessage(storeId: DataStoreID, deliver: SNet => Unit) extends NetAction
-
-  private val actionQueue = new LinkedBlockingQueue[List[NetAction]]()
-  private val shutdownPromise = Promise[Unit]()
-
-  private val deliveryThread = new Thread(() => bgThread(), "TestNetwork Message Deliver")
-
-  deliveryThread.start()
-
-  def bgThread(): Unit = {
-    var done = false
-    while (!done) {
-      actionQueue.take().foreach {
-        case _:Shutdown =>
-          done = true
-          shutdownPromise.success(())
-        case m: ClientMessage =>
-          synchronized(get(m.client)).foreach(m.deliver)
-        case m: StoreMessage =>
-          synchronized(get(m.storeId)).foreach(m.deliver)
-      }
-    }
-  }
 
   def setSystem(sys: AspenSystem): Unit = {
     stores.valuesIterator.foreach(_.setSystem(sys))
     clients.valuesIterator.foreach(_.setSystem(sys))
   }
 
-  def shutdown(): Future[Unit] = {
-    actionQueue.put(List(Shutdown()))
-    shutdownPromise.future
-  }
+  def shutdown(): Future[Unit] = if (otac.isEmpty) tac.shutdown() else Future.unit
 
-  private def add(m: CNet) = synchronized { clients += (m.clientId -> m) }
-  private def add(storeId:DataStoreID, m: SNet) = synchronized { stores += (storeId -> m) }
+  private def add(m: CNet): Unit = synchronized { clients += (m.clientId -> m) }
+  private def add(storeId:DataStoreID, m: SNet): Unit = synchronized { stores += (storeId -> m) }
   
   def get(storeId:DataStoreID): Option[SNet] = synchronized { stores.get(storeId) }
   def get(client: ClientID): Option[CNet] = synchronized { clients.get(client) }
 
-  private def cdeliver(client: ClientID, fn: CNet => Unit): Unit = actionQueue.put(ClientMessage(client, fn) :: Nil)
-  private def sdeliver(storeId: DataStoreID, fn: SNet => Unit): Unit = actionQueue.put(StoreMessage(storeId, fn) :: Nil)
-  private def multi(messages: List[StoreMessage]): Unit = actionQueue.put(messages)
 
+  private def ssend(storeId: DataStoreID, fn: SNet => Any): Unit = synchronized {
+    stores.get(storeId).foreach { snet => tac.act {
+      fn(snet)
+    }}
+  }
+
+  private def csend(client: ClientID, fn: CNet => Any): Unit = synchronized {
+    clients.get(client).foreach { cnet => tac.act {
+      fn(cnet)
+    }}
+  }
   
   class SNet extends StoreSideNetwork 
      with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
-    
+
+    private[this] var connected: Boolean = true
+
     // -----------------------------------------------------
     // StoreSideNetwork
     val readHandler: StoreSideReadHandler = this
@@ -85,42 +63,52 @@ class TestNetwork {
 
     def setSystem(s: AspenSystem): Unit = synchronized(osystem = Some(s))
     //-------------------------------------------------------
+
+    def disconnectNetwork(): Unit = synchronized( connected = false )
+    def connectNetwork(): Unit = synchronized( connected = true )
     
+    private[this] var or: Option[StoreSideReadMessageReceiver] = None
+    private[this] var oa: Option[StoreSideAllocationMessageReceiver] = None
+    private[this] var ot: Option[StoreSideTransactionMessageReceiver] = None
     
-    var or: Option[StoreSideReadMessageReceiver] = None
-    var oa: Option[StoreSideAllocationMessageReceiver] = None
-    var ot: Option[StoreSideTransactionMessageReceiver] = None
-    
-    def r = synchronized { or }
-    def a = synchronized { oa }
-    def t = synchronized { ot }
+    def r: Option[StoreSideReadMessageReceiver] = synchronized { if (connected) or else None }
+    def a: Option[StoreSideAllocationMessageReceiver] = synchronized { if (connected) oa else None }
+    def t: Option[StoreSideTransactionMessageReceiver] = synchronized { if (connected) ot else None }
     
     def setReceiver(receiver: StoreSideReadMessageReceiver): Unit = synchronized { or = Some(receiver) }
     def setReceiver(receiver: StoreSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
     def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
-    
-    def send(message: transaction.Message): Unit = sdeliver(message.to, _.t.foreach(t => t.receive(message, None)))
-    def send(client: ClientID, prepareResponse: TxPrepareResponse): Unit = cdeliver(client, _.t.foreach(t => t.receive(prepareResponse)))
-    def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = cdeliver(client,_.t.foreach(t => t.receive(acceptResponse)))
-    def send(client: ClientID, resolved: TxResolved): Unit = cdeliver(client, _.t.foreach(t => t.receive(resolved)))
-    def send(client: ClientID, finalized: TxFinalized): Unit = cdeliver(client, _.t.foreach(t => t.receive(finalized)))
+
+
+    def send(message: transaction.Message): Unit = ssend(message.to, _.t.foreach(_.receive(message, None)))
+
+    def send(client: ClientID, prepareResponse: TxPrepareResponse): Unit = csend(client, _.t.foreach(_.receive(prepareResponse)))
+
+    def send(client: ClientID, acceptResponse: TxAcceptResponse): Unit = csend(client, _.t.foreach(_.receive(acceptResponse)))
+
+    def send(client: ClientID, resolved: TxResolved): Unit = csend(client, _.t.foreach(t => t.receive(resolved)))
+    def send(client: ClientID, finalized: TxFinalized): Unit = csend(client, _.t.foreach(t => t.receive(finalized)))
     
     def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
-      sdeliver(message.to, _.t.foreach(t => t.receive(message, updateContent)))
+      ssend(message.to, _.t.foreach(t => t.receive(message, updateContent)))
     }
 
-    override def send(messages: List[Message]): Unit = multi(messages.map(m => StoreMessage(m.to, sn => sn.t.foreach(t => t.receive(m, None)) )))
+    override def send(messages: List[Message]): Unit = messages.foreach(msg => ssend(msg.to, _.t.foreach(_.receive(msg, None))))
+
     override def sendPrepares(messages: List[(TxPrepare, Option[List[LocalUpdate]])]): Unit = {
-      multi(messages.map(tpl => StoreMessage(tpl._1.to, sn => sn.t.foreach(t => t.receive(tpl._1, tpl._2)))))
+      messages.foreach { tpl =>
+        val (prep, localupdate) = tpl
+        ssend(prep.to, _.t.foreach(_.receive(prep, localupdate)))
+      }
     }
     
     def send(client: ClientID, message: allocation.ClientMessage): Unit = message match {
-      case m: allocation.Allocate => sdeliver(m.toStore, _.a.foreach(a => a.receive(m)))
-      case m: allocation.AllocateResponse => cdeliver(client, _.a.foreach(a => a.receive(m)))
+      case m: allocation.Allocate => ssend(m.toStore, _.a.foreach(a => a.receive(m)))
+      case m: allocation.AllocateResponse => csend(client, _.a.foreach(a => a.receive(m)))
     }
 
-    def send(client: ClientID, message: read.ReadResponse): Unit = cdeliver(client, _.r.foreach(r => r.receive(message)))
-    def send(client: ClientID, message: read.TransactionCompletionResponse): Unit = cdeliver(client, _.r.foreach(r => r.receive(message)))
+    def send(client: ClientID, message: read.ReadResponse): Unit = csend(client, _.r.foreach(r => r.receive(message)))
+    def send(client: ClientID, message: read.TransactionCompletionResponse): Unit = csend(client, _.r.foreach(r => r.receive(message)))
   }
   
   class CNet(override val clientId: ClientID) extends ClientSideNetwork 
@@ -138,23 +126,23 @@ class TestNetwork {
     val allocationHandler: ClientSideAllocationHandler = this
     val transactionHandler: ClientSideTransactionHandler = this
     
-    var or: Option[ClientSideReadMessageReceiver] = None
-    var oa: Option[ClientSideAllocationMessageReceiver] = None
-    var ot: Option[ClientSideTransactionMessageReceiver] = None
+    private[this] var or: Option[ClientSideReadMessageReceiver] = None
+    private[this] var oa: Option[ClientSideAllocationMessageReceiver] = None
+    private[this] var ot: Option[ClientSideTransactionMessageReceiver] = None
     
-    def r = synchronized { or }
-    def a = synchronized { oa }
-    def t = synchronized { ot }
+    def r: Option[ClientSideReadMessageReceiver] = synchronized { or }
+    def a: Option[ClientSideAllocationMessageReceiver] = synchronized { oa }
+    def t: Option[ClientSideTransactionMessageReceiver] = synchronized { ot }
     
     def setReceiver(receiver: ClientSideReadMessageReceiver): Unit = synchronized { or = Some(receiver) }
     def setReceiver(receiver: ClientSideAllocationMessageReceiver): Unit = synchronized { oa = Some(receiver) }
     def setReceiver(receiver: ClientSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
     
-    def send(toStore: DataStoreID, message: allocation.Allocate): Unit = sdeliver(toStore, _.a.foreach(a => a.receive(message)))
-    def send(message: read.Read): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
-    def send(message: read.OpportunisticRebuild): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
-    def send(message: read.TransactionCompletionQuery): Unit = sdeliver(message.toStore, _.r.foreach(r=> r.receive(message)))
-    def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = sdeliver(message.to, sn => {
+    def send(toStore: DataStoreID, message: allocation.Allocate): Unit = ssend(toStore, _.a.foreach(a => a.receive(message)))
+    def send(message: read.Read): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
+    def send(message: read.OpportunisticRebuild): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
+    def send(message: read.TransactionCompletionQuery): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
+    def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = ssend(message.to, sn => {
       val oarr = if (updateContent.isEmpty) None else Some(updateContent)
       sn.t.foreach(t => t.receive(message, oarr))
     })

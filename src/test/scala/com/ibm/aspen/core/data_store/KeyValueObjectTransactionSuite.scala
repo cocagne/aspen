@@ -454,7 +454,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, Some(irev))))
   }
   
   test("Key lock prevents revision lock") {
@@ -475,7 +475,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, Some(irev))))
   }
   
   test("Revision lock prevents key lock") {
@@ -498,7 +498,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(TransactionCollision(op0, txd)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, None)))
   }
   
   test("Update with key requirements does not conflict with self") {

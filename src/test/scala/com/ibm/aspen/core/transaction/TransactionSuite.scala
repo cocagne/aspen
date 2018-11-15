@@ -346,7 +346,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       import NullDataStore._
       
       override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = {
-        Future.successful(List(new TransactionCollision(op, collidingTxd)))
+        Future.successful(List(new TransactionCollision(op, collidingTxd, Some(NullDataStore.revision))))
       }
     }
     
@@ -419,7 +419,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
       var ncalls = 0
       override def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = if (ncalls == 0) {
         ncalls += 1
-        Future.successful(List(new TransactionCollision(op, collidingTxd)))
+        Future.successful(List(new TransactionCollision(op, collidingTxd, Some(NullDataStore.revision))))
       } else
         Future.successful(Nil)
     }

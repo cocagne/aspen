@@ -31,6 +31,9 @@ trait DataStore {
   
   /** Defines the Storage Pool this store belongs to and the Index of this store within the pool */
   def storeId: DataStoreID
+
+  /** Unit test only. Returns True if no transactions are outstanding */
+  def allTransactionsComplete: Boolean
   
   /** Completes when the store is fully initialized and ready for use */
   val initialized: Future[DataStore]

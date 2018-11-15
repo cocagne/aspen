@@ -67,7 +67,9 @@ case class RefcountMismatch(objectPointer: ObjectPointer, required: ObjectRefcou
 /** Indicates that the transaction could not be locked due to a conflicting transaction having already locked the object
  *  
  */
-case class TransactionCollision(objectPointer: ObjectPointer, lockedTransaction: TransactionDescription) extends ObjectTransactionError
+case class TransactionCollision(objectPointer: ObjectPointer,
+                                lockedTransaction: TransactionDescription,
+                                requiredRevision: Option[ObjectRevision]) extends ObjectTransactionError
 
 /** Indicates that the update data was not received by the DataStore
  *  
