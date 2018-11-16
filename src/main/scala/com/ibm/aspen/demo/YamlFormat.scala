@@ -138,7 +138,7 @@ object YamlFormat {
         val requiredKeys = attrs.filter(a => a.required).map(a => a.name).toSet
         val allowedKeys = attrs.map(a => a.name).toSet
         
-        def rget(i: java.util.Iterator[Object], keys: Set[String]): Set[String] = if (!i.hasNext()) keys else {
+        def rget(i: java.util.Iterator[Object], keys: Set[String]): Set[String] = if (!i.hasNext) keys else {
           i.next() match {
             case s: String => rget(i, keys + s)
             case _ => throw new FormatError(s"Object attribute names must be strings")
@@ -150,8 +150,8 @@ object YamlFormat {
         val extraKeys = keySet &~ allowedKeys
         val missingKeys = requiredKeys &~ keySet
         
-        if (!missingKeys.isEmpty) throw new FormatError(s"Missing required keys: $missingKeys")
-        if (!allowExtraKeys && !extraKeys.isEmpty) throw new FormatError(s"Unsupported keys: $extraKeys")
+        if (missingKeys.nonEmpty) throw new FormatError(s"Missing required keys: $missingKeys")
+        if (!allowExtraKeys && extraKeys.nonEmpty) throw new FormatError(s"Unsupported keys: $extraKeys")
         
         create(o)
         

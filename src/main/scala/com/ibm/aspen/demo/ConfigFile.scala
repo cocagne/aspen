@@ -1,16 +1,13 @@
 package com.ibm.aspen.demo
 
-import com.ibm.aspen.demo.YamlFormat._
+import java.io.{File, FileInputStream}
 import java.util.UUID
-import com.ibm.aspen.core.ida.IDA
-import com.ibm.aspen.core.ida.Replication
-import java.io.File
+
+import com.ibm.aspen.core.ida.{IDA, Replication}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, StorePointer}
+import com.ibm.aspen.demo.YamlFormat._
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.constructor.SafeConstructor
-import java.io.FileInputStream
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.base.impl.Bootstrap
 
 /* 
  pools:
@@ -49,12 +46,12 @@ object ConfigFile {
     val width           = Required("width",            YInt)
     val writeThreshold  = Required("write-threshold",  YInt)
     
-    val attrs = width :: writeThreshold :: Nil
+    val attrs: List[Attr] = width :: writeThreshold :: Nil
     
     def create(o: Object): IDA = Replication(width.get(o), writeThreshold.get(o))
   }
   
-  val IDAOptions =  Map(("replication" -> ReplicationFormat))
+  val IDAOptions =  Map("replication" -> ReplicationFormat)
   
   
   abstract class MissedUpdateHandler
@@ -67,12 +64,12 @@ object ConfigFile {
     val nodeSizes = Required("tier-node-sizes",    YList(YInt))
     val nodeLimits = Required("tier-node-kv-limit", YList(YInt))
     
-    val attrs = allocaters :: nodeSizes :: nodeLimits :: Nil
+    val attrs: List[Attr] = allocaters :: nodeSizes :: nodeLimits :: Nil
     
     def create(o: Object): PerStoreSet = PerStoreSet(allocaters.get(o), nodeSizes.get(o), nodeLimits.get(o))
   }
   
-  val MissedUpdateOptions = Map(("per-store-set" -> PerStoreSet))
+  val MissedUpdateOptions = Map("per-store-set" -> PerStoreSet)
   
   case class Pool(name: String, width: Int, uuid: UUID, missedUpdateStrategy: MissedUpdateHandler)
   
@@ -82,7 +79,7 @@ object ConfigFile {
     val uuid                 = Required("uuid",  YUUID)
     val missedUpdateStrategy = Required("missed-update-strategy", Choice("type", MissedUpdateOptions))
     
-    val attrs = name :: width :: uuid :: missedUpdateStrategy :: Nil
+    val attrs: List[Attr] = name :: width :: uuid :: missedUpdateStrategy :: Nil
     
     def create(o: Object): Pool = Pool(name.get(o), width.get(o), uuid.get(o), missedUpdateStrategy.get(o))
   }
@@ -98,7 +95,7 @@ object ConfigFile {
     val ida           = Required("ida",  Choice("type", IDAOptions))
     val maxObjectSize = Optional("max-object-size", YInt)
     
-    val attrs = name :: pool :: uuid :: ida :: maxObjectSize :: Nil
+    val attrs: List[Attr] = name :: pool :: uuid :: ida :: maxObjectSize :: Nil
     
     def create(o: Object): ObjectAllocater = ObjectAllocater(name.get(o), pool.get(o), uuid.get(o), ida.get(o), maxObjectSize.get(o))
   }
@@ -109,7 +106,7 @@ object ConfigFile {
   
   object RocksDB extends YObject[RocksDB] {
     val path = Required("path", YString)
-    val attrs = path :: Nil
+    val attrs: List[Attr] = path :: Nil
     
     def create(o: Object): RocksDB = RocksDB(path.get(o))
   }
@@ -119,9 +116,9 @@ object ConfigFile {
   object DataStore extends YObject[DataStore] {
     val pool    = Required("pool",     YString)
     val store   = Required("store",    YInt)
-    val backend = Required("backend", Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
+    val backend = Required("backend", Choice("storage-engine", Map("rocksdb" -> RocksDB)))
     
-    val attrs = pool :: store :: backend :: Nil
+    val attrs: List[Attr] = pool :: store :: backend :: Nil
     
     def create(o: Object): DataStore = DataStore(pool.get(o), store.get(o), backend.get(o))
   }
@@ -132,7 +129,7 @@ object ConfigFile {
     val host = Required("host", YString)
     val port = Required("port", YInt)
 
-    val attrs = host :: port :: Nil
+    val attrs: List[Attr] = host :: port :: Nil
     
     def create(o: Object): Endpoint = Endpoint(host.get(o), port.get(o))
   }
@@ -144,10 +141,10 @@ object ConfigFile {
     val uuid      = Required("uuid",         YUUID)
     val endpoint  = Required("endpoint",     Endpoint)
     val log4jConf = Required("log4j-config", YFile)
-    val crl       = Required("crl",          Choice("storage-engine", Map(("rocksdb" -> RocksDB))))
+    val crl       = Required("crl",          Choice("storage-engine", Map("rocksdb" -> RocksDB)))
     val stores    = Required("stores",       YList(DataStore))
     
-    val attrs = name :: uuid :: endpoint :: log4jConf :: crl :: stores :: Nil
+    val attrs: List[Attr] = name :: uuid :: endpoint :: log4jConf :: crl :: stores :: Nil
     
     def create(o: Object): StorageNode = StorageNode(name.get(o), uuid.get(o), endpoint.get(o), log4jConf.get(o), crl.get(o), stores.get(o))
   }
@@ -156,7 +153,7 @@ object ConfigFile {
     val poolIndex = Required("pool-index", YInt)
     val data      = Optional("data",       YString)
     
-    val attrs = poolIndex :: data :: Nil
+    val attrs: List[Attr] = poolIndex :: data :: Nil
     
     def create(o: Object): StorePointer = {
       val idx = poolIndex.get(o).asInstanceOf[Byte]
@@ -172,10 +169,10 @@ object ConfigFile {
     val uuid          = Required("uuid",           YUUID)
     val poolUUID      = Required("pool-uuid",      YUUID)
     val size          = Optional("size",           YInt)
-    val ida           = Required("ida",            Choice("type", Map(("replication" -> ReplicationFormat))))
+    val ida           = Required("ida",            Choice("type", Map("replication" -> ReplicationFormat)))
     val storePointers = Required("store-pointers", YList(YStorePointer))
     
-    val attrs = uuid :: poolUUID :: size :: ida :: storePointers :: Nil
+    val attrs: List[Attr] = uuid :: poolUUID :: size :: ida :: storePointers :: Nil
     
     def create(o: Object): KeyValueObjectPointer = KeyValueObjectPointer(uuid.get(o), poolUUID.get(o), size.get(o), ida.get(o), storePointers.get(o).toArray)
   }
@@ -213,13 +210,13 @@ object ConfigFile {
       pools.values.foreach { p =>
         p.missedUpdateStrategy match {
           case pss: PerStoreSet => 
-            if (pss.allocaters.length == 0)
+            if (pss.allocaters.isEmpty)
               throw new FormatError(s"tier-allocaters attribute of pool ${p.name} must contain at least one object allocater name")
-            if (pss.nodeSizes.length == 0)
+            if (pss.nodeSizes.isEmpty)
               throw new FormatError(s"tier-node-sizes attribute of pool ${p.name} must contain at least one node size (in bytes)")
             pss.allocaters.foreach { allocaterName =>
               if (!allocaters.contains(allocaterName))
-                throw new FormatError(s"pool ${p.name} references unknown allocater ${allocaterName}")
+                throw new FormatError(s"pool ${p.name} references unknown allocater $allocaterName")
             }
         }
       }
@@ -240,8 +237,8 @@ object ConfigFile {
       val missing = allStores &~ ownedStores
       val extra = ownedStores &~ allStores
       
-      if (!missing.isEmpty) throw new FormatError(s"Unowned DataStore(s): $missing")
-      if (!extra.isEmpty) throw new FormatError(s"Undefined DataStore(s): $extra")
+      if (missing.nonEmpty) throw new FormatError(s"Unowned DataStore(s): $missing")
+      if (extra.nonEmpty) throw new FormatError(s"Undefined DataStore(s): $extra")
       
       val uuids = pools.values.map(p => p.uuid) ++ allocaters.values.map(a => a.uuid) ++ nodes.values.map(n => n.uuid)
       
@@ -259,13 +256,13 @@ object ConfigFile {
     val nodes      = Required("storage-nodes",     YList(StorageNode))
     val radicle    = Optional("radicle",           RadiclePointer)
     
-    val attrs = pools :: allocaters :: nodes :: radicle :: Nil
+    val attrs: List[Attr] = pools :: allocaters :: nodes :: radicle :: Nil
     
     def create(o: Object): Config = {
       Config( 
-          pools.get(o).map(p => (p.name -> p)).toMap, 
-          allocaters.get(o).map(p => (p.name -> p)).toMap, 
-          nodes.get(o).map(p => (p.name -> p)).toMap,
+          pools.get(o).map(p => p.name -> p).toMap,
+          allocaters.get(o).map(p => p.name -> p).toMap,
+          nodes.get(o).map(p => p.name -> p).toMap,
           radicle.get(o))
     }
   }
