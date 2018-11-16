@@ -1,76 +1,23 @@
 package com.ibm.aspen.demo
 
 import java.io.File
-
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store.RocksDBDataStoreBackend
-import com.ibm.aspen.core.data_store.DataStoreFrontend
-import com.ibm.aspen.base.impl.Bootstrap
-
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.core.ida.ReedSolomon
-import com.ibm.aspen.base.impl.RocksDBCrashRecoveryLog
 import java.util.UUID
 
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.base.impl.BasicAspenSystem
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.read.BaseReadDriver
-
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.transaction.ClientTransactionDriver
-import com.ibm.aspen.core.allocation.BaseAllocationDriver
-import com.ibm.aspen.base.impl.BaseTransaction
-import com.ibm.aspen.base.impl.BaseStoragePool
-import com.ibm.aspen.base.NoRetry
-import com.ibm.aspen.base.impl.StorageNode
-import com.ibm.aspen.core.data_store.DataStore
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
+import com.ibm.aspen.base._
+import com.ibm.aspen.base.impl._
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
-
-import scala.concurrent.Future
+import com.ibm.aspen.core.data_store._
+import com.ibm.aspen.core.ida.{ReedSolomon, Replication}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
+import com.ibm.aspen.core.objects.keyvalue.{Insert, Key}
+import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.cumulofs.FileSystem
+import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
+import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import com.ibm.aspen.cumulofs.FileInode
-import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.fuse.FuseOptions
-import com.ibm.aspen.fuse.RemoteFuse
-import com.ibm.aspen.base.impl.BaseImplTypeRegistry
-import com.ibm.aspen.base.impl.BaseTransactionFinalizer
-import com.ibm.aspen.base.impl.StorageNodeTransactionManager
-import com.ibm.aspen.base.impl.StorageNodeAllocationManager
-import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.base.impl.SuperSimpleRetryingReadDriver
-import com.ibm.aspen.base.ExponentialBackoffRetryStrategy
-import com.ibm.aspen.base.impl.SimpleStorageNodeTxManager
-import com.ibm.aspen.base.impl.SimpleFixedDelayTransactionDriver
-import com.ibm.aspen.base.impl.SimpleStorageNodeAllocationManager
-import com.ibm.aspen.base.impl.SimpleClientTransactionDriver
-import com.ibm.aspen.base.impl.SuperSimpleRetryingAllocationDriver
-import com.ibm.aspen.base.impl.PerStoreMissedUpdate
-import com.ibm.aspen.base.AllocatedObjectsIterator
-
-import scala.concurrent.Promise
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.data_store.ObjectMetadata
-import com.ibm.aspen.core.data_store.StoreObjectID
-import com.ibm.aspen.base.ObjectAllocaterFactory
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.ObjectAllocater
-import com.ibm.aspen.base.impl.SinglePoolObjectAllocater
-import com.ibm.aspen.base.AggregateTypeRegistry
-import com.ibm.aspen.base.TypeFactory
-import com.ibm.aspen.base.TypeRegistry
-import org.apache.logging.log4j.scala.Logging
-import com.ibm.aspen.core.objects.keyvalue.Insert
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.concurrent.duration._
 
 object Main {
   
@@ -142,7 +89,7 @@ object Main {
                     Integer.parseInt(arr(1))
                     success
                   } catch {
-                    case t: Throwable => failure("Store name must match the format \"pool-name:storeNumber\"")
+                    case _: Throwable => failure("Store name must match the format \"pool-name:storeNumber\"")
                   }
                 }
                 else failure("Store name must match the format \"pool-name:storeNumber\"")
@@ -186,7 +133,7 @@ object Main {
     
     val allocaterFactories = cfg.allocaters.values.foldLeft(Map[UUID,TypeFactory]()){ (m, a) => 
       m + (a.uuid -> new ObjectAllocaterFactory {
-        val typeUUID = a.uuid
+        val typeUUID: UUID = a.uuid
         def create(system: AspenSystem)(implicit ec: ExecutionContext): Future[ObjectAllocater] = {
           Future.successful(new SinglePoolObjectAllocater(system, a.uuid, cfg.pools(a.pool).uuid, a.maxObjectSize, a.ida))
         }
@@ -200,7 +147,7 @@ object Main {
           try {
             Some(t.asInstanceOf[T])
           } catch {
-            case e: ClassCastException => None
+            case _: ClassCastException => None
           }
       }
     }
@@ -208,10 +155,10 @@ object Main {
     val typeRegistry = new AggregateTypeRegistry(CumuloFSTypeRegistry :: allocaterRegistry :: Nil)
     
     new BasicAspenSystem(
-        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader _,
-        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore _,
+        chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader,
+        getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore,
         net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global) _,
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global),
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,
@@ -228,7 +175,7 @@ object Main {
     // Approximate the size of the node needed to store numSegments
     val nodeSize = (sys.radiclePointer.encodedSize + 2) * numIndexNodeSegments
     
-    val uarr = Array(Bootstrap.BootstrapObjectAllocaterUUID)
+    val uarr: Array[UUID] = Array(Bootstrap.BootstrapObjectAllocaterUUID)
     val iarr = Array(8192)
     val ilim = Array(20)
     val narr = Array(nodeSize)
@@ -241,17 +188,23 @@ object Main {
       
       case None =>
         println("Creating CumuloFS")
-        implicit val tx = sys.newTransaction()
+        implicit val tx: Transaction = sys.newTransaction()
         for {
           alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
       
           
-          ptr <- FileSystem.prepareNewFileSystem(sys.radiclePointer, kvos.revision, alloc, Bootstrap.BootstrapObjectAllocaterUUID, uarr, iarr, ilim, uarr, iarr, uarr, narr,
-                   Bootstrap.BootstrapObjectAllocaterUUID, fileSegmentSize)
+          ptr <- FileSystem.prepareNewFileSystem(
+            sys.radiclePointer,
+            kvos.revision,
+            alloc,
+            Bootstrap.BootstrapObjectAllocaterUUID,
+            uarr, iarr, ilim, uarr, iarr, uarr, narr,
+            Bootstrap.BootstrapObjectAllocaterUUID,
+            fileSegmentSize)
           
           _=tx.update(sys.radiclePointer, None, Nil, Insert(CumuloFSKey, ptr.toArray) :: Nil)
                    
-          txdone <- tx.commit()
+          _ <- tx.commit()
           
           fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
         } yield fs
@@ -330,7 +283,7 @@ object Main {
         
         def doRebuild(iter: AllocatedObjectsIterator): Unit = {
           
-          iter.fetchNext().foreach { o => o match {
+          iter.fetchNext().foreach {
             case None =>
               println(s"Done!!")
               pcomplete.success(())
@@ -343,7 +296,7 @@ object Main {
               //doRebuild(iter)
               backend.putObject(objectId, md, data).foreach(_ => doRebuild(iter))
             }
-          }}
+          }
         }
         
         println(s"Beginning rebuild of $node, $store")
@@ -362,7 +315,7 @@ object Main {
   
   def node(nodeName: String, cfg: ConfigFile.Config): Unit = {
     
-    val node = cfg.nodes.get(nodeName).getOrElse(throw new ConfigError(s"Invalid node name $nodeName"))
+    val node = cfg.nodes.getOrElse(nodeName, throw new ConfigError(s"Invalid node name $nodeName"))
     
     setLog4jConfigFile(node.log4jConfigFile)
     
@@ -386,7 +339,7 @@ object Main {
       val txrs = crl.getTransactionRecoveryStateForStore(dataStoreId)
       val allocrs = crl.getAllocationRecoveryStateForStore(dataStoreId)
       
-      (dataStoreId -> new DataStoreFrontend(dataStoreId, backend, txrs, allocrs))
+      dataStoreId -> new DataStoreFrontend(dataStoreId, backend, txrs, allocrs)
     }.toMap
     
     val nnet = new NettyNetwork(cfg)
@@ -409,9 +362,7 @@ object Main {
     val f = Future.sequence(stores.keys.map( storeId => storageNode.addStore(storeId, dsFactory.apply)))
     
     Await.result(f, Duration(5000, MILLISECONDS))
-    
-    val faRegistry = BaseImplTypeRegistry(sys)
-    
+
     val finalizerFactory = new BaseTransactionFinalizer(sys)
      
     val txHeartbeatPeriod = Duration(1, SECONDS)
@@ -472,7 +423,7 @@ object Main {
     println("radicle:")
     println(s"    uuid:      ${radicle.uuid}")
     println(s"    pool-uuid: ${radicle.poolUUID}")
-    radicle.size.foreach(size => println(s"    size:      ${size}"))
+    radicle.size.foreach(size => println(s"    size:      $size"))
     println("    ida:")
     radicle.ida match {
       case ida: Replication => 
@@ -480,7 +431,7 @@ object Main {
         println(s"        width:           ${ida.width}")
         println(s"        write-threshold: ${ida.writeThreshold}")
         
-      case ida: ReedSolomon => throw new NotImplementedError
+      case _: ReedSolomon => throw new NotImplementedError
     }
     println("    store-pointers:")
     radicle.storePointers.foreach { sp =>
