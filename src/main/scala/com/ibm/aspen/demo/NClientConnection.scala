@@ -1,17 +1,13 @@
 package com.ibm.aspen.demo
 
-import io.netty.channel.nio.NioEventLoopGroup
-import io.netty.bootstrap.Bootstrap
-import io.netty.channel.socket.nio.NioSocketChannel
-import io.netty.channel.ChannelInboundHandlerAdapter
-import io.netty.channel.ChannelHandlerContext
-import io.netty.channel.Channel
-import io.netty.channel.ChannelFutureListener
-import io.netty.channel.ChannelFuture
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.Callable
 import java.util.UUID
+import java.util.concurrent.{Callable, TimeUnit}
+
 import com.ibm.aspen.util.uuid2byte
+import io.netty.bootstrap.Bootstrap
+import io.netty.channel.{ChannelFuture, ChannelHandlerContext, ChannelInboundHandlerAdapter}
+import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.channel.socket.nio.NioSocketChannel
 
 class NClientConnection(
     val clientWorkerGroup: NioEventLoopGroup, 
@@ -19,7 +15,7 @@ class NClientConnection(
     val hostUUID: UUID,
     val host: String, 
     val port: Int,
-    val msgReceived: (Array[Byte]) => Unit,
+    val msgReceived: Array[Byte] => Unit,
     val onlineTracker: OnlineTracker) {
   
   private[this] var octx: Option[ChannelHandlerContext] = None
@@ -34,12 +30,11 @@ class NClientConnection(
   
   private def reconnect(): Unit = {
     println(s"Connecting to $host:$port")
-    clientBootstrap.connect(host, port).addListener(new ChannelFutureListener {
-       override def operationComplete(future: ChannelFuture): Unit = {
-         if (!future.isSuccess())
-           clientWorkerGroup.schedule(new Callable[Unit] { def call(): Unit = reconnect() }, 3, TimeUnit.SECONDS)
-       }
-     })
+
+    clientBootstrap.connect(host, port).addListener( (future: ChannelFuture) => {
+      if (!future.isSuccess)
+        clientWorkerGroup.schedule(new Callable[Unit] { def call(): Unit = reconnect() }, 3, TimeUnit.SECONDS)
+    })
   }
                  
   private class ClientChannelHandler() extends ChannelInboundHandlerAdapter {
@@ -60,8 +55,8 @@ class NClientConnection(
     
     override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {
       // Close the connection when an exception is raised.
-      cause.printStackTrace();
-      ctx.close();
+      cause.printStackTrace()
+      ctx.close()
     }
     
     override def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = msg match {

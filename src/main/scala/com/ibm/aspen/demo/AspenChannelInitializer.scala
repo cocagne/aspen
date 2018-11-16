@@ -9,7 +9,7 @@ import io.netty.handler.codec.LengthFieldPrepender
 import io.netty.handler.codec.bytes.ByteArrayEncoder
 
 object AspenChannelInitializer {
-  val MaxFrameSize = 1024 * 1024 * 101 // max is 100 MB 
+  val MaxFrameSize: Int = 1024 * 1024 * 101 // max is 100 MB
 }
 
 abstract class AspenChannelInitializer extends ChannelInitializer[SocketChannel] {
@@ -20,11 +20,11 @@ abstract class AspenChannelInitializer extends ChannelInitializer[SocketChannel]
   override def initChannel(ch: SocketChannel): Unit = {
     val p = ch.pipeline()
     
-    p.addLast("frameDecoder", new LengthFieldBasedFrameDecoder(MaxFrameSize, 0, 4, 0, 4));
-    p.addLast("bytesDecoder", new ByteArrayDecoder());
+    p.addLast("frameDecoder", new LengthFieldBasedFrameDecoder(MaxFrameSize, 0, 4, 0, 4))
+    p.addLast("bytesDecoder", new ByteArrayDecoder())
     
-    p.addLast("frameEncoder", new LengthFieldPrepender(4));
-    p.addLast("bytesEncoder", new ByteArrayEncoder());
+    p.addLast("frameEncoder", new LengthFieldPrepender(4))
+    p.addLast("bytesEncoder", new ByteArrayEncoder())
     p.addLast("aspenChannel", newChannel())
   }
 }
