@@ -541,7 +541,7 @@ class StoreTransaction(val store: DataStoreFrontend,
       }
     }
 
-    val fcommit = Future.sequence { csmap.valuesIterator.map { cs =>
+    Future.sequence { csmap.valuesIterator.map { cs =>
       if (cs.deleteObject) {
         cs.obj.deleted = true
         store.backend.deleteObject(cs.obj.objectId)
@@ -559,9 +559,5 @@ class StoreTransaction(val store: DataStoreFrontend,
           Future.successful(())
       }
     }}.map(_ => ())
-
-    fcommit.foreach(_ => releaseObjects())
-
-    fcommit
   }
 }

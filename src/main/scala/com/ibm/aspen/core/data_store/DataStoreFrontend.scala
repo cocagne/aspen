@@ -304,7 +304,7 @@ class DataStoreFrontend(
     
     st.objectsLoaded flatMap { _ => 
       synchronized { 
-        st.commit().map( _ => st.releaseObjects() )
+        st.commit().map( _ => synchronized { st.releaseObjects() } )
       }
     }
   }
