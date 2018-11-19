@@ -410,8 +410,12 @@ object Main {
     val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
     
     val missedUpdateStrategy = cfg.pools("bootstrap-pool").missedUpdateStrategy match {
-      case pss: ConfigFile.PerStoreSet => 
-        PerStoreMissedUpdate.getStrategy(pss.allocaters.map(name => cfg.allocaters(name).uuid).toArray, pss.nodeSizes.toArray, pss.nodeLimits.toArray)
+      case pss: ConfigFile.PerStoreSet =>
+        val nodeLimits = pss.nodeLimits match {
+          case None => Array(100)
+          case Some(l) => l.toArray
+        }
+        PerStoreMissedUpdate.getStrategy(pss.allocaters.map(name => cfg.allocaters(name).uuid).toArray, pss.nodeSizes.toArray, nodeLimits)
     }
     
     val fptr = Bootstrap.initializeNewSystem(bootstrapStores, bootstrapPoolIDA, missedUpdateStrategy)

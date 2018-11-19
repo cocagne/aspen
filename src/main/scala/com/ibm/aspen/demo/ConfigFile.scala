@@ -56,13 +56,13 @@ object ConfigFile {
   
   abstract class MissedUpdateHandler
   
-  case class PerStoreSet(allocaters: List[String], nodeSizes: List[Int], nodeLimits: List[Int]) extends MissedUpdateHandler
+  case class PerStoreSet(allocaters: List[String], nodeSizes: List[Int], nodeLimits: Option[List[Int]]) extends MissedUpdateHandler
   
   object PerStoreSet extends YObject[MissedUpdateHandler] {
     
     val allocaters = Required("tier-allocaters",   YList(YString))
     val nodeSizes = Required("tier-node-sizes",    YList(YInt))
-    val nodeLimits = Required("tier-node-kv-limit", YList(YInt))
+    val nodeLimits = Optional("tier-node-kv-limit", YList(YInt))
     
     val attrs: List[Attr] = allocaters :: nodeSizes :: nodeLimits :: Nil
     
