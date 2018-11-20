@@ -112,8 +112,6 @@ class StoreTransaction(val store: DataStoreFrontend,
           (o, o.loadBoth())
       }
 
-      obj.incref() // Ensure all objects referenced by the transaction remain loaded until the transaction is discarded
-
       ptr.uuid -> (obj, loadFuture)
     }
 
@@ -471,11 +469,19 @@ class StoreTransaction(val store: DataStoreFrontend,
       if (cs.obj.loadError.isEmpty) {
 
         // Before committing the updates associated with each transaction requirement, we must first ensure
-        // that the requirement is met. We may be committing a transaction that we didn't vote to commit due
+        // that the requirement is $met. We may be committing a transaction that we didn't vote to commit due
         // to a problem with one or more of the requirements. Commit the ones that match and skip those that
         // do not. The repair process will eventually fix them.
 
         val requirementErrors = getRequirementErrors(requirement)
+
+        if (locked && requirementErrors.nonEmpty) {
+          logger.error("*** LOCKED TRANSACTION ENCOUNTERED REQUIREMENT ERRORS DURING COMMIT!")
+          logger.error(s"* $storeId tx: ${txd.transactionUUID}")
+          requirementErrors.foreach { e =>
+            logger.error(s"* $e")
+          }
+        }
 
         if (requirementErrors.isEmpty) {
           requirement match {

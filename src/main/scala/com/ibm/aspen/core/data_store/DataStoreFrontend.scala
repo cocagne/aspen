@@ -189,13 +189,16 @@ class DataStoreFrontend(
     }
   }
 
-  def loadObject(pointer: ObjectPointer,
+  /** Immediately returns an ObjectStoreState instance with an incremented refcount. The caller is responsible for
+    * ensuring that decref is called when done with the object
+    * */
+  protected[data_store] def loadObject(pointer: ObjectPointer,
                  loadfn: ObjectStoreState => Future[Either[ObjectReadError, ObjectStoreState]]
                 ): ObjectStoreState = synchronized {
 
-    loadedObjects.get(pointer.uuid) match {
+    val os = loadedObjects.get(pointer.uuid) match {
       case Some(obj) => // Fast path for already loaded object
-        loadfn(obj).map {
+        loadfn(obj).foreach {
           case Left(err) =>
             log.read.info(s"$storeId in-mem load object ${pointer.uuid}. Error $err")
 
@@ -227,37 +230,44 @@ class DataStoreFrontend(
             // during the load will find this object in the loadedObjects map
             obj.incref()
 
-            loadfn(obj).foreach { result =>
-              result match {
-                case Left(err) =>
-                  log.read.info(s"$storeId backend load object ${pointer.uuid}. Error $err")
+            loadfn(obj).foreach {
+              case Left(err) =>
+                log.read.info(s"$storeId backend load object ${pointer.uuid}. Error $err")
 
-                case Right(_) =>
-                  log.read.info(s"$storeId backend load object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
-              }
-
-              synchronized {
-                obj.decref()
-              }
+              case Right(_) =>
+                log.read.info(s"$storeId backend load object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
             }
 
             obj
-
         }
     }
+
+    os.incref()
+
+    os
   }
 
   override def getObject(pointer: ObjectPointer): Future[Either[ObjectReadError,
                                                                 (ObjectMetadata, DataBuffer, List[Lock], Set[UUID])]] = {
     val obj = loadObject(pointer, obj => obj.loadBoth())
+
     obj.loadBoth().map {
-      case Left(err) => Left(err)
+      case Left(err) =>
+        synchronized {
+          obj.decref()
+        }
+        Left(err)
+
       case Right(_) =>
         synchronized {
-          if (obj.deleted)
+          val result = if (obj.deleted)
             Left(new InvalidLocalPointer)
           else
             Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+
+          obj.decref()
+
+          result
         }
     }
   }
@@ -265,14 +275,24 @@ class DataStoreFrontend(
   override def getObjectMetadata(pointer: ObjectPointer): Future[Either[ObjectReadError,
                                                                         (ObjectMetadata, List[Lock], Set[UUID])]] = {
     val obj = loadObject(pointer, obj => obj.loadMetadata())
+
     obj.loadMetadata().map {
-      case Left(err) => Left(err)
+      case Left(err) =>
+        synchronized {
+          obj.decref()
+        }
+        Left(err)
+
       case Right(_) =>
         synchronized {
-          if (obj.deleted)
+          val result = if (obj.deleted)
             Left(new InvalidLocalPointer)
           else
             Right((obj.metadata, obj.locks, obj.writeLocks))
+
+          obj.decref()
+
+          result
         }
     }
   }
@@ -280,14 +300,24 @@ class DataStoreFrontend(
   override def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError,
                                                                     (DataBuffer, List[Lock], Set[UUID])]] = {
     val obj = loadObject(pointer,obj => obj.loadData())
+
     obj.loadData().map {
-      case Left(err) => Left(err)
+      case Left(err) =>
+        synchronized {
+          obj.decref()
+        }
+        Left(err)
+
       case Right(_) =>
         synchronized {
-          if (obj.deleted)
+          val result = if (obj.deleted)
             Left(new InvalidLocalPointer)
           else
             Right((obj.data, obj.locks, obj.writeLocks))
+
+          obj.decref()
+
+          result
         }
     }
   }
@@ -325,7 +355,10 @@ class DataStoreFrontend(
   }
 
   def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = synchronized {
-    loadObject(message.pointer, obj => obj.loadBoth()).opportunisticRebuild(message)
+    val obj = loadObject(message.pointer, obj => obj.loadBoth())
+    val frebuild = obj.opportunisticRebuild(message)
+    frebuild.onComplete(_ => synchronized { obj.decref()} )
+    frebuild
   }
 
   def rebuildObject(reader: ObjectReader, pointer: ObjectPointer): Future[Boolean] = pointer.getStorePointer(storeId) match {
@@ -421,7 +454,12 @@ class DataStoreFrontend(
         }
 
         result <- if (doRebuild) rebuild() else Future.successful(false)
-      } yield result
+      } yield {
+        synchronized {
+          obj.decref()
+        }
+        result
+      }
   }
 
   private def repairNext(mui: MissedUpdateIterator, system: AspenSystem): Unit = synchronized {
