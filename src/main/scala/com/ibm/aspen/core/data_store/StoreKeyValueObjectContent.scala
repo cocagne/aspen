@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.keyvalue._
 import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.util.Varint
+import org.apache.logging.log4j.scala.Logger
 
 
 class StoreKeyValueObjectContent(val minimum: Option[StoreKeyValueObjectContent.Min],
@@ -18,11 +19,13 @@ class StoreKeyValueObjectContent(val minimum: Option[StoreKeyValueObjectContent.
 
   import StoreKeyValueObjectContent._
 
-  def debugPrint(): Unit = {
-    println(s"Min $minimum Max $maximum")
-    println(s"Left $left Right $right")
+  def debugLogStatus(log: String => Unit): Unit = {
+    log(s"Min $minimum Max $maximum")
+    log(s"Left $left Right $right")
 
-    idaEncodedContents.values.toList.sortWith((a,b) => ByteArrayKeyOrdering.compare(a.key, b.key) > 0).foreach(v => println(s"   Key ${v.key} Rev ${v.revision}"))
+    idaEncodedContents.values.toList.sortWith((a,b) => ByteArrayKeyOrdering.compare(a.key, b.key) > 0).foreach {
+      v => log(s"   Key ${v.key} Rev ${v.revision}")
+    }
   }
 
   def keyInRange(key: Key, ordering: KeyOrdering): Boolean = {

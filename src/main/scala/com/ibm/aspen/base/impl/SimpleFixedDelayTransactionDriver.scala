@@ -5,9 +5,12 @@ import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.transaction.TransactionFinalizer
 import java.util.UUID
+
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.transaction.TransactionDriver
 import com.ibm.aspen.core.transaction.TxResolved
+import org.apache.logging.log4j.scala.Logging
+
 import scala.concurrent.duration.Duration
 
 object SimpleFixedDelayTransactionDriver {
@@ -31,9 +34,18 @@ class SimpleFixedDelayTransactionDriver(
     messenger: StoreSideTransactionMessenger, 
     txd: TransactionDescription, 
     finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
-  storeId, messenger, txd, finalizerFactory) {
-  
-  private[this] var scheduledRetry = BackgroundTask.schedulePeriodic(retryDelay, callNow=false) {
+  storeId, messenger, txd, finalizerFactory) with Logging {
+
+  private var retries = 0
+
+  private[this] var scheduledRetry = BackgroundTask.schedulePeriodic(retryDelay) {
+    synchronized {
+      retries += 1
+      if (retries % 3 == 0) {
+        logger.info(s"***** HUNG Transaction ${txd.transactionUUID}")
+        printState(s => logger.info(s"* $s"))
+      }
+    }
     nextRound()
     sendPrepareMessages()
   }

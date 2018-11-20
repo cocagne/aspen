@@ -39,13 +39,13 @@ abstract class TransactionDriver(
 
   def complete: Future[TransactionDescription] = completionPromise.future
 
-  def printState(): Unit = synchronized {
-    println(s"Transaction ${txd.transactionUUID}")
-    println(s"  Objects: ${txd.requirements.map(_.objectPointer)}")
-    println(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}")
-    println(s"  Peer Dispositions: $peerDispositions")
-    println(s"  Accepted Peers: $acceptedPeers")
-    println(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}")
+  def printState(print: String => Unit = println): Unit = synchronized {
+    print(s"Transaction ${txd.transactionUUID}")
+    print(s"  Objects: ${txd.requirements.map(_.objectPointer)}")
+    print(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}")
+    print(s"  Peer Dispositions: $peerDispositions")
+    print(s"  Accepted Peers: $acceptedPeers")
+    print(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}")
   }
  
   protected def isValidAcceptor(ds: DataStoreID): Boolean = {

@@ -1,3 +1,13 @@
+** ObjectState refcount
+  - DataStoreFrontend.loadObject always does an incref and NO decref
+  - each read/operation that uses loadObject must do their own decref
+     |-> You're loading it for a reason so decref when done with it
+  - otherwise there's a race condition for loss
+
+** Need decref at end of DataStoreFrontend.rebuild process
+
+** Verify that key-does-not-exist transactions conflict
+
 * Need to understand where the plethora of Aborts are coming from
    - Lots of tranaction
 

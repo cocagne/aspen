@@ -94,9 +94,11 @@ class DataStoreFrontend(
     
     backend.allocateObject(objectUUID, metadata, initialContent) flatMap {
       case Left(err) => throw new Exception(s"Allocation failed: $err")
-      case Right(arr) => 
-        val sp = new StorePointer(storeId.poolIndex, arr)
-        backend.putObject(StoreObjectID(objectUUID, sp), metadata, initialContent).map( _ => sp )
+      case Right(arr) =>
+        synchronized {
+          val sp = new StorePointer(storeId.poolIndex, arr)
+          backend.putObject(StoreObjectID(objectUUID, sp), metadata, initialContent).map(_ => sp)
+        }
     }
   }
   
@@ -128,15 +130,18 @@ class DataStoreFrontend(
         
     backend.allocateObject(newObjectUUID, md, objectData) map {
       case Left(err) => Left(err)
+
       case Right(arr) =>
-        val sp = new StorePointer(storeId.poolIndex, arr)
-        
-        val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp, 
-                                          allocationTransactionUUID, revisionGuard)
-                                          
-        loadAllocatedObject(ars)
-        
-        Right(ars)
+        synchronized {
+          val sp = new StorePointer(storeId.poolIndex, arr)
+
+          val ars = AllocationRecoveryState(storeId, sp, newObjectUUID, objectType, objectSize, objectData, initialRefcount, timestamp,
+            allocationTransactionUUID, revisionGuard)
+
+          loadAllocatedObject(ars)
+
+          Right(ars)
+        }
     }
   }
 
@@ -153,7 +158,7 @@ class DataStoreFrontend(
     allocations += (ars.allocationTransactionUUID -> lst)
   }
   
-  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = {
+  def allocationResolved(ars: AllocationRecoveryState, committed: Boolean): Future[Unit] = synchronized {
     log.alloc.info(s"$storeId alloc tx ${ars.allocationTransactionUUID} resolved. Committed = $committed")
     allocationRecoveryComplete(ars, committed)
   }
@@ -248,10 +253,12 @@ class DataStoreFrontend(
     obj.loadBoth().map {
       case Left(err) => Left(err)
       case Right(_) =>
-        if (obj.deleted)
-          Left(new InvalidLocalPointer)
-        else
-          Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+        synchronized {
+          if (obj.deleted)
+            Left(new InvalidLocalPointer)
+          else
+            Right((obj.metadata, obj.data, obj.locks, obj.writeLocks))
+        }
     }
   }
 
@@ -261,10 +268,12 @@ class DataStoreFrontend(
     obj.loadMetadata().map {
       case Left(err) => Left(err)
       case Right(_) =>
-        if (obj.deleted)
-          Left(new InvalidLocalPointer)
-        else
-          Right((obj.metadata, obj.locks, obj.writeLocks))
+        synchronized {
+          if (obj.deleted)
+            Left(new InvalidLocalPointer)
+          else
+            Right((obj.metadata, obj.locks, obj.writeLocks))
+        }
     }
   }
 
@@ -274,10 +283,12 @@ class DataStoreFrontend(
     obj.loadData().map {
       case Left(err) => Left(err)
       case Right(_) =>
-        if (obj.deleted)
-          Left(new InvalidLocalPointer)
-        else
-          Right((obj.data, obj.locks, obj.writeLocks))
+        synchronized {
+          if (obj.deleted)
+            Left(new InvalidLocalPointer)
+          else
+            Right((obj.data, obj.locks, obj.writeLocks))
+        }
     }
   }
 
@@ -290,7 +301,11 @@ class DataStoreFrontend(
     
     val st = getStoreTransaction(txd, updateData)
     
-    st.objectsLoaded.foreach(_ => st.checkRequirementsAndLock(Some(p)))
+    st.objectsLoaded.foreach { _ =>
+      synchronized {
+        st.checkRequirementsAndLock(Some(p))
+      }
+    }
     
     p.future
   }
@@ -309,7 +324,7 @@ class DataStoreFrontend(
     }
   }
 
-  def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = {
+  def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = synchronized {
     loadObject(message.pointer, obj => obj.loadBoth()).opportunisticRebuild(message)
   }
 
@@ -409,7 +424,7 @@ class DataStoreFrontend(
       } yield result
   }
 
-  private def repairNext(mui: MissedUpdateIterator, system: AspenSystem): Unit = {
+  private def repairNext(mui: MissedUpdateIterator, system: AspenSystem): Unit = synchronized {
     mui.fetchNext().map { _ =>
       mui.entry match {
         case None =>

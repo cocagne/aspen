@@ -26,6 +26,17 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
 
   def numResponses: Int = responses.size
 
+  def debugLogStatus(log: String => Unit): Unit = {
+    responses.keys.toList.sortWith((a,b) => a.poolIndex < b.poolIndex).foreach { storeId =>
+      responses(storeId) match {
+        case Left(err) => log(s"StoreID: $storeId. Err: $err")
+        case Right(s) =>
+          log(s"StoreID: $storeId")
+          s.debugLogStatus(log)
+      }
+    }
+  }
+
   protected def createObjectState(storeId:DataStoreID, readTime: HLCTimestamp, cs: ReadResponse.CurrentState): StoreStateType
 
   /** Called with a list of store states with matching, highest-seen revisions. The list will contain >= threshold

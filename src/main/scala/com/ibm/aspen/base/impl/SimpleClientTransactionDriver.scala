@@ -5,12 +5,14 @@ import com.ibm.aspen.core.network.ClientSideTransactionMessenger
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.LocalUpdate
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
 import com.ibm.aspen.core.transaction.TxPrepare
 import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.transaction.TxAcceptResponse
 import com.ibm.aspen.core.transaction.TxPrepareResponse
+import org.apache.logging.log4j.scala.Logging
 
 object SimpleClientTransactionDriver {
   
@@ -31,12 +33,19 @@ class SimpleClientTransactionDriver(
     messenger: ClientSideTransactionMessenger,
     txd: TransactionDescription, 
     updateData: Map[DataStoreID, List[LocalUpdate]])
-    (implicit ec: ExecutionContext) extends ClientTransactionDriver(messenger, txd, updateData) {
+    (implicit ec: ExecutionContext) extends ClientTransactionDriver(messenger, txd, updateData) with Logging {
   
   private var haveUpdateContent = Set[DataStoreID]()
   private var responded = Set[DataStoreID]()
-  
+
+  private var retries = 0
+
   private val task = BackgroundTask.schedulePeriodic(retransmitDelay) {
+    synchronized {
+      retries += 1
+      if (retries % 3 == 0)
+        logger.info(s"***** HUNG Client Transaction ${txd.transactionUUID}")
+    }
     retransmit()
   }
   

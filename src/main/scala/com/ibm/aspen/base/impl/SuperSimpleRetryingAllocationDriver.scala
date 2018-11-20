@@ -11,6 +11,7 @@ import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.objects.ObjectRevision
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.ExecutionContext
 
@@ -51,9 +52,17 @@ class SuperSimpleRetryingAllocationDriver(
     allocationTransactionUUID: UUID,
     revisionGuard: AllocationRevisionGuard) (implicit ec: ExecutionContext) extends BaseAllocationDriver(
         messenger, poolUUID, newObjectUUID, objectSize, objectIDA,
-        objectData, options, timestamp, initialRefcount, allocationTransactionUUID, revisionGuard) {
+        objectData, options, timestamp, initialRefcount, allocationTransactionUUID, revisionGuard) with Logging {
+
+  private var retries = 0
+  private val retryTask = BackgroundTask.schedulePeriodic(period=retransmitDelay) {
+    synchronized {
+      retries += 1
+      if (retries % 3 == 0)
+        logger.info(s"***** HUNG Allocation with Transaction $allocationTransactionUUID")
+    }
+    sendAllocationMessages()
+  }
   
-  val retryTask = BackgroundTask.schedulePeriodic(period=retransmitDelay, callNow=false)( sendAllocationMessages() )
-  
-  futureResult.onComplete { case _ => retryTask.cancel() }
+  futureResult.onComplete { _ => retryTask.cancel() }
 }

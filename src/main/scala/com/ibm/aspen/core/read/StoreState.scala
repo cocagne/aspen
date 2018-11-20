@@ -6,6 +6,7 @@ import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.data_store.{DataStoreID, StoreKeyValueObjectContent}
 import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision}
 
+
 sealed abstract class StoreState(
                                   val storeId: DataStoreID,
                                   val revision: ObjectRevision,
@@ -17,7 +18,7 @@ sealed abstract class StoreState(
 
   def lastUpdateTimestamp: HLCTimestamp
 
-  def printDebug(): Unit
+  def debugLogStatus(log: String => Unit): Unit
 }
 
 class DataObjectStoreState(
@@ -31,7 +32,7 @@ class DataObjectStoreState(
 
   def lastUpdateTimestamp: HLCTimestamp = timestamp
 
-  def printDebug(): Unit = println(s"  DOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
+  def debugLogStatus(log: String => Unit): Unit = log(s"  DOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
 
 }
 
@@ -51,8 +52,8 @@ class KeyValueObjectStoreState(
 
   def lastUpdateTimestamp: HLCTimestamp = kvoss.lastUpdateTimestamp
 
-  def printDebug(): Unit = {
-    println(s"  KVOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
-    kvoss.debugPrint()
+  def debugLogStatus(log: String => Unit): Unit = {
+    log(s"  KVOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
+    kvoss.debugLogStatus(log)
   }
 }
