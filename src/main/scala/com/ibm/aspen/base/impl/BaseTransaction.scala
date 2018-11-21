@@ -32,6 +32,8 @@ class BaseTransaction(
   private [this] var state: Either[HLCTimestamp, TransactionBuilder] = Right(new TransactionBuilder(uuid, chooseDesignatedLeader, txManager.clientId))
   private [this] var invalidated = false
   private [this] var havePendingUpdates = false
+
+  private [this] val stack = com.ibm.aspen.util.getStack() // for debugging
   
   def valid: Boolean = synchronized { !invalidated && havePendingUpdates }
   
@@ -123,7 +125,7 @@ class BaseTransaction(
    */
   def commit()(implicit ec: ExecutionContext): Future[HLCTimestamp] = synchronized {
     if (!promise.isCompleted) {
-      val stack = com.ibm.aspen.util.getStack()
+
       state.foreach { bldr =>
         val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
 
