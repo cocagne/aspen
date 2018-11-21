@@ -8,6 +8,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.transaction.{ClientTransactionDriver, ClientTransactionManager, KeyValueUpdate}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
@@ -24,7 +25,7 @@ class BaseTransaction(
     val system: BasicAspenSystem,
     txManager: ClientTransactionManager,
     chooseDesignatedLeader: ObjectPointer => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
-    transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) extends Transaction {
+    transactionDriverStrategy: Option[ClientTransactionDriver.Factory]) extends Transaction with Logging {
   
   val uuid: UUID = UUID.randomUUID()
   private [this] val promise = Promise[HLCTimestamp]
@@ -122,8 +123,24 @@ class BaseTransaction(
    */
   def commit()(implicit ec: ExecutionContext): Future[HLCTimestamp] = synchronized {
     if (!promise.isCompleted) {
+      val stack = com.ibm.aspen.util.getStack()
       state.foreach { bldr =>
         val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
+
+        //---- Tx Debugging ----
+        val olist = txd.allReferencedObjectsSet.map(_.uuid).toList.sortWith((a,b) => a.toString > b.toString)
+        result.onComplete {
+          case Success(_) =>
+            logger.info(s"TX SUCCESS: ${txd.transactionUUID}")
+            logger.info(s"Objects: $olist")
+            logger.info(stack)
+          case Failure(e) =>
+            logger.info(s"TX FAILURE: ${txd.transactionUUID}: $e")
+            logger.info(s"Objects: $olist")
+            logger.info(stack)
+        }
+        //---------------------
+
         state = Left(timestamp)
         if (txd.requirements.isEmpty)
           promise.success(HLCTimestamp(txd.startTimestamp))

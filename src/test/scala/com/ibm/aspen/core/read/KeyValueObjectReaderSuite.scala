@@ -185,6 +185,25 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
     }
   }
 
+  test("Resolve three kv pair, intermixed and partial") {
+    val r = TestReader(ida3, _ => ())
+    r.ok(0, v1, Set(), a0, b0)
+    r.result should be (None)
+    r.ok(1, v0, Set(), c0, b0)
+    r.result should be (None)
+    r.ok(2, v1, Set(), a0, b0, c0)
+    r.result should not be (None)
+    r.rereadCandidates.keySet should be (Set(s1))
+    r.result.get match {
+      case Left(_) => fail()
+      case Right(os) =>
+        val c = os.asInstanceOf[KeyValueObjectState].contents
+        c(ka) should be (Value(ka, foo, t0, r0))
+        c(kb) should be (Value(kb, foo, t0, r0))
+        c(kc) should be (Value(kc, foo, t0, r0))
+    }
+  }
+
   test("Resolve multiple kv pair, upreved intermixed") {
     val r = TestReader(ida3, _ => ())
     r.ok(0, v0, Set(), a0, b1)

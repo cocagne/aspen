@@ -24,7 +24,10 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
   }
 
   override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
-                                       readTime: HLCTimestamp, storeStates: List[KeyValueObjectStoreState]): Unit = try {
+                                       readTime: HLCTimestamp, matchingStoreStates: List[KeyValueObjectStoreState],
+                                       allStoreStates: List[KeyValueObjectStoreState]): Unit = try {
+
+    val storeStates = allStoreStates
 
     val min = resolve(storeStates, storeStates.map(ss => ss.kvoss.minimum.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.key))).collect {
       case Some(x) => x

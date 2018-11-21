@@ -19,8 +19,9 @@ object DataObjectReaderSuite {
     }
 
     override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
-                                         readTime: HLCTimestamp, storeStates: List[DataObjectStoreState]): Unit = {
-      rstates = Some(storeStates)
+                                         readTime: HLCTimestamp, matchingStoreStates: List[DataObjectStoreState],
+                                         allStoreStates: List[DataObjectStoreState]): Unit = {
+      rstates = Some(matchingStoreStates)
     }
   }
   object TestReader {

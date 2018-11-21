@@ -12,11 +12,12 @@ class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, reread
   }
 
   override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
-                                       readTime: HLCTimestamp, storeStates: List[DataObjectStoreState]): Unit = {
+                                       readTime: HLCTimestamp, matchingStoreStates: List[DataObjectStoreState],
+                                       allStoreStates: List[DataObjectStoreState]): Unit = {
 
-    val sizeOnStore = storeStates.head.sizeOnStore
+    val sizeOnStore = matchingStoreStates.head.sizeOnStore
 
-    val segments = storeStates.foldLeft(List[(Byte,DataBuffer)]()) { (l, ss) => ss.objectData match {
+    val segments = matchingStoreStates.foldLeft(List[(Byte,DataBuffer)]()) { (l, ss) => ss.objectData match {
       case None => l
       case Some(db) => (ss.storeId.poolIndex -> db) :: l
     }}

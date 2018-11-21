@@ -43,7 +43,8 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
     * elements
     */
   protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
-                              readTime: HLCTimestamp, storeStates: List[StoreStateType]): Unit
+                              readTime: HLCTimestamp, matchingStoreStates: List[StoreStateType],
+                              allStoreStates: List[StoreStateType]): Unit
 
   def numErrors: Int = responses.valuesIterator.foldLeft(0) { (count, e) => e match {
     case Left(_) => count + 1
@@ -106,25 +107,27 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
 
     //val storeStates = responses.values.collect{ case Right(ss) if ss.revision == mostRecent._1 => ss }.toList
 
-    val storeStates = responses.valuesIterator.collect { case Right(ss) => ss }.filter { ss =>
+    val allStoreStates = responses.valuesIterator.collect { case Right(ss) => ss }.toList
+
+    val matchingStoreStates = allStoreStates.filter { ss =>
       if (mostRecent._1 == ss.revision) true else {
         knownBehind += ss.storeId -> ss.readTimestamp
         false
       }
-    }.toList
+    }
 
-    if (storeStates.size >= threshold) {
+    if (matchingStoreStates.size >= threshold) {
       // The current refcount is the one with the highest updateSerial
-      val refcount = storeStates.foldLeft(ObjectRefcount(-1,0))((ref, ss) => if (ss.refcount.updateSerial > ref.updateSerial) ss.refcount else ref)
-      val revision = storeStates.head.revision
-      val timestamp = storeStates.head.timestamp
+      val refcount = matchingStoreStates.foldLeft(ObjectRefcount(-1,0))((ref, ss) => if (ss.refcount.updateSerial > ref.updateSerial) ss.refcount else ref)
+      val revision = matchingStoreStates.head.revision
+      val timestamp = matchingStoreStates.head.timestamp
 
-      val readTime = storeStates.foldLeft(HLCTimestamp.now)((maxts, ss) => if (ss.readTimestamp > maxts) ss.readTimestamp else maxts)
+      val readTime = matchingStoreStates.foldLeft(HLCTimestamp.now)((maxts, ss) => if (ss.readTimestamp > maxts) ss.readTimestamp else maxts)
 
       if (metadataOnly)
         endResult = Some(Right(MetadataObjectState(pointer, revision, refcount, timestamp, readTime)))
       else
-        restoreObject(revision, refcount, timestamp, readTime, storeStates)
+        restoreObject(revision, refcount, timestamp, readTime, matchingStoreStates, allStoreStates)
     }
     else {
       responses.values.foreach {

@@ -3,7 +3,6 @@ package com.ibm.aspen.core.read
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
-import org.apache.logging.log4j.scala.Logger
 
 trait ObjectReader {
   val pointer: ObjectPointer
