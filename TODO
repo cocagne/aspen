@@ -1,6 +1,18 @@
 
-* Need to understand where the plethora of Aborts are coming from
-   - Lots of tranaction
+* Saw hung reads for recently deleted object
+   - state returned by one store only
+
+Reads were seeing the deleted object:
+08:37:57.757 [scala-execution-context-global-38] INFO  com.ibm.aspen.core.data_store.StoreTransaction - 00000000-0000-0000-0000-000000000000:2 tx: 672290c7-2150-4ce9-8ffc-455275c1cc1a Committing RefcountUpdate to DELETE object b42c48c1-d86e-43e2-8c13-c817ad692319
+08:37:58.576 [scala-execution-context-global-46] WARN  com.ibm.aspen.core.data_store.StoreTransaction - 00000000-0000-0000-0000-000000000000:2 tx: 672290c7-2150-4ce9-8ffc-455275c1cc1a ERROR: RefcountMismatch(DataObjectPointer(b42c48c1-d86e-43e2-8c13-c817ad692319,00000000-0000-0000-0000-000000000000,None,Replication(3,2),[(0,),(1,),(2,),],ObjectRefcount(0,1),ObjectRefcount(1,0))
+08:37:58.576 [scala-execution-context-global-43] INFO  com.ibm.aspen.core.data_store.DataStoreFrontend$log$.read - 00000000-0000-0000-0000-000000000000:2 in-mem load object b42c48c1-d86e-43e2-8c13-c817ad692319. Rev ff7c326c-67c3-4ca9-a195-ffb36ff9e1b8 TS HLCTimestamp(101143640638029824) Len 1048576
+
+* Need to make reads smarter. Return Invalid if 'obj.deleted' is true
+
+* Saw hung client transaction for deleted object
+   - Object successfully deleted on all stores but client didn't see completion
+   - Several re-run attempts by client and it never got the failure notification
+   - subsequent reattempts saw RevisionMismatch instead of invalid object. Similar issue
 
 * Conditionally enable rebuild services on each node
    -
@@ -16,7 +28,7 @@ Bootstrap Procedure:
     rm -r ~/temp/aspen/*
     ./target/pack/bin/demo bootstrap local/t.yaml
     emacs local/cfg.yaml
-    ./target/pack/bin/demo cumulofs local/cfg.yaml local/cumulofs-log4j.yaml 192.168.227.4 1111
+    ./target/pack/bin/demo cumulofs local/cfg.yaml local/cumulofs-log4j.yaml 127.0.0.1 1111
 
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a

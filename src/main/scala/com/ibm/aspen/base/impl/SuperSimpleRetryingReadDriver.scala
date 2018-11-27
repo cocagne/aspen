@@ -45,7 +45,7 @@ class SuperSimpleRetryingReadDriver(
     synchronized {
       retries += 1
       if (retries % 3 == 0) {
-        logger.info(s"***** HUNG READ of object ${objectPointer.uuid}")
+        logger.info(s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID")
         objectReader.debugLogStatus(s => logger.info(s"* $s"))
       }
     }
@@ -56,6 +56,9 @@ class SuperSimpleRetryingReadDriver(
   readResult.onComplete {
     _ =>
       retryTask.cancel()
-      //println(s"    Read complete for object ${objectPointer.uuid}")
+      synchronized {
+        if (retries > 3)
+          println(s"***** HUNG READ COMPLETED for object ${objectPointer.uuid}. Read UUID $readUUID")
+      }
   }
 }

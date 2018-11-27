@@ -294,6 +294,9 @@ class StoreTransaction(val store: DataStoreFrontend,
 
       case None =>
 
+        if (obj.deleted)
+          err(TransactionReadError(pointer, InvalidLocalPointer()))
+
         if (obj.rebuildPreventsTransactionFromCommitting(txd))
           err(RebuildCollision(pointer))
 
@@ -475,7 +478,7 @@ class StoreTransaction(val store: DataStoreFrontend,
 
         val requirementErrors = getRequirementErrors(requirement)
 
-        if (locked && requirementErrors.nonEmpty) {
+        if (locked && requirementErrors.nonEmpty && !cs.obj.deleted) {
           logger.error("*** LOCKED TRANSACTION ENCOUNTERED REQUIREMENT ERRORS DURING COMMIT!")
           logger.error(s"* $storeId tx: ${txd.transactionUUID}")
           requirementErrors.foreach { e =>

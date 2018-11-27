@@ -96,6 +96,16 @@ object ReadResponse {
     r.rstates.nonEmpty should be (true)
   }
 
+  test("Simple InvalidLocalPointer Failure") {
+    val r = TestReader(3,2, _ => ())
+    r.receiveReadResponse(ok(0, r0, t0))
+    r.result should be (None)
+    r.receiveReadResponse(err(1, ObjectReadError.InvalidLocalPointer))
+    r.result should be (None)
+    r.receiveReadResponse(err(2, ObjectReadError.InvalidLocalPointer))
+    r.result should be (Some(Left(ObjectReadError.InvalidLocalPointer)))
+  }
+
   test("Simple Mismatch Failure") {
     val r = TestReader(3,2, _ => ())
     r.receiveReadResponse(ok(0, r0, t0))
@@ -114,6 +124,16 @@ object ReadResponse {
     r.result should be (None)
     r.receiveReadResponse(err(2, ObjectReadError.CorruptedObject))
     r.result should be (Some(Left(ObjectReadError.CorruptedObject)))
+  }
+
+  test("Mixed error response failure") {
+    val r = TestReader(3,2, _ => ())
+    r.receiveReadResponse(ok(0, r0, t0))
+    r.result should be (None)
+    r.receiveReadResponse(err(1, ObjectReadError.ObjectMismatch))
+    r.result should be (None)
+    r.receiveReadResponse(err(2, ObjectReadError.InvalidLocalPointer))
+    r.result should be (Some(Left(ObjectReadError.InvalidLocalPointer)))
   }
 
   test("Use highest revision") {
