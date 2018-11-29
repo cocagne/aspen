@@ -40,7 +40,7 @@ class SimpleFileHandle(
     file.read(offset, nbytes)
   }
   
-  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit] = file.truncate(offset)
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]] = file.truncate(offset)
   
   def flush()(implicit ec: ExecutionContext): Future[Unit] = file.flush()
 

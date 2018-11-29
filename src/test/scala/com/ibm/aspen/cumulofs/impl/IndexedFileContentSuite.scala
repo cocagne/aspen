@@ -535,7 +535,7 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       c should be (e2)
     }
   }
-  
+
   test("Truncate, single segment") {
     implicit val tx:Transaction = sys.newTransaction()
     val w1 = Array[Byte](0,1,2,3)
@@ -545,7 +545,8 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       (_, _) <- file.write(0, w1)
       inode2 = file.inode
       a <- file.debugReadFully()
-      _ <- file.truncate(3)
+      fdeleteComplete <- file.truncate(3)
+      _ <- fdeleteComplete
       b <- file.debugReadFully()
       _ <- file.fs.getLocalTasksCompleted
     } yield {
@@ -555,7 +556,7 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       b should be (e)
     }
   }
-  
+
   test("Truncate, delete segment") {
     implicit val tx:Transaction = sys.newTransaction()
     val w1 = Array[Byte](0,1,2,3,4,5,6,7)
@@ -565,7 +566,8 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       (_, _) <- file.write(0, w1)
       inode2 = file.inode
       a <- file.debugReadFully()
-      _ <- file.truncate(3)
+      fdeleteComplete <- file.truncate(3)
+      _ <- fdeleteComplete
       b <- file.debugReadFully()
       _ <- file.fs.getLocalTasksCompleted
     } yield {
@@ -585,7 +587,8 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       (_, _) <- file.write(0, w1)
       inode2 = file.inode
       a <- file.debugReadFully()
-      _ <- file.truncate(3)
+      fdeleteComplete <- file.truncate(3)
+      _ <- fdeleteComplete
       b <- file.debugReadFully()
       _ <- file.fs.getLocalTasksCompleted
     } yield {
@@ -605,7 +608,8 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
       (_, _) <- file.write(0, w1)
       inode2 = file.inode
       a <- file.debugReadFully()
-      _ <- file.truncate(0)
+      fdeleteComplete <- file.truncate(0)
+      _ <- fdeleteComplete
       b <- file.debugReadFully()
       _ <- file.fs.getLocalTasksCompleted
     } yield {

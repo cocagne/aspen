@@ -203,8 +203,10 @@ class LocalTaskGroup(
   }
   
   def whenAllTasksComplete(): Future[Unit] = synchronized {
+    //activeTasks.values.foreach(task => println(s"   ACTIVE: ${task.getClass.getTypeName}"))
     noRemainingTasks match {
-      case Some(p) => p.future
+      case Some(p) =>
+        p.future
       case None =>
         if (activeTasks.isEmpty)
           Future.unit

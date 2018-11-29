@@ -9,6 +9,7 @@ import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.util.UUID
+import java.util.concurrent.TimeoutException
 
 import com.ibm.aspen.base.impl.Bootstrap
 import com.ibm.aspen.core.allocation.ObjectAllocationRevisionGuard
@@ -19,7 +20,8 @@ import scala.concurrent.duration._
 class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   var ts: TestSystem = null
   var sys: BasicAspenSystem = null
-  
+  var testName: String = "NO_TEST"
+
   import Bootstrap._
   /*
   before {
@@ -28,13 +30,21 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
   }
 */
   after {
-    Await.result(ts.waitForTransactionsComplete(), Duration(5000, MILLISECONDS))
+    try {
+      Await.result(ts.waitForTransactionsComplete(), Duration(5000, MILLISECONDS))
+    } catch {
+      case e: TimeoutException =>
+        println(s"TEST LEFT TRANSACTIONS UNFINISHED: $testName")
+        throw e
+    }
     ts.shutdown()
     ts = null
     sys = null
+    testName = "NO_TEST"
   }
 
   override def withFixture(test: NoArgAsyncTest): FutureOutcome = {
+    testName = test.name
     ts = createNewTestSystem()
     sys = ts.aspenSystem
     sys.setSystemAttribute("unittest.name", test.name)

@@ -16,7 +16,10 @@ trait File extends BaseFile {
   def write(offset: Long,
             buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[(Long, List[DataBuffer])]
 
-  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit]
+  /** Outer future completes when the Inode and index have been updated to the new size. Inner future completes
+    * when the background data deletion operation is done
+    */
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]]
 
   def write(offset: Long,
             buffer: DataBuffer)(implicit ec: ExecutionContext): Future[(Long, List[DataBuffer])] = {

@@ -217,30 +217,34 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       (remaining, segmentOffset + objectSize)
     }
   }
-  
-  def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
+
+  /**
+    * The WriteStatus.writeComplete references the Inode being successfully updated. The future returned in the
+    * tuple completes when the background index deletion task is fininshed deleting all of the file content.
+    */
+  def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[(WriteStatus, Future[Unit])] = {
     val inode = file.inode
 
     if (endOffset > inode.size) {
-     write(endOffset - 1, List(DataBuffer(Array[Byte](0))))
+      write(endOffset - 1, List(DataBuffer(Array[Byte](0)))).map(ws => (ws, ws.writeComplete))
     }
     else if (inode.size == endOffset) {
-      Future.successful(WriteStatus(inode.ocontents, 0, Nil, Future.unit))
+      Future.successful((WriteStatus(inode.ocontents, 0, Nil, Future.unit), Future.unit))
     } else {
-      def truncateOrDelete(root: IndexNode): Future[Option[DataObjectPointer]] = {
+      def truncateOrDelete(root: IndexNode): Future[(Future[Unit], Option[DataObjectPointer])] = {
         if (endOffset == 0)
-          prepareIndexDeletionTask(fs, root.pointer).map(_ => None)
+          prepareIndexDeletionTask(fs, root.pointer).map(fdeleteComplete => (fdeleteComplete, None))
         else
-          root.truncate(endOffset).map(_ => Some(root.pointer))
+          root.truncate(endOffset).map(fdeleteComplete => (fdeleteComplete, Some(root.pointer)))
       }
       for {
         root <- getOrAllocateRoot()
-        optr <- truncateOrDelete(root)
+        (fdeleteComplete, optr) <- truncateOrDelete(root)
       } yield {
         val fcomplete = tx.result.map { _ =>
           dropCache()
         }
-        WriteStatus(optr, 0, Nil, fcomplete)
+        (WriteStatus(optr, 0, Nil, fcomplete), fdeleteComplete)
       }
     }
   }
@@ -514,12 +518,15 @@ object IndexedFileContent {
           state: Map[Key, Value])(implicit ec: ExecutionContext): DurableTask = new DeleteIndexTask(system, pointer, revision, state)
     }
   }
-  
+
+  /** Returns a Future that completes then the task creation is prepared for commit of the transaction. The inner future
+    * completes when the index completion task finishes
+    */
   private def prepareIndexDeletionTask(
         fs: FileSystem,
         root: DataObjectPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
          
-    fs.localTaskGroup.prepareTask(DeleteIndexTask.TaskType, List((DeleteIndexTask.RootPointerKey, root.toArray))).map { _ => Future.unit }
+    fs.localTaskGroup.prepareTask(DeleteIndexTask.TaskType, List((DeleteIndexTask.RootPointerKey, root.toArray))).map { fcomplete => fcomplete.map(_ => ()) }
       
   }
   
@@ -640,7 +647,7 @@ object IndexedFileContent {
     
     def prepareTruncation(
         endOffset: Long,
-        path: List[IndexNode])(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+        path: List[IndexNode])(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
       
       val ftruncateData = path.head.getEntryForOffset(endOffset) match {
         case Some(d) => 
@@ -680,8 +687,8 @@ object IndexedFileContent {
       for {
         _ <- ftruncateData
         truncatedRoot <- fsplit
-        _ <- prepareIndexDeletionTask(path.head.index.fs, truncatedRoot.pointer)
-      } yield()
+        fdeleteComplete <- prepareIndexDeletionTask(path.head.index.fs, truncatedRoot.pointer)
+      } yield fdeleteComplete
     }
     
     /** Updates the head node of the supplied path and propagates index changes up the tree. 
@@ -917,7 +924,7 @@ object IndexedFileContent {
       seek(newEntries.head.offset).flatMap(path => rupdate(newEntries, path, path.head, Nil))
     }
     
-    def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
       seek(endOffset).flatMap(path => prepareTruncation(endOffset, path))
     }
     

@@ -40,7 +40,7 @@ class SimpleFile(override val pointer: FilePointer,
   }
 
   override def freeResources()(implicit ec: ExecutionContext): Future[Unit] = {
-    new SimpleFileHandle(this, 0).truncate(0)
+    new SimpleFileHandle(this, 0).truncate(0).map(_ => ())
   }
 
   def debugReadFully()(implicit ec: ExecutionContext): Future[Array[Byte]] = content.debugReadFully()
@@ -56,16 +56,27 @@ class SimpleFile(override val pointer: FilePointer,
     op.writePromise.future
   }
 
-  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Truncate(this, offset))
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]] = {
+    val op = Truncate(this, offset)
+    enqueueOp(op).map(_ => op.deleteComplete)
+  }
 }
 
 object SimpleFile {
   case class Truncate(file: SimpleFile, offset: Long) extends FileOperation {
 
+    private val p = Promise[Unit]()
+
+    def deleteComplete: Future[Unit] = p.future
+
     def prepareTransaction(pointer: DataObjectPointer,
                            revision: ObjectRevision,
                            inode: Inode)(implicit tx: Transaction, ec: ExecutionContext): Future[Inode] = synchronized {
-      file.content.truncate(offset).map { ws =>
+      file.content.truncate(offset).map { t =>
+        val (ws, fdeleteComplete) = t
+
+        fdeleteComplete.foreach(_ => p.success(()))
+
         val updatedInode = inode.asInstanceOf[FileInode].updateContent(offset, Timespec.now, ws.newRoot)
         tx.overwrite(pointer, revision, updatedInode.toDataBuffer)
         updatedInode
