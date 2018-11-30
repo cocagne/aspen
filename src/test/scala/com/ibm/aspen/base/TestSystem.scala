@@ -2,6 +2,7 @@ package com.ibm.aspen.base
 
 import java.util.UUID
 
+import com.ibm.aspen.base.impl.BasicAspenSystem.FinalizationActionRetryStrategyUUID
 import com.ibm.aspen.base.impl._
 import com.ibm.aspen.core.TestActionContext
 import com.ibm.aspen.core.allocation.{AllocationRecoveryState, BaseAllocationDriver}
@@ -12,6 +13,10 @@ import com.ibm.aspen.core.network.{ClientID, TestNetwork}
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer}
 import com.ibm.aspen.core.read.BaseReadDriver
 import com.ibm.aspen.core.transaction.{ClientTransactionDriver, TransactionDriver, TransactionRecoveryState}
+import org.apache.logging.log4j.Level
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFactory
+import org.apache.logging.log4j.core.Filter
+import org.apache.logging.log4j.core.config.Configurator
 
 import scala.annotation.tailrec
 import scala.concurrent.duration._
@@ -35,6 +40,31 @@ object TestSystem {
   val DefaultSystemTreeNodeSize = 2048
   
   val NoRetry = new AssertOnRetry
+
+  def enableLogging(): Unit = {
+
+    val b = ConfigurationBuilderFactory.newConfigurationBuilder()
+
+    val layout = b.newLayout("PatternLayout")
+    layout.addAttribute("pattern", "%d [%p|%c|%C{1}] %m%n")
+
+    val filter = b.newFilter("ThresholdFilter", Filter.Result.ACCEPT, Filter.Result.DENY)
+    filter.addAttribute("level", "trace")
+
+    val console = b.newAppender("stdout", "Console")
+    console.add(layout)
+    console.add(filter)
+
+    b.add(console)
+
+    val root = b.newRootLogger(Level.TRACE)
+    root.add(b.newAppenderRef("stdout"))
+    b.add(root)
+
+    Configurator.initialize(b.build())
+  }
+
+  //enableLogging()
 }
 
 /** Provides a fully-functional AspenSystem for testing application-level operations
@@ -61,6 +91,14 @@ class TestSystem(
 
   def checkTransactionsComplete(): Boolean = synchronized {
     sn0.allTransactionsComplete && sn1.allTransactionsComplete && sn2.allTransactionsComplete
+  }
+
+  def printTransactionStatus(): Unit = synchronized {
+    println("***************** Transaction Status *********************")
+    sn0.logTransactionStatus(s => println(s"Store0: $s"))
+    sn1.logTransactionStatus(s => println(s"Store1: $s"))
+    sn2.logTransactionStatus(s => println(s"Store2: $s"))
+    println("**********************************************************")
   }
   
   def waitForTransactionsComplete(): Future[Unit] = {
@@ -113,7 +151,7 @@ class TestSystem(
       def ownsStore(storeId: DataStoreID)(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(true)
     }
 
-    val retryStrategy = oretryStrategy.getOrElse(new ExponentialBackoffRetryStrategy(200, 15)) // 100ms max backoff, 10ms initial backoff
+    val retryStrategy = oretryStrategy.getOrElse(new ExponentialBackoffRetryStrategy(100, 10)) // 100ms max backoff, 10ms initial backoff
     
     val sys = new BasicAspenSystem(
         chooseDesignatedLeader = (_:ObjectPointer) => 0,
@@ -129,6 +167,8 @@ class TestSystem(
         retryStrategy = retryStrategy,
         userTypeRegistry = Some(userTypeRegistry)
         )
+
+    sys.registerRetryStrategy(FinalizationActionRetryStrategyUUID, retryStrategy)
     
     val storageNode = new StorageNode(sys, crl, new net.SNet)
     
@@ -167,8 +207,10 @@ class TestSystem(
     val finalizerFactory = new BaseTransactionFinalizer(sys)
     
     def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
-     
-    val txMgr = new StorageNodeTransactionManager(sn.crl, txcomplete, sn.net.transactionHandler, TransactionDriver.noErrorRecoveryFactory, finalizerFactory.factory)
+
+    val txDriver = SimpleStoreTransactionDriver.factory(initialDelay=Duration(10, MILLISECONDS), maxDelay=Duration(500, MILLISECONDS))
+
+    val txMgr = new StorageNodeTransactionManager(sn.crl, txcomplete, sn.net.transactionHandler, txDriver, finalizerFactory.factory)
     val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)
     
     sn.recoverPendingOperations(txMgr, allocMgr)

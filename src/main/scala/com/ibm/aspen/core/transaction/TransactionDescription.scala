@@ -66,5 +66,9 @@ final case class TransactionDescription(
       } else
         l
     })
-  
+
+  def shortString: String = {
+    val ol = allReferencedObjectsSet.map(_.shortString).toList.sorted
+    s"Tx $transactionUUID: Objects: $ol"
+  }
 }

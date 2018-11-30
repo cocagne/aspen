@@ -21,7 +21,7 @@ import org.apache.logging.log4j.scala.Logging
 // Note - The deletion finalization action requires the same information as the allocation FA so we just re-use the serialization
 //        for that
 object DeleteFinalizationAction {
-  val RemoveFromAllocationTreeUUID = UUID.fromString("b984d680-e4b9-42b6-b288-9f93194815c9")
+  val RemoveFromAllocationTreeUUID: UUID = UUID.fromString("b984d680-e4b9-42b6-b288-9f93194815c9")
   
   def createSerializedFA(victim: ObjectPointer): SerializedFinalizationAction = {
     SerializedFinalizationAction(RemoveFromAllocationTreeUUID, victim.toArray)
@@ -30,8 +30,10 @@ object DeleteFinalizationAction {
   class RemoveFromAllocationTree(
       val system: AspenSystem,
       val victim:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction with Logging {
+
+    private[this] var count = 0
     
-    val complete = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful {
+    val complete: Future[Unit] = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful {
       //
       // TODO: getStoragePool will forever fail if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
@@ -41,13 +43,25 @@ object DeleteFinalizationAction {
       val fcommit = for {
         pool <- system.getStoragePool(victim.poolUUID)
         tree <- pool.getAllocationTree(system.retryStrategy)
-        commitReady <- tree.prepareDelete(victim.uuid)
-        result <- tx.commit()
+        _ <- tree.prepareDelete(victim.uuid)
+        _ <- tx.commit()
       } yield {
-        logger.info(s"Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
+
       }
       
-      fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))
+      fcommit.failed.foreach { reason =>
+
+        synchronized {
+          logger.info(s"Failed to remove ${victim.uuid} from allocation tree in transaction ${tx.uuid} attempt number $count")
+          count += 1
+        }
+
+        tx.invalidateTransaction(reason)
+      }
+
+      fcommit.foreach { _ =>
+        logger.info(s"Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
+      }
       
       fcommit
     }

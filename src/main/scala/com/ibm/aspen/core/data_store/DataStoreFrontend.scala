@@ -39,6 +39,12 @@ class DataStoreFrontend(
   protected[data_store] var delayedTransactions: Map[UUID, Set[StoreTransaction]] = Map[UUID, Set[StoreTransaction]]()
 
   def allTransactionsComplete: Boolean = activeTransactions.isEmpty && lockedTransactions.isEmpty && delayedTransactions.isEmpty
+
+  def logTransactionStatus(log: String => Unit): Unit = {
+    val all = activeTransactions.valuesIterator ++ lockedTransactions.valuesIterator ++ delayedTransactions.values.flatten
+
+    all.foreach(st => log(st.txd.shortString))
+  }
   
   // maps Transaction UUIDs to the list of objects being allocated in that transaction
   private[this] var allocations = Map[UUID, List[ObjectStoreState]]()

@@ -126,6 +126,10 @@ class StorageNodeTransactionManager(
   def allTransactionsComplete: Boolean = synchronized {
     stores.forall(t => t._2.allTransactionsComplete)
   }
+
+  def logTransactionStatus(log: String => Unit): Unit = synchronized {
+    stores.foreach(t => t._2.logTransactionStatus(log))
+  }
   
   def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
     getStore(message.to).foreach(_.receive(message, updateContent))
@@ -159,6 +163,11 @@ class StorageNodeTransactionManager(
     }
     
     def allTransactionsComplete: Boolean = synchronized { store.allTransactionsComplete }
+
+    def logTransactionStatus(log: String => Unit): Unit = synchronized {
+      store.logTransactionStatus(log)
+      transactionDrivers.values.foreach(_.printState(log))
+    }
     
     def getTransaction(txUUID: UUID): Option[Transaction] = synchronized { transactions.get(txUUID) }
     

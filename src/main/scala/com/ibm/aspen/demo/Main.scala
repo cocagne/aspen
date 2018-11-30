@@ -367,9 +367,10 @@ object Main {
      
     val txHeartbeatPeriod = Duration(1, SECONDS)
     val txHeartbeatTimeout = Duration(3, SECONDS) // Delay until another store tries to drive transaction to completion
-    val txRetryDelay = Duration(3, SECONDS) // Delay between advancing the Paxos round and sending new prepare messages
+    val txRetryDelay = Duration(100, MILLISECONDS) //
+    val txRetryCap = Duration(3, SECONDS)
     
-    val txDriverFactory = SimpleFixedDelayTransactionDriver.factory(txRetryDelay)
+    val txDriverFactory = SimpleStoreTransactionDriver.factory(initialDelay=txRetryDelay, maxDelay=txRetryCap)
     
     def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
 

@@ -86,7 +86,7 @@ class BasicAspenSystem(
   }
   
   def registerRetryStrategy(uuid: UUID, strategy: RetryStrategy): Unit = synchronized {
-    retryStrategies +=  (uuid -> strategy)
+    retryStrategies += uuid -> strategy
   }
   
   def getStorageHost(storeId: DataStoreID): Future[StorageHost] = getStorageHostFn(storeId)

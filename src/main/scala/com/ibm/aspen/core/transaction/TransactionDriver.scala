@@ -40,7 +40,7 @@ abstract class TransactionDriver(
   def complete: Future[TransactionDescription] = completionPromise.future
 
   def printState(print: String => Unit = println): Unit = synchronized {
-    print(s"Transaction ${txd.transactionUUID}")
+    print(s"Transaction ${txd.transactionUUID} (store ${storeId.poolIndex}")
     print(s"  Objects: ${txd.requirements.map(_.objectPointer)}")
     print(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}")
     print(s"  Peer Dispositions: $peerDispositions")
@@ -200,6 +200,8 @@ abstract class TransactionDriver(
   protected def onFinalized(committed: Boolean): Unit = synchronized {
     if (!finalized) {
       finalized = true
+
+      shutdown() // release retry resources
 
       txd.originatingClient.foreach(client => {
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))

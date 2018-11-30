@@ -1,9 +1,9 @@
 package com.ibm.aspen.base.impl
 
-import java.util.concurrent.{Executors, ScheduledFuture}
+import java.util.concurrent.{Executors, ScheduledFuture, ThreadLocalRandom}
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 object BackgroundTask {
 
@@ -66,12 +66,17 @@ object BackgroundTask {
     }
     
     private def reschedule(backoff: Boolean): Unit = synchronized {
-      if (backoff) {
+      val thisDelay = if (backoff) {
         backoffDelay = backoffDelay * 2
         if (backoffDelay > maxDelay)
           backoffDelay = maxDelay
+
+        Duration(ThreadLocalRandom.current().nextInt(0, backoffDelay.toMillis.asInstanceOf[Int]), MILLISECONDS)
       }
-      task = Some(schedule(backoffDelay) { attempt() }) 
+      else
+        backoffDelay
+
+      task = Some(schedule(thisDelay) { attempt() })
     }
   }
 }

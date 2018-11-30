@@ -29,6 +29,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   val initialized: Future[DataStore] = Future.successful(this)
 
+  def logTransactionStatus(log: String => Unit): Unit = ()
+
   def allTransactionsComplete: Boolean = true
 
   def transactionInProgress(transactionUUID: UUID): Boolean = false

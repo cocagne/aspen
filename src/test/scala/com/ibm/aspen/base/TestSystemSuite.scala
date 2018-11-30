@@ -35,6 +35,7 @@ class TestSystemSuite extends AsyncFunSuite with Matchers with BeforeAndAfter {
     } catch {
       case e: TimeoutException =>
         println(s"TEST LEFT TRANSACTIONS UNFINISHED: $testName")
+        ts.printTransactionStatus()
         throw e
     }
     ts.shutdown()

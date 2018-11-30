@@ -86,6 +86,11 @@ class StorageNode(
     case None => true
     case Some(r) => r.transactionManager.allTransactionsComplete
   }
+
+  def logTransactionStatus(log: String => Unit): Unit = recovered match {
+    case None => log("NOT YET RECOVERED")
+    case Some(r) => r.transactionManager.logTransactionStatus(log)
+  }
   
   override def receive(message: Allocate): Unit = recovered.foreach(r => r.allocationManager.receive(message))
     

@@ -34,6 +34,9 @@ trait DataStore {
 
   /** Unit test only. Returns True if no transactions are outstanding */
   def allTransactionsComplete: Boolean
+
+  /** Logs debug status of outstanding transactions */
+  def logTransactionStatus(log: String => Unit): Unit
   
   /** Completes when the store is fully initialized and ready for use */
   val initialized: Future[DataStore]

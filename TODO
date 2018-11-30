@@ -1,20 +1,10 @@
-* Multi-tier truncate to zero frequently leaves transactions past 5 seconds
-   - Need to add a getDebugStatus(log: String => Unit) method to StoreTransaction
-   - As well as transaction drivers
-   - Then add store method to log status of all active transactions and transaction drivers
-   - call this when cleanup time is exceeded
+
 
 * File handle buffering needs to be reimplemented
    - Current logic is wrong
    - Need provision for Direct I/O and fsync
    - All operations being calls to file.write(offset, buffers) is good though. Simple and separates buffering & direct io
      concerns
-
-** Decent chance there's a synchronization error in IndexedFileContent
-   - Minus buffering logic, the overall flow looks good. file.write() creates a Write FileOperation which serially queues
-   - On op execution, it just calls IndexedFileContent.write. Op retry mechanism ensures eventual completion
-   - Need to do a full audit on IFC logic and look for synchronization/retry bugs
-
 
 * Saw hung reads for recently deleted object
    - state returned by one store only

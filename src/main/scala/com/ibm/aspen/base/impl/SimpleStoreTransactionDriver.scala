@@ -1,14 +1,29 @@
 package com.ibm.aspen.base.impl
 
+import java.util.concurrent.ThreadLocalRandom
+
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
-import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.TransactionFinalizer
-import java.util.UUID
+import com.ibm.aspen.core.transaction.{TransactionDescription, TransactionDriver, TransactionFinalizer, TxPrepare}
+import org.apache.logging.log4j.scala.Logging
+
 import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.transaction.TransactionDriver
-import scala.concurrent.duration.Duration
-import com.ibm.aspen.core.transaction.TransactionDescription
+import scala.concurrent.duration._
+
+object SimpleStoreTransactionDriver {
+
+  def factory(initialDelay: Duration, maxDelay: Duration): TransactionDriver.Factory = {
+    new TransactionDriver.Factory {
+      def create(
+                  storeId: DataStoreID,
+                  messenger:StoreSideTransactionMessenger,
+                  txd: TransactionDescription,
+                  finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext): TransactionDriver = {
+        new SimpleStoreTransactionDriver(initialDelay, maxDelay, storeId, messenger, txd, finalizerFactory)
+      }
+    }
+  }
+}
 
 /** Provides a store-side transaction driver with a very simple retransmit strategy and exponential backoff mechanism
  *  for dealing with Paxos contention.
@@ -20,18 +35,34 @@ class SimpleStoreTransactionDriver(
     messenger: StoreSideTransactionMessenger, 
     txd: TransactionDescription, 
     finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
-  storeId, messenger, txd, finalizerFactory) {
+  storeId, messenger, txd, finalizerFactory) with Logging {
  
   private[this] var backoffDelay = initialDelay
   private[this] var nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }
-  
+
+  private[this] var sendCount = 0
+
   override def shutdown(): Unit = nextTry.cancel()
   
   private def sendMessages(): Unit = synchronized {
     proposer.currentAcceptMessage() match {
-      case Some(_) => sendAcceptMessages()
-      case None => 
+      case Some(_) =>
+        // If the stores detect resolution before we do, they can discard their transactions. Subsequent accept messages
+        // we send will be silently ignored so we'll never receive responses from them. To work around this, we'll
+        // periodically send prepares before the accepts. If they had forgotten the Tx, they'll restart it
+        if (sendCount % 3 == 0)
+          sendPrepareMessages()
+
+        sendAcceptMessages()
+      case None =>
         messenger.send(txd.allDataStores.map(toStore => TxPrepare(toStore, storeId, txd, proposer.currentProposalId)).toList)
+    }
+
+    sendCount += 1
+
+    if (sendCount % 100 == 0) {
+      logger.debug("****************** HUNG TX STATUS *****************")
+      printState(s => logger.debug(s))
     }
     
     // Continually re-broadcast the prepare/accept messages for our current proposal at a fixed rate
@@ -47,9 +78,11 @@ class SimpleStoreTransactionDriver(
     
     if (backoffDelay > maxDelay)
       backoffDelay = maxDelay
-      
+
+    val thisDelay = ThreadLocalRandom.current().nextInt(0, backoffDelay.toMillis.asInstanceOf[Int])
+
     nextTry.cancel()
-    nextTry = BackgroundTask.schedule(backoffDelay) { sendMessages() }
+    nextTry = BackgroundTask.schedule(Duration(thisDelay, MILLISECONDS)) { sendMessages() }
   }
   
 }
