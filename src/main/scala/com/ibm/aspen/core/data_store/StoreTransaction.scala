@@ -450,7 +450,6 @@ class StoreTransaction(val store: DataStoreFrontend,
     class CommitState(val obj: ObjectStoreState) {
       var commitMetadata = false
       var commitData = false
-      var deleteObject = false
     }
 
     var csmap = Map[UUID, CommitState]()
@@ -511,7 +510,7 @@ class StoreTransaction(val store: DataStoreFrontend,
               cs.obj.metadata = cs.obj.metadata.copy(refcount=ru.newRefcount, timestamp=timestamp)
               cs.commitMetadata = true
               if (cs.obj.refcount.count == 0) {
-                cs.deleteObject = true
+                cs.obj.deleted = true // Don't wait for write-to-disk to complete. We want reads/updates to fail immediately
                 logger.info(s"$storeId tx: ${txd.transactionUUID} Committing RefcountUpdate to DELETE object ${requirement.objectPointer.uuid}")
               } else {
                 logger.info(s"$storeId tx: ${txd.transactionUUID} Committing RefcountUpdate to ${ru.newRefcount} for object ${requirement.objectPointer.uuid}")
@@ -551,8 +550,7 @@ class StoreTransaction(val store: DataStoreFrontend,
     }
 
     Future.sequence { csmap.valuesIterator.map { cs =>
-      if (cs.deleteObject) {
-        cs.obj.deleted = true
+      if (cs.obj.deleted) {
         store.backend.deleteObject(cs.obj.objectId)
       } else {
         if (cs.commitData && cs.commitMetadata)

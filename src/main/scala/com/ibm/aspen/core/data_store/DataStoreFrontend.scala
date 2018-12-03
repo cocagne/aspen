@@ -209,10 +209,16 @@ class DataStoreFrontend(
             log.read.info(s"$storeId in-mem load object ${pointer.uuid}. Error $err")
 
           case Right(_) =>
-            log.read.info(s"$storeId in-mem load object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
+            if (obj.deleted)
+              log.read.info(s"$storeId in-mem load DELETED object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
+            else
+              log.read.info(s"$storeId in-mem load object ${pointer.uuid}. Rev ${obj.revision} TS ${obj.timestamp} Len ${obj.data.size}")
         }
 
-        obj
+        if (obj.deleted)
+          obj.asDeletedObject
+        else
+          obj
 
       case None => // Not already in memory, load from disk
         pointer.getStorePointer(storeId) match {

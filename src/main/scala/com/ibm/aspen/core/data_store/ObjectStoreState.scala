@@ -81,6 +81,11 @@ sealed abstract class ObjectStoreState(val frontend: DataStoreFrontend,
     rebuilding && ! preRebuildLocks.contains(txd.transactionUUID)
   }
 
+  /** Used when attempting to load/read in-memory objects that have been deleted. This simply returns
+    * a clone with the data and meta load futures failed with InvalidLocalPointer
+    */
+  def asDeletedObject: ObjectStoreState
+
   /** Sets the rebuild flag, increments the refcount to ensure the object isn't released from memory before the
     * rebuild operation completes, and returns a future that will complete after the data is loaded an all locks
     * have been released. Note that the data/metadata NOT guaranteed to have been loaded yet.
@@ -277,6 +282,12 @@ class DataObjectStoreState(frontend: DataStoreFrontend,
                                allocationState: Option[(ObjectMetadata, DataBuffer)]) extends ObjectStoreState(
   frontend, objectId, allocationState) {
 
+  def asDeletedObject: ObjectStoreState = {
+    val c = new DataObjectStoreState(frontend, objectId, allocationState)
+    c.loadFailed(new InvalidLocalPointer)
+    c
+  }
+
   def overwriteData(overwrite: DataBuffer): Unit = data = overwrite
 
   def appendData(append: DataBuffer): Unit = data = this.db.append(append)
@@ -303,6 +314,12 @@ class KeyValueObjectStoreState(frontend: DataStoreFrontend,
   frontend, objectId, allocationState) {
 
   private[this] var ocontent: Option[StoreKeyValueObjectContent] = None
+
+  def asDeletedObject: ObjectStoreState = {
+    val c = new KeyValueObjectStoreState(frontend, objectId, allocationState)
+    c.loadFailed(new InvalidLocalPointer)
+    c
+  }
 
   override protected def convertAllocationData(metadata: ObjectMetadata, allocData: DataBuffer): DataBuffer = {
     StoreKeyValueObjectContent().update(allocData, metadata.revision, metadata.timestamp).encode()
