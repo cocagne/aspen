@@ -9,8 +9,12 @@ import com.ibm.aspen.core.transaction.paxos.ProposalID
 import com.ibm.aspen.core.network.NullMessenger
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.ObjectRevision
 import java.nio.ByteBuffer
+
+import com.ibm.aspen.base.impl.TransactionStatusCache
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.Promise
@@ -80,245 +84,252 @@ object TransactionDriverSuite {
 
 class TransactionDriverSuite extends FunSuite with Matchers {
   import TransactionDriverSuite._
-  
-  def txresult(uuid: UUID): Option[Boolean] = None
-  
-  test("Simple PrepareResponse Handling") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
-    val prep = mkprep(1, 0, 0, txd)
-    val finalizer = new TFinalizer()
-    val messenger = new TMessenger()
-    var completed = false
-    
-    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            ds0, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
-    messenger.messages should be (Nil)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            ds1, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-    
-    messenger.messages.toSet should be (Set(
-        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true), 
-        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true), 
-        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))     
+
+  object noTxCache extends TransactionStatusCache {
+    override def transactionAborted(txuuid: UUID): Unit = None
+
+    override def transactionCommitted(txuuid: UUID): Unit = None
+
+    override def transactionFinalized(txuuid: UUID): Unit = None
   }
-  
-  test("Ignore invalid acceptors") {
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil) 
+
+
+  test("Simple PrepareResponse Handling") {
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil)
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
-    
+
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ds0, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ds0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ds3, // invalid, poolIndex doesn't host a slice
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ds1,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
-    messenger.messages should be (Nil)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            DataStoreID(java.util.UUID.randomUUID(), 1), // invalid, poolUUID doesn't match
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
-    messenger.messages should be (Nil)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            ds1, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-    
+            Nil), noTxCache)
+
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
         TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
         TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))
   }
-  
-  test("Multi-object PrepareResponse Handling") {
-    val otherPool = java.util.UUID.randomUUID()
-    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
-                                Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
-                                
-    val ods0 = DataStoreID(otherPool, 0)
-    val ods1 = DataStoreID(otherPool, 1)
-    
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
+
+  test("Ignore invalid acceptors") {
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: Nil)
     val prep = mkprep(1, 0, 0, txd)
     val finalizer = new TFinalizer()
     val messenger = new TMessenger()
     var completed = false
-    
+
     val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ds0, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ds0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ds1, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ds3, // invalid, poolIndex doesn't host a slice
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ods0, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            DataStoreID(java.util.UUID.randomUUID(), 1), // invalid, poolUUID doesn't match
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            ods1, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-    
-    messenger.messages.toSet should be (Set(
-        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
-        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
-        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))   
-  }
-  
-  test("Multi-object PrepareResponse Handling - Abort") {
-    val otherPool = java.util.UUID.randomUUID()
-    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2), 
-                                Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
-                                
-    val ods0 = DataStoreID(otherPool, 0)
-    val ods1 = DataStoreID(otherPool, 1)
-    val ods2 = DataStoreID(otherPool, 2)
-    
-    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil) 
-    val prep = mkprep(1, 0, 0, txd)
-    val finalizer = new TFinalizer()
-    val messenger = new TMessenger()
-    var completed = false
-    
-    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
-    
-    driver.receiveTxPrepareResponse(TxPrepareResponse(
-            ds0,
-            ds0,
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
-            ProposalID(1,0),
-            TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
-    messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
             ds1,
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))
+  }
+
+  test("Multi-object PrepareResponse Handling") {
+    val otherPool = java.util.UUID.randomUUID()
+    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2),
+                                Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
+
+    val ods0 = DataStoreID(otherPool, 0)
+    val ods1 = DataStoreID(otherPool, 1)
+
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil)
+    val prep = mkprep(1, 0, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ds0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ds1,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
+    messenger.messages should be (Nil)
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ods0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
+    messenger.messages should be (Nil)
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ods1,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
+    messenger.messages.toSet should be (Set(
+        TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds1,ds0,txd.transactionUUID,ProposalID(1,0),true),
+        TxAccept(ds2,ds0,txd.transactionUUID,ProposalID(1,0),true)))
+  }
+
+  test("Multi-object PrepareResponse Handling - Abort") {
+    val otherPool = java.util.UUID.randomUUID()
+    val otherObj = DataObjectPointer(java.util.UUID.randomUUID(), otherPool, None, Replication(3,2),
+                                Array(StorePointer(0,arr), StorePointer(1,arr), StorePointer(2,arr)))
+
+    val ods0 = DataStoreID(otherPool, 0)
+    val ods1 = DataStoreID(otherPool, 1)
+    val ods2 = DataStoreID(otherPool, 2)
+
+    val txd = mktxd(simpleObj, DataUpdate(simpleObj, rev, DataUpdateOperation.Overwrite) :: DataUpdate(otherObj, rev, DataUpdateOperation.Overwrite) ::Nil)
+    val prep = mkprep(1, 0, 0, txd)
+    val finalizer = new TFinalizer()
+    val messenger = new TMessenger()
+    var completed = false
+
+    val driver =  new TTD(ds0, messenger, prep, finalizer, uuid => completed = true)
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ds0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
+    messenger.messages should be (Nil)
+
+    driver.receiveTxPrepareResponse(TxPrepareResponse(
+            ds0,
+            ds1,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
+            ProposalID(1,0),
+            TransactionDisposition.VoteCommit,
+            Nil), noTxCache)
+
+    messenger.messages should be (Nil)
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
             ds2,
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ods0, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ods0,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteCommit,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ods1, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ods1,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteAbort,
-            Nil), txresult)
-            
+            Nil), noTxCache)
+
     messenger.messages should be (Nil)
-    
+
     driver.receiveTxPrepareResponse(TxPrepareResponse(
             ds0,
-            ods2, 
-            txd.transactionUUID, 
-            Right(TxPrepareResponse.Promise(None)), 
+            ods2,
+            txd.transactionUUID,
+            Right(TxPrepareResponse.Promise(None)),
             ProposalID(1,0),
             TransactionDisposition.VoteAbort,
-            Nil), txresult)
+            Nil), noTxCache)
     
     messenger.messages.toSet should be (Set(
         TxAccept(ds0,ds0,txd.transactionUUID,ProposalID(1,0),false),

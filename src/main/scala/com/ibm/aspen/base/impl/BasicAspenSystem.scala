@@ -52,7 +52,8 @@ class BasicAspenSystem(
     val bootstrapPoolIDA: IDA,
     val radiclePointer: KeyValueObjectPointer,
     val retryStrategy: RetryStrategy,
-    userTypeRegistry: Option[TypeRegistry]
+    userTypeRegistry: Option[TypeRegistry],
+    otransactionCache: Option[TransactionStatusCache]
     )(implicit ec: ExecutionContext) extends AspenSystem with Logging {
   
   import BasicAspenSystem._
@@ -61,12 +62,9 @@ class BasicAspenSystem(
 
   private[this] var attributes: Map[String,String] = Map()
   
-  val transactionCache: Cache[UUID,Boolean] = Scaffeine()
-        .expireAfterWrite(Duration(5, MINUTES))
-        .maximumSize(1000)
-        .build[UUID, Boolean]()
+  val transactionCache = otransactionCache.getOrElse(new TransactionStatusCache)
         
-  protected val readManager = new ClientReadManager(this, transactionCache.getIfPresent, net.readHandler)
+  protected val readManager = new ClientReadManager(this, transactionCache, net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)
   protected val allocManager = new ClientAllocationManager(net.allocationHandler, defaultAllocationDriverFactory)
   

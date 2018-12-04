@@ -150,12 +150,13 @@ class BaseTransaction(
           txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {
             case Failure(cause) =>
               // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
+              system.transactionCache.transactionAborted(txd.transactionUUID)
               promise.failure(cause)
             case Success(committed) =>
               if (committed) {
                 val ts = HLCTimestamp(txd.startTimestamp)
                 HLCTimestamp.update(ts)
-                system.transactionCache.put(txd.transactionUUID, true)
+                system.transactionCache.transactionCommitted(txd.transactionUUID)
                 promise.success(ts)
               } else 
                 promise.failure(TransactionAborted(txd))

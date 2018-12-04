@@ -13,11 +13,11 @@ class SimpleStorageNodeTxManager(
     val heartbeatPeriod: Duration,
     val heartbeatTimeout: Duration,
     crl: CrashRecoveryLog,
-    txresult: (UUID) => Option[Boolean],
+    transactionCache: TransactionStatusCache,
     messenger: StoreSideTransactionMessenger,
     driverFactory: TransactionDriver.Factory,
     finalizerFactory: TransactionFinalizer.Factory)
-    (implicit ec: ExecutionContext) extends StorageNodeTransactionManager(crl, txresult, messenger, driverFactory, finalizerFactory) {
+    (implicit ec: ExecutionContext) extends StorageNodeTransactionManager(crl, transactionCache, messenger, driverFactory, finalizerFactory) {
   
   // Periodically send out heartbeats for all driven transactions and look for transactions that haven't received
   // heartbeats within the timeout window.

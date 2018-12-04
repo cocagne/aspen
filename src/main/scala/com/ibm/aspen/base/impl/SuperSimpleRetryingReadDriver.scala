@@ -15,20 +15,20 @@ import com.ibm.aspen.core.read.ReadDriver
 
 object SuperSimpleRetryingReadDriver {
   def factory(opportunisticRebuildDelay: Duration, ec: ExecutionContext)(
-      getTransactionResult: UUID => Option[Boolean],
+      transactionCache: TransactionStatusCache,
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new SuperSimpleRetryingReadDriver(getTransactionResult, clientMessenger, objectPointer, readType,
+    new SuperSimpleRetryingReadDriver(transactionCache, clientMessenger, objectPointer, readType,
       retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)(ec)
   }
 }
 
 class SuperSimpleRetryingReadDriver(
-    getTransactionResult: UUID => Option[Boolean],
+    transactionCache: TransactionStatusCache,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
@@ -36,7 +36,7 @@ class SuperSimpleRetryingReadDriver(
     readUUID:UUID,
     opportunisticRebuildDelay: Duration,
     disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        getTransactionResult, clientMessenger, objectPointer,
+        transactionCache, clientMessenger, objectPointer,
         readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)  {
 
   private var retries = 0

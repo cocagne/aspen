@@ -39,8 +39,8 @@ object StorageNodeTransactionManager {
 }
 
 class StorageNodeTransactionManager(
-    val crl: CrashRecoveryLog, 
-    val txresult: UUID => Option[Boolean],
+    val crl: CrashRecoveryLog,
+    val transactionCache: TransactionStatusCache,
     val messenger: StoreSideTransactionMessenger,
     val driverFactory: TransactionDriver.Factory,
     val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext)
@@ -219,7 +219,7 @@ class StorageNodeTransactionManager(
 
                 // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
                 prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach { lst =>
-                  lst.foreach( p => driver.receiveTxPrepareResponse(p, txresult))
+                  lst.foreach( p => driver.receiveTxPrepareResponse(p, transactionCache))
 
                   // No need to keep the cached entries around
                   prepareResponseCache.invalidate(m.txd.transactionUUID)
@@ -238,7 +238,7 @@ class StorageNodeTransactionManager(
      
         case m: TxPrepareResponse => 
           getTransactionDriver(m.transactionUUID)  match {
-            case Some(td) => td.receiveTxPrepareResponse(m, txresult)
+            case Some(td) => td.receiveTxPrepareResponse(m, transactionCache)
             
             case None =>
               // TxPrepareResponse messages are unicast to the transaction leader. That we're receiving one probably means we're

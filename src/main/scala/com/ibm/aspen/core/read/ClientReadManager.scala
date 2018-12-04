@@ -3,7 +3,7 @@ package com.ibm.aspen.core.read
 import java.util.UUID
 
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.{ClientSideReadMessageReceiver, ClientSideReadMessenger}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 
 class ClientReadManager(
     val system: AspenSystem,
-    val getTransactionResult: UUID => Option[Boolean],
+    val transactionCache: TransactionStatusCache,
     val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
@@ -104,7 +104,7 @@ class ClientReadManager(
     
     val readUUID = UUID.randomUUID()
     
-    val driver = driverFactory(getTransactionResult, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
+    val driver = driverFactory(transactionCache, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     

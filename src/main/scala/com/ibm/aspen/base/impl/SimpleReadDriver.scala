@@ -17,13 +17,13 @@ object SimpleReadDriver {
       val initialDelay: Duration, 
       val maxDelay: Duration)(implicit ec: ExecutionContext) {
     def apply(
-        getTransactionResult: UUID => Option[Boolean],
+        transactionCache: TransactionStatusCache,
         clientMessenger: ClientSideReadMessenger,
         objectPointer: ObjectPointer,
         readType: ReadType,
         retrieveLockedTransaction: Boolean, 
         readUUID:UUID): ReadDriver = {
-      new SimpleReadDriver(initialDelay, maxDelay, getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+      new SimpleReadDriver(initialDelay, maxDelay, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
     }
   }
 }
@@ -35,13 +35,13 @@ object SimpleReadDriver {
 class SimpleReadDriver(
     val initialDelay: Duration, 
     val maxDelay: Duration,
-    getTransactionResult: UUID => Option[Boolean],
+    transactionCache: TransactionStatusCache,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
+        transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
   
   private[this] var task: Option[BackgroundTask.ScheduledTask] = None
 

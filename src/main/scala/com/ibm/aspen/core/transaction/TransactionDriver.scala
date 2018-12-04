@@ -2,7 +2,7 @@ package com.ibm.aspen.core.transaction
 
 import java.util.UUID
 
-import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
@@ -68,7 +68,7 @@ abstract class TransactionDriver(
   }
   
   def receiveTxPrepareResponse(msg: TxPrepareResponse,
-                               getCompletedTxResult: UUID => Option[Boolean]): Unit = synchronized {
+                               transactionCache: TransactionStatusCache): Unit = synchronized {
 
     if (msg.proposalId != proposer.currentProposalId)
       return
@@ -79,7 +79,7 @@ abstract class TransactionDriver(
     val collisionsWithCompletedTransactions = msg.errors.nonEmpty && msg.errors.forall { e =>
       e.conflictingTransaction match {
         case None => false
-        case Some((txuuid, _)) => getCompletedTxResult(txuuid) match {
+        case Some((txuuid, _)) =>transactionCache.getTransactionComplete(txuuid) match {
           case None => false
           case Some(b) => b
         }

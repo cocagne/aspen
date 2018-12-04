@@ -166,7 +166,8 @@ object Main {
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
-        userTypeRegistry = Some(typeRegistry)
+        userTypeRegistry = Some(typeRegistry),
+        otransactionCache = None
         )
   }
   
@@ -371,10 +372,8 @@ object Main {
     val txRetryCap = Duration(3, SECONDS)
     
     val txDriverFactory = SimpleStoreTransactionDriver.factory(initialDelay=txRetryDelay, maxDelay=txRetryCap)
-    
-    def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
 
-    val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, txcomplete, storageNode.net.transactionHandler, 
+    val txMgr = new SimpleStorageNodeTxManager(txHeartbeatPeriod, txHeartbeatTimeout, storageNode.crl, sys.transactionCache, storageNode.net.transactionHandler,
                      txDriverFactory, finalizerFactory.factory)
     
     val allocHeartbeatPeriod   = Duration(3, SECONDS)

@@ -2,7 +2,7 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
-import com.ibm.aspen.base.impl.BackgroundTask
+import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.network.ClientSideReadMessenger
@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class BaseReadDriver(
-    val getTransactionResult: UUID => Option[Boolean],
+    val transactionCache: TransactionStatusCache,
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val readType: ReadType,
@@ -75,7 +75,7 @@ class BaseReadDriver(
     val hasLocksForKnownCommittedTransactions = response.result match {
       case Left(_) => false
       case Right(cs) => ! cs.lockedWriteTransactions.forall { txuuid =>
-        getTransactionResult(txuuid) match {
+        transactionCache.getTransactionResolved(txuuid) match {
           case None => true
           case Some(result) => !result
         }
@@ -128,14 +128,14 @@ object BaseReadDriver {
 
 
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
-      getTransactionResult: UUID => Option[Boolean],
+      transactionCache: TransactionStatusCache,
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
       readType: ReadType,
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
+    new BaseReadDriver(transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
 
       var hung = false
 

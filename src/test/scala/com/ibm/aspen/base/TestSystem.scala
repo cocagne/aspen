@@ -165,7 +165,8 @@ class TestSystem(
         bootstrapPoolIDA = bootstrapPoolIDA,
         radiclePointer = radiclePointer,
         retryStrategy = retryStrategy,
-        userTypeRegistry = Some(userTypeRegistry)
+        userTypeRegistry = Some(userTypeRegistry),
+        otransactionCache = None
         )
 
     sys.registerRetryStrategy(FinalizationActionRetryStrategyUUID, retryStrategy)
@@ -205,12 +206,10 @@ class TestSystem(
   def recover(sys: BasicAspenSystem, sn: StorageNode): Unit = {
 
     val finalizerFactory = new BaseTransactionFinalizer(sys)
-    
-    def txcomplete(txuuid: UUID): Option[Boolean] = sys.transactionCache.getIfPresent(txuuid)
 
     val txDriver = SimpleStoreTransactionDriver.factory(initialDelay=Duration(10, MILLISECONDS), maxDelay=Duration(500, MILLISECONDS))
 
-    val txMgr = new StorageNodeTransactionManager(sn.crl, txcomplete, sn.net.transactionHandler, txDriver, finalizerFactory.factory)
+    val txMgr = new StorageNodeTransactionManager(sn.crl, sys.transactionCache, sn.net.transactionHandler, txDriver, finalizerFactory.factory)
     val allocMgr = new StorageNodeAllocationManager(sn.crl, sn.net.allocationHandler)
     
     sn.recoverPendingOperations(txMgr, allocMgr)

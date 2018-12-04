@@ -1,36 +1,19 @@
 package com.ibm.aspen.core.read
 
-import org.scalatest._
-
-import scala.concurrent.duration._
 import java.util.UUID
 
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
+import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.impl.TransactionStatusCache
+import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.core.objects.StorePointer
-import com.ibm.aspen.core.network.ClientSideReadMessenger
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.read
+import com.ibm.aspen.core.network.{ClientID, ClientSideReadMessenger}
+import com.ibm.aspen.core.objects._
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp, read}
+import com.ibm.aspen.core.transaction.TransactionDescription
+import org.scalatest._
 
 import scala.concurrent.Await
-import com.ibm.aspen.core.transaction.TransactionDescription
-import java.nio.ByteBuffer
-
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.DataObjectState
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.objects.MetadataObjectState
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.data_store.ObjectReadError
+import scala.concurrent.duration._
 
 object BaseReadDriverSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -80,16 +63,24 @@ object BaseReadDriverSuite {
 
 class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
   import BaseReadDriverSuite._
-  
-  def noTxCache(txuuid: UUID): Option[Boolean] = None
+
+  object noTxCache extends TransactionStatusCache {
+    override def transactionAborted(txuuid: UUID): Unit = None
+
+    override def transactionCommitted(txuuid: UUID): Unit = None
+
+    override def transactionFinalized(txuuid: UUID): Unit = None
+  }
+
+
   
   def mkReader(clientMessenger: ClientSideReadMessenger,
                objectPointer: ObjectPointer = ptr,
                readType: ReadType = FullObject(),
                retrieveLockedTransaction: Boolean = true,
                readUUID:UUID = readUUID,
-               getTransactionResult: (UUID) => Option[Boolean] = noTxCache) = {
-    new BaseReadDriver(getTransactionResult, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+               transactionStatusCache: TransactionStatusCache = noTxCache) = {
+    new BaseReadDriver(transactionStatusCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
   }
   
   test("Fail with invalid object") {
