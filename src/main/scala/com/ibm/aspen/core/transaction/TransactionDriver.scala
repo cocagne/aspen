@@ -8,6 +8,7 @@ import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.paxos.{Learner, Proposer}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration.{Duration, SECONDS}
@@ -16,7 +17,7 @@ abstract class TransactionDriver(
     val storeId: DataStoreID,
     val messenger: StoreSideTransactionMessenger, 
     val txd: TransactionDescription, 
-    private val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) {
+    private val finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends Logging {
   
   import TransactionDriver._
   
@@ -38,6 +39,10 @@ abstract class TransactionDriver(
   private val completionPromise: Promise[TransactionDescription] = Promise()
 
   def complete: Future[TransactionDescription] = completionPromise.future
+
+  logger.info(s"Driving transaction to completion: ${txd.transactionUUID}")
+
+  complete.foreach(_ => logger.info(s"Transaction driven to completion: ${txd.transactionUUID}"))
 
   def printState(print: String => Unit = println): Unit = synchronized {
     print(s"Transaction ${txd.transactionUUID} (store ${storeId.poolIndex}")

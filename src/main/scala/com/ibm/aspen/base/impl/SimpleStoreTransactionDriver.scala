@@ -5,7 +5,6 @@ import java.util.concurrent.ThreadLocalRandom
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.core.transaction.{TransactionDescription, TransactionDriver, TransactionFinalizer, TxPrepare}
-import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -35,7 +34,7 @@ class SimpleStoreTransactionDriver(
     messenger: StoreSideTransactionMessenger, 
     txd: TransactionDescription, 
     finalizerFactory: TransactionFinalizer.Factory)(implicit ec: ExecutionContext) extends TransactionDriver(
-  storeId, messenger, txd, finalizerFactory) with Logging {
+  storeId, messenger, txd, finalizerFactory) {
  
   private[this] var backoffDelay = initialDelay
   private[this] var nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }
@@ -60,7 +59,7 @@ class SimpleStoreTransactionDriver(
 
     sendCount += 1
 
-    if (sendCount % 100 == 0) {
+    if (sendCount % 10 == 0) {
       logger.debug("****************** HUNG TX STATUS *****************")
       printState(s => logger.debug(s))
     }

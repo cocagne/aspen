@@ -8,12 +8,13 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object SimpleFileHandle {
 
-  class PendingWrite(val offset: Long,
-                     val nbytes: Int,
-                     val reversedBuffers: List[DataBuffer],
-                     opromise: Option[Promise[Unit]]) {
+  private class PendingWrite(val offset: Long,
+                             var nbytes: Int,
+                             var reversedBuffers: List[DataBuffer]) {
 
-    val completePromise: Promise[Unit] = opromise.getOrElse(Promise())
+    val completePromise: Promise[Unit] = Promise()
+
+    def complete: Future[Unit] = completePromise.future
 
     def endOffset: Long = offset + nbytes
   }
@@ -32,67 +33,71 @@ class SimpleFileHandle(
   
   import SimpleFileHandle._
 
-  private[this] var bufferingWrite: Option[PendingWrite] = None
   private[this] var writeQueue: Queue[PendingWrite] = Queue()
-  private[this] var writeOutstanding = false
-  
+  private[this] var ocurrentWrite: Option[PendingWrite] = None
+  private[this] var nbuffered: Int = 0
+
   def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
     file.read(offset, nbytes)
   }
-  
+
   def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]] = file.truncate(offset)
-  
-  def flush()(implicit ec: ExecutionContext): Future[Unit] = file.flush()
+
+  def flush()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    ocurrentWrite match {
+      case None => Future.unit
+      case Some(pw) => if (writeQueue.isEmpty) pw.complete else writeQueue.last.complete
+    }
+  }
 
   def write(offset: Long, buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
     val wsize = buffers.foldLeft(0)((sz, db) => sz + db.size)
     val rbuffers = buffers.reverse
 
-    val npw = if (bufferingWrite.exists(_.endOffset == offset)) {
-      val pw = bufferingWrite.get
-      new PendingWrite(pw.offset, pw.nbytes + wsize, rbuffers ++ pw.reversedBuffers, Some(pw.completePromise))
-    } else {
-      bufferingWrite.foreach(pw => writeQueue = writeQueue.enqueue(pw))
-      new PendingWrite(offset, wsize, rbuffers, None)
-    }
+    nbuffered += wsize
 
-    bufferingWrite = Some(npw)
+    val pw = writeQueue.find(_.endOffset == offset) match {
+      case None =>
+        val p = new PendingWrite(offset, wsize, rbuffers)
+        writeQueue = writeQueue.enqueue(p)
+        p
+
+      case Some(p) =>
+        p.nbytes += wsize
+        p.reversedBuffers = rbuffers ++ p.reversedBuffers
+        p
+    }
 
     beginNextWrite()
 
-    npw.completePromise.future
+    if (nbuffered < writeBufferSize)
+      Future.unit
+    else
+      pw.complete
   }
 
   private[this] def beginNextWrite()(implicit ec: ExecutionContext): Unit = synchronized {
-    if (!writeOutstanding) {
+    if (ocurrentWrite.isEmpty) {
 
-      val nextPw = if (writeQueue.nonEmpty) {
-        val (pw, newQueue) = writeQueue.dequeue
-        writeQueue = newQueue
-        Some(pw)
-      } else if (bufferingWrite.nonEmpty) {
-        val t = bufferingWrite
-        bufferingWrite = None
-        t
-      } else None
+      writeQueue.dequeueOption.foreach { t =>
+        val pw = t._1
+        writeQueue = t._2
 
-      nextPw.foreach { pw =>
+        ocurrentWrite = Some(pw)
 
-        writeOutstanding = true
+        def writeSome(offset: Long, buffers: List[DataBuffer]): Unit = file.write(offset, buffers).foreach { t =>
+          val (remainingOffset, remainingBuffers) = t
 
-        def writeSome(offset: Long, buffers: List[DataBuffer]): Unit = {
-          file.write(offset, buffers).foreach { t =>
-            val (remainingOffset, remainingBuffers) = t
-
-            if (remainingBuffers.isEmpty) {
+          if (remainingBuffers.isEmpty) {
+            synchronized {
+              nbuffered -= pw.nbytes
+              ocurrentWrite = None
               pw.completePromise.success(())
-              synchronized {
-                writeOutstanding = false
-                beginNextWrite()
-              }
-            } else
-              writeSome(remainingOffset, remainingBuffers)
+              beginNextWrite()
+            }
           }
+          else
+            writeSome(remainingOffset, remainingBuffers)
         }
 
         writeSome(pw.offset, pw.reversedBuffers.reverse)

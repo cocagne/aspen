@@ -284,7 +284,7 @@ class FuseInterface(
                 else if (newSize == f.size)
                   response.ok(new GetAttrReply(1, 0, stat(f)))
                 else {
-                  new SimpleFileHandle(f,0).truncate(newSize) onComplete {
+                  new SimpleFileHandle(f,writeBufferSize = 4*1024*1024).truncate(newSize) onComplete {
                     case Failure(cause) => response.error(LinuxAPI.EIO)
                     case Success(_) =>
                       println(s"Truncation Op Completed! Returning new stat with size: ${f.size}")

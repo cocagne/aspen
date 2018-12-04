@@ -1,4 +1,22 @@
+* Always stopping at 95Mb copy
 
+* Update aspen system to use TransactionStatusCache
+   - Storage nodes and client Tx drivers can share this
+      - Update on client tx completion
+      - Update in TransactionManager, Transaction, and TransactionDriver
+   - Update store Transaction manager to send TxFinalized to driver of known-done transactions rather than starting
+     the tx over
+
+* Aborted transactions are constantly restarting, finishing, and restarting
+   - Could be due to extra messages being processed that cause it to restart
+   - Before starting a transaction, ensure it isn't already known to be aborted or finalized
+       - Send a TxResolved/TxFinalized message to the driver, direct from TxManager
+       - Driver immediately exits/aborts if this is seen
+
+* Transactions refusing to finish. On resume, they still refuse to finish.
+   - Need to add TransactionDriver start/stop logging
+   - Also hang detection and reporting to log
+   - Should be able to resume with existing broken build and get status
 
 * File handle buffering needs to be reimplemented
    - Current logic is wrong
