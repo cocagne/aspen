@@ -280,7 +280,7 @@ class StorageNodeTransactionManager(
           
         case m: TxFinalized =>
           if (m.committed)
-            transactionCache.transactionCommitted(m.transactionUUID)
+            transactionCache.transactionFinalized(m.transactionUUID)
           else
             transactionCache.transactionAborted(m.transactionUUID)
 

@@ -534,7 +534,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(KeyValueRequirementError(op0, key)))
+    errs2.toSet should be (Set(TransactionCollision(op0, txd, None)))
   }
   
   test("No lock conflicts for differing keys") {
@@ -573,7 +573,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs = Await.result(ds.lockTransaction(txd, lu(op0, db)), awaitDuration)
     
-    errs.toSet should be (Set(KeyValueRequirementError(op0, key)))
+    errs.toSet should be (Set(KeyValueRequirementError(op0, key, None)))
   }
   
   test("Key existence required, success") {
@@ -613,7 +613,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(KeyValueRequirementError(op0, key)))
+    errs2.toSet should be (Set(KeyValueRequirementError(op0, key, Some(ObjectRevision(txd.transactionUUID)))))
   }
   
   test("Key timestamp equals, success") {
@@ -655,7 +655,7 @@ class KeyValueObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val errs2 = Await.result(ds.lockTransaction(txd2, lu(op0, db)), awaitDuration)
     
-    errs2.toSet should be (Set(KeyValueRequirementError(op0, key)))
+    errs2.toSet should be (Set(KeyValueRequirementError(op0, key, Some(ObjectRevision(txd.transactionUUID)))))
   }
   
   test("Key timestamp less than, success") {

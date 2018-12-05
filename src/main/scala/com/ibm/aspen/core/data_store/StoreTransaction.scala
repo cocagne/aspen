@@ -2,7 +2,7 @@ package com.ibm.aspen.core.data_store
 
 import java.util.UUID
 
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp, data_store}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRevision}
 import com.ibm.aspen.core.transaction._
 import org.apache.logging.log4j.scala.Logging
@@ -404,25 +404,25 @@ class StoreTransaction(val store: DataStoreFrontend,
 
                       kvobj.keyRevisionWriteLocks.get(req.key) foreach { lockedTxd =>
                         if (lockedTxd.transactionUUID != txd.transactionUUID)
-                          err(KeyValueRequirementError(pointer, req.key))
+                          err(data_store.TransactionCollision(pointer, lockedTxd, None))
                       }
 
                       req.tsRequirement match {
                         case KeyValueUpdate.TimestampRequirement.Equals => ov match {
-                          case None => err(KeyValueRequirementError(pointer, req.key))
-                          case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(pointer, req.key))
+                          case None => err(KeyValueRequirementError(pointer, req.key, None))
+                          case Some(v) => if (v.timestamp != req.timestamp) err(KeyValueRequirementError(pointer, req.key, Some(v.revision)))
                         }
                         case KeyValueUpdate.TimestampRequirement.LessThan => ov match {
-                          case None => err(KeyValueRequirementError(pointer, req.key))
-                          case Some(v) => if (req.timestamp.asLong >= v.timestamp.asLong) err(KeyValueRequirementError(pointer, req.key))
+                          case None => err(KeyValueRequirementError(pointer, req.key, None))
+                          case Some(v) => if (req.timestamp.asLong >= v.timestamp.asLong) err(KeyValueRequirementError(pointer, req.key, Some(v.revision)))
                         }
                         case KeyValueUpdate.TimestampRequirement.Exists => ov match {
-                          case None => err(KeyValueRequirementError(pointer, req.key))
+                          case None => err(KeyValueRequirementError(pointer, req.key, None))
                           case Some(_) =>
                         }
                         case KeyValueUpdate.TimestampRequirement.DoesNotExist => ov match {
                           case None =>
-                          case Some(_) => err(KeyValueRequirementError(pointer, req.key))
+                          case Some(v) => err(KeyValueRequirementError(pointer, req.key, Some(v.revision)))
                         }
                       }
                     }
@@ -478,8 +478,10 @@ class StoreTransaction(val store: DataStoreFrontend,
         val requirementErrors = getRequirementErrors(requirement)
 
         if (locked && requirementErrors.nonEmpty && !cs.obj.deleted) {
-          logger.error("*** LOCKED TRANSACTION ENCOUNTERED REQUIREMENT ERRORS DURING COMMIT!")
-          logger.error(s"* $storeId tx: ${txd.transactionUUID}")
+          // This should only be possible during recovery when a transaction that was in the process of committing is
+          // re-executed. It will come to a commit decision due to saved Paxos state but the revision checks will likely
+          // with mismatches since the local object no longer has the pre-commit state.
+          logger.warn("*** $storeId tx: ${txd.transactionUUID} LOCKED TRANSACTION ENCOUNTERED REQUIREMENT ERRORS DURING COMMIT!")
           requirementErrors.foreach { e =>
             logger.error(s"* $e")
           }

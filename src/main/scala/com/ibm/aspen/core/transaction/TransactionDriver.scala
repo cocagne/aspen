@@ -45,12 +45,16 @@ abstract class TransactionDriver(
   complete.foreach(_ => logger.info(s"Transaction driven to completion: ${txd.transactionUUID}"))
 
   def printState(print: String => Unit = println): Unit = synchronized {
-    print(s"Transaction ${txd.transactionUUID} (store ${storeId.poolIndex}")
-    print(s"  Objects: ${txd.requirements.map(_.objectPointer)}")
-    print(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}")
-    print(s"  Peer Dispositions: $peerDispositions")
-    print(s"  Accepted Peers: $acceptedPeers")
-    print(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}")
+    val sb = new StringBuilder
+
+    sb.append(s"Transaction Status: Tx:${txd.transactionUUID} Store: ${storeId}\n")
+    sb.append(s"  Objects: ${txd.requirements.map(_.objectPointer)}\n")
+    sb.append(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}\n")
+    sb.append(s"  Peer Dispositions: $peerDispositions\n")
+    sb.append(s"  Accepted Peers: $acceptedPeers\n")
+    sb.append(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}\n")
+
+    print(sb.toString)
   }
  
   protected def isValidAcceptor(ds: DataStoreID): Boolean = {
@@ -226,9 +230,11 @@ abstract class TransactionDriver(
   }
   
   protected def sendPrepareMessages(): Unit = {
-    val proposalId = synchronized { proposer.currentProposalId }
-    
-    txd.allDataStores.foreach( toStore => messenger.send(TxPrepare(toStore, storeId, txd, proposalId)) )
+    val (proposalId, alreadyPrepared) = synchronized { (proposer.currentProposalId, peerDispositions) }
+
+    val messages = txd.allDataStores.filter(!alreadyPrepared.contains(_)).map(TxPrepare(_, storeId, txd, proposalId))
+
+    messenger.send(messages.toList)
   }
   
   protected def sendPrepareMessage(storeId: DataStoreID): Unit = {
@@ -241,8 +247,8 @@ abstract class TransactionDriver(
     synchronized {
       proposer.currentAcceptMessage().map(paxAccept => (paxAccept, acceptedPeers))
     } foreach { t =>
-      val (paxAccept, acceptedPeers) = t
-      val messages = primaryObjectDataStores.filter(!acceptedPeers.contains(_)).map { toStoreId =>
+      val (paxAccept, alreadyAccepted) = t
+      val messages = primaryObjectDataStores.filter(!alreadyAccepted.contains(_)).map { toStoreId =>
         TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
       }.toList
       messenger.send(messages)
