@@ -209,20 +209,23 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
     fs.system.retryStrategy.retryUntilSuccessful(onCommitFailure _) {
 
       retryCount += 1
+
       if (retryCount % 10 == 0)
         println(s"Slow/Hung write. Retry count: $retryCount")
 
-      attempt() map { t => synchronized {
+      attempt() map { t =>
+        synchronized {
 
-        val (newRevision, updatedInode) = t
+          val (newRevision, updatedInode) = t
 
-        setCachedInode(updatedInode, newRevision)
+          setCachedInode(updatedInode, newRevision)
 
-        activeOp = None
-        op.promise.success(())
+          activeOp = None
+          op.promise.success(())
 
-        beginNextOp()
-      }}
+          beginNextOp()
+        }
+      }
 
     }.failed.foreach {
       // Propagate critical failures to the caller (attempted operation on deleted inode)

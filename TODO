@@ -1,46 +1,7 @@
+
 * Always stopping at 95Mb copy
+* File write buffering doesn't seem to be working
 
-* Update aspen system to use TransactionStatusCache
-   - Storage nodes and client Tx drivers can share this
-      - Update on client tx completion
-      - Update in TransactionManager, Transaction, and TransactionDriver
-   - Update store Transaction manager to send TxFinalized to driver of known-done transactions rather than starting
-     the tx over
-
-* Aborted transactions are constantly restarting, finishing, and restarting
-   - Could be due to extra messages being processed that cause it to restart
-   - Before starting a transaction, ensure it isn't already known to be aborted or finalized
-       - Send a TxResolved/TxFinalized message to the driver, direct from TxManager
-       - Driver immediately exits/aborts if this is seen
-
-* Transactions refusing to finish. On resume, they still refuse to finish.
-   - Need to add TransactionDriver start/stop logging
-   - Also hang detection and reporting to log
-   - Should be able to resume with existing broken build and get status
-
-* File handle buffering needs to be reimplemented
-   - Current logic is wrong
-   - Need provision for Direct I/O and fsync
-   - All operations being calls to file.write(offset, buffers) is good though. Simple and separates buffering & direct io
-     concerns
-
-* Saw hung reads for recently deleted object
-   - state returned by one store only
-
-Reads were seeing the deleted object:
-08:37:57.757 [scala-execution-context-global-38] INFO  com.ibm.aspen.core.data_store.StoreTransaction - 00000000-0000-0000-0000-000000000000:2 tx: 672290c7-2150-4ce9-8ffc-455275c1cc1a Committing RefcountUpdate to DELETE object b42c48c1-d86e-43e2-8c13-c817ad692319
-08:37:58.576 [scala-execution-context-global-46] WARN  com.ibm.aspen.core.data_store.StoreTransaction - 00000000-0000-0000-0000-000000000000:2 tx: 672290c7-2150-4ce9-8ffc-455275c1cc1a ERROR: RefcountMismatch(DataObjectPointer(b42c48c1-d86e-43e2-8c13-c817ad692319,00000000-0000-0000-0000-000000000000,None,Replication(3,2),[(0,),(1,),(2,),],ObjectRefcount(0,1),ObjectRefcount(1,0))
-08:37:58.576 [scala-execution-context-global-43] INFO  com.ibm.aspen.core.data_store.DataStoreFrontend$log$.read - 00000000-0000-0000-0000-000000000000:2 in-mem load object b42c48c1-d86e-43e2-8c13-c817ad692319. Rev ff7c326c-67c3-4ca9-a195-ffb36ff9e1b8 TS HLCTimestamp(101143640638029824) Len 1048576
-
-* Need to make reads smarter. Return Invalid if 'obj.deleted' is true
-
-* Saw hung client transaction for deleted object
-   - Object successfully deleted on all stores but client didn't see completion
-   - Several re-run attempts by client and it never got the failure notification
-   - subsequent reattempts saw RevisionMismatch instead of invalid object. Similar issue
-
-* Conditionally enable rebuild services on each node
-   -
 
 sbt "test:testOnly *KeyValueListSuite"
 

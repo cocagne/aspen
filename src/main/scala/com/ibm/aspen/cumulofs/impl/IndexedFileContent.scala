@@ -3,11 +3,14 @@ package com.ibm.aspen.cumulofs.impl
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.DataObjectPointer
 import java.nio.ByteBuffer
+
 import com.ibm.aspen.cumulofs.FileSystem
 import java.util.UUID
+
 import com.ibm.aspen.core.objects.DataObjectState
 import com.github.blemale.scaffeine.Scaffeine
 import com.github.blemale.scaffeine.Cache
+
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.util.Varint
@@ -23,8 +26,9 @@ import com.ibm.aspen.base.task.DurableTaskPointer
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.task.DurableTask
 import com.ibm.aspen.core.read.InvalidObject
+import org.apache.logging.log4j.scala.{Logger, Logging}
 
-class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otierNodeSize: Option[Int]=None) {
+class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otierNodeSize: Option[Int]=None) extends Logging {
   import IndexedFileContent._
   
   private[this] var otail: Option[Tail] = None
@@ -96,6 +100,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       allocRev: ObjectRevision, 
       tier: Int, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
+    logger.trace("Allocating new index node")
     fs.getDataTableNodeAllocater(tier).flatMap { allocater =>
       allocater.allocateDataObject(allocObj, allocRev, content)
     }
@@ -105,6 +110,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       allocObj: ObjectPointer, 
       allocRev: ObjectRevision, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
+    logger.trace("Allocating new data segment")
     fs.defaultSegmentAllocater().flatMap { allocater =>
       allocater.allocateDataObject(allocObj, allocRev, content)
     }
@@ -157,6 +163,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       remaining: List[DataBuffer], 
       allocated: List[Future[(DownPointer, Int)]])(implicit tx: Transaction, ec: ExecutionContext): List[Future[(DownPointer, Int)]] = {
     //println(s"Recursive alloc. Seg size ${segmentSize} nbytes remaining ${remaining.foldLeft(0)((sz, db) => sz + db.size)}")
+    logger.trace(s"Recursive alloc. Seg size $segmentSize nbytes remaining ${remaining.foldLeft(0)((sz, db) => sz + db.size)}")
     if (remaining.isEmpty)
       allocated
     else {
@@ -259,9 +266,10 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
     val writeEnd = offset + nbytes
     
     def begin(tailPath: List[IndexNode]): Future[WriteStatus] = {
-      
+
       // returns remaining buffers and the offset at which they begin
       def updateExisting(): Future[(List[DataBuffer], Long)] = if (offset == 0) Future.successful((buffers, 0)) else {
+
         val ftail = synchronized {
           otail match {
             case Some(tail) => Future.successful(tail)
@@ -297,7 +305,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       for {
         (remaining, appendOffset) <- updateExisting()
         allocated <- Future.sequence(recursiveAlloc(appendOffset, remaining, Nil))
-        (newRoot, updatedNodes) <- IndexNode.rupdate(allocated.map(t => t._1), tailPath, tailPath.head, Nil)
+        (newRoot, updatedNodes) <- IndexNode.rupdate(logger, allocated.map(t => t._1), tailPath, tailPath.head, Nil)
       } yield {
         val fcomplete = tx.result.map { _ => synchronized {
           if (allocated.nonEmpty) {
@@ -406,7 +414,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
            
            for {
              allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, allocBuffers, Nil))
-             (newRoot, updatedNodes) <- headPath.head.insert( allocated.map(t => t._1) )
+             (newRoot, updatedNodes) <- headPath.head.insert(logger, allocated.map(t => t._1))
            } yield {
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
              WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
@@ -436,7 +444,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
            
            for {
              allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, alloc, Nil))
-             (newRoot, updatedNodes) <- headPath.head.insert( allocated.map(t => t._1) )
+             (newRoot, updatedNodes) <- headPath.head.insert(logger, allocated.map(t => t._1))
            } yield {
              val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, entries.head._1.offset, remaining, entries)
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
@@ -634,12 +642,13 @@ object IndexedFileContent {
     }
     
     def getEncodedNodeContent(tier: Int = 0, content: List[DownPointer]=Nil, startOffset: Long = 0, endOffset: Option[Long]=None): DataBuffer = {
-      val sz = 1 + Varint.getUnsignedLongEncodingLength(0) + Varint.getUnsignedLongEncodingLength(0) + content.foldLeft(0)((sz, e) => sz + e.encodedSize)
+      val end = endOffset.getOrElse(0L)
+      val sz = 1 + Varint.getUnsignedLongEncodingLength(startOffset) + Varint.getUnsignedLongEncodingLength(end) + content.foldLeft(0)((sz, e) => sz + e.encodedSize)
       val arr = new Array[Byte](sz)
       val bb = ByteBuffer.wrap(arr)
       bb.put(tier.asInstanceOf[Byte])
       Varint.putUnsignedLong(bb, startOffset)
-      Varint.putUnsignedLong(bb, endOffset.getOrElse(0))
+      Varint.putUnsignedLong(bb, end)
       content.foreach(e => e.encodeInto(bb))
       bb.position(0)
       DataBuffer(bb)
@@ -695,6 +704,7 @@ object IndexedFileContent {
      *  Returns: (NewRootNode, ListOfUpdatedNodes)
      */
     def rupdate(
+        logger: Logger,
         adds: List[DownPointer], 
         path: List[IndexNode], 
         last: IndexNode,
@@ -704,11 +714,12 @@ object IndexedFileContent {
         if (path.isEmpty)
           Future.successful((last, updatedNodes))
         else 
-          rupdate(Nil, path.tail, path.head, updatedNodes)
+          rupdate(logger, Nil, path.tail, path.head, updatedNodes)
       } 
       else {
         if (path.isEmpty) {
           // Allocate new root
+          logger.trace("Allocating new index root")
           val oldRoot = updatedNodes.head
           
           val content = getEncodedNodeContent(oldRoot.tier + 1, new DownPointer(oldRoot.startOffset, oldRoot.pointer) :: adds)
@@ -734,12 +745,13 @@ object IndexedFileContent {
             adds.foreach(e => e.encodeInto(bb))
             
             //println(s"TX APPEND: Adds: ${adds}")
+            logger.trace(s"Appending to index tier ${node.tier}")
             tx.append(node.pointer, node.revision, DataBuffer(arr))
             
-            rupdate(Nil, path.tail, path.head, updated :: updatedNodes)
+            rupdate(logger, Nil, path.tail, path.head, updated :: updatedNodes)
           } 
           else {
-            
+            logger.trace(s"New index nodes required for tier tier ${node.tier}")
             val allEntries = (adds ++ node.entries).sortBy(e => e.offset)
             
             val baseNodeSize = 33 // worst case base size for type byte and two Varint longs
@@ -756,7 +768,7 @@ object IndexedFileContent {
                   rfill(entries.tail, entries.head :: Nil, baseNodeSize + esize, currentList :: nodeContents)
               }
             }
-            
+
             val nodeContents = rfill(allEntries, Nil, baseNodeSize, Nil)
             
             val nodesToAllocate = nodeContents.tail
@@ -766,7 +778,7 @@ object IndexedFileContent {
             val updateContent = getEncodedNodeContent(node.tier, nodeContents.head, node.startOffset, updateEnd)
             
             val txrev = ObjectRevision(tx.uuid)
-            
+
             tx.overwrite(node.pointer, node.revision, updateContent)
             
             def allocNode(endOffset: Option[Long], newNodeEntries: List[DownPointer]): Future[IndexNode] = {
@@ -784,10 +796,11 @@ object IndexedFileContent {
                 rallocNodes(newNodes.tail, allocNode(endOffset, newNodes.head) :: allocs)
               }
             }
-            
+
+            logger.trace(s"Allocating ${nodesToAllocate.length} new node(s) for index tier ${node.tier}")
             Future.sequence(rallocNodes(nodesToAllocate, Nil)).flatMap { allocatedNodes =>
               val updated = IndexNode(node.pointer, txrev, updateContent, node.index)
-              rupdate(allocatedNodes.map(n => DownPointer(n.startOffset, n.pointer)), path.tail, path.head, updated :: (allocatedNodes ++ updatedNodes))
+              rupdate(logger, allocatedNodes.map(n => DownPointer(n.startOffset, n.pointer)), path.tail, path.head, updated :: (allocatedNodes ++ updatedNodes))
             }
           }
         }
@@ -916,12 +929,12 @@ object IndexedFileContent {
       seek(seekOffset).flatMap(path => rgetMore(path, path.head, Nil))
     }
      
-    def insert(newEntry: DownPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
-      seek(newEntry.offset).flatMap(path => rupdate(List(newEntry), path, path.head, Nil))
+    def insert(logger: Logger, newEntry: DownPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
+      seek(newEntry.offset).flatMap(path => rupdate(logger, List(newEntry), path, path.head, Nil))
     }
     
-    def insert(newEntries: List[DownPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
-      seek(newEntries.head.offset).flatMap(path => rupdate(newEntries, path, path.head, Nil))
+    def insert(logger: Logger, newEntries: List[DownPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
+      seek(newEntries.head.offset).flatMap(path => rupdate(logger, newEntries, path, path.head, Nil))
     }
     
     def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
