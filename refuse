@@ -78,8 +78,31 @@ class FileToSocketRelay (threading.Thread):
         except ConnectionLost:
             print 'Connection Lost. Failed to send data to TCP socket'
         
-            
+buff = ''            
 
+def read(clisock):
+    data = clisock.recv(64*1024)
+    if len(data) == 0:
+        raise ConnectionLost('Lost TCP Connection')
+    return data
+
+# Messages written to the kernel must exactly match the size specified in the header or the
+# kernel will drop the connection. 
+def read_next_message(clisock):
+    global buff
+    
+    while len(buff) < 4:
+        buff += read(clisock)
+
+    msg_len = struct.unpack('=I',buff[:4])[0]
+
+    while len(buff) < msg_len:
+        buff += read(clisock)
+
+    msg = buff[:msg_len]
+    buff = buff[msg_len:]
+
+    return msg
 
 # mount_point path to mount the filesystem at
 # subtype Name of the filesystem type as displayed by mtab. This can be set to any short string.
@@ -151,21 +174,17 @@ def main(mount_point, subtype='refuse', mount_flags=MS_NODIRATIME, port=1111):
         relay = FileToSocketRelay(clisock, device_fd)
         
         relay.start()
-
+        
         try:
             while True:
-                data = clisock.recv(64*1024)
-                nread = len(data)
+                message = read_next_message(clisock)
 
-                print 'remote -> local:', nread
+                print 'remote -> local:', len(message)
                 
-                if nread == 0:
-                    raise ConnectionLost('Lost TCP Connection')
-
                 try:
-                    nwritten = os.write(device_fd, data)
+                    nwritten = os.write(device_fd, message)
                 
-                    if nwritten != nread:
+                    if nwritten != len(message):
                         raise ConnectionLost('Failed to write all data to kernel!')
                     
                 except (ConnectionLost, OSError) as e:
