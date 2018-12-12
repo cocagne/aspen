@@ -215,7 +215,7 @@ class FuseInterface(
         response.error(LinuxAPI.ENOENT)
       case Success(Some(file: File)) => synchronized {
         openFiles += (file.pointer.number -> file)  
-        fileHandles += (fd -> new SimpleFileHandle(file, 0))
+        fileHandles += (fd -> new SimpleFileHandle(file, writeBufferSize = 4*1024*1024))
         response.ok(new OpenReply(fd, request.flags))
       }
       case Success(Some(other)) => 

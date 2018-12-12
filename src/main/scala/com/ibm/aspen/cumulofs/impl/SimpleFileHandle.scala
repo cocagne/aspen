@@ -2,6 +2,7 @@ package com.ibm.aspen.cumulofs.impl
 
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.cumulofs.{File, FileHandle}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.collection.immutable.Queue
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -29,7 +30,7 @@ object SimpleFileHandle {
  */
 class SimpleFileHandle(
     val file: File,
-    val writeBufferSize: Int) extends FileHandle {
+    val writeBufferSize: Int) extends FileHandle with Logging {
   
   import SimpleFileHandle._
 
@@ -58,11 +59,13 @@ class SimpleFileHandle(
 
     val pw = writeQueue.find(_.endOffset == offset) match {
       case None =>
+        logger.info(s"Queuing new write at offset $offset, end offset ${offset + wsize}")
         val p = new PendingWrite(offset, wsize, rbuffers)
         writeQueue = writeQueue.enqueue(p)
         p
 
       case Some(p) =>
+        logger.info(s"Buffering write at end offset $offset, new end offset ${offset + wsize}")
         p.nbytes += wsize
         p.reversedBuffers = rbuffers ++ p.reversedBuffers
         p
@@ -70,10 +73,13 @@ class SimpleFileHandle(
 
     beginNextWrite()
 
-    if (nbuffered < writeBufferSize)
+    if (nbuffered < writeBufferSize) {
+      logger.info(s"Returning immediately. $nbuffered < $writeBufferSize")
       Future.unit
-    else
+    } else {
+      logger.info(s"Returning future to write completion ! $nbuffered < $writeBufferSize")
       pw.complete
+    }
   }
 
   private[this] def beginNextWrite()(implicit ec: ExecutionContext): Unit = synchronized {
@@ -92,6 +98,7 @@ class SimpleFileHandle(
             synchronized {
               nbuffered -= pw.nbytes
               ocurrentWrite = None
+              logger.info(s"Completed write at offset ${pw.offset}, endOffset ${pw.endOffset}")
               pw.completePromise.success(())
               beginNextWrite()
             }
@@ -100,6 +107,7 @@ class SimpleFileHandle(
             writeSome(remainingOffset, remainingBuffers)
         }
 
+        logger.info(s"Beginning write at offset ${pw.offset}, endOffset ${pw.endOffset}")
         writeSome(pw.offset, pw.reversedBuffers.reverse)
       }
     }

@@ -130,19 +130,37 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
             //println(s"Entry for range: ${segments.map(x => (x._1.offset -> x._1.pointer.uuid))}")
             val fbufs = Future.sequence(segments.map { t => 
               val (d, _) = t
-              read(d.pointer).map( dos => (d.offset, dos.data) )
+              read(d.pointer).map( dos => (d.offset, dos.data, dos.pointer.uuid) )
             })
             
             fbufs.map { ebufs =>
+              logger.info(s"*** READ DATA SEGMENT SIZES from offset $offset: ${ebufs.map(t => (t._3, t._2.size))}")
               ebufs.foreach { t => 
-                val (doffset, rawdb) = t
-                
-                val db = if (doffset < offset) rawdb.slice((offset - doffset).asInstanceOf[Int]) else rawdb
-                
-                if (doffset > offset)
-                  bb.position((doffset - offset).asInstanceOf[Int])
-                
-                bb.put(if (bb.position() + db.size > bb.limit()) db.slice(0, bb.limit() - bb.position()) else db)
+                val (doffset, rawdb, _) = t
+
+                val bufferOffset = if (doffset <= offset)
+                  0
+                else
+                  (doffset - offset).asInstanceOf[Int]
+
+                try {
+
+                  if (bufferOffset < nbytes) {
+                    if (doffset + rawdb.size > offset) {
+                      logger.info(s"*** lslice doffset $doffset offset $offset rawdb.size ${rawdb.size} lslice ${offset - doffset}")
+                      val lslice = if (doffset < offset) rawdb.slice((offset - doffset).asInstanceOf[Int]) else rawdb
+                      logger.info(s"*** trim bufferOffset $bufferOffset lslice.size ${lslice.size} nbytes $nbytes nbytes-bufferOffset ${nbytes - bufferOffset}")
+                      val trimmed = if (bufferOffset + lslice.size > nbytes) lslice.slice(0, nbytes - bufferOffset) else lslice
+                      logger.info(s"*** bb.position($bufferOffset)")
+                      bb.position(bufferOffset)
+                      bb.put(trimmed)
+                    }
+                  }
+                } catch {
+                  case omg: java.lang.IllegalArgumentException =>
+                    logger.error(s"OMG!!! THIS IS IT: $omg")
+                    logger.error(s"offset: $offset nbytes: $nbytes doffset: $doffset bufferOffset $bufferOffset rawsize: ${rawdb.size}")
+                }
               }
               
               bb.position(0)
@@ -926,7 +944,13 @@ object IndexedFileContent {
         }
       }
       
-      seek(seekOffset).flatMap(path => rgetMore(path, path.head, Nil))
+      val f = seek(seekOffset).flatMap(path => rgetMore(path, path.head, Nil))
+      f.foreach { r =>
+        val (path, l) = r
+        println(s"IndexEntriesForRange. offset: $offset, nbytes: $nbytes, seekOffset: $seekOffset, path: ${path.map(_.startOffset)}, entries: ${l.map(t => (t._2.startOffset, t._1.offset))}")
+      }
+
+      f
     }
      
     def insert(logger: Logger, newEntry: DownPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {

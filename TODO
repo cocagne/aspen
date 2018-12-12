@@ -1,7 +1,9 @@
 
-* Always stopping at 95Mb copy
-* File write buffering doesn't seem to be working
+* Optional DataSegment cache would be HUGE for read performance given the 4KB fetches
+   *** Most reads are linear. Just cache last-read data segment and if the current read is contained within it,
+   *** return immeidately
 
+* Read problem is due to a data segment †0†object being only 416KB (425984 bytes) when it should be 1024KB (1048576 bytes)
 
 sbt "test:testOnly *KeyValueListSuite"
 
