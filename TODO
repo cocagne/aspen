@@ -1,9 +1,10 @@
+** Need to fix Opportunistic Rebuild
 
-* Optional DataSegment cache would be HUGE for read performance given the 4KB fetches
-   *** Most reads are linear. Just cache last-read data segment and if the current read is contained within it,
-   *** return immeidately
+** Consider putting debug note directly into TransactionDescription
+  - tx.addDebugNote("updating root tkvl pointer")
+  - Could then be printed in logs to indicate what the tx is for
 
-* Read problem is due to a data segment †0†object being only 416KB (425984 bytes) when it should be 1024KB (1048576 bytes)
+** Need to overhaul logging for CumuloFS
 
 sbt "test:testOnly *KeyValueListSuite"
 

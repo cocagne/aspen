@@ -39,12 +39,39 @@ class SimpleFileHandle(
   private[this] var ocurrentWrite: Option[PendingWrite] = None
   private[this] var nbuffered: Int = 0
   private[this] var writeCount: Int = 0
+  private[this] var readCache: Option[(Long, DataBuffer)] = None
 
-  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
-    file.read(offset, nbytes)
+  // Always try to read a megabyte at a time and serve reads from the cached content if possible
+  def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = synchronized {
+    val odata = readCache match {
+      case None => None
+      case Some((doffset, db)) =>
+        if (offset >= doffset && offset + nbytes <= doffset + db.size)
+          Some(db.slice((offset-doffset).asInstanceOf[Int], nbytes))
+        else
+          None
+    }
+
+    odata match {
+      case Some(db) => Future.successful(Some(db))
+      case None =>
+        val rsize = if (nbytes > 1024*1024) nbytes else 1024*1024
+        file.read(offset, rsize).map {
+          case None => None
+
+          case Some(data) =>
+            synchronized {
+              readCache = Some((offset, data))
+              Some(data.slice(0, nbytes))
+            }
+        }
+    }
   }
 
-  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]] = file.truncate(offset)
+  def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]] = synchronized {
+    readCache = None
+    file.truncate(offset)
+  }
 
   def flush()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
     ocurrentWrite match {
@@ -54,6 +81,7 @@ class SimpleFileHandle(
   }
 
   def write(offset: Long, buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+
     val wsize = buffers.foldLeft(0)((sz, db) => sz + db.size)
     val rbuffers = buffers.reverse
 
@@ -101,6 +129,7 @@ class SimpleFileHandle(
 
             if (remainingBuffers.isEmpty) {
               synchronized {
+                readCache = None
                 nbuffered -= pw.nbytes
                 ocurrentWrite = None
                 logger.info(s"Completed write ${pw.writeNumber} at offset ${pw.offset}, endOffset ${pw.endOffset}")
