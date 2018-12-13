@@ -181,10 +181,17 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       remaining: List[DataBuffer], 
       allocated: List[Future[(DownPointer, Int)]])(implicit tx: Transaction, ec: ExecutionContext): List[Future[(DownPointer, Int)]] = {
     //println(s"Recursive alloc. Seg size ${segmentSize} nbytes remaining ${remaining.foldLeft(0)((sz, db) => sz + db.size)}")
-    logger.trace(s"Recursive alloc. Seg size $segmentSize nbytes remaining ${remaining.foldLeft(0)((sz, db) => sz + db.size)}")
+
     if (remaining.isEmpty)
       allocated
     else {
+      //logger.error(s"Recursive alloc. offset: $segmentOffset, Seg size $segmentSize, nbytes remaining ${remaining.foldLeft(0)((sz, db) => sz + db.size)}")
+
+      if (segmentOffset % segmentSize != 0) {
+        val test = file.fs.system.getSystemAttribute("unittest.name")
+        logger.error(s"ALLOCATING SEGMENT AT INVALID OFFSET: $segmentOffset. Segment size is $segmentSize. Modulus is ${segmentOffset % segmentSize}. Test: $test")
+      }
+
       val rbytes = remaining.foldLeft(0)((sz, db) => sz + db.size)
       val arr = new Array[Byte](if (rbytes <= segmentSize) rbytes else segmentSize)
       val bb = ByteBuffer.wrap(arr)
@@ -193,7 +200,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
         //println(s"Allocated data segment: ${newPointer.uuid}")
         (DownPointer(segmentOffset, newPointer), arr.length)
       }
-      recursiveAlloc(segmentOffset + arr.length, leftover, falloc :: allocated)
+      recursiveAlloc(segmentOffset + segmentSize, leftover, falloc :: allocated)
     }
   }
   
@@ -210,11 +217,22 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       (buffers, offset)
     }
     else if (offsetInSegment >= dos.data.size) {
+      val segmentEnd = segmentOffset + segmentSize
       val appendBuffers = if (offsetInSegment > dos.data.size) DataBuffer.zeroed(offsetInSegment - dos.data.size) :: buffers else buffers
       val maxAppendSize = segmentSize - dos.data.size
       val (appendBuff, remaining) = DataBuffer.compact(maxAppendSize, appendBuffers)
+      val remainingOffset = segmentOffset + dos.data.size + appendBuff.size
+
+      if (remaining.nonEmpty && remainingOffset != segmentEnd) {
+        logger.error(s"SHORT UPDATE RESULTS IN NON-SEGMENT SIZE($segmentSize). segmentOffset:$segmentOffset, currentSizeize: ${dos.data.size}, segmentEnd: $segmentEnd, maxAppendSize: $maxAppendSize")
+        val rbsz = buffers.foldLeft(0)((sz,db) => sz+db.size)
+        val asz = appendBuffers.foldLeft(0)((sz,db) => sz+db.size)
+        val rsz = remaining.foldLeft(0)((sz,db) => sz+db.size)
+        logger.error(s"SHORTU... rawBuffSize:$rbsz, appendBuffSize:$asz, compacted:${appendBuff.size}, remaining:$rsz, roffset: $remainingOffset")
+      }
+
       tx.append(dos.pointer, dos.revision, appendBuff)
-      (remaining, segmentOffset + dos.data.size + appendBuff.size)
+      (remaining, remainingOffset)
     } 
     else {
       
@@ -279,7 +297,8 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
     inode: FileInode, 
     offset: Long, 
     buffers: List[DataBuffer])(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
-    
+
+    //logger.error(s"Tail write at offset: $offset, nbuff ${buffers.length}, nbytes: ${buffers.foldLeft(0)((sz,db) => sz+db.size)}")
     val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
     val writeEnd = offset + nbytes
     
@@ -303,6 +322,8 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
         ftail.flatMap { tail =>
           val tailEnd = tail.offset + segmentSize
           val offsetInTail = (offset - tail.offset).asInstanceOf[Int]
+
+          //logger.error(s"UPDATE EXISTING: tail.offset ${tail.offset}, tailSize ${tail.size}, tailEnd $tailEnd, offsetInTail $offsetInTail")
           
           if (offset >= tailEnd) {
             Future.successful((buffers, offset))
@@ -311,8 +332,18 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
             val appendBuffers = if (offsetInTail > tail.size) DataBuffer.zeroed(offsetInTail - tail.size) :: buffers else buffers
             val maxAppendSize = segmentSize - tail.size
             val (appendBuff, remaining) = DataBuffer.compact(maxAppendSize, appendBuffers)
+            val remainingOffset = tail.offset + tail.size + appendBuff.size
+
+            if (remaining.nonEmpty && remainingOffset != tailEnd) {
+              logger.error(s"SHORT APPEND RESULTS IN NON-SEGMENT SIZE($segmentSize). tail.offset:${tail.offset}, tail.size: ${tail.size}, tailEnd: $tailEnd, maxAppendSize: $maxAppendSize")
+              val rbsz = buffers.foldLeft(0)((sz,db) => sz+db.size)
+              val asz = appendBuffers.foldLeft(0)((sz,db) => sz+db.size)
+              val rsz = remaining.foldLeft(0)((sz,db) => sz+db.size)
+              logger.error(s"SHORT... rawBuffSize:$rbsz, appendBuffSize:$asz, compacted:${appendBuff.size}, remaining:$rsz, roffset: $remainingOffset")
+            }
+
             tx.append(tail.pointer, tail.revision, appendBuff)
-            Future.successful((remaining, tail.offset + tail.size + appendBuff.size))
+            Future.successful((remaining, remainingOffset))
           } 
           else {
             read(tail.pointer).map(dos => updateSegment(tail.offset, dos, offset, buffers)) 
@@ -327,7 +358,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       } yield {
         val fcomplete = tx.result.map { _ => synchronized {
           if (allocated.nonEmpty) {
-            val (DownPointer(offset, pointer), size) = allocated.last
+            val (DownPointer(offset, pointer), size) = allocated.head
             otail = Some(Tail(offset, pointer, ObjectRevision(tx.uuid), size))
           } else {
             otail.foreach { tail =>
@@ -337,7 +368,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
           }
           invalidateCachedNodes(updatedNodes)
         }}
-        
+
         WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
       }
     }
@@ -945,10 +976,11 @@ object IndexedFileContent {
       }
       
       val f = seek(seekOffset).flatMap(path => rgetMore(path, path.head, Nil))
-      f.foreach { r =>
-        val (path, l) = r
-        println(s"IndexEntriesForRange. offset: $offset, nbytes: $nbytes, seekOffset: $seekOffset, path: ${path.map(_.startOffset)}, entries: ${l.map(t => (t._2.startOffset, t._1.offset))}")
-      }
+
+//      f.foreach { r =>
+//        val (path, l) = r
+//        println(s"IndexEntriesForRange. offset: $offset, nbytes: $nbytes, seekOffset: $seekOffset, path: ${path.map(_.startOffset)}, entries: ${l.map(t => (t._2.startOffset, t._1.offset))}")
+//      }
 
       f
     }

@@ -9,7 +9,8 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object SimpleFileHandle {
 
-  private class PendingWrite(val offset: Long,
+  private class PendingWrite(val writeNumber: Int,
+                             val offset: Long,
                              var nbytes: Int,
                              var reversedBuffers: List[DataBuffer]) {
 
@@ -37,6 +38,7 @@ class SimpleFileHandle(
   private[this] var writeQueue: Queue[PendingWrite] = Queue()
   private[this] var ocurrentWrite: Option[PendingWrite] = None
   private[this] var nbuffered: Int = 0
+  private[this] var writeCount: Int = 0
 
   def read(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[Option[DataBuffer]] = {
     file.read(offset, nbytes)
@@ -59,13 +61,14 @@ class SimpleFileHandle(
 
     val pw = writeQueue.find(_.endOffset == offset) match {
       case None =>
-        logger.info(s"Queuing new write at offset $offset, end offset ${offset + wsize}")
-        val p = new PendingWrite(offset, wsize, rbuffers)
+        writeCount += 1
+        logger.info(s"Queuing new write number $writeCount at offset $offset, end offset ${offset + wsize}")
+        val p = new PendingWrite(writeCount, offset, wsize, rbuffers)
         writeQueue = writeQueue.enqueue(p)
         p
 
       case Some(p) =>
-        logger.info(s"Buffering write at end offset $offset, new end offset ${offset + wsize}")
+        logger.info(s"Buffering write in pending write number ${p.writeNumber} with end offset $offset, new end offset ${offset + wsize}")
         p.nbytes += wsize
         p.reversedBuffers = rbuffers ++ p.reversedBuffers
         p
@@ -91,23 +94,26 @@ class SimpleFileHandle(
 
         ocurrentWrite = Some(pw)
 
-        def writeSome(offset: Long, buffers: List[DataBuffer]): Unit = file.write(offset, buffers).foreach { t =>
-          val (remainingOffset, remainingBuffers) = t
+        def writeSome(offset: Long, buffers: List[DataBuffer]): Unit = {
+          logger.info(s"  write ${pw.writeNumber}: writeSome(offset=$offset, bufferCount=${buffers.length}, nbytes=${buffers.foldLeft(0)((sz,b) => sz+b.remaining())})")
+          file.write(offset, buffers).foreach { t =>
+            val (remainingOffset, remainingBuffers) = t
 
-          if (remainingBuffers.isEmpty) {
-            synchronized {
-              nbuffered -= pw.nbytes
-              ocurrentWrite = None
-              logger.info(s"Completed write at offset ${pw.offset}, endOffset ${pw.endOffset}")
-              pw.completePromise.success(())
-              beginNextWrite()
+            if (remainingBuffers.isEmpty) {
+              synchronized {
+                nbuffered -= pw.nbytes
+                ocurrentWrite = None
+                logger.info(s"Completed write ${pw.writeNumber} at offset ${pw.offset}, endOffset ${pw.endOffset}")
+                pw.completePromise.success(())
+                beginNextWrite()
+              }
             }
+            else
+              writeSome(remainingOffset, remainingBuffers)
           }
-          else
-            writeSome(remainingOffset, remainingBuffers)
         }
 
-        logger.info(s"Beginning write at offset ${pw.offset}, endOffset ${pw.endOffset}")
+        logger.info(s"Beginning write ${pw.writeNumber} at offset ${pw.offset}, endOffset ${pw.endOffset}, numBuffers: ${pw.reversedBuffers.size}")
         writeSome(pw.offset, pw.reversedBuffers.reverse)
       }
     }
