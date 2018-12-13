@@ -44,30 +44,37 @@ class SimpleStoreTransactionDriver(
   override def shutdown(): Unit = nextTry.cancel()
   
   private def sendMessages(): Unit = synchronized {
-    proposer.currentAcceptMessage() match {
-      case Some(_) =>
-        // If the stores detect resolution before we do, they can discard their transactions. Subsequent accept messages
-        // we send will be silently ignored so we'll never receive responses from them. To work around this, we'll
-        // periodically send prepares before the accepts. If they had forgotten the Tx, they'll restart it
-        if (sendCount % 3 == 0)
-          sendPrepareMessages()
+    // Generally this shouldn't be called if finalized=true but a race condition between onFinalized and the next
+    // call to sendMessages could do so. We need to prevent execution in this case so we don't start up the the
+    // retry loop again
+    if (!finalized) {
+      proposer.currentAcceptMessage() match {
+        case Some(_) =>
+          // If the stores detect resolution before we do, they can discard their transactions. Subsequent accept messages
+          // we send will be silently ignored so we'll never receive responses from them. To work around this, we'll
+          // periodically send prepares before the accepts. If they had forgotten the Tx, they'll restart it
+          if (sendCount % 3 == 0)
+            sendPrepareMessages()
 
-        sendAcceptMessages()
-      case None =>
-        messenger.send(txd.allDataStores.map(toStore => TxPrepare(toStore, storeId, txd, proposer.currentProposalId)).toList)
+          sendAcceptMessages()
+        case None =>
+          messenger.send(txd.allDataStores.map(toStore => TxPrepare(toStore, storeId, txd, proposer.currentProposalId)).toList)
+      }
+
+      sendCount += 1
+
+      if (sendCount % 10 == 0) {
+        logger.debug("****************** HUNG TX STATUS *****************")
+        printState(s => logger.debug(s))
+      }
+
+      // Continually re-broadcast the prepare/accept messages for our current proposal at a fixed rate
+      // if we get interrupted, the backoff mechanism will protect against contention
+      nextTry.cancel()
+      nextTry = BackgroundTask.schedule(initialDelay) {
+        sendMessages()
+      }
     }
-
-    sendCount += 1
-
-    if (sendCount % 10 == 0) {
-      logger.debug("****************** HUNG TX STATUS *****************")
-      printState(s => logger.debug(s))
-    }
-    
-    // Continually re-broadcast the prepare/accept messages for our current proposal at a fixed rate
-    // if we get interrupted, the backoff mechanism will protect against contention
-    nextTry.cancel()
-    nextTry = BackgroundTask.schedule(initialDelay) { sendMessages() }
   }
   
   override protected def nextRound(): Unit = synchronized {
