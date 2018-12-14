@@ -48,6 +48,9 @@ trait Transaction {
   def addFinalizationAction(finalizationActionUUID: UUID): Unit
   
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit
+
+  /** Adds a human-readable note that may be used for debugging transactions */
+  def note(note: String): Unit
   
   /* Only the first error will be propagated should multiple attempts are made to invalidate the transaction
    * 

@@ -109,6 +109,11 @@ class BaseTransaction(
     case Right(bldr) => bldr.addNotifyOnResolution(storesToNotify)
     case Left(_) => throw PostCommitTransactionModification()
   }
+
+  def note(note: String): Unit = synchronized { state } match {
+    case Right(bldr) => bldr.note(note)
+    case Left(_) => throw PostCommitTransactionModification()
+  }
   
   def invalidateTransaction(reason: Throwable): Unit = synchronized {
     invalidated = true
@@ -133,12 +138,9 @@ class BaseTransaction(
         val olist = txd.allReferencedObjectsSet.map(_.uuid).toList.sortWith((a,b) => a.toString > b.toString)
         result.onComplete {
           case Success(_) =>
-            logger.info(s"TX SUCCESS: ${txd.transactionUUID}")
-            logger.info(s"Objects: $olist")
-            logger.info(stack)
+            logger.info(s"TX SUCCESS: ${txd.shortString}")
           case Failure(e) =>
-            logger.info(s"TX FAILURE: ${txd.transactionUUID}: $e")
-            logger.info(s"Objects: $olist")
+            logger.info(s"TX FAILURE: ${txd.shortString}: $e")
             logger.info(stack)
         }
         //---------------------

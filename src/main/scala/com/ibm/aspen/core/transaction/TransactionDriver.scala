@@ -40,14 +40,14 @@ abstract class TransactionDriver(
 
   def complete: Future[TransactionDescription] = completionPromise.future
 
-  logger.info(s"Driving transaction to completion: ${txd.transactionUUID}")
+  logger.info(s"Driving transaction to completion: ${txd.shortString}")
 
   complete.foreach(_ => logger.info(s"Transaction driven to completion: ${txd.transactionUUID}"))
 
   def printState(print: String => Unit = println): Unit = synchronized {
     val sb = new StringBuilder
 
-    sb.append(s"Transaction Status: Tx:${txd.transactionUUID} Store: ${storeId}\n")
+    sb.append(s"Transaction Status: Tx:${txd.transactionUUID} Store: $storeId\n")
     sb.append(s"  Objects: ${txd.requirements.map(_.objectPointer)}\n")
     sb.append(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}\n")
     sb.append(s"  Peer Dispositions: $peerDispositions\n")

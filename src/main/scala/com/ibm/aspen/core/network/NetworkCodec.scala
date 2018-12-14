@@ -1,5 +1,6 @@
 package com.ibm.aspen.core.network
 
+import java.nio.charset.StandardCharsets
 import java.nio.{ByteBuffer, ByteOrder}
 import java.util.UUID
 
@@ -440,6 +441,20 @@ object NetworkCodec {
     val primaryObject = encode(builder, o.primaryObject)
     val requirements = P.TransactionDescription.createRequirementsVector(builder, o.requirements.map(r => encode(builder, r)).toArray)
     val finalizationActions = P.TransactionDescription.createFinalizationActionsVector(builder, o.finalizationActions.map(fa => encode(builder, fa)).toArray)
+
+    val notes = if (o.notes.isEmpty) -1 else {
+      val count = o.notes.length
+      val encoded = o.notes.map(s => s.getBytes(StandardCharsets.UTF_8))
+      val esz = encoded.foldLeft(0)((sz, arr) => sz + arr.length)
+
+      val arr = new Array[Byte](4 + 4*count + esz)
+      val bb = ByteBuffer.wrap(arr)
+      bb.putInt(count)
+      encoded.foreach(arr => bb.putInt(arr.length))
+      encoded.foreach(bb.put)
+
+      P.TransactionDescription.createNotesVector(builder, arr)
+    }
     
     val originatingClient = o.originatingClient match {
       case None => -1
@@ -461,6 +476,8 @@ object NetworkCodec {
       P.TransactionDescription.addOriginatingClient(builder, originatingClient)
     if (notifyOnResolution != -1)
       P.TransactionDescription.addNotifyOnResolution(builder, notifyOnResolution)
+    if (notes != -1)
+      P.TransactionDescription.addNotes(builder, notes)
     P.TransactionDescription.endTransactionDescription(builder)
   }
   def decode(n: P.TransactionDescription): TransactionDescription = {
@@ -474,6 +491,17 @@ object NetworkCodec {
         val buf = new Array[Byte](n.originatingClientLength())
         n.originatingClientAsByteBuffer().get(buf)
         Some(ClientID(buf))
+    }
+
+    val notes = if (n.notesLength() == 0) Nil else {
+      val bb = n.notesAsByteBuffer()
+      val count = bb.getInt()
+      val sizes = (0 until count).map( _ => bb.getInt()).toList
+      sizes.map { sz =>
+        val arr = new Array[Byte](sz)
+        bb.get(arr)
+        new String(arr, StandardCharsets.UTF_8)
+      }
     }
     
     def requirements(idx: Int, l:List[TransactionRequirement]): List[TransactionRequirement] = if (idx == -1)
@@ -499,7 +527,8 @@ object NetworkCodec {
         requirements(n.requirementsLength()-1, Nil),
         finalizationActions(n.finalizationActionsLength()-1, Nil),
         originatingClient,
-        notifyOnResolution(n.notifyOnResolutionLength()-1, Nil))
+        notifyOnResolution(n.notifyOnResolutionLength()-1, Nil),
+        notes)
   }
   
   //-----------------------------------------------------------------------------------------------

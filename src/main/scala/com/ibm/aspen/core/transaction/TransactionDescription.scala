@@ -49,7 +49,12 @@ final case class TransactionDescription(
   /** Specifies an additional set of stores to receive transaction resolution notices. Primary use case
    *  is for notifying stores of the result of an object allocation attempt.
    */
-  notifyOnResolution: List[DataStoreID] = Nil ) {
+  notifyOnResolution: List[DataStoreID] = Nil,
+
+  /** Optional set of notes that may be used for debugging transactions.
+    *
+    */
+  notes: List[String] = Nil) {
 
   def allReferencedObjectsSet = requirements.map(_.objectPointer).toSet
   
@@ -68,7 +73,16 @@ final case class TransactionDescription(
     })
 
   def shortString: String = {
+    val sb = new StringBuilder
     val ol = allReferencedObjectsSet.map(_.shortString).toList.sorted
-    s"Tx $transactionUUID: Objects: $ol"
+    sb.append(s"Tx $transactionUUID: Objects: $ol")
+    if (notes.nonEmpty) {
+      sb.append("\n")
+      notes.reverse.foreach { note =>
+        sb.append(s"    $note")
+        sb.append("\n")
+      }
+    }
+    sb.toString
   }
 }

@@ -74,7 +74,7 @@ class StoreTransaction(val store: DataStoreFrontend,
 
   def storeId: DataStoreID = store.storeId
 
-  logger.info(s"$storeId tx: ${txd.transactionUUID} Beginning transaction")
+  logger.info(s"$storeId Beginning Transaction: ${txd.shortString}")
 
   store.activeTransactions += txd.transactionUUID -> this
 

@@ -1,30 +1,14 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.objects.ObjectRevision
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.objects.ObjectRefcount
 import java.util.UUID
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.transaction.DataUpdate
-import com.ibm.aspen.core.transaction.RefcountUpdate
-import com.ibm.aspen.core.transaction.SerializedFinalizationAction
-import com.ibm.aspen.base.MultipleDataUpdatesToObject
-import com.ibm.aspen.core.transaction.DataUpdateOperation
-import com.ibm.aspen.base.MultipleRefcountUpdatesToObject
-import com.ibm.aspen.core.transaction.TransactionDescription
+
+import com.ibm.aspen.base.{ConflictingRequirements, MultipleDataUpdatesToObject, MultipleRefcountUpdatesToObject}
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.LocalUpdate
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.transaction.VersionBump
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.network.ClientID
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer, ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.KeyValueObjectCodec
-import com.ibm.aspen.base.ConflictingRequirements
-import com.ibm.aspen.core.transaction.RevisionLock
+import com.ibm.aspen.core.transaction._
 
 object TransactionBuilder {
   case class KVUpdate(
@@ -37,7 +21,7 @@ object TransactionBuilder {
 
 class TransactionBuilder(
     val transactionUUID: UUID,
-    val chooseDesignatedLeader: (ObjectPointer) => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
+    val chooseDesignatedLeader: ObjectPointer => Byte, // Uses peer online/offline knowledge to select designated leaders for transactions)
     val clientId: ClientID) {
   
   import TransactionBuilder._
@@ -52,9 +36,10 @@ class TransactionBuilder(
   
   private [this] var finalizationActions = List[SerializedFinalizationAction]()
   private [this] var notifyOnResolution = Set[DataStoreID]()
+  private [this] var notes = List[String]()
   private [this] var addMissedUpdateTrackingFA = true
   private [this] var missedCommitDelayInMs = 1000
-  private [this] var minimumTimestamp = HLCTimestamp.now
+  private [this] val minimumTimestamp = HLCTimestamp.now
 
   def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]], HLCTimestamp) = synchronized {
 
@@ -77,7 +62,8 @@ class TransactionBuilder(
       finalizationActions = MissedUpdateFinalizationAction.createSerializedFA(missedCommitDelayInMs) :: finalizationActions
 
     val txd = TransactionDescription(transactionUUID, startTimestamp.asLong, primaryObject, designatedLeaderUID,
-                                     requirements, finalizationActions, originatingClient, notifyOnResolution.toList)
+                                     requirements, finalizationActions, originatingClient, notifyOnResolution.toList,
+                                     notes)
 
     var updates = Map[DataStoreID, List[LocalUpdate]]()
 
@@ -209,5 +195,9 @@ class TransactionBuilder(
   
   def addNotifyOnResolution(storesToNotify: Set[DataStoreID]): Unit = synchronized {
     notifyOnResolution = notifyOnResolution ++ storesToNotify
+  }
+
+  def note(note: String): Unit = synchronized {
+    notes = note :: notes
   }
 }

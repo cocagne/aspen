@@ -156,6 +156,7 @@ table TransactionDescription {
   finalization_actions: [SerializedFinalizationAction];
   originating_client: [byte];
   notify_on_resolution: [DataStoreID];
+  notes: [byte];
 }
 
 //---------------------------------------------------------------------------
