@@ -184,6 +184,8 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
     def attempt(): Future[(ObjectRevision, Inode)] = {
       implicit val tx: Transaction = fs.system.newTransaction()
 
+      tx.note(s"FileOperation: ${op.getClass.getSimpleName}: ${op.toString}")
+
       val (ainode, arevision) = inodeState
 
       def commit(): Future[ObjectRevision] = {

@@ -42,6 +42,8 @@ class SimpleDirectoryTLRootManager(val system: AspenSystem,
                         allocater: TieredKeyValueListNodeAllocater,
                         inserted: List[KeyValueListPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
 
+    tx.note(s"Updating SimpleDirectoryTKVL root with new tier $newRootTier. Child nodes: ${inserted.map(_.pointer.uuid)}")
+
     val falloc = allocater.tierNodeAllocater(newRootTier)
     val iops = Insert(Key.AbsoluteMinimum, root.rootNode.toArray) :: inserted.map(p => Insert(p.minimum, p.pointer.toArray))
 
@@ -74,6 +76,8 @@ class SimpleDirectoryTLRootManager(val system: AspenSystem,
   }
 
   def prepareRootDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    tx.note("Preparing deletion of SimpleDirectory TKVL")
+
     system.readObject(inodePointer).map{ dos =>
       val inode = DirectoryInode(dos.data)
 

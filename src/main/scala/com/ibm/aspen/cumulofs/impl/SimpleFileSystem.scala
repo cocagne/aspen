@@ -30,7 +30,9 @@ object SimpleFileSystem {
           case None => 
             
             val ffgroup = system.transact { implicit tx =>
-            
+
+              tx.note(s"Creating new LocalTaskGroup for SimpleFileSystem")
+
               val txreqs = KeyValueUpdate.KVRequirement(taskGroupKey, HLCTimestamp.now, KeyValueUpdate.TimestampRequirement.DoesNotExist) :: Nil
               
               for {

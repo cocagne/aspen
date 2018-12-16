@@ -50,6 +50,7 @@ class SimpleInodeTable(
       allocater <- fallocater
       node <- table.fetchMutableNode(inodeNumber)
       ptr <- allocater.allocateDataObject(node.kvos.pointer, node.kvos.revision, updatedInode.toDataBuffer)
+      _=tx.note(s"Allocating new inode $inodeNumber with inode object uuid ${ptr.uuid} and file type: ${inode.fileType}")
       iptr = InodePointer(inode.fileType, inodeNumber, ptr)
       _<-node.prepreUpdateTransaction(List((key, iptr.toArray)), Nil, requirements)
     } yield {
@@ -73,6 +74,7 @@ class SimpleInodeTable(
             val requirements = KeyValueUpdate.KVRequirement(key, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
             
             system.transact { implicit tx =>
+              tx.note(s"Deleting inode number ${pointer.number} from inode table")
               node.prepreUpdateTransaction(Nil, key :: Nil, requirements).map(_ => ())
             }
           }

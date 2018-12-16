@@ -78,6 +78,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
                 } yield {
                   val tkvl = new TieredKeyValueListRoot(0, LexicalKeyOrdering, root, tkvlAllocaterUUID, config)
                   val newInode = inode.setContentTree(Some(tkvl))
+                  tx.note(s"SimpleDirectory - creating directory TKVL. Root node is ${root.uuid}")
                   tx.overwrite(pointer.pointer, revision, newInode.toDataBuffer)
                   (newInode, tx.txRevision, tkvl)
                 }
@@ -135,6 +136,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
       tl <- tree
       kvos <- fkvos
       _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
+      _=tx.note(s"Inserting $name:${pointer.uuid} into directory ${this.pointer.uuid}")
       _ <- tl.preparePut(name, pointer.toArray)
     } yield ()
   }
@@ -142,6 +144,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     for {
       tl <- tree
+      _=tx.note(s"Renaming $oldName to $newName in directory ${this.pointer.uuid}")
       _ <- tl.prepareRename(oldName: String, newName: String)
     } yield ()
   }
@@ -151,11 +154,13 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     
     prepareInsert(name, file.pointer).flatMap { _ =>
       file.prepareHardLink()
+      tx.note(s"Hardlinking $name to file ${file.pointer.uuid} in directory ${pointer.uuid}")
       tx.commit().map(_=>())
     }
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
+    tx.note(s"Preparing delete of $name in directory ${pointer.uuid}")
 
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Future[Unit]] = oentry match {
       case None => Future.successful(Future.unit) // Directory entry not found. We're done!
@@ -194,7 +199,8 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
    *  fail. 
    */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
-    
+    tx.note(s"Preparing directory for deletion ${pointer.uuid}")
+
     def prep(rootNode: KeyValueObjectState): Future[Unit] = {
       
       if (rootNode.contents.nonEmpty)
