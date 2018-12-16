@@ -2,16 +2,19 @@ package com.ibm.aspen.demo
 
 import com.ibm.aspen.base.StorageHost
 import java.util.UUID
+
 import com.ibm.aspen.core.data_store.DataStoreID
+
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import com.ibm.aspen.core.objects.ObjectPointer
+import org.apache.logging.log4j.scala.Logging
 
 object OnlineTracker {
   val rnd = new java.util.Random
 }
 
-class OnlineTracker(config: ConfigFile.Config) {
+class OnlineTracker(config: ConfigFile.Config) extends Logging {
   
   import OnlineTracker._
   
@@ -30,9 +33,9 @@ class OnlineTracker(config: ConfigFile.Config) {
     def ownsStore(storeId: DataStoreID)(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(true)
   }
   
-  val nodes = config.nodes.map( n => (n._2.uuid -> new NStorageHost(n._2)) )
+  val nodes: Map[UUID, NStorageHost] = config.nodes.map(n => n._2.uuid -> new NStorageHost(n._2) )
   
-  val storeToHost = config.nodes.values.foldLeft(Map[DataStoreID, NStorageHost]()) { (m, n) =>
+  val storeToHost: Map[DataStoreID, NStorageHost] = config.nodes.values.foldLeft(Map[DataStoreID, NStorageHost]()) { (m, n) =>
     
     n.stores.foldLeft(m) { (sm, s) =>
       sm + (DataStoreID(config.pools(s.pool).uuid, s.store.asInstanceOf[Byte]) -> nodes(n.uuid))
@@ -41,14 +44,14 @@ class OnlineTracker(config: ConfigFile.Config) {
   
   def setNodeOnline(nodeUUID: UUID): Unit = nodes.get(nodeUUID).foreach { host => 
     synchronized {
-      println(s"Node Online: ${host.name}")
+      logger.info(s"Node Online: ${host.name}")
       host.setOnline(true)
     }
   }
   
   def setNodeOffline(nodeUUID: UUID): Unit = nodes.get(nodeUUID).foreach { host => 
     synchronized {
-      println(s"Node Offline: ${host.name}")
+      logger.info(s"Node Offline: ${host.name}")
       host.setOnline(false) 
     }
   }

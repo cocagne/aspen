@@ -8,18 +8,19 @@ import com.ibm.aspen.base.impl._
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
 import com.ibm.aspen.core.data_store._
 import com.ibm.aspen.core.ida.{ReedSolomon, Replication}
-import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.objects.keyvalue.{Insert, Key}
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.cumulofs.FileSystem
 import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
 import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
-object Main {
+object Main extends Logging {
   
   val CumuloFSKey = Key("cumulofs")
   
@@ -101,10 +102,10 @@ object Main {
     
     parser.parse(args, Args()) match {
       case Some(cfg) =>
-        println(s"Successful config: $cfg")
+        logger.info(s"Successful config: $cfg")
         try {
           val config = ConfigFile.loadConfig(cfg.configFile)
-          //println(s"Config file: $config")
+          //logger.info(s"Config file: $config")
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
@@ -112,8 +113,8 @@ object Main {
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
-          case e: YamlFormat.FormatError => println(s"Error loading config file: $e")
-          case e: ConfigError => println(s"Error: $e")
+          case e: YamlFormat.FormatError => logger.error(s"Error loading config file: $e")
+          case e: ConfigError => logger.error(s"Error: $e")
         }
       case None =>
     }
@@ -184,11 +185,11 @@ object Main {
     
     def loadFileSystem(kvos: KeyValueObjectState): Future[FileSystem] = kvos.contents.get(CumuloFSKey) match {
       case Some(arr) =>
-        println("CumuloFS already created")
+        logger.info("CumuloFS already created")
         SimpleFileSystem.load(sys, KeyValueObjectPointer(arr), clientUUID)
       
       case None =>
-        println("Creating CumuloFS")
+        logger.info("Creating CumuloFS")
         implicit val tx: Transaction = sys.newTransaction()
         for {
           alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
@@ -241,13 +242,13 @@ object Main {
     val fi = new FuseInterface(fs, "/mnt", "cumulofs", 0, None, ops, channel, channel)
     fi.startHandlerDaemonThread()
     
-    println(s"Initialized cumulofs")
+    logger.info(s"Initialized cumulofs")
     
     Thread.sleep(99999999)
   }
   
   def rebuild(storeName: String, cfg: ConfigFile.Config): Unit = {
-    println(s"Rebuilding $storeName")
+    logger.info(s"Rebuilding $storeName")
     
     val arr = storeName.split(":")
                 
@@ -264,7 +265,7 @@ object Main {
     }
     
     o match {
-      case None => println(s"Store not found: $storeName")
+      case None => logger.info(s"Store not found: $storeName")
       
       case Some((node, store)) =>
         val pool = cfg.pools(store.pool)
@@ -274,7 +275,7 @@ object Main {
         
         val backend = store.backend match {
           case b: ConfigFile.RocksDB =>
-            println(s"Creating data store $dataStoreId. Path ${b.path}")
+            logger.info(s"Creating data store $dataStoreId. Path ${b.path}")
             new RocksDBDataStoreBackend(b.path) 
         }
         
@@ -286,25 +287,25 @@ object Main {
           
           iter.fetchNext().foreach {
             case None =>
-              println(s"Done!!")
+              logger.info(s"Done!!")
               pcomplete.success(())
             
             case Some(ao) => sys.readObject(ao.pointer) foreach { o => 
               val md = ObjectMetadata(o.revision, o.refcount, o.timestamp)
               val data = o.getRebuildDataForStore(dataStoreId).get
               val objectId = StoreObjectID(ao.pointer.uuid, ao.pointer.getStorePointer(dataStoreId).get)
-              println(s"Restoring object $md with data length ${data.size}")
+              logger.info(s"Restoring object $md with data length ${data.size}")
               //doRebuild(iter)
               backend.putObject(objectId, md, data).foreach(_ => doRebuild(iter))
             }
           }
         }
         
-        println(s"Beginning rebuild of $node, $store")
+        logger.info(s"Beginning rebuild of $node, $store")
         
         val f = for {
           spool <- sys.getStoragePool(pool.uuid)
-          _=println(s"Getting AllocatedObjectsIterator")
+          _=logger.info(s"Getting AllocatedObjectsIterator")
           iter <- spool.getAllocatedObjectsIterator()
           _=doRebuild(iter)
           _<-pcomplete.future
@@ -333,7 +334,7 @@ object Main {
       
       val backend = s.backend match {
         case b: ConfigFile.RocksDB =>
-          println(s"Creating data store $dataStoreId. Path ${b.path}")
+          logger.info(s"Creating data store $dataStoreId. Path ${b.path}")
           new RocksDBDataStoreBackend(b.path) 
       }
       
@@ -385,7 +386,7 @@ object Main {
     
     storageNode.recoverPendingOperations(txMgr, allocMgr)
     
-    println(s"Initialized storage node: $nodeName")
+    logger.info(s"Initialized storage node: $nodeName")
     
     Thread.sleep(99999999)
   }
@@ -400,7 +401,7 @@ object Main {
       val dataStoreId = DataStoreID(cfg.pools(s.pool).uuid, s.store.asInstanceOf[Byte])
       val backend = s.backend match {
         case b: ConfigFile.RocksDB =>
-          println(s"Creating data store $dataStoreId. Path ${b.path}")
+          logger.info(s"Creating data store $dataStoreId. Path ${b.path}")
           new RocksDBDataStoreBackend(b.path) 
       }
       

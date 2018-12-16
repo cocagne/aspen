@@ -49,9 +49,11 @@ object CreateFileTask {
     val encodedFS = uuid2byte(fs.uuid)
 
     val ftaskPrepared = fs.system.transactUntilSuccessful { implicit tx =>
-      
+
       for {
         newInode <- fs.inodeTable.prepareInodeAllocation(inode)
+
+        _=tx.note(s"Creating Task: CreateFileTask for $name:${newInode.uuid} in directory ${directory.uuid}")
           
         taskState = List(
             (DirectoryKey,      encodedDir),
@@ -105,7 +107,7 @@ class CreateFileTask private (
     val fs = FileSystem.getRegisteredFileSystem(fsUUID).get
     
     fs.system.transactUntilSuccessful { implicit tx =>
-
+      tx.note(s"CreateFileTask - insert new file $name:${newInode.uuid} into directory ${directoryPointer.uuid}")
       for {
 
         dir <- fs.loadDirectory(directoryPointer)

@@ -2,6 +2,7 @@ package com.ibm.aspen.cumulofs
 
 import com.ibm.aspen.core.objects.DataObjectPointer
 import java.nio.ByteBuffer
+import java.util.UUID
 
 sealed abstract class InodePointer {
   
@@ -10,6 +11,8 @@ sealed abstract class InodePointer {
   val ftype: FileType.Value
 
   def encodedSize: Int = 8 + 1 + pointer.encodedSize
+
+  def uuid: UUID = pointer.uuid
 
   def toArray: Array[Byte] = {
     val arr = new Array[Byte](encodedSize)

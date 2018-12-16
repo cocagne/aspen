@@ -24,7 +24,8 @@ object DeleteFileTask {
   def prepare(
       fs: FileSystem, 
       victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
-    
+    tx.note(s"Creating DeleteFileTask for victim inode: ${victim.uuid}")
+
     fs.inodeLoader.iload(victim) flatMap { t =>
       val (inode, revision) = t
       //
@@ -98,6 +99,7 @@ class DeleteFileTask private (
     
     def destroyInode(dos: DataObjectState): Future[Unit] = {
       implicit val tx: Transaction = system.newTransaction()
+      tx.note(s"DeleteFileTask - Setting refcount of ${iptr.uuid} to zero")
       tx.setRefcount(iptr.pointer, dos.refcount, dos.refcount.setCount(0))
       tx.commit().map(_ =>())
     }
@@ -110,6 +112,7 @@ class DeleteFileTask private (
       _ <- fs.inodeTable.delete(iptr)
     } yield {
       system.transactUntilSuccessful { tx =>
+        tx.note("DeleteFileTask - marking task complete")
         completeTask(tx)
         Future.unit
       }

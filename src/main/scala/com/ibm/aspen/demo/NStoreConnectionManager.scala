@@ -1,19 +1,17 @@
 package com.ibm.aspen.demo
 
-import io.netty.channel.nio.NioEventLoopGroup
-import io.netty.bootstrap.ServerBootstrap
-import io.netty.channel.socket.nio.NioServerSocketChannel
-import io.netty.channel.ChannelOption
-import io.netty.handler.logging.LoggingHandler
-import io.netty.handler.logging.LogLevel
-import io.netty.channel.ChannelInboundHandlerAdapter
 import java.util.UUID
-import io.netty.channel.ChannelHandlerContext
+
 import com.ibm.aspen.util.byte2uuid
+import io.netty.bootstrap.ServerBootstrap
+import io.netty.channel.{ChannelHandlerContext, ChannelInboundHandlerAdapter, ChannelOption}
+import io.netty.channel.socket.nio.NioServerSocketChannel
+import io.netty.handler.logging.{LogLevel, LoggingHandler}
+import org.apache.logging.log4j.scala.Logging
 
 class NStoreConnectionManager(
     val storeNetwork: NStoreNetwork, 
-    val port: Int) {
+    val port: Int) extends Logging {
  
   private val serverBoot = new ServerBootstrap
   
@@ -32,13 +30,13 @@ class NStoreConnectionManager(
               val clientUUID = byte2uuid(arr)
               oclientUUID = Some(clientUUID)
               updateClientConnetion(clientUUID, Some(ctx))
-            } else 
-              println(s"RECEIVED UNEXPECTED INITIAL MESSAGE OF SIZE: ${arr.length}")
+            } else
+              logger.error(s"RECEIVED UNEXPECTED INITIAL MESSAGE OF SIZE: ${arr.length}")
               
           case Some(_) => storeNetwork.receiveMessage(arr)
         }
         
-        case x => println(s"RECEIVED UNEXPECTED MESSAGE TYPE: $x")
+        case x => logger.error(s"RECEIVED UNEXPECTED MESSAGE TYPE: $x")
       }
     }
 

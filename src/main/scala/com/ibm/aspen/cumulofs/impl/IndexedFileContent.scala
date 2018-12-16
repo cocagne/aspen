@@ -101,8 +101,12 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       tier: Int, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     logger.trace("Allocating new index node")
+
     fs.getDataTableNodeAllocater(tier).flatMap { allocater =>
-      allocater.allocateDataObject(allocObj, allocRev, content)
+      allocater.allocateDataObject(allocObj, allocRev, content).map { p =>
+        tx.note(s"IndexedFileContent - Allocating new index node ${p.uuid}")
+        p
+      }
     }
   }
   
@@ -111,8 +115,12 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
       allocRev: ObjectRevision, 
       content: DataBuffer)(implicit tx: Transaction, ec: ExecutionContext): Future[DataObjectPointer] = {
     logger.trace("Allocating new data segment")
+
     fs.defaultSegmentAllocater().flatMap { allocater =>
-      allocater.allocateDataObject(allocObj, allocRev, content)
+      allocater.allocateDataObject(allocObj, allocRev, content).map { p =>
+        tx.note(s"IndexedFileContent - Allocating new data segment ${p.uuid}")
+        p
+      }
     }
   }
   
@@ -230,7 +238,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
         val rsz = remaining.foldLeft(0)((sz,db) => sz+db.size)
         logger.error(s"SHORTU... rawBuffSize:$rbsz, appendBuffSize:$asz, compacted:${appendBuff.size}, remaining:$rsz, roffset: $remainingOffset")
       }
-
+      tx.note(s"IndexedFileContent - appending ${appendBuff.size} bytes to data segment ${dos.pointer.uuid} with segment offset $segmentOffset and current size ${dos.data.size}")
       tx.append(dos.pointer, dos.revision, appendBuff)
       (remaining, remainingOffset)
     } 
@@ -255,6 +263,8 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
         bb.put(dos.data.slice(dos.data.size - bb.remaining()))
       
       bb.position(0)
+
+      tx.note(s"IndexedFileContent - overwriting data segment ${dos.pointer.uuid} with segment offset $segmentOffset and current size ${dos.data.size} with new content of size ${bb.remaining()}")
       tx.overwrite(dos.pointer, dos.revision, DataBuffer(bb))
       
       (remaining, segmentOffset + objectSize)
@@ -267,6 +277,8 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
     */
   def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[(WriteStatus, Future[Unit])] = {
     val inode = file.inode
+
+    tx.note(s"IndexedFileContent - preparing file truncation task")
 
     if (endOffset > inode.size) {
       write(endOffset - 1, List(DataBuffer(Array[Byte](0)))).map(ws => (ws, ws.writeComplete))
@@ -301,7 +313,9 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
     //logger.error(s"Tail write at offset: $offset, nbuff ${buffers.length}, nbytes: ${buffers.foldLeft(0)((sz,db) => sz+db.size)}")
     val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
     val writeEnd = offset + nbytes
-    
+
+    tx.note(s"IndexedFileContent - writeTail(offset=$offset, nbytes=$nbytes)")
+
     def begin(tailPath: List[IndexNode]): Future[WriteStatus] = {
 
       // returns remaining buffers and the offset at which they begin
@@ -342,6 +356,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
               logger.error(s"SHORT... rawBuffSize:$rbsz, appendBuffSize:$asz, compacted:${appendBuff.size}, remaining:$rsz, roffset: $remainingOffset")
             }
 
+            tx.note(s"IndexedFileContent - appending ${appendBuff.size} to existing data segment ${tail.pointer.uuid}")
             tx.append(tail.pointer, tail.revision, appendBuff)
             Future.successful((remaining, remainingOffset))
           } 
@@ -440,6 +455,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
              bb.put(writeBuff)
              bb.position(0)
              //println(s"objOffset $objOffset, bufsize ${writeBuff.size} bb size ${bb.limit} content ${writeBuff.getByteArray().toList} remaining: ${remaining.size} elist: ${elist.size}")
+             tx.note(s"IndexedFileContent - updateContiguousRange(segment=${dos.pointer.uuid}, nbytes=${bb.remaining()})")
              tx.overwrite(dos.pointer, dos.revision, bb)
              
              rupdate(writeOffset + nwrite, remaining, elist.tail)
@@ -617,6 +633,7 @@ object IndexedFileContent {
               else {
                 system.readObject(d.pointer).flatMap { sdos => 
                   implicit val tx: Transaction = system.newTransaction()
+                  tx.note(s"IndexedFileContent - deleteIndexTask decrementing refcount of ${sdos.pointer.uuid} to ${sdos.refcount.decrement()}")
                   //println(s"Deleting data node ${sdos.pointer.uuid}")
                   tx.setRefcount(sdos.pointer, sdos.refcount, sdos.refcount.decrement())
                   tx.commit().map(_=>())
@@ -634,6 +651,7 @@ object IndexedFileContent {
             system.retryStrategy.retryUntilSuccessful {
               system.readObject(nodePointer).flatMap { sdos => 
                 implicit val tx: Transaction = system.newTransaction()
+                tx.note(s"IndexedFileContent - deleteIndexTask decrementing self refcount of ${sdos.pointer.uuid} to ${sdos.refcount.decrement()}")
                 tx.setRefcount(sdos.pointer, sdos.refcount, sdos.refcount.decrement())
                 tx.commit().map(_=>())
               } recover {
@@ -653,6 +671,7 @@ object IndexedFileContent {
       }.foreach { _ =>
         system.transactUntilSuccessful { tx =>
           //println(s"******* COMPLETED FILE TRUNCATION TASK *****")
+          tx.note(s"IndexedFileContent - deleteIndexTask marking task complete")
           completeTask(tx)
           tx.result.failed.foreach(err => s"COMPLETE TX FAIL $err")
           Future.unit
@@ -711,8 +730,10 @@ object IndexedFileContent {
         case Some(d) => 
           if (endOffset < d.offset + path.head.index.segmentSize) {
             path.head.index.read(d.pointer).map { dos =>
-              if (d.offset + dos.data.size > endOffset)
-                tx.overwrite(dos.pointer, dos.revision, dos.data.slice(0, (endOffset-d.offset).asInstanceOf[Int]))
+              if (d.offset + dos.data.size > endOffset) {
+                tx.note(s"IndexedFileContent - prepareTruncation shortening final segment ${dos.pointer.uuid}")
+                tx.overwrite(dos.pointer, dos.revision, dos.data.slice(0, (endOffset - d.offset).asInstanceOf[Int]))
+              }
             }
           } else
             Future.unit
@@ -731,7 +752,8 @@ object IndexedFileContent {
           }
           val updateContent = getEncodedNodeContent(node.tier, keep.toList, node.startOffset, None)
           val newContent = getEncodedNodeContent(node.tier, newEntries, endOffset, node.endOffset)
-          
+
+          tx.note(s"IndexedFileContent - prepareTruncation rsplit of index node ${node.pointer.uuid}")
           tx.overwrite(node.pointer, node.revision, updateContent)
           
           node.index.allocateIndexNode(node.pointer, node.revision, tier=node.tier, content=newContent).flatMap { newPointer =>
@@ -774,6 +796,7 @@ object IndexedFileContent {
           val content = getEncodedNodeContent(oldRoot.tier + 1, new DownPointer(oldRoot.startOffset, oldRoot.pointer) :: adds)
           
           oldRoot.index.allocateIndexNode(oldRoot.pointer, oldRoot.revision, tier=0, content=content).map { newPointer =>
+            tx.note(s"IndexedFileContent - allocating new index root node ${newPointer.uuid} tier 0")
             val newRoot = IndexNode(newPointer, ObjectRevision(tx.uuid), content, oldRoot.index)
             (newRoot, newRoot :: updatedNodes)
           }
@@ -795,6 +818,7 @@ object IndexedFileContent {
             
             //println(s"TX APPEND: Adds: ${adds}")
             logger.trace(s"Appending to index tier ${node.tier}")
+            tx.note(s"IndexedFileContent - rupdate appending to index tier ${node.tier}, node ${node.pointer.uuid}")
             tx.append(node.pointer, node.revision, DataBuffer(arr))
             
             rupdate(logger, Nil, path.tail, path.head, updated :: updatedNodes)
@@ -828,11 +852,13 @@ object IndexedFileContent {
             
             val txrev = ObjectRevision(tx.uuid)
 
+            tx.note(s"IndexedFileContent - rupdate updating index node ${node.pointer.uuid}")
             tx.overwrite(node.pointer, node.revision, updateContent)
             
             def allocNode(endOffset: Option[Long], newNodeEntries: List[DownPointer]): Future[IndexNode] = {
               val newNodeContent = getEncodedNodeContent(node.tier, newNodeEntries, newNodeEntries.head.offset, endOffset)
               node.index.allocateIndexNode(node.pointer, node.revision, tier=node.tier, content=newNodeContent).map { newPointer =>
+                tx.note(s"IndexedFileContent - rupdate allocating new index node ${newPointer.uuid} tier ${node.tier}")
                 IndexNode(newPointer, txrev, newNodeContent, node.index)
               }
             }

@@ -7,11 +7,12 @@ import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network._
 import com.ibm.aspen.core.network.protocol.Message
-import com.ibm.aspen.core.{DataBuffer, allocation, read}
 import com.ibm.aspen.core.transaction.{LocalUpdate, TxAcceptResponse, TxFinalized, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
+import com.ibm.aspen.core.{DataBuffer, allocation, read}
+import org.apache.logging.log4j.scala.Logging
 
 class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreSideNetwork 
-   with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler {
+   with StoreSideReadHandler with StoreSideAllocationHandler with StoreSideTransactionHandler with Logging {
   
   import NMessageEncoder._
 
@@ -67,7 +68,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       val message = NetworkCodec.decode(p.prepare())
       
       val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
-      println(s"got prepare txid ${message.txd.transactionUUID} Leader ${message.txd.designatedLeaderUID} for objects: ${sb.toString()}")
+      //println(s"got prepare txid ${message.txd.transactionUUID} Leader ${message.txd.designatedLeaderUID} for objects: ${sb.toString()}")
 
       val updateContent = if (bb.remaining() == 0) None else {
         
@@ -93,32 +94,32 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       t.foreach(receiver => receiver.receive(message, updateContent))
     } 
     else if (p.prepareResponse() != null) {
-      println("got prepareResponse")
+      //println("got prepareResponse")
       val message = NetworkCodec.decode(p.prepareResponse())
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.accept() != null) {
-      println("got accept")
+      //println("got accept")
       val message = NetworkCodec.decode(p.accept())
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.acceptResponse() != null) {
-      println("got acceptResponse")
+      //println("got acceptResponse")
       val message = NetworkCodec.decode(p.acceptResponse())
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.resolved() != null) {
       val message = NetworkCodec.decode(p.resolved())
-      println(s"got resolved for txid ${message.transactionUUID} committed = ${message.committed}")
+      //println(s"got resolved for txid ${message.transactionUUID} committed = ${message.committed}")
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.committed() != null) {
       val message = NetworkCodec.decode(p.committed())
-      println(s"got committed for txid ${message.transactionUUID}")
+      //println(s"got committed for txid ${message.transactionUUID}")
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.finalized() != null) {
-      println("got finalized")
+      //println("got finalized")
       val message = NetworkCodec.decode(p.finalized())
       t.foreach(receiver => receiver.receive(message, None))
     }
@@ -127,7 +128,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       t.foreach(receiver => receiver.receive(message, None))
     }
     else if (p.allocate() != null) {
-      println(s"got allocate request. Receiver: $a")
+      //println(s"got allocate request. Receiver: $a")
       val message = NetworkCodec.decode(p.allocate())
       a.foreach(receiver => receiver.receive(message))
     }
@@ -140,7 +141,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
       r.foreach(receiver => receiver.receive(message))
     }
     else {
-      println("Unknown Message!")
+      logger.error("Unknown Message!")
     }
   }
   
@@ -162,10 +163,10 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
   def setReceiver(receiver: StoreSideTransactionMessageReceiver): Unit = synchronized { ot = Some(receiver) }
   
   def send(message: TransactionMessage): Unit = {
-    message match {
-      case m: TxPrepareResponse => println(s"   prepare response disposition: ${m.disposition}")
-      case _ => 
-    }
+//    message match {
+//      case m: TxPrepareResponse => println(s"   prepare response disposition: ${m.disposition}")
+//      case _ =>
+//    }
     stores(message.to).send(encodeMessage(message))
   }
   

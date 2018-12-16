@@ -1,28 +1,19 @@
 package com.ibm.aspen.demo
 
-import com.ibm.aspen.core.data_store.DataStoreID
+import java.nio.ByteBuffer
 import java.util.UUID
 
-import com.ibm.aspen.core.network.ClientSideNetwork
-import com.ibm.aspen.core.network.ClientSideReadHandler
-import com.ibm.aspen.core.network.ClientSideAllocationHandler
-import com.ibm.aspen.core.network.ClientSideTransactionHandler
-import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.network.ClientSideReadMessageReceiver
-import com.ibm.aspen.core.network.ClientSideAllocationMessageReceiver
-import com.ibm.aspen.core.network.ClientSideTransactionMessageReceiver
-import java.nio.ByteBuffer
-
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.network.protocol.Message
-import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.allocation.Allocate
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.network._
+import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, TransactionCompletionQuery}
-import com.ibm.aspen.core.transaction.TxPrepare
-import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.{LocalUpdate, TxPrepare}
+import org.apache.logging.log4j.scala.Logging
 
 class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork 
-    with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler {
+    with ClientSideReadHandler with ClientSideAllocationHandler with ClientSideTransactionHandler with Logging {
   
   import NMessageEncoder._
 
@@ -36,7 +27,7 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
   
   val onlineTracker = new OnlineTracker(nnet.config)
   
-  println(s"CLIENT UUID: ${clientId.uuid}")
+  logger.info(s"CLIENT UUID: ${clientId.uuid}")
    
   val stores = nnet.config.nodes.foldLeft(Map[DataStoreID, NClientConnection]()) { (m, n) =>
     val ep = n._2.endpoint
