@@ -91,6 +91,8 @@ object TieredKeyValueListSplitFA extends Logging {
         deletes = Nil
         requirements = Nil
 
+        _=tx.note(s"TieredKeyValueListSplitFA - Adding pointer(s) to ${ins.map(_.pointer.uuid)} to tier ${c.targetTier}")
+
         ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
         
         _ <- tx.commit()

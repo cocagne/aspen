@@ -31,10 +31,12 @@ class MutableTieredKeyValueListNode(
     requirements: List[KeyValueUpdate.KVRequirement])(implicit tx: Transaction, ec: ExecutionContext): Future[Future[MutableTieredKeyValueListNode]] = {
     
     def onSplit(left: KeyValueListPointer, right: List[KeyValueListPointer]): Unit = {
+      tx.note(s"Splitting TKVL. Left node ${left.pointer.uuid}, Right nodes ${right.map(_.pointer.uuid)}")
       TieredKeyValueListSplitFA.addFinalizationAction(tx, mtkvl, 1, left, right)
     }
     
     def onJoin(left: KeyValueListPointer, removed: KeyValueListPointer): Unit = {
+      tx.note(s"Joining TKVL. Left node ${left.pointer.uuid}. Removed node ${removed.pointer.uuid}")
       TieredKeyValueListJoinFA.addFinalizationAction(tx, mtkvl, 1, left, removed)
     }
     

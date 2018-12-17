@@ -44,6 +44,7 @@ object DeleteFinalizationAction {
         pool <- system.getStoragePool(victim.poolUUID)
         tree <- pool.getAllocationTree(system.retryStrategy)
         _ <- tree.prepareDelete(victim.uuid)
+        _=tx.note(s"DeleteFinalizationAction - Removing ${victim.uuid} from allocation tree")
         _ <- tx.commit()
       } yield {
 

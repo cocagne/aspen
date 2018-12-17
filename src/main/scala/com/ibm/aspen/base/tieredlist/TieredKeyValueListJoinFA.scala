@@ -93,6 +93,8 @@ object TieredKeyValueListJoinFA extends Logging {
         
         test <- system.readObject(kvos.pointer)
 
+        _=tx.note(s"TieredKeyValueListJoinFA - removing pointer to ${removed.pointer.uuid} from upper tier ${c.targetTier}")
+
         ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
         
         done <- tx.commit()

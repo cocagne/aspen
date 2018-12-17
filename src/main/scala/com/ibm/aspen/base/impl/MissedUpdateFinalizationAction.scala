@@ -1,24 +1,19 @@
 package com.ibm.aspen.base.impl
 
-import java.util.UUID
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.base.FinalizationActionHandler
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.FinalizationAction
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.TransactionDescription
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.base.UpdateableFinalizationAction
 import java.nio.ByteBuffer
-import scala.concurrent.Promise
+import java.util.UUID
+
+import com.ibm.aspen.base.{AspenSystem, FinalizationAction, FinalizationActionHandler, UpdateableFinalizationAction}
+import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.transaction.{SerializedFinalizationAction, TransactionDescription}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
-import com.ibm.aspen.core.transaction.SerializedFinalizationAction
 
 object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   
-  val typeUUID = UUID.fromString("368e7176-8fed-4c61-bb8c-d1554722c5d1")
+  val typeUUID: UUID = UUID.fromString("368e7176-8fed-4c61-bb8c-d1554722c5d1")
   
   private var pendingHandlers = Map[UUID, MissedUpdateHandler]()
   
@@ -26,7 +21,7 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   
   def removeHandler(h: MissedUpdateHandler): Unit = synchronized { pendingHandlers -= h.txd.transactionUUID }
   
-  val pollingTask = BackgroundTask.schedulePeriodic(Duration(250, MILLISECONDS), callNow = false) {
+  private val pollingTask = BackgroundTask.schedulePeriodic(Duration(250, MILLISECONDS)) {
     val pendingSnapshot = synchronized { pendingHandlers }
     val now = System.nanoTime() / 1000000
     pendingSnapshot.values.foreach( _.checkTimeout(now) )
@@ -54,14 +49,14 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
       val txd: TransactionDescription,
       val missedCommitDelayInMs: Int)(implicit ec: ExecutionContext) extends UpdateableFinalizationAction {
     
-    val promise = Promise[Unit]()
+    private val promise = Promise[Unit]()
     
-    val complete = promise.future
+    val complete: Future[Unit] = promise.future
     
-    val startTime = System.nanoTime() / 1000000
+    private val startTime = System.nanoTime() / 1000000
     
-    val allPeers = txd.allDataStores
-    val numPeers = allPeers.size
+    private val allPeers = txd.allDataStores
+    private val numPeers = allPeers.size
     
     private[this] var executing = false
     private[this] var committedPeers = Set[DataStoreID]()

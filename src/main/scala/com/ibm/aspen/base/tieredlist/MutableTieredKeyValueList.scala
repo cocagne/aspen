@@ -1,24 +1,16 @@
 package com.ibm.aspen.base.tieredlist
 
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.base._
-
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.Value
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-
-import scala.concurrent.Promise
-import scala.util.Failure
-import scala.util.Success
 import java.util.UUID
 
-import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.base._
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 import org.apache.logging.log4j.scala.Logging
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 object MutableTieredKeyValueList extends Logging {
   def load(
@@ -42,7 +34,7 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
   
   def system: AspenSystem = rootManager.system
   
-  val allocater = rootManager.getAllocater()
+  val allocater: TieredKeyValueListNodeAllocater = rootManager.getAllocater()
   
   protected[tieredlist] def getObjectReaderForTier(tier: Int): ObjectReader = system
 
@@ -66,17 +58,21 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
     fetchContainingNode(key, 0).map(kvos => new MutableTieredKeyValueListNode(system, this, kvos))
   }
   
-  def preparePut(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+  def preparePut(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
     node <- fetchMutableNode(key) 
-    prep <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
-  } yield ()
+    _ <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
+  } yield {
+    tx.note(s"Inserting $key into TKVL")
+  }
   
-  def prepareDelete(key: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = for {
+  def prepareDelete(key: Key)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
     node <- fetchMutableNode(key) 
-    prep <- node.prepreUpdateTransaction(Nil, List(key), Nil)
-  } yield ()
+    _ <- node.prepreUpdateTransaction(Nil, List(key), Nil)
+  } yield {
+    tx.note(s"Deleting $key from TKVL")
+  }
   
-  def prepareRename(oldKey: Key, newKey: Key)(implicit ec: ExecutionContext, t: Transaction): Future[Unit] = {
+  def prepareRename(oldKey: Key, newKey: Key)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = {
     val fold = fetchMutableNode(oldKey)
     val fnew = fetchMutableNode(newKey)
     
@@ -100,8 +96,10 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
     for {
       oldNode <- fold
       newNode <- fnew
-      prep <- prepareUpdate(oldNode, newNode)
-    } yield ()
+      _ <- prepareUpdate(oldNode, newNode)
+    } yield {
+      tx.note(s"Renaming $oldKey to $newKey in TKVL")
+    }
   }
   
   /** Deletes the tree. Prior to freeing each tier0 node in the tree the prepareForDeletion method will be invoked for
@@ -113,7 +111,9 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
     
     def rdelete(tiers: List[(Int, KeyValueListPointer)]): Unit = {
       if (tiers.isEmpty) {
-        implicit val tx = system.newTransaction()
+        implicit val tx: Transaction = system.newTransaction()
+
+        tx.note(s"Destroying TKVL")
         
         rootManager.prepareRootDeletion().foreach { _ =>
           if (tx.valid)

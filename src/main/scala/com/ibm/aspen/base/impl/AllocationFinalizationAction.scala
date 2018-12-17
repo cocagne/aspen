@@ -1,23 +1,16 @@
 package com.ibm.aspen.base.impl
 
 import java.util.UUID
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.core.network.NetworkCodec
-import java.nio.ByteBuffer
-import com.ibm.aspen.base.FinalizationActionHandler
-import com.ibm.aspen.base.FinalizationAction
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.base.RetryStrategy
-import com.ibm.aspen.base.AspenSystem
+
+import com.ibm.aspen.base.{AspenSystem, FinalizationAction, FinalizationActionHandler, Transaction}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer}
 import com.ibm.aspen.core.transaction.TransactionDescription
 
+import scala.concurrent.{ExecutionContext, Future}
+
 object AllocationFinalizationAction {
-  val AddToAllocationTreeUUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
+  val AddToAllocationTreeUUID: UUID = UUID.fromString("909ce37d-a138-44a5-9498-f56095827cdf")
   
   case class FAContent(storagePoolDefinitionPointer:KeyValueObjectPointer, newNodePointer:ObjectPointer)
   
@@ -34,18 +27,19 @@ object AllocationFinalizationAction {
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction {
     
-    val complete = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful {
+    val complete: Future[Unit] = system.getRetryStrategy(BasicAspenSystem.FinalizationActionRetryStrategyUUID).retryUntilSuccessful {
       //
       // TODO: getStoragePool will forever fail  if the pool description object is deleted (old Tx could be recovered after pool is deleted)
       //       detect this condition and return success to retryUntilSuccessful
       //
-      implicit val tx = system.newTransaction()
+      implicit val tx: Transaction = system.newTransaction()
       
       val fcommit = for {
         pool <- system.getStoragePool(storagePoolDefinitionPointer)
         tree <- pool.getAllocationTree(system.retryStrategy)
-        commitReady <- tree.preparePut(newNodePointer.uuid, newNodePointer.toArray)
-        result <- tx.commit()
+        _ <- tree.preparePut(newNodePointer.uuid, newNodePointer.toArray)
+        _=tx.note(s"AllocationFinalizationAction - Adding ${newNodePointer.uuid} to allocation tree")
+        _ <- tx.commit()
       } yield ()
       
       fcommit.failed.foreach(reason => tx.invalidateTransaction(reason))

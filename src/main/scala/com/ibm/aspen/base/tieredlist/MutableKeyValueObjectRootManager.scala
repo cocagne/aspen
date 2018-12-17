@@ -1,20 +1,16 @@
 package com.ibm.aspen.base.tieredlist
 
-import com.ibm.aspen.base.ObjectReader
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.base.AspenSystem
-import java.util.UUID
-import com.ibm.aspen.base.Transaction
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.util.Varint
 import java.nio.ByteBuffer
+import java.util.UUID
+
+import com.ibm.aspen.base.{AspenSystem, Transaction}
+import com.ibm.aspen.core.DataBuffer
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
+import com.ibm.aspen.core.objects.keyvalue.{Delete, Insert, Key}
 import com.ibm.aspen.core.transaction.KeyValueUpdate
-import com.ibm.aspen.core.objects.keyvalue.Insert
-import com.ibm.aspen.core.objects.keyvalue.Delete
-import com.ibm.aspen.core.objects.KeyValueObjectState
+import com.ibm.aspen.util.Varint
+
+import scala.concurrent.{ExecutionContext, Future}
 
 class MutableKeyValueObjectRootManager(
     val system: AspenSystem,
@@ -45,7 +41,6 @@ class MutableKeyValueObjectRootManager(
     for {
       kvos <- fkvos
       allocater <- falloc
-      // FIXME - switch to revision guard on key
       newRootPointer <- allocater.allocateKeyValueObject(kvos.pointer, kvos.revision, iops)
     } yield {
       kvos.contents.get(treeKey) match {
@@ -58,6 +53,8 @@ class MutableKeyValueObjectRootManager(
           val newRoot = currentRoot.copy(topTier = newRootTier, rootNode = newRootPointer)
           val req = KeyValueUpdate.KVRequirement(treeKey, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
 
+          tx.note(s"MutableKeyValueObjectRootManager - new root node ${newRootPointer.uuid}. Tier $newRootTier")
+
           tx.update(containingObject, Some(kvos.revision), req, Insert(treeKey, newRoot.toArray) :: Nil)
           
           tx.result.foreach { _ => synchronized {
@@ -69,8 +66,9 @@ class MutableKeyValueObjectRootManager(
   
   def prepareRootDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
     reader.readSingleKey(containingObject, treeKey, root.keyOrdering) map { kvos =>
-      kvos.contents.get(treeKey) map { v =>
+      kvos.contents.get(treeKey) foreach { v =>
         val reqs = KeyValueUpdate.KVRequirement(treeKey, v.timestamp, KeyValueUpdate.TimestampRequirement.Equals) :: Nil
+        tx.note(s"MutableKeyValueObjectRootManager - deleting root node")
         tx.update(containingObject, None, reqs, Delete(treeKey) :: Nil)
       }
     }
