@@ -7,10 +7,11 @@ import com.ibm.aspen.core.data_store._
 import com.ibm.aspen.core.network.{StoreSideReadMessageReceiver, StoreSideReadMessenger}
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.core.read.{CorruptedObject => _, _}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.ExecutionContext
 
-class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver {
+class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: ExecutionContext) extends StoreSideReadMessageReceiver with Logging {
   
   private[this] var stores = Map[DataStoreID, DataStore]()
   
@@ -53,7 +54,9 @@ class StorageNodeReadManager(messenger: StoreSideReadMessenger)(implicit ec: Exe
         
       case _: FullObject => store.getObject(message.objectPointer) foreach {
         case Left(err) => sendErrorResponse(err)
-        case Right((metadata, data, _, writeLocks)) => respond(metadata, data.size, Some(data), writeLocks)
+        case Right((metadata, data, _, writeLocks)) =>
+          logger.debug(s"Responding to read request ${message.readUUID} for object ${message.objectPointer.uuid}. $metadata, Size ${data.size} hash ${data.hashString}")
+          respond(metadata, data.size, Some(data), writeLocks)
       }
       
       case rt: ByteRange => store.getObject(message.objectPointer) foreach {

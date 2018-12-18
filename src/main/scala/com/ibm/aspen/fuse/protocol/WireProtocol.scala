@@ -3,6 +3,7 @@ package com.ibm.aspen.fuse.protocol
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.ByteOrder
+
 import scala.annotation.tailrec
 import com.ibm.aspen.fuse.FuseOptions
 import com.ibm.aspen.fuse.LinuxAPI
@@ -20,6 +21,7 @@ import com.ibm.aspen.fuse.protocol.messages.OpenRequest
 import com.ibm.aspen.fuse.protocol.messages.ReadRequest
 import java.nio.channels.GatheringByteChannel
 import java.nio.channels.ScatteringByteChannel
+
 import com.ibm.aspen.fuse.protocol.messages.WriteRequest
 import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
 import com.ibm.aspen.fuse.protocol.messages.MknodRequest
@@ -27,6 +29,7 @@ import com.ibm.aspen.fuse.protocol.messages.RenameRequest
 import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
 import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
 import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
+import org.apache.logging.log4j.scala.Logging
 
 object WireProtocol {
   
@@ -188,7 +191,7 @@ class WireProtocol private (
     private val write_channel: GatheringByteChannel,
     val protocolVersion: ProtocolVersion,
     val options: FuseOptions,
-    val bufferManager: IOBufferManager) {
+    val bufferManager: IOBufferManager) extends Logging {
   
   import WireProtocol._
   
@@ -275,7 +278,7 @@ class WireProtocol private (
    */
   @tailrec
   final def readNextRequest(): Request = synchronized {
-    println("**** WAITING FOR REQUEST ****")
+    logger.info("**** WAITING FOR REQUEST ****")
     
     val hbb = read(RequestHeader.HeaderSize)
     //println(s"Read header size: ${hbb.remaining}. Position ${hbb.position} Lim ${hbb.limit} Cap ${hbb.capacity}")

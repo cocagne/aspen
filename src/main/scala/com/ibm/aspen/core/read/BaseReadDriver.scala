@@ -53,7 +53,7 @@ class BaseReadDriver(
 
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
-    logger.info(s"sending read requests for object ${objectPointer.uuid}.")
+    logger.info(s"sending read requests for object ${objectPointer.uuid}. Read UUID $readUUID")
     synchronized { 
       retryCount += 1
       if (retryCount > 3)
@@ -96,7 +96,9 @@ class BaseReadDriver(
             case Right(os) =>
               // Ensure any commit transactions will use timestamps after all read objects last update time
               os match {
-                case dos: DataObjectState => HLCTimestamp.update(dos.timestamp)
+                case dos: DataObjectState =>
+                  logger.info(s"Successfully read DataObject ${dos.pointer.uuid} Rev ${dos.revision} Ref ${dos.refcount} Size ${dos.data.size} Hash ${dos.data.hashString}")
+                  HLCTimestamp.update(dos.timestamp)
                 case kvos: KeyValueObjectState => HLCTimestamp.update(kvos.lastUpdateTimestamp)
                 case mos: MetadataObjectState => HLCTimestamp.update(mos.timestamp)
               }

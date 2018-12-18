@@ -1,6 +1,8 @@
 package com.ibm.aspen.core
 
 import java.nio.ByteBuffer
+import java.util.zip.CRC32
+
 import scala.language.implicitConversions
 
 /** This class serves as a Read-Only, compile-time wrapper around ByteBuffer. 
@@ -25,6 +27,8 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
   
   def getDouble(byteOffset: Int): Double = buf.getDouble(byteOffset)
   def getFloat(byteOffset: Int): Float = buf.getFloat(byteOffset)
+
+  def hashString: String = DataBuffer.hash(this :: Nil).toHexString
   
   /** Creates a copy of the wrapped byte buffer content */
   def getByteArray(): Array[Byte] = {
@@ -32,6 +36,8 @@ final class DataBuffer private (private val buf: ByteBuffer) extends AnyVal {
     buf.asReadOnlyBuffer().get(arr)
     arr
   }
+
+  def copy(): DataBuffer = DataBuffer(this.getByteArray())
   
   def compareTo(that: DataBuffer): Int = buf.compareTo(that.buf)
   
@@ -97,4 +103,12 @@ object DataBuffer {
       }
     }
   }
+
+  def hash(buffers: List[DataBuffer]): Long = {
+    val crc = new CRC32
+    buffers.foreach(db => crc.update(db.getByteArray()))
+    crc.getValue
+  }
+
+  def hashString(buffers: List[DataBuffer]): String = hash(buffers).toHexString
 }

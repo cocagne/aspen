@@ -449,6 +449,7 @@ object NetworkCodec {
 
       val arr = new Array[Byte](4 + 4*count + esz)
       val bb = ByteBuffer.wrap(arr)
+      bb.order(ByteOrder.BIG_ENDIAN)
       bb.putInt(count)
       encoded.foreach(arr => bb.putInt(arr.length))
       encoded.foreach(bb.put)
@@ -495,6 +496,7 @@ object NetworkCodec {
 
     val notes = if (n.notesLength() == 0) Nil else {
       val bb = n.notesAsByteBuffer()
+      bb.order(ByteOrder.BIG_ENDIAN)
       val count = bb.getInt()
       val sizes = (0 until count).map( _ => bb.getInt()).toList
       sizes.map { sz =>

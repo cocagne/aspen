@@ -135,20 +135,20 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       val storeId: DataStoreID)(implicit ec: ExecutionContext) extends MissedUpdateIterator {
     
     import MissedUpdateIterator.Entry
-    
+
+    private[this] val ftree = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex)
+
     private[this] var entries: List[Entry] = Nil
-    private[this] var fnode = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
+    private[this] val fnode = ftree.flatMap(_.fetchMutableNode(Key.AbsoluteMinimum))
     private[this] var done = false
     
     private def setDone(): Unit = done = true
-    
-    private val ftree = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex)
-    
+
     private trait NodeIter {
       def next(): Future[List[Entry]]
     }
     
-    private val fiter = loadMissedUpdateTree(system, storeId.poolUUID, storeId.poolIndex).map { tree =>
+    private val fiter = ftree.map { tree =>
       new NodeIter { 
         private var fnode = tree.fetchMutableNode(Key.AbsoluteMinimum)
         private var highestKey = Key.AbsoluteMinimum
@@ -169,7 +169,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
               case None =>
                 setDone() 
                 Future.successful(List())
-              case Some(rp) => 
+              case Some(_) =>
                 fnode = node.fetchRight().map(_.get).recoverWith { case _ => tree.fetchMutableNode(highestKey) }
                 next()
             }
@@ -226,7 +226,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
     
     // Fail if the pool object has been deleted
     def onAttemptFailure(t: Throwable): Future[Unit] = t match {
-      case t: CorruptedObject => throw new StopRetrying(t)
+      case t: CorruptedObject => throw StopRetrying(t)
     }
     
     val objKey = Key(obj.uuid)
@@ -241,7 +241,7 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
           tl <- loadMissedUpdateTree(system, obj.poolUUID, storeIndex)
           node <- tl.fetchMutableNode(objKey)
           _=tx.note(s"Marking missed update for object ${obj.uuid} on store ${DataStoreID(obj.poolUUID, storeIndex)}")
-          prep <- node.prepreUpdateTransaction(List(objKey -> value), Nil, Nil)
+          _ <- node.prepreUpdateTransaction(List(objKey -> value), Nil, Nil)
         } yield ()
       }
     }
@@ -252,12 +252,9 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
       system: AspenSystem,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
-    new MissedUpdateHandler {
 
-      def execute(): Future[Unit] = {
-        Future.sequence( missedStores.map(storeIdx => markMissedObject(system, pointer, storeIdx)) ).map(_=>())
-      }
-    }
+    () => Future.sequence( missedStores.map(storeIdx => markMissedObject(system, pointer, storeIdx)) ).map(_=>())
+
   }
   
   def createIterator(

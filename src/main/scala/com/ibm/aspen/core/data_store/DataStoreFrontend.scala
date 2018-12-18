@@ -130,7 +130,7 @@ class DataStoreFrontend(
       case _: KeyValueAllocationOptions => ObjectType.KeyValue
     }
         
-    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for $objectType object $newObjectUUID")
+    log.alloc.info(s"$storeId alloc tx $allocationTransactionUUID for $objectType object $newObjectUUID size ${objectData.size} hash ${objectData.hashString}")
     
     val md = ObjectMetadata(ObjectRevision(allocationTransactionUUID), initialRefcount, timestamp)
         
@@ -367,9 +367,13 @@ class DataStoreFrontend(
   }
 
   def opportunisticRebuild(message: OpportunisticRebuild): Future[Unit] = synchronized {
+    log.rebuild.debug(s"Beginning opportunistic rebuild for object ${message.pointer.uuid}")
     val obj = loadObject(message.pointer, obj => obj.loadBoth())
     val frebuild = obj.opportunisticRebuild(message)
-    frebuild.onComplete(_ => synchronized { obj.decref()} )
+    frebuild.onComplete(_ => synchronized {
+      log.rebuild.debug(s"Opportunistic rebuild complete for object ${message.pointer.uuid}")
+      obj.decref()
+    } )
     frebuild
   }
 
@@ -514,6 +518,7 @@ class DataStoreFrontend(
 
   def pollAndRepairMissedUpdates(system: AspenSystem): Unit = synchronized {
     if (!repairing) {
+      repairing = true
       log.rebuild.debug("Beginning pass over missed updates log")
       system.getStoragePool(storeId.poolUUID).foreach { pool =>
         repairNext(pool.createMissedUpdateIterator(storeId.poolIndex), system)

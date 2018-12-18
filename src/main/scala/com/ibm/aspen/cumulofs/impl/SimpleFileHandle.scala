@@ -82,21 +82,25 @@ class SimpleFileHandle(
 
   def write(offset: Long, buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
 
-    val wsize = buffers.foldLeft(0)((sz, db) => sz + db.size)
-    val rbuffers = buffers.reverse
+    // TODO - Track down source of corruption on DataBuffers being passed into this method. While queued, the head
+    //        buffers are occasionally being overwritten
+    val copies = buffers.map(_.copy())
+
+    val wsize = copies.foldLeft(0)((sz, db) => sz + db.size)
+    val rbuffers = copies.reverse
 
     nbuffered += wsize
 
     val pw = writeQueue.find(_.endOffset == offset) match {
       case None =>
         writeCount += 1
-        logger.info(s"Queuing new write number $writeCount at offset $offset, end offset ${offset + wsize}")
+        logger.info(s"Queuing new write number $writeCount at offset $offset, end offset ${offset + wsize}. CRCs ${copies.map(_.hashString)}")
         val p = new PendingWrite(writeCount, offset, wsize, rbuffers)
         writeQueue = writeQueue.enqueue(p)
         p
 
       case Some(p) =>
-        logger.info(s"Buffering write in pending write number ${p.writeNumber} with end offset $offset, new end offset ${offset + wsize}")
+        logger.info(s"Buffering write in pending write number ${p.writeNumber} with end offset $offset, new end offset ${offset + wsize} CRCs ${copies.map(_.hashString)}")
         p.nbytes += wsize
         p.reversedBuffers = rbuffers ++ p.reversedBuffers
         p
@@ -124,6 +128,13 @@ class SimpleFileHandle(
 
         def writeSome(offset: Long, buffers: List[DataBuffer]): Unit = {
           logger.info(s"  write ${pw.writeNumber}: writeSome(offset=$offset, bufferCount=${buffers.length}, nbytes=${buffers.foldLeft(0)((sz,b) => sz+b.remaining())})")
+          val sb = new StringBuilder
+          buffers.foldLeft(offset) { (off, db) =>
+            sb.append(s"    offset $off crc: ${db.hashString}\n")
+            off + db.size
+          }
+          logger.info(sb.toString)
+
           file.write(offset, buffers).foreach { t =>
             val (remainingOffset, remainingBuffers) = t
 

@@ -1,8 +1,9 @@
 
-** Added Notes to TransactionDescription
-   - Add getDebugString which prints a pretty summary of what the TX does
-``
-** Need to overhaul logging for CumuloFS
+* Remove excessive logging of hashes and such for data object writes?
+
+* Hunt down Fuse bug that's causing buffered DataBuffers passed to the FileHandle.write() to be overwritten
+  while those buffers are queued for sending out.
+    -> Seems to be a wrap-around problem
 
 ** Need to fix Opportunistic Rebuild
 

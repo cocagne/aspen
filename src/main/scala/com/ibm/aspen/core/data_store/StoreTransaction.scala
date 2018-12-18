@@ -494,18 +494,30 @@ class StoreTransaction(val store: DataStoreFrontend,
 
               du.operation match {
                 case DataUpdateOperation.Overwrite => cs.obj match {
-                  case d: DataObjectStoreState => d.overwriteData(data)
-                  case _: KeyValueObjectStoreState => logger.error(s"$storeId tx: ${txd.transactionUUID} Invalid Overwrite on key-value object ${requirement.objectPointer.uuid}")
+                  case d: DataObjectStoreState =>
+                    val preSize = d.data.size
+                    val preHash = d.data.hashString
+                    d.overwriteData(data)
+                    logger.info(s"$storeId tx: ${txd.transactionUUID} Committing Overwrite for data object ${requirement.objectPointer.uuid}. Old size $preSize Old hash $preHash New size ${d.data.size} New hash ${d.data.hashString}")
+
+                  case _: KeyValueObjectStoreState =>
+                    logger.error(s"$storeId tx: ${txd.transactionUUID} Invalid Overwrite on key-value object ${requirement.objectPointer.uuid}")
                 }
                 case DataUpdateOperation.Append => cs.obj match {
-                  case d: DataObjectStoreState => d.appendData(data)
-                  case _: KeyValueObjectStoreState => logger.error(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
+                  case d: DataObjectStoreState =>
+                    val preSize = d.data.size
+                    val preHash = d.data.hashString
+                    d.appendData(data)
+                    logger.info(s"$storeId tx: ${txd.transactionUUID} Committing Append for data object ${requirement.objectPointer.uuid}. Pre-append size:$preSize Pre-append hash $preHash Append size:${data.size} Append hash: ${data.hashString} New size:${d.data.size} New hash: ${d.data.hashString}")
+
+                  case _: KeyValueObjectStoreState =>
+                    logger.error(s"$storeId tx: ${txd.transactionUUID} Invalid Append on key-value object ${requirement.objectPointer.uuid}")
                 }
               }
               cs.obj.metadata = cs.obj.metadata.copy(revision=ObjectRevision(txd.transactionUUID), timestamp=timestamp)
               cs.commitData = true
               cs.commitMetadata = true
-              logger.info(s"$storeId tx: ${txd.transactionUUID} Committing DataUpdate ${du.operation} for object ${requirement.objectPointer.uuid}")
+
 
             case ru: RefcountUpdate =>
               // TODO - Do we want to update the timestamp on refcount changes?

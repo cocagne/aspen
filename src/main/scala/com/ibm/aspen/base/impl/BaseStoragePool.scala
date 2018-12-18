@@ -1,36 +1,17 @@
 package com.ibm.aspen.base.impl
 
-import com.ibm.aspen.core.ida.IDA
-import java.util.UUID
-import com.ibm.aspen.base.StoragePool
-import com.ibm.aspen.core.objects.ObjectPointer
-import com.ibm.aspen.base.InsufficientOnlineNodes
-import com.ibm.aspen.base.AspenSystem
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
-import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.objects.ObjectRefcount
-import com.ibm.aspen.base.UnsupportedIDA
-import com.ibm.aspen.base.RetryStrategy
 import java.nio.ByteBuffer
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.base.tieredlist.TieredKeyValueList
-import com.ibm.aspen.base.tieredlist.MutableTieredKeyValueList
-import com.ibm.aspen.core.objects.keyvalue.ByteArrayKeyOrdering
-import com.ibm.aspen.util.byte2uuid
+import java.util.UUID
+
+import com.ibm.aspen.base._
+import com.ibm.aspen.base.tieredlist.{MutableKeyValueObjectRootManager, MutableTieredKeyValueList, TieredKeyValueListIterator, TieredKeyValueListMutableRootManager}
 import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.base.StorageHost
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.base.MissedUpdateStrategy
-import com.ibm.aspen.base.MissedUpdateHandler
-import com.ibm.aspen.base.MissedUpdateIterator
-import com.ibm.aspen.base.AllocatedObjectsIterator
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListIterator
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
-import com.ibm.aspen.base.tieredlist.MutableKeyValueObjectRootManager
-import com.ibm.aspen.base.tieredlist.TieredKeyValueListMutableRootManager
+import com.ibm.aspen.core.ida.IDA
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer, ObjectRefcount, ObjectRevision}
+import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.util.byte2uuid
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object BaseStoragePool {
   
@@ -91,13 +72,13 @@ class BaseStoragePool(
   
   override def selectStoresForAllocation(ida: IDA): Array[Int] = {
     if (!supportsIDA(ida))
-      throw new UnsupportedIDA(uuid, ida)
+      throw UnsupportedIDA(uuid, ida)
     
     val availableIndicies = (0 until numberOfStores).foldLeft(List[Int]())((lst, idx) => if (storageHosts(idx).online) idx :: lst else lst)
     val randomizedIndices = scala.util.Random.shuffle(availableIndicies)
     val arr = randomizedIndices.take(ida.width).sorted.toArray
     if (arr.length < ida.width)
-      throw new InsufficientOnlineNodes(ida.width, arr.length)
+      throw InsufficientOnlineNodes(ida.width, arr.length)
     arr
   }
   
@@ -114,10 +95,10 @@ class BaseStoragePool(
         
         val iter = new TieredKeyValueListIterator(system, tree)
         
-        def fetchNext()(implicit ec: ExecutionContext): Future[Option[AllocatedObject]] = iter.next().map { o => o match {
+        def fetchNext()(implicit ec: ExecutionContext): Future[Option[AllocatedObject]] = iter.next().map {
           case None => None
           case Some(v) => Some(AllocatedObject(ObjectPointer(v.value), v.timestamp))
-        }}
+        }
       }
     }
   }

@@ -118,7 +118,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
     fs.defaultSegmentAllocater().flatMap { allocater =>
       allocater.allocateDataObject(allocObj, allocRev, content).map { p =>
-        tx.note(s"IndexedFileContent - Allocating new data segment ${p.uuid}")
+        tx.note(s"IndexedFileContent - Allocating new data segment ${p.uuid} size ${content.size} hash ${content.hashString}")
         p
       }
     }
@@ -356,7 +356,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
               logger.error(s"SHORT... rawBuffSize:$rbsz, appendBuffSize:$asz, compacted:${appendBuff.size}, remaining:$rsz, roffset: $remainingOffset")
             }
 
-            tx.note(s"IndexedFileContent - appending ${appendBuff.size} to existing data segment ${tail.pointer.uuid}")
+            tx.note(s"IndexedFileContent - appending ${appendBuff.size} hash ${appendBuff.hashString} to existing data segment ${tail.pointer.uuid}")
             tx.append(tail.pointer, tail.revision, appendBuff)
             Future.successful((remaining, remainingOffset))
           } 

@@ -1,35 +1,10 @@
 package com.ibm.aspen.fuse
 
-import java.nio.channels.FileChannel
-import java.nio.file.Paths
-import java.nio.file.StandardOpenOption._
+import java.nio.channels.{GatheringByteChannel, ScatteringByteChannel}
 
-import com.ibm.aspen.fuse.protocol.WireProtocol
-import com.ibm.aspen.fuse.protocol.messages.ReadDirRequest
-import com.ibm.aspen.fuse.protocol.IOBufferManager
-import com.ibm.aspen.fuse.protocol.messages.ReadDirReply
-import com.ibm.aspen.fuse.protocol.messages.GetAttrRequest
-import com.ibm.aspen.fuse.protocol.messages.GetAttrReply
-import com.ibm.aspen.fuse.protocol.messages.OpenDirRequest
-import com.ibm.aspen.fuse.protocol.messages.OpenReply
-import com.ibm.aspen.fuse.protocol.messages.ReleaseRequest
-import com.ibm.aspen.fuse.protocol.messages.ReleaseDirRequest
-import com.ibm.aspen.fuse.protocol.messages.LookupRequest
-import com.ibm.aspen.fuse.protocol.messages.DirEntryReply
-import com.ibm.aspen.fuse.protocol.messages.OpenRequest
-import com.ibm.aspen.fuse.protocol.messages.DataReply
-import com.ibm.aspen.fuse.protocol.messages.ReadRequest
-import java.nio.channels.ScatteringByteChannel
-import java.nio.channels.GatheringByteChannel
-import com.ibm.aspen.fuse.protocol.messages.WriteRequest
-import com.ibm.aspen.fuse.protocol.messages.WriteReply
-import com.ibm.aspen.fuse.protocol.messages.SetAttrRequest
-import com.ibm.aspen.fuse.protocol.messages.MknodRequest
-import com.ibm.aspen.fuse.protocol.messages.ErrorOnly
-import com.ibm.aspen.fuse.protocol.messages.RenameRequest
-import com.ibm.aspen.fuse.protocol.messages.MkdirRequest
-import com.ibm.aspen.fuse.protocol.messages.UnlinkRequest
-import com.ibm.aspen.fuse.protocol.messages.ForgetRequest
+import com.ibm.aspen.fuse.protocol.{IOBufferManager, ProtocolVersion, WireProtocol}
+import com.ibm.aspen.fuse.protocol.messages._
+import org.apache.logging.log4j.scala.Logging
 
  /** 
    *  
@@ -57,26 +32,26 @@ class LowLevelFuseFilesystem(
     read_channel: ScatteringByteChannel,
     write_channel: GatheringByteChannel,
     obufferManager: Option[IOBufferManager] = None
-    ) {
+    ) extends Logging {
   
-  implicit val bufferManager = obufferManager.getOrElse(new DefaultBufferManager)
+  implicit val bufferManager: IOBufferManager = obufferManager.getOrElse(new DefaultBufferManager)
   
   private val wp = WireProtocol(mountPoint, fsType, mountFlags, fuseMountOptions, requestedOps, bufferManager, read_channel, write_channel)
   
-  implicit val protocolVersion = wp.protocolVersion
-  implicit val supportedOps = wp.options
+  implicit val protocolVersion: ProtocolVersion = wp.protocolVersion
+  implicit val supportedOps: FuseOptions = wp.options
   
-  def startHandlerDaemonThread() = {
-    val dt = new Thread(new Runnable { override def run(): Unit = { reactorLoop() } }, "fuseHandlerDaemon");
-    dt.setDaemon(true);
-    dt.start();
+  def startHandlerDaemonThread(): Unit = {
+    val dt = new Thread( () => reactorLoop(), "fuseHandlerDaemon")
+    dt.setDaemon(true)
+    dt.start()
   }
   
   def reactorLoop(): Unit = while(true) handleNextRequest()
   
   def handleNextRequest(): Unit = {
     val req = wp.readNextRequest()
-    println(s"Received $req")
+    logger.info(s"Received $req")
     req match {
       case r: OpenDirRequest => opendir(r, new Response[OpenReply](wp, r.unique))
       case r: GetAttrRequest => getattr(r, new Response[GetAttrReply](wp, r.unique))
@@ -94,7 +69,7 @@ class LowLevelFuseFilesystem(
       case r: UnlinkRequest => unlink(r, new Response[ErrorOnly](wp, r.unique))
       case r: ForgetRequest => forget(r)
       case r =>
-        println(s"UNSUPPORTED REQUEST TYPE $r")
+        logger.error(s"UNSUPPORTED REQUEST TYPE $r")
     }
   }
   
