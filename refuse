@@ -139,7 +139,7 @@ def main(mount_point, subtype='refuse', mount_flags=MS_NODIRATIME, port=1111):
         gid = os.getgid()
 
         
-        mount_ops_prefix = 'fd={},rootmode={:o},user_id={},group_id={}'.format(device_fd, rootmode, uid, gid)
+        mount_ops_prefix = 'fd={},rootmode={:o},user_id={},group_id={},max_read=16384'.format(device_fd, rootmode, uid, gid)
 
         def read(nbytes):
             n = 0
