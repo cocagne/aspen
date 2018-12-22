@@ -1,18 +1,17 @@
 package com.ibm.aspen.cumulofs
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
 import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.HLCTimestamp
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.keyvalue.Value
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait BaseFile {
   val pointer: InodePointer
   val fs: FileSystem
-  
+
+  def inode: Inode
+  def revision: ObjectRevision
+
   def refresh()(implicit ec: ExecutionContext): Future[Unit]
   
   def mode: Int

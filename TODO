@@ -1,5 +1,7 @@
 
-* Remove excessive logging of hashes and such for data object writes?
+* CumuloFS: Update directory insert/create operations to FAIL if the name already exists
+   - On Tx failure, we'll have to lookup before retrying the op
+   - Throw DirectoryEntryAlreadyExists if post-fail lookup succeeds
 
 * Hunt down Fuse bug that's causing buffered DataBuffers passed to the FileHandle.write() to be overwritten
   while those buffers are queued for sending out.

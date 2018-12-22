@@ -72,6 +72,18 @@ object Main {
             
             arg[Int]("<port>").text("Storage Node Name").action((x,c) => c.copy(port=x))
         )
+
+      cmd("cumulofs-nfs").text("Launches a CumuloFS NFS server").
+        action( (_,c) => c.copy(mode="cumulofs-nfs")).
+        children(
+          arg[File]("<config-file>").text("Aspen Configuration File").
+            action( (x, c) => c.copy(configFile=x)).
+            validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
+
+          arg[File]("<log4j-config-file>").text("Log4j Configuration File").
+            action( (x, c) => c.copy(log4jConfigFile=x)).
+            validate( x => if (x.exists()) success else failure(s"Log4j Config file does not exist: $x")),
+        )
         
        cmd("rebuild").text("Rebuilds a store").
          action( (_,c) => c.copy(mode="rebuild")).
@@ -110,6 +122,7 @@ object Main {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
             case "cumulofs" => cumulofs(cfg.log4jConfigFile, config)
+            case "cumulofs-nfs" => cumulofs_nfs(cfg.log4jConfigFile, config)
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
@@ -213,6 +226,12 @@ object Main {
     }
     
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
+  }
+
+  def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+    setLog4jConfigFile(log4jConfigFile)
+
+
   }
   
   def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {

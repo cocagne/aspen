@@ -24,6 +24,8 @@ lazy val root = (project in file(".")).
     scalacOptions ++= Seq("-feature", "-deprecation"),
 
     resolvers += "mvnrepository" at "http://mvnrepository.com/artifact/",
+    
+    resolvers += "dCache Repository" at "https://download.dcache.org/nexus/content/repositories/releases",
 
     libraryDependencies ++= Seq(
       "org.scalatest"                    %% "scalatest"               % "3.0.4" % "test",
@@ -43,7 +45,8 @@ lazy val root = (project in file(".")).
       "com.fasterxml.jackson.core"       %  "jackson-core"            % "2.9.4",
       "com.fasterxml.jackson.core"       %  "jackson-databind"        % "2.9.4",
       "com.fasterxml.jackson.dataformat" %  "jackson-dataformat-yaml" % "2.9.4",
-      "com.lmax"                         %  "disruptor"               % "3.3.7"
+      "com.lmax"                         %  "disruptor"               % "3.3.7",
+      "org.dcache"                       %  "nfs4j-core"              % "0.17.2"
     )
   )
   

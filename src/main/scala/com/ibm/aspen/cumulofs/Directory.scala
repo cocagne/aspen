@@ -9,7 +9,9 @@ import com.ibm.aspen.cumulofs.impl.CreateFileTask
 trait Directory extends BaseFile {
   val pointer: DirectoryPointer
   val fs: FileSystem
-  
+
+  def inode: DirectoryInode
+
   def getInode()(implicit ec: ExecutionContext): Future[(DirectoryInode, ObjectRevision)] = {
     fs.inodeLoader.load(pointer)
   }

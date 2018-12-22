@@ -31,6 +31,10 @@ trait FileSystem {
   def defaultSegmentSize: Int
   
   def defaultSegmentAllocater(): Future[ObjectAllocater]
+
+  def lookupInodePointer(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = {
+    inodeTable.lookup(inodeNumber)
+  }
   
   def lookup(inodeNumber: Long)(implicit ec: ExecutionContext): Future[Option[BaseFile]] = inodeTable.lookup(inodeNumber) flatMap {
     case None => Future.successful(None)

@@ -8,6 +8,7 @@ case class Timespec(seconds: Long, nanoseconds: Int) {
     bb.putLong(seconds)
     bb.putInt(nanoseconds)
   }
+  def millis: Long = seconds * 1000 + nanoseconds / 1000
 }
 
 object Timespec {
