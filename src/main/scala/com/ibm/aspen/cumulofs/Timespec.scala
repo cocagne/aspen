@@ -18,6 +18,12 @@ object Timespec {
     val nsec = bb.getInt()
     new Timespec(sec, nsec)
   }
+
+  def apply(millis: Long): Timespec = {
+    val sec = millis / 1000
+    val nsec = (millis - (sec*1000)) * 1000
+    Timespec(sec, nsec.asInstanceOf[Int])
+  }
   
   def now: Timespec = {
     val ts = System.currentTimeMillis()

@@ -7,6 +7,8 @@ import scala.concurrent.ExecutionContext
 
 class NFSFileHandle(fh: FileHandle)(implicit ec: ExecutionContext) {
 
+  def size: Long = fh.file.size
+
   def read(offset: Long, nbytes: Int): Option[DataBuffer] = blockingCall(fh.read(offset, nbytes))
 
   def write(offset: Long, buffers: List[DataBuffer]): Int = {

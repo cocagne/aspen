@@ -3,16 +3,17 @@ package com.ibm.aspen.cumulofs.nfs
 import java.io.IOException
 import java.nio.ByteBuffer
 
-import com.github.blemale.scaffeine.{Cache, Scaffeine}
+import com.github.blemale.scaffeine.{Cache, LoadingCache, Scaffeine}
 import com.ibm.aspen.core.read.FatalReadError
 import com.ibm.aspen.cumulofs
+import com.ibm.aspen.cumulofs.impl.SimpleFileHandle
 import com.ibm.aspen.cumulofs.{DirectoryEntry => _, Inode => _, _}
 import javax.security.auth.Subject
 import org.apache.logging.log4j.scala.Logging
 import org.dcache.auth.Subjects
 import org.dcache.nfs.status._
-import org.dcache.nfs.v4.{NfsIdMapping, SimpleIdMap}
 import org.dcache.nfs.v4.xdr.nfsace4
+import org.dcache.nfs.v4.{NfsIdMapping, SimpleIdMap}
 import org.dcache.nfs.vfs._
 
 import scala.collection.JavaConverters.asJavaCollection
@@ -34,14 +35,27 @@ object CumuloNFS {
 
 class CumuloNFS(val fs: FileSystem,
                 implicit val ec: ExecutionContext,
-                inodeCacheMax: Int = 1000) extends VirtualFileSystem with Logging {
+                inodeCacheMax: Int = 1000,
+                fileHandleCacheMax: Int = 250,
+                writeBufferSize: Int = 4*1024*1024) extends VirtualFileSystem with Logging {
 
   import CumuloNFS._
 
   private val NoAcl = new Array[nfsace4](0)
   private val IdMapper = new SimpleIdMap
 
-  private[this] val inodes: Cache[Long, NFSBaseFile] = Scaffeine().maximumSize(inodeCacheMax).build[Long, NFSBaseFile]()
+  private[this] val inodes: Cache[Long, NFSBaseFile] = Scaffeine().
+    maximumSize(inodeCacheMax).
+    build[Long, NFSBaseFile]()
+
+  private[this] val fileHandles: LoadingCache[Long, NFSFileHandle] = Scaffeine().
+    maximumSize(fileHandleCacheMax).
+    build[Long, NFSFileHandle](inode => {load(inode) match {
+    case f: NFSFile => new NFSFileHandle(new SimpleFileHandle(f.file, writeBufferSize))
+    case _ => throw new NotSuppException("Cannot open non-regular file")
+  }})
+
+  private def getFileHandle(inode: Inode): NFSFileHandle = fileHandles.get(inode)
 
   def load(inode: Long, cache: Boolean = true): NFSBaseFile = inodes.getIfPresent(inode) match {
     case Some(f) => f
@@ -74,6 +88,11 @@ class CumuloNFS(val fs: FileSystem,
 
   private def getFile(inode: Long): NFSFile = load(inode) match {
     case f: NFSFile => f
+    case _ => throw new NotSuppException(s"Operation supported only on regular file")
+  }
+
+  private def getSymLink(inode: Long): NFSSymlink = load(inode) match {
+    case f: NFSSymlink => f
     case _ => throw new NotSuppException(s"Operation supported only on regular file")
   }
 
@@ -354,20 +373,17 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def read(inode: Inode, data: Array[Byte], offset: Long, count: Int): Int = synchronized {
-    val f = getFile(inode)
-    logger.info(s"read ${f.inodeNumber} offset $offset count $count")
-    if (offset > f.len)
+  def read(inode: Inode, data: Array[Byte], offset: Long, count: Int): Int = {
+    logger.info(s"read ${inode2long(inode)} offset $offset count $count")
+    val fh = getFileHandle(inode)
+    if (offset > fh.size)
       -1
     else {
-      val maxread = if (count <= data.length) count else data.length
-      val remaining = f.len - offset
-      if (remaining == 0)
-        0
-      else {
-        val nread = if (remaining < maxread) remaining else maxread
-        ByteBuffer.wrap(f.data).get(data, offset.asInstanceOf[Int], nread.asInstanceOf[Int])
-        nread.asInstanceOf[Int]
+      fh.read(offset, count) match {
+        case None => -1
+        case Some(db) =>
+          db.asReadOnlyBuffer().get(data, 0, db.size)
+          db.size
       }
     }
   }
@@ -380,12 +396,7 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def readlink(inode: Inode): String = synchronized {
-    getInode(inode) match {
-      case l: MLink => l.link
-      case _ => throw new NotSuppException("Operation requires symlink inode")
-    }
-  }
+  def readlink(inode: Inode): String = getSymLink(inode).symLinkAsString
 
   /**
     * Remove a file system object from the given directory and possibly the
@@ -396,27 +407,16 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def remove(parent: Inode, name: String): Unit = synchronized {
+  def remove(parent: Inode, name: String): Unit = {
     val dir = getDirectory(parent)
-    dir.entries.find(t => t._1 == name) match {
-      case None => throw new NoEntException(s"No such file $name")
-      case Some(t) =>
-        t._2 match {
-          case sub: MDir => if (sub.entries.nonEmpty) throw new NotEmptyException(s"$name directory is not empty")
-          case _ =>
-        }
 
-        dir.delete(name)
-
-        if (t._2.stats.getNlink == 0) {
-          usedFiles -= 1
-          t._2 match {
-            case f: MFile => usedSpace -= f.data.length
-            case _ =>
-          }
-          inodes -= t._2.inodeNumber
-        }
+    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
+    dir.getEntry(name) match {
+      case Some(_) =>
+      case None => throw new NoEntException(s"$name does not exist")
     }
+
+    dir.delete(name)
   }
 
   /**
@@ -434,17 +434,20 @@ class CumuloNFS(val fs: FileSystem,
   def symlink(parent: Inode, name: String, link: String, subject: Subject, mode: Int): Inode = synchronized {
     val pdir = getDirectory(parent)
 
-    val lnk = new MLink(allocInode(), mode)
+    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
+    pdir.getEntry(name) match {
+      case Some(_) => throw new ExistException(s"$name already exists")
+      case None =>
+    }
 
-    lnk.link = link
+    val uid = Subjects.getUid(subject).toInt
+    val gid = Subjects.getPrimaryGid(subject).toInt
 
-    lnk.stats.setUid(Subjects.getUid(subject).toInt)
-    lnk.stats.setGid(Subjects.getPrimaryGid(subject).toInt)
+    val iptr = pdir.createSymlink(name, mode, uid, gid, link)
 
-    pdir.add(name, lnk)
-    addInode(lnk)
+    logger.info(s"Created new symlink $name in parent dir ${pdir.pointer.number} with inode number ${iptr.number} pointing to $link")
 
-    lnk.inodeNumber
+    iptr.number
   }
 
   /**
@@ -462,26 +465,12 @@ class CumuloNFS(val fs: FileSystem,
   def write(inode: Inode, data: Array[Byte], offset: Long, count: Int, stabilityLevel: VirtualFileSystem.StabilityLevel): VirtualFileSystem.WriteResult = synchronized {
     logger.info(s"write ${inode2long(inode)} offset $offset count $count")
 
-    val f = getFile(inode)
+    val fh = getFileHandle(inode)
 
-    val wend = offset + count
+    fh.write(offset, data)
 
-    var arr = f.data
-
-    if (wend > f.data.length) {
-      var sz = f.data.length * 2
-      while (sz < wend)
-        sz *= 2
-      arr = new Array[Byte](sz)
-      ByteBuffer.wrap(arr).put(f.data)
-    }
-
-    ByteBuffer.wrap(arr).put(data, offset.asInstanceOf[Int], count)
-
-    if (wend > f.len)
-      f.len = wend.asInstanceOf[Int]
-
-    f.data = arr
+    if (stabilityLevel != VirtualFileSystem.StabilityLevel.UNSTABLE)
+      fh.flush()
 
     new VirtualFileSystem.WriteResult(stabilityLevel, count)
   }
@@ -496,7 +485,7 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def commit(inode: Inode, offset: Long, count: Int): Unit = ()
+  def commit(inode: Inode, offset: Long, count: Int): Unit = getFileHandle(inode).flush()
 
   /**
     * Get file system object's attributes.
@@ -506,7 +495,7 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def getattr(inode: Inode): Stat = synchronized { getInode(inode).stats }
+  def getattr(inode: Inode): Stat = load(inode).nfsStat
 
   /**
     * Set/update file system object's attributes.
@@ -516,54 +505,42 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def setattr(inode: Inode, stat: Stat): Unit = synchronized {
-    val i = getInode(inode)
+  def setattr(inode: Inode, stat: Stat): Unit = {
+    val i = load(inode)
 
     if (stat.isDefined(Stat.StatAttribute.OWNER))
-      i.stats.setUid(stat.getUid)
+      i.setUID(stat.getUid)
 
     if (stat.isDefined(Stat.StatAttribute.GROUP))
-      i.stats.setGid(stat.getGid)
+      i.setGID(stat.getGid)
 
     if (stat.isDefined(Stat.StatAttribute.DEV)) i match {
-      case _: MBlock => i.stats.setDev(stat.getDev)
-      case _: MChar => i.stats.setDev(stat.getDev)
+      case d: NFSBlockDevice => // TODO what to do with this?
+      case d: NFSCharacterDevice => // TODO what to do with this?
       case _ => new InvalException("Can't set device attribute on non-device file")
     }
 
     if (stat.isDefined(Stat.StatAttribute.RDEV)) i match {
-      case _: MBlock => i.stats.setRdev(stat.getRdev)
-      case _: MChar => i.stats.setRdev(stat.getRdev)
+      case d: NFSBlockDevice => d.setrdev(stat.getRdev)
+      case d: NFSCharacterDevice => d.setrdev(stat.getRdev)
       case _ => new InvalException("Can't set rdevice attribute on non-device file")
     }
 
 
     if (stat.isDefined(Stat.StatAttribute.MODE))
-      i.stats.setMode((stat.getMode & ~Stat.S_TYPE) | (i.stats.getMode | Stat.S_TYPE))
+      i.setMode(stat.getMode)
 
     if (stat.isDefined(Stat.StatAttribute.SIZE)) i match {
-      case f: MFile =>
-        val newSize = stat.getSize.asInstanceOf[Int]
-        if (newSize > f.len) {
-          val arr = new Array[Byte](newSize)
-          ByteBuffer.wrap(arr).put(f.data)
-          usedSpace += newSize - f.len
-          f.len = newSize
-          f.data = arr
-        }
-        else if (newSize < f.len) {
-          val arr = new Array[Byte](newSize)
-          ByteBuffer.wrap(f.data).get(arr)
-          usedSpace -= f.len - newSize
-          f.len = newSize
-          f.data = arr
-        }
+
+      case _: NFSFile =>
+        getFileHandle(inode).truncate(stat.getSize)
+
       case _ => throw new InvalException("Can't change size of non-regular file")
     }
 
-    if (stat.isDefined(Stat.StatAttribute.ATIME)) i.stats.setATime(stat.getATime)
-    if (stat.isDefined(Stat.StatAttribute.MTIME)) i.stats.setMTime(stat.getMTime)
-    if (stat.isDefined(Stat.StatAttribute.CTIME)) i.stats.setCTime(stat.getCTime)
+    if (stat.isDefined(Stat.StatAttribute.ATIME)) i.setAtime(Timespec(stat.getATime))
+    if (stat.isDefined(Stat.StatAttribute.MTIME)) i.setMtime(Timespec(stat.getMTime))
+    if (stat.isDefined(Stat.StatAttribute.CTIME)) i.setCtime(Timespec(stat.getCTime))
   }
 
   /**
