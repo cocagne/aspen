@@ -1,7 +1,8 @@
 package com.ibm.aspen.demo
 
-import java.io.File
+import java.io.{File, StringReader}
 import java.util.UUID
+import java.util.concurrent.Executors
 
 import com.ibm.aspen.base._
 import com.ibm.aspen.base.impl._
@@ -13,7 +14,15 @@ import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
 import com.ibm.aspen.cumulofs.FileSystem
 import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
+import com.ibm.aspen.cumulofs.nfs.CumuloNFS
 import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
+import org.dcache.nfs.ExportFile
+import org.dcache.nfs.v3.xdr.{mount_prot, nfs3_prot}
+import org.dcache.nfs.v3.{MountServer, NfsServerV3}
+import org.dcache.nfs.v4.xdr.nfs4_prot
+import org.dcache.nfs.v4.{MDSOperationFactory, NFSServerV41}
+import org.dcache.nfs.vfs.VirtualFileSystem
+import org.dcache.oncrpc4j.rpc.{OncRpcProgram, OncRpcSvcBuilder}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -23,7 +32,12 @@ object Main {
 
   val CumuloFSKey = Key("cumulofs")
   
-  case class Args(mode:String="", configFile:File=null, log4jConfigFile: File=null, nodeName:String="", host:String="", port:Int=0)
+  case class Args(mode:String="",
+                  configFile:File=null,
+                  log4jConfigFile: File=null,
+                  nodeName:String="",
+                  host:String="",
+                  port:Int=0)
  
   class ConfigError(msg: String) extends Exception(msg)
   
@@ -228,10 +242,49 @@ object Main {
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
   }
 
-  def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+  def cumulofs_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
     setLog4jConfigFile(log4jConfigFile)
 
+    val sys = createSystem(cfg)
 
+    val f = initializeCumulofs(sys)
+
+    val fs = Await.result(f, Duration(5000, MILLISECONDS))
+
+    val exports = "/ 192.168.56.2(rw)\n"
+
+    val sched = Executors.newScheduledThreadPool(10)
+    val ec = ExecutionContext.fromExecutorService(sched)
+
+    val vfs: VirtualFileSystem = new CumuloNFS(fs, ec)
+
+    val nfsSvc = new OncRpcSvcBuilder().
+      withPort(2049).
+      withTCP.
+      withAutoPublish.
+      withWorkerThreadIoStrategy.
+      build
+
+    val exportFile = new ExportFile(new StringReader(exports))
+
+    val nfs4 = new NFSServerV41.Builder().
+      withExportFile(exportFile).
+      withVfs(vfs).
+      withOperationFactory(new MDSOperationFactory).
+      build
+
+    val nfs3 = new NfsServerV3(exportFile, vfs)
+    val mountd = new MountServer(exportFile, vfs)
+
+    //val portmapSvc = new OncRpcEmbeddedPortmap()
+
+    nfsSvc.register(new OncRpcProgram(mount_prot.MOUNT_PROGRAM, mount_prot.MOUNT_V3), mountd)
+    nfsSvc.register(new OncRpcProgram(nfs3_prot.NFS_PROGRAM, nfs3_prot.NFS_V3), nfs3)
+    nfsSvc.register(new OncRpcProgram(nfs4_prot.NFS4_PROGRAM, nfs4_prot.NFS_V4), nfs4)
+    nfsSvc.start()
+
+    println("Server started...")
+    Thread.currentThread.join()
   }
   
   def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {

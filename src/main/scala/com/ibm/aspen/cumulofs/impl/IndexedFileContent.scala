@@ -104,7 +104,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
     fs.getDataTableNodeAllocater(tier).flatMap { allocater =>
       allocater.allocateDataObject(allocObj, allocRev, content).map { p =>
-        tx.note(s"IndexedFileContent - Allocating new index node ${p.uuid}")
+        tx.note(s"IndexedFileContent - Allocating new index node ${p.uuid} for tier $tier")
         p
       }
     }
@@ -471,6 +471,8 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
          val beginObjectOffset = if (offset < segmentSize) 0 else offset - (offset.asInstanceOf[Int] % segmentSize) 
          
          def entryContains(d: DownPointer, tgtOffset: Long): Boolean = tgtOffset >= d.offset && tgtOffset < d.offset + segmentSize
+
+         val rootNode = headPath.last
          
          if (entries.isEmpty) {
            // pure allocation within a hole in the file
@@ -479,7 +481,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
            
            for {
              allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, allocBuffers, Nil))
-             (newRoot, updatedNodes) <- headPath.head.insert(logger, allocated.map(t => t._1))
+             (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
            } yield {
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
              WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
@@ -509,7 +511,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
            
            for {
              allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, alloc, Nil))
-             (newRoot, updatedNodes) <- headPath.head.insert(logger, allocated.map(t => t._1))
+             (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
            } yield {
              val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, entries.head._1.offset, remaining, entries)
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
@@ -792,11 +794,13 @@ object IndexedFileContent {
           // Allocate new root
           logger.trace("Allocating new index root")
           val oldRoot = updatedNodes.head
+
+          val newTier = oldRoot.tier + 1
           
-          val content = getEncodedNodeContent(oldRoot.tier + 1, new DownPointer(oldRoot.startOffset, oldRoot.pointer) :: adds)
+          val content = getEncodedNodeContent(newTier, new DownPointer(oldRoot.startOffset, oldRoot.pointer) :: adds)
           
-          oldRoot.index.allocateIndexNode(oldRoot.pointer, oldRoot.revision, tier=0, content=content).map { newPointer =>
-            tx.note(s"IndexedFileContent - allocating new index root node ${newPointer.uuid} tier 0")
+          oldRoot.index.allocateIndexNode(oldRoot.pointer, oldRoot.revision, tier=newTier, content=content).map { newPointer =>
+            tx.note(s"IndexedFileContent - allocating new index root node ${newPointer.uuid} tier $newTier")
             val newRoot = IndexNode(newPointer, ObjectRevision(tx.uuid), content, oldRoot.index)
             (newRoot, newRoot :: updatedNodes)
           }
@@ -986,18 +990,17 @@ object IndexedFileContent {
       val endOffset = offset + nbytes
       
       def rgetMore(headPath: List[IndexNode], node: IndexNode, lst: List[(DownPointer, IndexNode)]): Future[(List[IndexNode], List[(DownPointer, IndexNode)])] = {
-        val updated = node.entries.foldLeft(lst)( (l, e) => if (e.offset >= seekOffset && e.offset < endOffset) (e, this) :: l else l )
-        val done = node.endOffset match {
-          case None => true
-          case Some(nodeEnd) => nodeEnd >= endOffset
-        }
-        if (done) 
-          Future.successful((headPath, updated.reverse)) 
-        else {
-          node.endOffset match {
-            case Some(nodeEnd) => seek(nodeEnd).flatMap(right => rgetMore(headPath, right.head, updated))
-            case None => getTail().flatMap(right => rgetMore(headPath, right.head, updated))
-          }
+        val updated = node.entries.foldLeft(lst)( (l, e) => if (e.offset >= seekOffset && e.offset < endOffset) (e, node) :: l else l )
+
+        node.endOffset match {
+          case None =>
+            Future.successful((headPath, updated.reverse))
+
+          case Some(nodeEnd) =>
+            if (nodeEnd >= endOffset)
+              Future.successful((headPath, updated.reverse))
+            else
+              seek(nodeEnd).flatMap(right => rgetMore(headPath, right.head, updated))
         }
       }
       
@@ -1010,15 +1013,18 @@ object IndexedFileContent {
 
       f
     }
-     
+
+    /** MUST be called only from the root node */
     def insert(logger: Logger, newEntry: DownPointer)(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
       seek(newEntry.offset).flatMap(path => rupdate(logger, List(newEntry), path, path.head, Nil))
     }
-    
+
+    /** MUST be called only from the root node */
     def insert(logger: Logger, newEntries: List[DownPointer])(implicit tx: Transaction, ec: ExecutionContext): Future[(IndexNode, List[IndexNode])] = {
       seek(newEntries.head.offset).flatMap(path => rupdate(logger, newEntries, path, path.head, Nil))
     }
-    
+
+    /** MUST be called only from the root node */
     def truncate(endOffset: Long)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
       seek(endOffset).flatMap(path => prepareTruncation(endOffset, path))
     }

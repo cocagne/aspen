@@ -42,6 +42,7 @@ lazy val root = (project in file(".")).
       "org.apache.logging.log4j"         %  "log4j-api"               % "2.11.0",
       "org.apache.logging.log4j"         %  "log4j-core"              % "2.11.0",
       "org.apache.logging.log4j"         %% "log4j-api-scala"         % "11.0",
+      "org.slf4j"                        %  "slf4j-log4j12"           % "1.8.0-beta2",
       "com.fasterxml.jackson.core"       %  "jackson-core"            % "2.9.4",
       "com.fasterxml.jackson.core"       %  "jackson-databind"        % "2.9.4",
       "com.fasterxml.jackson.dataformat" %  "jackson-dataformat-yaml" % "2.9.4",

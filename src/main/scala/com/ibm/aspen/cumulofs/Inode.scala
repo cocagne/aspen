@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets
 
 import com.ibm.aspen.base.tieredlist.TieredKeyValueListRoot
 import com.ibm.aspen.util.Varint
+import org.apache.logging.log4j.scala.Logging
 
 object Inode {
 
@@ -97,10 +98,10 @@ sealed abstract class Inode(val inodeNumber: Long,
 
 object DirectoryInode {
 
-  def init(mode: Int, uid: Int, gid: Int, parentDirectory: Option[DirectoryPointer]): DirectoryInode = {
+  def init(mode: Int, uid: Int, gid: Int, parentDirectory: Option[DirectoryPointer], oinodeNumber: Option[Long]=None): DirectoryInode = {
     val now = Timespec.now
     val correctedMode = FileType.ensureModeFileType(mode, FileType.Directory)
-    new DirectoryInode(0, correctedMode, uid, gid, 1, now, now, now, None, parentDirectory, None)
+    new DirectoryInode(oinodeNumber.getOrElse(0), correctedMode, uid, gid, 1, now, now, now, None, parentDirectory, None)
   }
 
   def apply(content: DataBuffer): DirectoryInode = {
@@ -187,7 +188,9 @@ class FileInode(inodeNumber: Long,
                 oxattrs: Option[KeyValueObjectPointer],
                 val size: Long,
                 val ocontents: Option[DataObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
-  ctime, mtime, atime, oxattrs) {
+  ctime, mtime, atime, oxattrs) with Logging {
+
+  logger.info(s"Created FileInode with ocontents ${ocontents.map(dp => dp.uuid)}")
 
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,

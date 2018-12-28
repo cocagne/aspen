@@ -143,7 +143,7 @@ object FileSystem {
     
     import FileMode._
     
-    val rootDirMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH  
+    val rootDirMode = S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH
 
     val rootInode = DirectoryInode.init(rootDirMode, 0, 0, None)
     

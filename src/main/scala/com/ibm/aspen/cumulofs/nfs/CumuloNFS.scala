@@ -50,10 +50,12 @@ class CumuloNFS(val fs: FileSystem,
 
   private[this] val fileHandles: LoadingCache[Long, NFSFileHandle] = Scaffeine().
     maximumSize(fileHandleCacheMax).
-    build[Long, NFSFileHandle](inode => {load(inode) match {
-    case f: NFSFile => new NFSFileHandle(new SimpleFileHandle(f.file, writeBufferSize))
-    case _ => throw new NotSuppException("Cannot open non-regular file")
-  }})
+    build[Long, NFSFileHandle]((inode: Long) => {
+      load(inode) match {
+      case f: NFSFile => new NFSFileHandle(new SimpleFileHandle(f.file, writeBufferSize))
+      case _ => throw new NotSuppException("Cannot open non-regular file")
+    }
+  })
 
   private def getFileHandle(inode: Inode): NFSFileHandle = fileHandles.get(inode)
 
@@ -127,6 +129,7 @@ class CumuloNFS(val fs: FileSystem,
     */
   @throws[IOException]
   def create(parent: Inode, `type`: Stat.Type, name: String, subject: Subject, mode: Int): Inode = {
+    logger.info("Didnt screw this up did I?")
     logger.info(s"Create ${`type`} $name in directory ${inode2long(parent)}")
 
     val dir = getDirectory(parent)
@@ -191,10 +194,14 @@ class CumuloNFS(val fs: FileSystem,
     */
   @throws[IOException]
   def lookup(parent: Inode, name: String): Inode = {
-    logger.info(s"lookup $parent $name")
+    logger.info(s"lookup ${inode2long(parent)} $name")
     getDirectory(parent).getEntry(name) match {
       case Some(iptr) => iptr.number
-      case None => throw new NoEntException(s"No such file $name")
+      case None =>
+        val d = getDirectory(parent)
+        val mm = Stat.S_IFDIR | 0x1ff
+        logger.info(s"   lookup throwing NoEntException. Known good mode: ${mm.toOctalString}. Actual: ${d.nfsStat.getMode().toOctalString}")
+        throw new NoEntException(s"No such file $name")
     }
   }
 
@@ -245,6 +252,8 @@ class CumuloNFS(val fs: FileSystem,
     logger.info(s"List directory ${inode2long(inode)}")
 
     val dir = getDirectory(inode)
+
+    logger.info(s"Directory stats: ${dir.nfsStat}")
 
     val entries = dir.getContents().zipWithIndex.map { t =>
       val (cumulofs.DirectoryEntry(name, iptr), cookie) = t
@@ -495,7 +504,15 @@ class CumuloNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def getattr(inode: Inode): Stat = load(inode).nfsStat
+  def getattr(inode: Inode): Stat = {
+    val stat = load(inode).nfsStat
+
+    if (inode2long(inode) == 1)
+      stat.setMode(stat.getMode() | FileMode.S_IRWXO)
+    
+    logger.info(s"getattr ${inode2long(inode)}: $stat")
+    stat
+  }
 
   /**
     * Set/update file system object's attributes.
