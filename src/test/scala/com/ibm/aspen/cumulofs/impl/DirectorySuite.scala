@@ -5,12 +5,19 @@ import java.nio.charset.StandardCharsets
 import com.ibm.aspen.base.{TestSystemSuite, Transaction}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRevision}
 import com.ibm.aspen.core.read.InvalidObject
-import com.ibm.aspen.cumulofs.{FileMode, Timespec}
+import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 
 import scala.concurrent._
 
 class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
+
+  def cdir(dir: Directory, name: String, mode: Int, uid: Int, gid: Int): Future[DirectoryPointer] = {
+    implicit val tx: Transaction = dir.fs.system.newTransaction()
+    val fprep = dir.prepareCreateDirectory(name, mode, uid, gid)
+    fprep.foreach(_ => tx.commit())
+    fprep.flatMap(fresult => fresult)
+  }
   
   test("CumuloFS Bootstrap") {
      for {
@@ -27,7 +34,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
        (newInode, _) <- newDir.getInode()
        newContent <- rootDir.getContents()
@@ -45,7 +52,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
        _ <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDirPointer <- cdir(rootDir,"foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
        origUID = newDir.uid
        _ <- newDir.setUID(5)
@@ -68,7 +75,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+      newDirPointer <- cdir(rootDir,"foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
       (_, revision) <- newDir.getInode()
       origUID = newDir.uid
@@ -93,7 +100,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+      newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
       newDir <- fs.loadDirectory(newDirPointer)
       fu = newDir.setUID(u)
       fg = newDir.setGID(g)
@@ -118,9 +125,9 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
-       _ <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
+       _ <- cdir(newDir, "bar", mode=0, uid=1, gid=2)
        dc <- newDir.getContents()
        if dc.length == 1
        _ <- recoverToSucceededIf[DirectoryNotEmpty](rootDir.delete("foo"))
@@ -134,7 +141,7 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        _ <- rootDir.delete("foo")       
        _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
      } yield {
@@ -147,9 +154,9 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
        initialContent <- rootDir.getContents()
-       newDirPointer <- rootDir.createDirectory("foo", mode=0, uid=1, gid=2)
+       newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
-       newInode <- newDir.createDirectory("bar", mode=0, uid=1, gid=2)
+       newInode <- cdir(newDir, "bar", mode=0, uid=1, gid=2)
        dc <- newDir.getContents()
        if dc.length == 1
        _ <- newDir.delete("bar")       
@@ -166,7 +173,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createSymlink("foo", mode=0, uid=1, gid=2, link="bar")
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateSymlink("foo", mode=0, uid=1, gid=2, link="bar")
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       sl1 <- fs.loadSymlink(sptr)
       origSize = sl1.size
       origLink = sl1.symLinkAsString
@@ -187,7 +199,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createUnixSocket("foo", mode=0, uid=1, gid=2)
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateUnixSocket("foo", mode=0, uid=1, gid=2)
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       us <- fs.loadUnixSocket(sptr)
     } yield {
       us.uid should be (1)
@@ -199,7 +216,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createFIFO("foo", mode=0, uid=1, gid=2)
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateFIFO("foo", mode=0, uid=1, gid=2)
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       us <- fs.loadFIFO(sptr)
     } yield {
       us.uid should be (1)
@@ -211,7 +233,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createCharacterDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateCharacterDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       us <- fs.loadCharacterDevice(sptr)
     } yield {
       us.uid should be (1)
@@ -224,7 +251,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       us <- fs.loadBlockDevice(sptr)
     } yield {
       us.uid should be (1)
@@ -237,7 +269,12 @@ class DirectorySuite extends TestSystemSuite with CumuloFSBootstrap {
       fs <- bootstrap()
       rootDir <- fs.loadRoot()
       _ <- rootDir.getContents()
-      sptr <- rootDir.createBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+      sptr <- {
+        implicit val tx: Transaction = rootDir.fs.system.newTransaction()
+        val fprep = rootDir.prepareCreateBlockDevice("foo", mode=0, uid=1, gid=2, rdev=10)
+        fprep.foreach(_ => tx.commit())
+        fprep.flatMap(fresult => fresult)
+      }
       us <- fs.loadBlockDevice(sptr)
       _ <- rootDir.hardLink("bar", us)
       us2 <- fs.loadBlockDevice(sptr)

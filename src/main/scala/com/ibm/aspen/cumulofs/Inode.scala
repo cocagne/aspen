@@ -190,7 +190,7 @@ class FileInode(inodeNumber: Long,
                 val ocontents: Option[DataObjectPointer]) extends Inode(inodeNumber, mode, uid, gid, links,
   ctime, mtime, atime, oxattrs) with Logging {
 
-  logger.info(s"Created FileInode with ocontents ${ocontents.map(dp => dp.uuid)}")
+  //logger.info(s"Created FileInode with ocontents ${ocontents.map(dp => dp.uuid)}")
 
   override def update(mode: Option[Int] = None, uid: Option[Int] = None, gid: Option[Int] = None,
                       links: Option[Int] = None, ctime: Option[Timespec] = None, mtime: Option[Timespec] = None,

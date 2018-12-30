@@ -85,13 +85,25 @@ abstract class SteppedDurableTask(
   
   def completeTask(tx: Transaction, result: Option[AnyRef]=None): Unit = synchronized {
     val idleTask = new Array[Byte](16) // Zeroed Type UUID
-    
-    val resetOps = Insert(DurableTask.TaskTypeKey, idleTask) :: currentState.toList.filter(t => t._1 != DurableTask.TaskTypeKey).map(t => Delete(t._1)) 
-    
+
+    val resetOps = Insert(DurableTask.TaskTypeKey, idleTask) :: currentState.toList.filter(t => t._1 != DurableTask.TaskTypeKey).map(t => Delete(t._1))
+
     tx.update(taskPointer.kvPointer, Some(currentRevision), Nil, resetOps)
-    
-    tx.result foreach { _ => synchronized { 
+
+    tx.result foreach { _ => synchronized {
       taskPromise.success((tx.txRevision, result))
+    }}
+  }
+
+  def failTask(tx: Transaction, error: Throwable): Unit = synchronized {
+    val idleTask = new Array[Byte](16) // Zeroed Type UUID
+
+    val resetOps = Insert(DurableTask.TaskTypeKey, idleTask) :: currentState.toList.filter(t => t._1 != DurableTask.TaskTypeKey).map(t => Delete(t._1))
+
+    tx.update(taskPointer.kvPointer, Some(currentRevision), Nil, resetOps)
+
+    tx.result foreach { _ => synchronized {
+      taskPromise.failure(error)
     }}
   }
 }

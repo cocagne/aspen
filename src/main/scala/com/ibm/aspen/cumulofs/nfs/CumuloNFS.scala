@@ -129,7 +129,6 @@ class CumuloNFS(val fs: FileSystem,
     */
   @throws[IOException]
   def create(parent: Inode, `type`: Stat.Type, name: String, subject: Subject, mode: Int): Inode = {
-    logger.info("Didnt screw this up did I?")
     logger.info(s"Create ${`type`} $name in directory ${inode2long(parent)}")
 
     val dir = getDirectory(parent)
@@ -509,7 +508,7 @@ class CumuloNFS(val fs: FileSystem,
 
     if (inode2long(inode) == 1)
       stat.setMode(stat.getMode() | FileMode.S_IRWXO)
-    
+
     logger.info(s"getattr ${inode2long(inode)}: $stat")
     stat
   }

@@ -8,6 +8,7 @@ import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
 import com.ibm.aspen.core.objects.{DataObjectState, ObjectRevision}
 import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.util._
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -83,7 +84,7 @@ class DeleteFileTask private (
     pointer: DurableTaskPointer, 
     revision: ObjectRevision, 
     initialState: Map[Key, Value])(implicit ec: ExecutionContext)
-       extends SteppedDurableTask(pointer, system, revision, initialState) {
+       extends SteppedDurableTask(pointer, system, revision, initialState) with Logging {
   
   import DeleteFileTask._
   
@@ -96,6 +97,8 @@ class DeleteFileTask private (
     val fs = FileSystem.getRegisteredFileSystem(byte2uuid(state(FileSystemUUIDKey))).get
     
     val iptr = InodePointer(state(InodePointerKey))
+
+    logger.info(s"DeleteFileTask - Deleting file ${iptr.number} : ${iptr.uuid}")
     
     def destroyInode(dos: DataObjectState): Future[Unit] = {
       implicit val tx: Transaction = system.newTransaction()
@@ -114,6 +117,11 @@ class DeleteFileTask private (
       system.transactUntilSuccessful { tx =>
         tx.note("DeleteFileTask - marking task complete")
         completeTask(tx)
+
+        tx.result.foreach { _ =>
+          logger.info(s"DeleteFileTask - Finished deleting file ${iptr.number} : ${iptr.uuid}")
+        }
+
         Future.unit
       }
     }

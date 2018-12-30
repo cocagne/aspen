@@ -312,6 +312,8 @@ class FuseInterface(
   }
   
   override def mknod(request: MknodRequest, response: Response[DirEntryReply]): Unit = {
+    response.error(LinuxAPI.EINVAL)
+    /*
     fs.lookup(request.inode) onComplete {
       case Failure(cause) =>
         println(s"mknod failure $cause")
@@ -319,8 +321,10 @@ class FuseInterface(
       
       case Success(Some(dir: Directory)) =>
         import FileMode._
-        
-        val r = (request.mode & S_IFMT) match {
+
+        implicit val tx = fs.system.newTransaction()
+
+        val r = request.mode & S_IFMT match {
           case S_IFSOCK => Some(dir.createUnixSocket(request.name, request.mode, request.uid, request.gid))
           case S_IFLNK  => Some(dir.createSymlink(request.name, request.mode, request.uid, request.gid, ""))
           case S_IFREG  => Some(dir.createFile(request.name, request.mode, request.uid, request.gid))
@@ -330,6 +334,8 @@ class FuseInterface(
           case S_IFFIFO => Some(dir.createFIFO(request.name, request.mode, request.uid, request.gid))
           case _        => None
         }
+
+        tx.commit()
         
         r match {
           case None => response.error(LinuxAPI.EINVAL)
@@ -356,9 +362,12 @@ class FuseInterface(
       case Success(f) =>
         response.error(LinuxAPI.EINVAL)
     }
+    */
   }
   
   override def mkdir(request: MkdirRequest, response: Response[DirEntryReply]): Unit = {
+    response.error(LinuxAPI.EINVAL)
+    /*
     fs.lookup(request.inode) onComplete {
       case Failure(cause) =>
         println(s"mkdir failure $cause")
@@ -389,6 +398,7 @@ class FuseInterface(
         println(s"mkdir failure2 $f")
         response.error(LinuxAPI.EINVAL)
     }
+    */
   }
   
   override def rename(request: RenameRequest, response: Response[ErrorOnly]): Unit = {

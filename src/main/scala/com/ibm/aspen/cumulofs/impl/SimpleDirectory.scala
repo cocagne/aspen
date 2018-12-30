@@ -2,8 +2,10 @@ package com.ibm.aspen.cumulofs.impl
 
 import com.ibm.aspen.base.tieredlist.{MutableTieredKeyValueList, TieredKeyValueListNodeAllocaterFactory, TieredKeyValueListRoot}
 import com.ibm.aspen.base.{ObjectAllocater, Transaction}
+import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.keyvalue.{Key, LexicalKeyOrdering, Value}
 import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectRevision}
+import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.SimpleSet
@@ -11,6 +13,9 @@ import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.SimpleSet
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object SimpleDirectory {
+
+  private val RequireDoesNotExist = Some((KeyValueUpdate.TimestampRequirement.DoesNotExist, HLCTimestamp.now))
+  private val RequireExists = Some((KeyValueUpdate.TimestampRequirement.Exists, HLCTimestamp.now))
 
   case class SetParentDirectory(newParent: Option[DirectoryPointer]) extends SimpleSet {
     def update(inode: Inode): Inode = inode.asInstanceOf[DirectoryInode].setParentDirectory(newParent)
@@ -135,9 +140,14 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     for {
       tl <- tree
       kvos <- fkvos
-      _ = if (incref) tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
+      target <- fs.lookup(pointer)
+      _ = if (incref) {
+        tx.note(s"Increfing link count on $name:${pointer.uuid}")
+        tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
+        target.prepareHardLink()
+      }
       _=tx.note(s"Inserting $name:${pointer.uuid} into directory ${this.pointer.uuid}")
-      _ <- tl.preparePut(name, pointer.toArray)
+      _ <- tl.preparePut(name, pointer.toArray, RequireDoesNotExist)
     } yield ()
   }
   
@@ -145,7 +155,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     for {
       tl <- tree
       _=tx.note(s"Renaming $oldName to $newName in directory ${this.pointer.uuid}")
-      _ <- tl.prepareRename(oldName: String, newName: String)
+      _ <- tl.prepareRename(oldName, newName, oldKeyRequirement = None, newKeyRequirement = RequireDoesNotExist)
     } yield ()
   }
   
@@ -167,7 +177,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
       
       case Some(inodePtr) =>
 
-        val fdelEntryPrep = tl.prepareDelete(name)
+        val fdelEntryPrep = tl.prepareDelete(name, RequireExists)
         
         if (decref) {
           val ftaskPrep = DeleteFileTask.prepare(fs, inodePtr)

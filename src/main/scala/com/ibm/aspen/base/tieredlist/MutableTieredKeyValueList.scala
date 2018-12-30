@@ -7,6 +7,7 @@ import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.objects.KeyValueObjectState
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
 import com.ibm.aspen.core.transaction.KeyValueUpdate
+import com.ibm.aspen.core.transaction.KeyValueUpdate.TimestampRequirement
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -58,24 +59,31 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
     fetchContainingNode(key, 0).map(kvos => new MutableTieredKeyValueListNode(system, this, kvos))
   }
   
-  def preparePut(key: Key, value: Array[Byte])(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
-    node <- fetchMutableNode(key) 
-    _ <- node.prepreUpdateTransaction(List((key,value)), Nil, Nil)
+  def preparePut(key: Key, value: Array[Byte], keyRequirement: Option[(KeyValueUpdate.TimestampRequirement.Value, HLCTimestamp)] = None)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
+    node <- fetchMutableNode(key)
+    reqs = keyRequirement.map(t => KeyValueUpdate.KVRequirement(key, t._2, t._1) :: Nil).getOrElse(List())
+    _ <- node.prepreUpdateTransaction(List((key,value)), Nil, reqs)
   } yield {
     tx.note(s"Inserting $key into TKVL")
   }
   
-  def prepareDelete(key: Key)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
-    node <- fetchMutableNode(key) 
-    _ <- node.prepreUpdateTransaction(Nil, List(key), Nil)
+  def prepareDelete(key: Key, keyRequirement: Option[(KeyValueUpdate.TimestampRequirement.Value, HLCTimestamp)] = None)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = for {
+    node <- fetchMutableNode(key)
+    reqs = keyRequirement.map(t => KeyValueUpdate.KVRequirement(key, t._2, t._1) :: Nil).getOrElse(List())
+    _ <- node.prepreUpdateTransaction(Nil, List(key), reqs)
   } yield {
     tx.note(s"Deleting $key from TKVL")
   }
   
-  def prepareRename(oldKey: Key, newKey: Key)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = {
+  def prepareRename(oldKey: Key, newKey: Key,
+                    oldKeyRequirement: Option[(KeyValueUpdate.TimestampRequirement.Value, HLCTimestamp)] = None,
+                    newKeyRequirement: Option[(KeyValueUpdate.TimestampRequirement.Value, HLCTimestamp)] = None)(implicit ec: ExecutionContext, tx: Transaction): Future[Unit] = {
     val fold = fetchMutableNode(oldKey)
     val fnew = fetchMutableNode(newKey)
-    
+
+    val oldReqs = oldKeyRequirement.map(t => KeyValueUpdate.KVRequirement(oldKey, t._2, t._1) :: Nil).getOrElse(List())
+    val newReqs = newKeyRequirement.map(t => KeyValueUpdate.KVRequirement(oldKey, t._2, t._1) :: Nil).getOrElse(List())
+
     def prepareUpdate(oldNode: MutableTieredKeyValueListNode, newNode: MutableTieredKeyValueListNode): Future[Unit] = {
       oldNode.kvos.contents.get(oldKey) match {
         case None => Future.failed(new KeyDoesNotExist(oldKey))
@@ -84,10 +92,10 @@ class MutableTieredKeyValueList(val rootManager: TieredKeyValueListMutableRootMa
           val reqs = List(KeyValueUpdate.KVRequirement(oldKey, HLCTimestamp(0), KeyValueUpdate.TimestampRequirement.Exists))
           
           if (oldNode.kvos.pointer.uuid == newNode.kvos.pointer.uuid) {
-            oldNode.prepreUpdateTransaction(List((newKey, v.value)), List(oldKey), reqs).map(_=>())
+            oldNode.prepreUpdateTransaction(List((newKey, v.value)), List(oldKey), reqs ++ oldReqs ++ newReqs).map(_=>())
           } else {
-            val fo = oldNode.prepreUpdateTransaction(Nil, List(oldKey), reqs)
-            val fn = newNode.prepreUpdateTransaction(List((newKey,v.value)), Nil, Nil)
+            val fo = oldNode.prepreUpdateTransaction(Nil, List(oldKey), reqs ++ oldReqs)
+            val fn = newNode.prepreUpdateTransaction(List((newKey,v.value)), Nil, newReqs)
             Future.sequence(List(fo, fn)).map(_=>())
           }    
       }

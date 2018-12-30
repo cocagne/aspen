@@ -53,45 +53,45 @@ trait Directory extends BaseFile {
    */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
-  def createDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[DirectoryPointer] = {
+  def prepareCreateDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[DirectoryPointer]] = {
     val newInode = DirectoryInode.init(mode, uid, gid, Some(pointer))
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[DirectoryPointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[DirectoryPointer]])
   }
   
-  def createFile(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FilePointer] = {
+  def prepareCreateFile(name: String, mode: Int, uid: Int, gid: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[FilePointer]] = {
     val newInode = FileInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[FilePointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[FilePointer]])
   }
 
-  def createSymlink(name: String, mode: Int, uid: Int, gid: Int, link: String)(implicit ec: ExecutionContext): Future[SymlinkPointer] = {
+  def prepareCreateSymlink(name: String, mode: Int, uid: Int, gid: Int, link: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[SymlinkPointer]] = {
     val newInode = SymlinkInode.init(mode, uid, gid, link)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[SymlinkPointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[SymlinkPointer]])
   }
   
-  def createUnixSocket(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[UnixSocketPointer] = {
+  def prepareCreateUnixSocket(name: String, mode: Int, uid: Int, gid: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[UnixSocketPointer]] = {
     val newInode = UnixSocketInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[UnixSocketPointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[UnixSocketPointer]])
   }
   
-  def createFIFO(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FIFOPointer] = {
+  def prepareCreateFIFO(name: String, mode: Int, uid: Int, gid: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[FIFOPointer]] = {
     val newInode = FIFOInode.init(mode, uid, gid)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[FIFOPointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[FIFOPointer]])
   }
   
-  def createCharacterDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[CharacterDevicePointer] = {
+  def prepareCreateCharacterDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[CharacterDevicePointer]] = {
     val newInode = CharacterDeviceInode.init(mode, uid, gid, rdev)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[CharacterDevicePointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[CharacterDevicePointer]])
   }
   
-  def createBlockDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[BlockDevicePointer] = {
+  def prepareCreateBlockDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[BlockDevicePointer]] = {
     val newInode = BlockDeviceInode.init(mode, uid, gid, rdev)
     
-    CreateFileTask.execute(fs, pointer, name, newInode).map(_.asInstanceOf[BlockDevicePointer])
+    CreateFileTask.prepareFileCreation(fs, pointer, name, newInode).map(_.asInstanceOf[Future[BlockDevicePointer]])
   }
 }

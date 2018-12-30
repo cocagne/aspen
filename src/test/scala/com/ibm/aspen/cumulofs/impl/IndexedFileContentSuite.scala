@@ -14,7 +14,13 @@ class IndexedFileContentSuite extends TestSystemSuite with CumuloFSBootstrap {
 
     rootDir <- fs.loadRoot()
 
-    newFilePointer <- rootDir.createFile("foo", mode=0, uid=1, gid=2)
+    tx = fs.system.newTransaction()
+
+    fdir <- rootDir.prepareCreateFile("foo", mode=0, uid=1, gid=2)(tx, executionContext)
+
+    _=tx.commit()
+
+    newFilePointer <- fdir
 
     (newInode, revision) <- fs.inodeLoader.load(newFilePointer)
   } yield {

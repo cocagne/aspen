@@ -13,7 +13,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object RemoteFuseTest {
   implicit val ec : ExecutionContext = ExecutionContext.Implicits.global
-  
+  /*
   def bootstrap(sys: BasicAspenSystem, numIndexNodeSegments: Int = 5, fileSegmentSize:Int=4096): Future[FileSystem] = {
     implicit val tx: Transaction = sys.newTransaction()
     
@@ -79,4 +79,5 @@ object RemoteFuseTest {
 
     Thread.sleep(30000)
   }
+  */
 }
