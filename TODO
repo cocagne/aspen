@@ -1,27 +1,16 @@
 
-NFS Mount: umount -f /mnt; mount -v -t nfs4 -o "vers=4.1" 192.168.56.1:/ /mnt
 
-IndexedFileContent
-  - Write fails during big file write
-  - Looks like writeToTail is locking up after allocation of new index root. Continual loop of
-    read inode, read old-root
-  - This pattern would be seen if the new root were not written to the inode.
-      - endOffset would be set so isTail would be false. That'd continually cause a re-read during tail load
-      *** Verify the inode isn't cached or that the cache
-      *** Could print the UUID of the index root to see if it matches the new or old index root as truth test
 
+* SimpleFileHandle
+   - Extend buffer to match beginning of write in addition to tail
+   - deque instead of list for buffers
 
 * CumuloFS: Update directory insert/create operations to FAIL if the name already exists
    - On Tx failure, we'll have to lookup before retrying the op
    - Throw DirectoryEntryAlreadyExists if post-fail lookup succeeds
 
-* Hunt down Fuse bug that's causing buffered DataBuffers passed to the FileHandle.write() to be overwritten
-  while those buffers are queued for sending out.
-    -> Seems to be a wrap-around problem
 
 ** Need to fix Opportunistic Rebuild
-
-
 
 sbt "test:testOnly *KeyValueListSuite"
 
@@ -38,6 +27,9 @@ Bootstrap Procedure:
 
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a
+
+  On client:
+    umount -f /mnt; mount -v -t nfs4 -o "vers=4.1" 192.168.56.1:/ /mnt
 
 
 Pre sbt-pack demo launch script:
@@ -72,6 +64,10 @@ CumuloFS
       * Even with write-back, files can be opened w/ DirectIO
 
 ----------------------------------
+
+* Hunt down Fuse bug that's causing buffered DataBuffers passed to the FileHandle.write() to be overwritten
+  while those buffers are queued for sending out.
+    -> Seems to be a wrap-around problem
 
 Allocating into TKVL *may* not be possible. Need to handle all cases in which a key doesn't exist, is deleted,
 and is migrated. Could be tricky to guarantee forced failure in all situations.
