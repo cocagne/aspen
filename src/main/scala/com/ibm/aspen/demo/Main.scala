@@ -12,9 +12,9 @@ import com.ibm.aspen.core.ida.{ReedSolomon, Replication}
 import com.ibm.aspen.core.objects.keyvalue.{Insert, Key}
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.cumulofs.FileSystem
-import com.ibm.aspen.cumulofs.impl.{CumuloFSTypeRegistry, FuseInterface, SimpleFileSystem}
-import com.ibm.aspen.cumulofs.nfs.CumuloNFS
+import com.ibm.aspen.amorfs.FileSystem
+import com.ibm.aspen.amorfs.impl.{AmorfsTypeRegistry, FuseInterface, SimpleFileSystem}
+import com.ibm.aspen.amorfs.nfs.AmorfsNFS
 import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
 import org.dcache.nfs.ExportFile
 import org.dcache.nfs.v3.xdr.{mount_prot, nfs3_prot}
@@ -30,29 +30,29 @@ import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object Main {
 
-  val CumuloFSKey = Key("cumulofs")
-  
+  val AmorfsKey = Key("amorfs")
+
   case class Args(mode:String="",
                   configFile:File=null,
                   log4jConfigFile: File=null,
                   nodeName:String="",
                   host:String="",
                   port:Int=0)
- 
+
   class ConfigError(msg: String) extends Exception(msg)
-  
+
   def setLog4jConfigFile(f: File): Unit = {
     //System.setProperty("log4j2.debug", "true")
-    
+
     // Set all loggers to Asynchronous Logging
     System.setProperty("log4j2.contextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector")
     System.setProperty("log4j2.configurationFile", s"file:${f.getAbsolutePath}")
   }
-  
-  def main(args: Array[String]) {    
+
+  def main(args: Array[String]) {
     val parser = new scopt.OptionParser[Args]("demo") {
       head("demo", "0.1")
-      
+
       cmd("bootstrap").text("Bootstrap a new Aspen system").
         action( (_,c) => c.copy(mode="bootstrap")).
         children(
@@ -60,35 +60,35 @@ object Main {
               action( (x, c) => c.copy(configFile=x)).
               validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x"))
         )
-        
+
       cmd("node").text("Starts an Aspen Storage Node").
         action( (_,c) => c.copy(mode="node")).
         children(
             arg[File]("<config-file>").text("Configuration File").
               action( (x, c) => c.copy(configFile=x)).
               validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
-            
+
             arg[String]("<node-name>").text("Storage Node Name").action((x,c) => c.copy(nodeName=x))
         )
-        
-      cmd("cumulofs").text("Launches a CumuloFS server").
-        action( (_,c) => c.copy(mode="cumulofs")).
+
+      cmd("amorfs").text("Launches a Amorfs server").
+        action( (_,c) => c.copy(mode="amorfs")).
         children(
             arg[File]("<config-file>").text("Aspen Configuration File").
               action( (x, c) => c.copy(configFile=x)).
               validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
-              
+
             arg[File]("<log4j-config-file>").text("Log4j Configuration File").
               action( (x, c) => c.copy(log4jConfigFile=x)).
               validate( x => if (x.exists()) success else failure(s"Log4j Config file does not exist: $x")),
-              
+
             arg[String]("<host>").text("Storage Node Name").action((x,c) => c.copy(host=x)),
-            
+
             arg[Int]("<port>").text("Storage Node Name").action((x,c) => c.copy(port=x))
         )
 
-      cmd("cumulofs-nfs").text("Launches a CumuloFS NFS server").
-        action( (_,c) => c.copy(mode="cumulofs-nfs")).
+      cmd("amorfs-nfs").text("Launches a Amorfs NFS server").
+        action( (_,c) => c.copy(mode="amorfs-nfs")).
         children(
           arg[File]("<config-file>").text("Aspen Configuration File").
             action( (x, c) => c.copy(configFile=x)).
@@ -98,17 +98,17 @@ object Main {
             action( (x, c) => c.copy(log4jConfigFile=x)).
             validate( x => if (x.exists()) success else failure(s"Log4j Config file does not exist: $x")),
         )
-        
+
        cmd("rebuild").text("Rebuilds a store").
          action( (_,c) => c.copy(mode="rebuild")).
         children(
             arg[File]("<config-file>").text("Configuration File").
               action( (x, c) => c.copy(configFile=x)).
               validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
-            
+
             arg[String]("<store-name>").text("Data Store Name. Format is \"pool-name:storeNumber\"").
               action((x,c) => c.copy(nodeName=x)).
-              validate { x => 
+              validate { x =>
                 val arr = x.split(":")
                 if (arr.length == 2) {
                   try {
@@ -121,10 +121,10 @@ object Main {
                 else failure("Store name must match the format \"pool-name:storeNumber\"")
               }
        )
-        
+
       checkConfig( c => if (c.mode == "") failure("Invalid command") else success )
     }
-    
+
     parser.parse(args, Args()) match {
       case Some(cfg) =>
        //
@@ -135,8 +135,8 @@ object Main {
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
-            case "cumulofs" => cumulofs(cfg.log4jConfigFile, config)
-            case "cumulofs-nfs" => cumulofs_nfs(cfg.log4jConfigFile, config)
+            case "amorfs" => amorfs_fuse(cfg.log4jConfigFile, config)
+            case "amorfs-nfs" => amorfs_nfs(cfg.log4jConfigFile, config)
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
@@ -146,20 +146,20 @@ object Main {
       case None =>
     }
   }
-  
+
   def createSystem(cfg: ConfigFile.Config, onnet: Option[NettyNetwork]=None): BasicAspenSystem = {
     val radiclePointer = cfg.oradicle.getOrElse(throw new ConfigError("Radicle Pointer is missing from the config file!"))
-    
+
     val bootstrapPoolIDA = cfg.allocaters("bootstrap-allocater").ida
 
     val nnet = onnet.getOrElse(new NettyNetwork(cfg))
     val cliNet = nnet.createClientNetwork()
-    
+
     val prepareRetransmitDelay = Duration(1, SECONDS)
     val allocationRetransmitDelay = Duration(1, SECONDS)
     val opportunisticRebuildDelay = Duration(3, SECONDS)
-    
-    val allocaterFactories = cfg.allocaters.values.foldLeft(Map[UUID,TypeFactory]()){ (m, a) => 
+
+    val allocaterFactories = cfg.allocaters.values.foldLeft(Map[UUID,TypeFactory]()){ (m, a) =>
       m + (a.uuid -> new ObjectAllocaterFactory {
         val typeUUID: UUID = a.uuid
         def create(system: AspenSystem)(implicit ec: ExecutionContext): Future[ObjectAllocater] = {
@@ -167,11 +167,11 @@ object Main {
         }
       })
     }
-    
+
     val allocaterRegistry = new TypeRegistry {
       def getTypeFactory[T <: TypeFactory](typeUUID: UUID): Option[T] = allocaterFactories.get(typeUUID) match {
         case None => None
-        case Some(t) => 
+        case Some(t) =>
           try {
             Some(t.asInstanceOf[T])
           } catch {
@@ -179,9 +179,9 @@ object Main {
           }
       }
     }
-    
-    val typeRegistry = new AggregateTypeRegistry(CumuloFSTypeRegistry :: allocaterRegistry :: Nil)
-    
+
+    val typeRegistry = new AggregateTypeRegistry(AmorfsTypeRegistry :: allocaterRegistry :: Nil)
+
     new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore,
@@ -198,30 +198,30 @@ object Main {
         otransactionCache = None
         )
   }
-  
-  def initializeCumulofs(sys: BasicAspenSystem, numIndexNodeSegments: Int = 100, fileSegmentSize:Int=1024*1024): Future[FileSystem] = {
-    
+
+  def initializeAmorfs(sys: BasicAspenSystem, numIndexNodeSegments: Int = 100, fileSegmentSize:Int=1024*1024): Future[FileSystem] = {
+
     // Approximate the size of the node needed to store numSegments
     val nodeSize = (sys.radiclePointer.encodedSize + 2) * numIndexNodeSegments
-    
+
     val uarr: Array[UUID] = Array(Bootstrap.BootstrapObjectAllocaterUUID)
     val iarr = Array(8192)
     val ilim = Array(20)
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
-    
-    def loadFileSystem(kvos: KeyValueObjectState): Future[FileSystem] = kvos.contents.get(CumuloFSKey) match {
+
+    def loadFileSystem(kvos: KeyValueObjectState): Future[FileSystem] = kvos.contents.get(AmorfsKey) match {
       case Some(arr) =>
-        println("CumuloFS already created")
+        println("Amorfs already created")
         SimpleFileSystem.load(sys, KeyValueObjectPointer(arr), clientUUID)
-      
+
       case None =>
-        println("Creating CumuloFS")
+        println("Creating Amorfs")
         implicit val tx: Transaction = sys.newTransaction()
         for {
           alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
-      
-          
+
+
           ptr <- FileSystem.prepareNewFileSystem(
             sys.radiclePointer,
             kvos.revision,
@@ -230,24 +230,24 @@ object Main {
             uarr, iarr, ilim, uarr, iarr, uarr, narr,
             Bootstrap.BootstrapObjectAllocaterUUID,
             fileSegmentSize)
-          
-          _=tx.update(sys.radiclePointer, None, Nil, Insert(CumuloFSKey, ptr.toArray) :: Nil)
-                   
+
+          _=tx.update(sys.radiclePointer, None, Nil, Insert(AmorfsKey, ptr.toArray) :: Nil)
+
           _ <- tx.commit()
-          
+
           fs <- SimpleFileSystem.load(sys, ptr, clientUUID)
         } yield fs
     }
-    
+
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
   }
 
-  def cumulofs_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+  def amorfs_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
     setLog4jConfigFile(log4jConfigFile)
 
     val sys = createSystem(cfg)
 
-    val f = initializeCumulofs(sys)
+    val f = initializeAmorfs(sys)
 
     val fs = Await.result(f, Duration(5000, MILLISECONDS))
 
@@ -256,7 +256,7 @@ object Main {
     val sched = Executors.newScheduledThreadPool(10)
     val ec = ExecutionContext.fromExecutorService(sched)
 
-    val vfs: VirtualFileSystem = new CumuloNFS(fs, ec)
+    val vfs: VirtualFileSystem = new AmorfsNFS(fs, ec)
 
     val nfsSvc = new OncRpcSvcBuilder().
       withPort(2049).
@@ -286,14 +286,14 @@ object Main {
     println("Server started...")
     Thread.currentThread.join()
   }
-  
-  def cumulofs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
-    
+
+  def amorfs_fuse(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+
     setLog4jConfigFile(log4jConfigFile)
-    
+
     val sys = createSystem(cfg)
-    
-    val f = initializeCumulofs(sys)
+
+    val f = initializeAmorfs(sys)
     
     val fs = Await.result(f, Duration(5000, MILLISECONDS))
     
@@ -311,10 +311,10 @@ object Main {
       
     val channel = RemoteFuse.connect("127.0.0.1", 1111, None)
     
-    val fi = new FuseInterface(fs, "/mnt", "cumulofs", 0, None, ops, channel, channel)
+    val fi = new FuseInterface(fs, "/mnt", "amorfs", 0, None, ops, channel, channel)
     fi.startHandlerDaemonThread()
     
-    println(s"Initialized cumulofs")
+    println(s"Initialized amorfs")
     
     Thread.sleep(99999999)
   }

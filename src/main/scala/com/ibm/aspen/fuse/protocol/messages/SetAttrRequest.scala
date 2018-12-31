@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import com.ibm.aspen.fuse.protocol.ProtocolVersion
 import com.ibm.aspen.fuse.protocol.Request
 import com.ibm.aspen.fuse.protocol.RequestFactory
-import com.ibm.aspen.cumulofs.Timespec
+import com.ibm.aspen.amorfs.Timespec
 
 /*
 struct fuse_setattr_in {

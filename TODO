@@ -1,7 +1,7 @@
 
 * Hardlinks aren't being updated due to cached inode update being done to FileSystem inode object, not
   the one held by the NFS wrapper object
-  
+
 * Need to re-think the inode caching strategy
    - NFS inode cache does not match that of FileSystem
        - FileSystem/InodeLoader needs to be the truth source
@@ -25,7 +25,9 @@ Bootstrap Procedure:
     rm -r ~/temp/aspen/*
     ./target/pack/bin/demo bootstrap local/t.yaml
     emacs local/cfg.yaml
-    ./target/pack/bin/demo cumulofs local/cfg.yaml local/cumulofs-log4j.yaml 127.0.0.1 1111
+    ./target/pack/bin/demo amorfs local/cfg.yaml local/amorfs-log4j.yaml 127.0.0.1 1111
+       OR
+    ./target/pack/bin/demo armor-nfs local/cfg.yaml local/armorfs-log4j.yaml
 
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a
@@ -57,16 +59,17 @@ exec java -cp $CLASSPATH com.ibm.aspen.demo.Main "$@"
 Commands:
   * bootstrap <config_file>
   * node <config_file> <node-name>
-  * cumulofs <config_file>
+  * amorfs <config_file>
+  * amorfs-nfs <config_file>
 
-CumuloFS
+Amorfs
 
   Future Extensions:
 
    * Simultaneously Supporting Multiple File Implementations:
 	  - Configuring a directory could be as easy as setting extended attributes
-	        cumulofs.alloc-pool=PoolUUID
-	        cumulofs.file-segment-size=4096
+	        amorfs.alloc-pool=PoolUUID
+	        amorfs.file-segment-size=4096
 
 	  - At write/allocation, lookup parent directories until a valid entry is found
 
