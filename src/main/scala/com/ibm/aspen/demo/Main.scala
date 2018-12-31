@@ -12,9 +12,9 @@ import com.ibm.aspen.core.ida.{ReedSolomon, Replication}
 import com.ibm.aspen.core.objects.keyvalue.{Insert, Key}
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.amorfs.FileSystem
-import com.ibm.aspen.amorfs.impl.{AmorfsTypeRegistry, FuseInterface, SimpleFileSystem}
-import com.ibm.aspen.amorfs.nfs.AmorfsNFS
+import com.ibm.aspen.amoeba.FileSystem
+import com.ibm.aspen.amoeba.impl.{AmoebaTypeRegistry, FuseInterface, SimpleFileSystem}
+import com.ibm.aspen.amoeba.nfs.AmoebaNFS
 import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
 import org.dcache.nfs.ExportFile
 import org.dcache.nfs.v3.xdr.{mount_prot, nfs3_prot}
@@ -30,7 +30,7 @@ import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object Main {
 
-  val AmorfsKey = Key("amorfs")
+  val AmoebafsKey = Key("amoeba")
 
   case class Args(mode:String="",
                   configFile:File=null,
@@ -71,8 +71,8 @@ object Main {
             arg[String]("<node-name>").text("Storage Node Name").action((x,c) => c.copy(nodeName=x))
         )
 
-      cmd("amorfs").text("Launches a Amorfs server").
-        action( (_,c) => c.copy(mode="amorfs")).
+      cmd("amoeba").text("Launches an Amoeba server").
+        action( (_,c) => c.copy(mode="amoeba")).
         children(
             arg[File]("<config-file>").text("Aspen Configuration File").
               action( (x, c) => c.copy(configFile=x)).
@@ -87,8 +87,8 @@ object Main {
             arg[Int]("<port>").text("Storage Node Name").action((x,c) => c.copy(port=x))
         )
 
-      cmd("amorfs-nfs").text("Launches a Amorfs NFS server").
-        action( (_,c) => c.copy(mode="amorfs-nfs")).
+      cmd("amoeba-nfs").text("Launches a Amoeba NFS server").
+        action( (_,c) => c.copy(mode="amoeba-nfs")).
         children(
           arg[File]("<config-file>").text("Aspen Configuration File").
             action( (x, c) => c.copy(configFile=x)).
@@ -135,8 +135,8 @@ object Main {
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
-            case "amorfs" => amorfs_fuse(cfg.log4jConfigFile, config)
-            case "amorfs-nfs" => amorfs_nfs(cfg.log4jConfigFile, config)
+            case "amoeba" => amoeba_fuse(cfg.log4jConfigFile, config)
+            case "amoeba-nfs" => amoeba_nfs(cfg.log4jConfigFile, config)
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
@@ -180,7 +180,7 @@ object Main {
       }
     }
 
-    val typeRegistry = new AggregateTypeRegistry(AmorfsTypeRegistry :: allocaterRegistry :: Nil)
+    val typeRegistry = new AggregateTypeRegistry(AmoebaTypeRegistry :: allocaterRegistry :: Nil)
 
     new BasicAspenSystem(
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader,
@@ -199,7 +199,7 @@ object Main {
         )
   }
 
-  def initializeAmorfs(sys: BasicAspenSystem, numIndexNodeSegments: Int = 100, fileSegmentSize:Int=1024*1024): Future[FileSystem] = {
+  def initializeAmoeba(sys: BasicAspenSystem, numIndexNodeSegments: Int = 100, fileSegmentSize:Int=1024*1024): Future[FileSystem] = {
 
     // Approximate the size of the node needed to store numSegments
     val nodeSize = (sys.radiclePointer.encodedSize + 2) * numIndexNodeSegments
@@ -210,13 +210,13 @@ object Main {
     val narr = Array(nodeSize)
     val clientUUID = new UUID(0,1)
 
-    def loadFileSystem(kvos: KeyValueObjectState): Future[FileSystem] = kvos.contents.get(AmorfsKey) match {
+    def loadFileSystem(kvos: KeyValueObjectState): Future[FileSystem] = kvos.contents.get(AmoebafsKey) match {
       case Some(arr) =>
-        println("Amorfs already created")
+        println("Amoeba already created")
         SimpleFileSystem.load(sys, KeyValueObjectPointer(arr), clientUUID)
 
       case None =>
-        println("Creating Amorfs")
+        println("Creating Amoeba")
         implicit val tx: Transaction = sys.newTransaction()
         for {
           alloc <- sys.getObjectAllocater(Bootstrap.BootstrapObjectAllocaterUUID)
@@ -231,7 +231,7 @@ object Main {
             Bootstrap.BootstrapObjectAllocaterUUID,
             fileSegmentSize)
 
-          _=tx.update(sys.radiclePointer, None, Nil, Insert(AmorfsKey, ptr.toArray) :: Nil)
+          _=tx.update(sys.radiclePointer, None, Nil, Insert(AmoebafsKey, ptr.toArray) :: Nil)
 
           _ <- tx.commit()
 
@@ -242,12 +242,12 @@ object Main {
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
   }
 
-  def amorfs_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+  def amoeba_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
     setLog4jConfigFile(log4jConfigFile)
 
     val sys = createSystem(cfg)
 
-    val f = initializeAmorfs(sys)
+    val f = initializeAmoeba(sys)
 
     val fs = Await.result(f, Duration(5000, MILLISECONDS))
 
@@ -256,7 +256,7 @@ object Main {
     val sched = Executors.newScheduledThreadPool(10)
     val ec = ExecutionContext.fromExecutorService(sched)
 
-    val vfs: VirtualFileSystem = new AmorfsNFS(fs, ec)
+    val vfs: VirtualFileSystem = new AmoebaNFS(fs, ec)
 
     val nfsSvc = new OncRpcSvcBuilder().
       withPort(2049).
@@ -283,17 +283,17 @@ object Main {
     nfsSvc.register(new OncRpcProgram(nfs4_prot.NFS4_PROGRAM, nfs4_prot.NFS_V4), nfs4)
     nfsSvc.start()
 
-    println("Server started...")
+    println("Amoeba NFS server started...")
     Thread.currentThread.join()
   }
 
-  def amorfs_fuse(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+  def amoeba_fuse(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
 
     setLog4jConfigFile(log4jConfigFile)
 
     val sys = createSystem(cfg)
 
-    val f = initializeAmorfs(sys)
+    val f = initializeAmoeba(sys)
     
     val fs = Await.result(f, Duration(5000, MILLISECONDS))
     
@@ -311,10 +311,10 @@ object Main {
       
     val channel = RemoteFuse.connect("127.0.0.1", 1111, None)
     
-    val fi = new FuseInterface(fs, "/mnt", "amorfs", 0, None, ops, channel, channel)
+    val fi = new FuseInterface(fs, "/mnt", "amoeba", 0, None, ops, channel, channel)
     fi.startHandlerDaemonThread()
     
-    println(s"Initialized amorfs")
+    println(s"Initialized Amoeba File System")
     
     Thread.sleep(99999999)
   }

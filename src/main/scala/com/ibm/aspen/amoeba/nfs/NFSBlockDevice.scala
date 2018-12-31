@@ -1,0 +1,15 @@
+package com.ibm.aspen.amoeba.nfs
+
+import com.ibm.aspen.amoeba.BlockDevice
+import scala.concurrent.ExecutionContext
+
+class NFSBlockDevice(val file: BlockDevice)(implicit ec: ExecutionContext) extends NFSBaseFile {
+
+  def rdev: Int = file.rdev
+
+  def setrdev(newrdev: Int): Unit = {
+    retryTransactionUntilSuccessful(file.fs.system) { implicit tx =>
+      file.setrdev(newrdev)
+    }
+  }
+}
