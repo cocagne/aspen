@@ -4,6 +4,9 @@ import java.io.{File, StringReader}
 import java.util.UUID
 import java.util.concurrent.Executors
 
+import com.ibm.aspen.amoeba.FileSystem
+import com.ibm.aspen.amoeba.impl.{AmoebaTypeRegistry, SimpleFileSystem}
+import com.ibm.aspen.amoeba.nfs.AmoebaNFS
 import com.ibm.aspen.base._
 import com.ibm.aspen.base.impl._
 import com.ibm.aspen.core.allocation.AllocationRecoveryState
@@ -12,10 +15,6 @@ import com.ibm.aspen.core.ida.{ReedSolomon, Replication}
 import com.ibm.aspen.core.objects.keyvalue.{Insert, Key}
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState}
 import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.amoeba.FileSystem
-import com.ibm.aspen.amoeba.impl.{AmoebaTypeRegistry, FuseInterface, SimpleFileSystem}
-import com.ibm.aspen.amoeba.nfs.AmoebaNFS
-import com.ibm.aspen.fuse.{FuseOptions, RemoteFuse}
 import org.dcache.nfs.ExportFile
 import org.dcache.nfs.v3.xdr.{mount_prot, nfs3_prot}
 import org.dcache.nfs.v3.{MountServer, NfsServerV3}
@@ -71,24 +70,8 @@ object Main {
             arg[String]("<node-name>").text("Storage Node Name").action((x,c) => c.copy(nodeName=x))
         )
 
-      cmd("amoeba").text("Launches an Amoeba server").
+      cmd("amoeba").text("Launches a Amoeba NFS server").
         action( (_,c) => c.copy(mode="amoeba")).
-        children(
-            arg[File]("<config-file>").text("Aspen Configuration File").
-              action( (x, c) => c.copy(configFile=x)).
-              validate( x => if (x.exists()) success else failure(s"Config file does not exist: $x")),
-
-            arg[File]("<log4j-config-file>").text("Log4j Configuration File").
-              action( (x, c) => c.copy(log4jConfigFile=x)).
-              validate( x => if (x.exists()) success else failure(s"Log4j Config file does not exist: $x")),
-
-            arg[String]("<host>").text("Storage Node Name").action((x,c) => c.copy(host=x)),
-
-            arg[Int]("<port>").text("Storage Node Name").action((x,c) => c.copy(port=x))
-        )
-
-      cmd("amoeba-nfs").text("Launches a Amoeba NFS server").
-        action( (_,c) => c.copy(mode="amoeba-nfs")).
         children(
           arg[File]("<config-file>").text("Aspen Configuration File").
             action( (x, c) => c.copy(configFile=x)).
@@ -135,8 +118,7 @@ object Main {
           cfg.mode match {
             case "bootstrap" => bootstrap(config)
             case "node" => node(cfg.nodeName, config)
-            case "amoeba" => amoeba_fuse(cfg.log4jConfigFile, config)
-            case "amoeba-nfs" => amoeba_nfs(cfg.log4jConfigFile, config)
+            case "amoeba" => amoeba_server(cfg.log4jConfigFile, config)
             case "rebuild" => rebuild(cfg.nodeName, config)
           }
         } catch {
@@ -242,7 +224,7 @@ object Main {
     sys.readObject(sys.radiclePointer).flatMap(loadFileSystem)
   }
 
-  def amoeba_nfs(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
+  def amoeba_server(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
     setLog4jConfigFile(log4jConfigFile)
 
     val sys = createSystem(cfg)
@@ -285,38 +267,6 @@ object Main {
 
     println("Amoeba NFS server started...")
     Thread.currentThread.join()
-  }
-
-  def amoeba_fuse(log4jConfigFile: File, cfg: ConfigFile.Config): Unit = {
-
-    setLog4jConfigFile(log4jConfigFile)
-
-    val sys = createSystem(cfg)
-
-    val f = initializeAmoeba(sys)
-    
-    val fs = Await.result(f, Duration(5000, MILLISECONDS))
-    
-    import com.ibm.aspen.fuse.protocol.Capabilities._
-      
-    val caps = FUSE_CAP_ASYNC_READ
-  
-    val ops = FuseOptions(
-      max_readahead = 10,
-      max_background = 10,
-      congestion_threshold = 7,
-      max_write = 16*1024,
-      time_gran = 1,
-      requestedCapabilities = caps)
-      
-    val channel = RemoteFuse.connect("127.0.0.1", 1111, None)
-    
-    val fi = new FuseInterface(fs, "/mnt", "amoeba", 0, None, ops, channel, channel)
-    fi.startHandlerDaemonThread()
-    
-    println(s"Initialized Amoeba File System")
-    
-    Thread.sleep(99999999)
   }
   
   def rebuild(storeName: String, cfg: ConfigFile.Config): Unit = {
