@@ -3,6 +3,7 @@ package com.ibm.aspen.cumulofs.impl
 import com.ibm.aspen.base.{StopRetrying, Transaction}
 import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRevision}
 import com.ibm.aspen.cumulofs._
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -101,7 +102,7 @@ object SimpleBaseFile {
 abstract class SimpleBaseFile(val pointer: InodePointer,
                               protected var cachedInodeRevision: ObjectRevision,
                               private var cachedInode: Inode,
-                              val fs: FileSystem) extends BaseFile {
+                              val fs: FileSystem) extends BaseFile with Logging {
 
   import SimpleBaseFile._
 
@@ -141,9 +142,12 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
   def flush()(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Flush())
 
   def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit = synchronized {
-    val updatedInode = inode.update(links=Some(inode.links+1))
+    val updatedInode = cachedInode.update(links=Some(cachedInode.links+1))
     tx.overwrite(pointer.pointer, cachedInodeRevision, updatedInode.toDataBuffer)
-    tx.result.foreach(_ => setCachedInode(updatedInode, tx.txRevision))
+    tx.result.foreach { _ =>
+      logger.info(s"prepareHardLink - Updating cached inode with links = ${updatedInode.links}")
+      setCachedInode(updatedInode, tx.txRevision)
+    }
   }
 
   def prepareUnlink()(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = synchronized {

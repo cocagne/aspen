@@ -1,4 +1,13 @@
 
+* Hardlinks aren't being updated due to cached inode update being done to FileSystem inode object, not
+  the one held by the NFS wrapper object
+  
+* Need to re-think the inode caching strategy
+   - NFS inode cache does not match that of FileSystem
+       - FileSystem/InodeLoader needs to be the truth source
+       - Need to prevent NFS wrapper classes from diverging/maintaining separate inode instances
+       -
+
 * SimpleFileHandle
    - Extend buffer to match beginning of write in addition to tail
    - deque instead of list for buffers
