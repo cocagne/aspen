@@ -3,11 +3,12 @@ package com.ibm.aspen.cumulofs.nfs
 import com.ibm.aspen.base.{AspenSystem, StopRetrying, Transaction}
 import com.ibm.aspen.core.read.FatalReadError
 import com.ibm.aspen.cumulofs._
+import org.apache.logging.log4j.scala.Logging
 import org.dcache.nfs.status.{ExistException, NoEntException}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
-class NFSDirectory(val file: Directory)(implicit ec: ExecutionContext) extends NFSBaseFile {
+class NFSDirectory(val file: Directory)(implicit ec: ExecutionContext) extends NFSBaseFile with Logging {
 
   def lookup(name: String): Option[InodePointer] = blockingCall(file.lookup(name))
 
@@ -25,7 +26,9 @@ class NFSDirectory(val file: Directory)(implicit ec: ExecutionContext) extends N
                                                 (implicit ec: ExecutionContext): T = blockingCall {
     def onFail(err: Throwable): Future[Unit] = err match {
       case err: FatalReadError => throw StopRetrying(err)
-      case _ => file.refresh().map(_ => checkForErrors)
+      case err =>
+        logger.info(s"retryUntilSuccessOr error $err")
+        file.refresh().map(_ => checkForErrors)
     }
     file.fs.system.transactUntilSuccessfulWithRecovery(onFail) { tx =>
       prepare(tx)

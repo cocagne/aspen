@@ -111,7 +111,7 @@ class CreateFileTask private (
       system.transactUntilSuccessful { implicit tx =>
         tx.note("CreateFileTask - Abandoning file creation due to fatal error")
         failTask(tx, err)
-        DeleteFileTask.prepare(fs, newInode).map(_ => ())
+        fs.lookup(newInode).flatMap(file => DeleteFileTask.prepareFileDeletion(fs, file).map(_ => ()))
       } map { _ =>
         throw StopRetrying(new Exception())
       }

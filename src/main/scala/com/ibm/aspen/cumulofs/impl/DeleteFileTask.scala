@@ -19,51 +19,36 @@ object DeleteFileTask {
   private val InodePointerKey   = Key(BaseKeyId + 2)
 
   /** Configures the transaction to delete the target inode and launch a file deletion task
-   *  that will remove it from the Inode table and preform any necessary cleanup activities
-   *  such as deleting file data and their associated tiered lists.
-   */
-  def prepare(
-      fs: FileSystem, 
-      victim: InodePointer)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
-    tx.note(s"Creating DeleteFileTask for victim inode: ${victim.uuid}")
+    *  that will remove it from the Inode table and preform any necessary cleanup activities
+    *  such as deleting file data and their associated tiered lists.
+    *
+    *  Note that this method does NOT check the link count. This should only be called from
+    *  the files prepareUnlink method.
+    */
+  def prepareFileDeletion(
+      fs: FileSystem,
+      victim: BaseFile)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
+    tx.note(s"Creating DeleteFileTask for victim inode: ${victim.pointer.uuid}")
 
-    fs.inodeLoader.iload(victim) flatMap { t =>
-      val (inode, revision) = t
-      //
-      // If refcount is > 1, more than one directory still references the file so
-      // all we need to do is decrement the link count. If it's 1, we need to create
-      // the deletion task to clean up the inode resources
-      //
-      if (inode.links > 1) {
-        tx.overwrite(victim.pointer, revision, inode.update(links=Some(inode.links-1)).toDataBuffer)
-        Future.successful(Future.unit)
-      } 
-      else if (inode.links == 1 ) {
+    val inode = victim.inode
+    val revision = victim.revision
 
-        tx.overwrite(victim.pointer, revision, inode.update(links=Some(0)).toDataBuffer)
+    val content = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.pointer.toArray))
 
-        val content = List((FileSystemUUIDKey, uuid2byte(fs.uuid)), (InodePointerKey, victim.toArray))
-        
-        val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
-        
-        inode match {
-          case d: DirectoryInode => 
-            for {
-              _ <- fs.loadDirectory(victim.asInstanceOf[DirectoryPointer], d, revision).prepareForDirectoryDeletion()
-              taskReady <- ftask
-            } yield taskReady.map(_=>())
-            
-          case _: FileInode => for {
-            taskReady <- ftask
-          } yield taskReady.map(_=>())
-            
-          case _ => Future.successful(Future.unit) // No additional work to do
-        }
-      } 
-      else {
-        // Probably a race condition
-        Future.successful(Future.unit)
-      }
+    val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
+
+    inode match {
+      case d: DirectoryInode =>
+        for {
+          _ <- fs.loadDirectory(victim.pointer.asInstanceOf[DirectoryPointer], d, revision).prepareForDirectoryDeletion()
+          taskReady <- ftask
+        } yield taskReady.map(_=>())
+
+      case _: FileInode => for {
+        taskReady <- ftask
+      } yield taskReady.map(_=>())
+
+      case _ => Future.successful(Future.unit) // No additional work to do
     }
   }
   

@@ -9,6 +9,7 @@ import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.cumulofs._
 import com.ibm.aspen.cumulofs.error.DirectoryNotEmpty
 import com.ibm.aspen.cumulofs.impl.SimpleBaseFile.SimpleSet
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -26,7 +27,7 @@ object SimpleDirectory {
 class SimpleDirectory(override val pointer: DirectoryPointer,
                       cachedInodeRevision: ObjectRevision,
                       initialInode: DirectoryInode,
-                      fs: FileSystem) extends SimpleBaseFile(pointer, cachedInodeRevision, initialInode, fs) with Directory {
+                      fs: FileSystem) extends SimpleBaseFile(pointer, cachedInodeRevision, initialInode, fs) with Directory with Logging {
 
 
   private[this] var ftl: Option[Future[MutableTieredKeyValueList]] = None
@@ -143,7 +144,6 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
       target <- fs.lookup(pointer)
       _ = if (incref) {
         tx.note(s"Increfing link count on $name:${pointer.uuid}")
-        tx.setRefcount(pointer.pointer, kvos.refcount, kvos.refcount.increment())
         target.prepareHardLink()
       }
       _=tx.note(s"Inserting $name:${pointer.uuid} into directory ${this.pointer.uuid}")
@@ -163,29 +163,38 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     implicit val tx: Transaction = fs.system.newTransaction()
     
     prepareInsert(name, file.pointer).flatMap { _ =>
-      file.prepareHardLink()
       tx.note(s"Hardlinking $name to file ${file.pointer.uuid} in directory ${pointer.uuid}")
       tx.commit().map(_=>())
     }
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {
+    logger.info(s"PrepareDelete $name")
     tx.note(s"Preparing delete of $name in directory ${pointer.uuid}")
 
     def del(tl: MutableTieredKeyValueList, oentry: Option[InodePointer]): Future[Future[Unit]] = oentry match {
       case None => Future.successful(Future.unit) // Directory entry not found. We're done!
       
       case Some(inodePtr) =>
-
+        logger.info(s"PrepareDelete - Inode exists")
         val fdelEntryPrep = tl.prepareDelete(name, RequireExists)
         
         if (decref) {
-          val ftaskPrep = DeleteFileTask.prepare(fs, inodePtr)
+          logger.info("PrepareDelete - Decreffing")
+
+          val ftaskPrep = fs.lookup(inodePtr).flatMap { file =>
+            logger.info(s"PrepareDelete - preparing unlink on $name")
+            file.prepareUnlink()
+          }
           
           for {
             _ <- fdelEntryPrep
+            _=logger.info("PrepareDelete - directory delete prepared. Awaiting task prep")
             fcomplete <- ftaskPrep
-          } yield fcomplete
+          } yield {
+            logger.info("PrepareDelete - task prepared")
+            fcomplete
+          }
         } else {
           fdelEntryPrep.map(_=>Future.unit)
         }

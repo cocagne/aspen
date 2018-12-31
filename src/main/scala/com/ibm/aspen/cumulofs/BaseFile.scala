@@ -38,6 +38,8 @@ trait BaseFile {
 
   def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit
 
+  def prepareUnlink()(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]]
+
   def setattr(
       newUID: Int, 
       newGID: Int, 

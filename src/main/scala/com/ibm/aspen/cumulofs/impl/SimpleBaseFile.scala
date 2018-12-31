@@ -140,10 +140,23 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
 
   def flush()(implicit ec: ExecutionContext): Future[Unit] = enqueueOp(Flush())
 
-  def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit = {
+  def prepareHardLink()(implicit tx: Transaction, ec: ExecutionContext): Unit = synchronized {
     val updatedInode = inode.update(links=Some(inode.links+1))
     tx.overwrite(pointer.pointer, cachedInodeRevision, updatedInode.toDataBuffer)
     tx.result.foreach(_ => setCachedInode(updatedInode, tx.txRevision))
+  }
+
+  def prepareUnlink()(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = synchronized {
+    val updatedInode = inode.update(links=Some(inode.links-1))
+
+    tx.overwrite(pointer.pointer, cachedInodeRevision, updatedInode.toDataBuffer)
+
+    tx.result.foreach(_ => setCachedInode(updatedInode, tx.txRevision))
+
+    if (inode.links == 1)
+      DeleteFileTask.prepareFileDeletion(fs, this)
+    else
+      Future.successful(Future.unit)
   }
 
   def setattr(
