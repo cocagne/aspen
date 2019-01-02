@@ -46,8 +46,8 @@ trait Directory extends BaseFile {
     f.failed.foreach( tx.invalidateTransaction )
     f
   }
-  
-  def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit]
+
+  def prepareHardLink(name: String, file: BaseFile)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
   /** Ensures the directory is empty and that all resources are cleaned up if the transaction successfully commits 
    */

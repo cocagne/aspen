@@ -46,6 +46,7 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
   }
   
   override def refresh()(implicit ec: ExecutionContext): Future[Unit] = synchronized {
+    ftl = None
     super.refresh()
   }
 
@@ -159,13 +160,10 @@ class SimpleDirectory(override val pointer: DirectoryPointer,
     } yield ()
   }
   
-  def hardLink(name: String, file: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
-    implicit val tx: Transaction = fs.system.newTransaction()
+  def prepareHardLink(name: String, file: BaseFile)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit] = {
+    tx.note(s"Hardlinking $name to file ${file.pointer.uuid} in directory ${pointer.uuid}")
     
-    prepareInsert(name, file.pointer).flatMap { _ =>
-      tx.note(s"Hardlinking $name to file ${file.pointer.uuid} in directory ${pointer.uuid}")
-      tx.commit().map(_=>())
-    }
+    prepareInsert(name, file.pointer)
   }
   
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]] = {

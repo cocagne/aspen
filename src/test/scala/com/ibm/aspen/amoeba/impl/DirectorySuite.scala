@@ -6,7 +6,7 @@ import com.ibm.aspen.base.{TestSystemSuite, Transaction}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRevision}
 import com.ibm.aspen.core.read.InvalidObject
 import com.ibm.aspen.amoeba._
-import com.ibm.aspen.amoeba.error.DirectoryNotEmpty
+import com.ibm.aspen.amoeba.error.{DirectoryNotEmpty, InvalidInode}
 
 import scala.concurrent._
 
@@ -143,7 +143,7 @@ class DirectorySuite extends TestSystemSuite with AmoebaBootstrap {
        initialContent <- rootDir.getContents()
        newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        _ <- rootDir.delete("foo")       
-       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
+       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newDirPointer))
      } yield {
        initialContent.length should be (0)
      }
@@ -160,9 +160,9 @@ class DirectorySuite extends TestSystemSuite with AmoebaBootstrap {
        dc <- newDir.getContents()
        if dc.length == 1
        _ <- newDir.delete("bar")       
-       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newInode))
+       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newInode))
        _ <- rootDir.delete("foo")
-       _ <- recoverToSucceededIf[InvalidObject](fs.inodeLoader.load(newDirPointer))
+       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newDirPointer))
      } yield {
        initialContent.length should be (0)
      }
@@ -276,7 +276,9 @@ class DirectorySuite extends TestSystemSuite with AmoebaBootstrap {
         fprep.flatMap(fresult => fresult)
       }
       us <- fs.loadBlockDevice(sptr)
-      _ <- rootDir.hardLink("bar", us)
+      _ <- fs.system.transact { implicit tx =>
+        rootDir.prepareHardLink("bar", us)
+      }
       us2 <- fs.loadBlockDevice(sptr)
       postLinkContent <- rootDir.getContents()
     } yield {

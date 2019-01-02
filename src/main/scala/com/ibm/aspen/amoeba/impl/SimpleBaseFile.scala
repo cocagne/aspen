@@ -3,6 +3,7 @@ package com.ibm.aspen.amoeba.impl
 import com.ibm.aspen.base.{StopRetrying, Transaction}
 import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRevision}
 import com.ibm.aspen.amoeba._
+import com.ibm.aspen.core.read.InvalidObject
 import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -194,7 +195,10 @@ abstract class SimpleBaseFile(val pointer: InodePointer,
 
     def onCommitFailure(foo: Throwable): Future[Unit] = {
       refresh().recover {
-        case err => throw StopRetrying(err) // Only InvalidObject should cause a read failure, which means the object has been deleted
+        case err: InvalidObject => throw StopRetrying(err) // Only InvalidObject should cause a read failure, which means the object has been deleted
+        case err =>
+          logger.error(s"Unexpected error encountered during inode refresh: $err")
+          throw StopRetrying(err)
       }.map(_=>())
     }
 

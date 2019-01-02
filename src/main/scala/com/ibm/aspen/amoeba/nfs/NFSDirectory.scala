@@ -101,7 +101,7 @@ class NFSDirectory(val file: Directory)(implicit ec: ExecutionContext) extends N
 
   def hardLink(name: String, f: BaseFile): Unit = {
     retryUntilSuccessfulOr { implicit tx =>
-      file.hardLink(name, f)
+      file.prepareHardLink(name, f)
     }{
       file.getEntry(name).map {
         case None =>

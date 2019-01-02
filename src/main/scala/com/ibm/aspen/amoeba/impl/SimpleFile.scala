@@ -1,11 +1,10 @@
 package com.ibm.aspen.amoeba.impl
 
+import com.ibm.aspen.amoeba._
+import com.ibm.aspen.amoeba.impl.SimpleBaseFile.FileOperation
 import com.ibm.aspen.base.Transaction
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRevision}
-import com.ibm.aspen.amoeba._
-import com.ibm.aspen.amoeba.impl.IndexedFileContent.WriteStatus
-import com.ibm.aspen.amoeba.impl.SimpleBaseFile.FileOperation
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 

@@ -12,10 +12,8 @@ class NFSFile(val file: File)(implicit ec: ExecutionContext) extends NFSBaseFile
 
   def read(offset: Long, nbytes: Int): Option[DataBuffer] = blockingCall(file.read(offset, nbytes))
 
-  def truncate(offset: Long): Unit = {
-    retryTransactionUntilSuccessful(file.fs.system) { implicit tx =>
-      file.truncate(offset)
-    }
+  def truncate(offset: Long): Unit = blockingCall {
+    file.truncate(offset)
   }
 
   def debugReadFully(): Array[Byte] = blockingCall(file.debugReadFully())
