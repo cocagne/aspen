@@ -27,4 +27,20 @@ trait File extends BaseFile {
   }
 
   def debugReadFully()(implicit ec: ExecutionContext): Future[Array[Byte]]
+
+  private[this] var openHandles: Set[FileHandle] = Set()
+
+  def open(): FileHandle = {
+    val fh = fs.openFileHandle(this)
+    synchronized { openHandles += fh }
+    fh
+  }
+
+  private[amoeba] def close(fh: FileHandle): Unit =  {
+    synchronized { openHandles -= fh }
+    fs.closeFileHandle(this)
+  }
+
+  private[amoeba] def hasOpenHandles: Boolean = synchronized { openHandles.nonEmpty }
+
 }

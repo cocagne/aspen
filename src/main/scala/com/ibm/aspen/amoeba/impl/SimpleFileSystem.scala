@@ -2,6 +2,7 @@ package com.ibm.aspen.amoeba.impl
 
 import java.util.UUID
 
+import com.github.blemale.scaffeine.{Cache, Scaffeine}
 import com.ibm.aspen.base.{AspenSystem, ObjectAllocater}
 import com.ibm.aspen.base.task.LocalTaskGroup
 import com.ibm.aspen.base.tieredlist.{MutableKeyValueObjectRootManager, MutableTieredKeyValueList, SimpleTieredKeyValueListNodeAllocater, TieredKeyValueListRoot}
@@ -65,7 +66,11 @@ object SimpleFileSystem {
 class SimpleFileSystem private (
     val system: AspenSystem,
     val localTaskGroup: LocalTaskGroup,
-    rootKvos: KeyValueObjectState) extends FileSystem {
+    rootKvos: KeyValueObjectState,
+    inodeCacheMax: Int = 1024,
+    writeBufferSize: Int = 4 * 1024 * 1024) extends FileSystem {
+
+  protected val fileFactory: FileFactory = new SimpleFileFactory(writeBufferSize)
   
   val fileSystemRoot: KeyValueObjectPointer = rootKvos.pointer
   
@@ -81,6 +86,10 @@ class SimpleFileSystem private (
   val directoryTableKVPairLimits: Array[Int] = decodeIntArray(rootKvos.contents(FileSystem.KVPairLimitsKey).value)
       
   private lazy val fdefaultSegmentAllocater = system.getObjectAllocater(byte2uuid(rootKvos.contents(FileSystem.DefaultFileSegmentAllocationPoolKey).value))
+
+  private[this] val fileCache: Cache[Long, BaseFile] = Scaffeine().
+    maximumSize(inodeCacheMax).
+    build[Long, BaseFile]()
   
   def defaultSegmentAllocater(): Future[ObjectAllocater] = fdefaultSegmentAllocater
   
@@ -92,11 +101,11 @@ class SimpleFileSystem private (
     new SimpleInodeTable(system, inodeAllocater, mtkvl)
   }
   
-  val inodeLoader: InodeLoader = new SimpleInodeLoader(system, inodeTable, new NoInodeCache)
-  
-  val directoryLoader: DirectoryLoader = new SimpleDirectoryLoader(directoryTableAllocaters, directoryTableSizes, directoryTableKVPairLimits)
-  
-  val fileLoader: FileLoader = new SimpleFileLoader
+  val inodeLoader: InodeLoader = new SimpleInodeLoader(system, inodeTable)
+
+  protected def getCachedFile(inodeNumber: Long): Option[BaseFile] = fileCache.getIfPresent(inodeNumber)
+
+  protected def cacheFile(file: BaseFile): Unit = fileCache.put(file.pointer.number, file)
   
   def getLocalTasksCompleted: Future[Unit] = localTaskGroup.whenAllTasksComplete()
   
@@ -108,47 +117,12 @@ class SimpleFileSystem private (
     val allocaterUUID = if (tierNumber < dataTableAllocaters.length) dataTableAllocaters(tierNumber) else dataTableAllocaters(dataTableAllocaters.length-1)
     system.getObjectAllocater(allocaterUUID)
   }
-  
-  def loadSymlink(pointer: SymlinkPointer)(implicit ec: ExecutionContext): Future[Symlink] = {
-    inodeLoader.load(pointer).map { t =>
-      val (inode, revision) = t
-      new SimpleSymlink(pointer, inode, revision,this)
-    }
-  }
-  
-  def loadUnixSocket(pointer: UnixSocketPointer)(implicit ec: ExecutionContext): Future[UnixSocket] = {
-    inodeLoader.load(pointer).map { t =>
-      val (inode, revision) = t
-      new SimpleUnixSocket(pointer, inode, revision,this)
-    }
-  }
-  
-  def loadFIFO(pointer: FIFOPointer)(implicit ec: ExecutionContext): Future[FIFO] = {
-    inodeLoader.load(pointer).map { t =>
-      val (inode, revision) = t
-      new SimpleFIFO(pointer, inode, revision,this)
-    }
-  }
-  
-  def loadCharacterDevice(pointer: CharacterDevicePointer)(implicit ec: ExecutionContext): Future[CharacterDevice] = {
-    inodeLoader.load(pointer).map { t =>
-      val (inode, revision) = t
-      new SimpleCharacterDevice(pointer, inode, revision,this)
-    }
-  }
-  
-  def loadBlockDevice(pointer: BlockDevicePointer)(implicit ec: ExecutionContext): Future[BlockDevice] = {
-    inodeLoader.load(pointer).map { t =>
-      val (inode, revision) = t
-      new SimpleBlockDevice(pointer, inode, revision,this)
-    }
-  }
 
   def directoryTableConfig: (UUID, DataBuffer) = {
     val allocaterType = SimpleTieredKeyValueListNodeAllocater.typeUUID
 
-    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(directoryLoader.directoryTableAllocaters,
-      directoryLoader.directoryTableSizes, directoryLoader.directoryTableKVPairLimits)
+    val allocaterConfig = SimpleTieredKeyValueListNodeAllocater.encode(directoryTableAllocaters,
+      directoryTableSizes, directoryTableKVPairLimits)
 
     (allocaterType, allocaterConfig)
   }

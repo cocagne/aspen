@@ -37,10 +37,10 @@ object DeleteFileTask {
 
     val ftask = fs.localTaskGroup.prepareTask(TaskType, content)
 
-    inode match {
-      case d: DirectoryInode =>
+    victim match {
+      case d: Directory =>
         for {
-          _ <- fs.loadDirectory(victim.pointer.asInstanceOf[DirectoryPointer], d, revision).prepareForDirectoryDeletion()
+          _ <- d.prepareForDirectoryDeletion()
           taskReady <- ftask
         } yield taskReady.map(_=>())
 

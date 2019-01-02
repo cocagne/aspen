@@ -19,4 +19,6 @@ trait FileHandle {
   def truncate(offset: Long)(implicit ec: ExecutionContext): Future[Future[Unit]]
   
   def flush()(implicit ec: ExecutionContext): Future[Unit]
+
+  def close(): Unit = file.close(this)
 }

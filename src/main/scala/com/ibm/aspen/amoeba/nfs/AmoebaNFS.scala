@@ -3,11 +3,11 @@ package com.ibm.aspen.amoeba.nfs
 import java.io.IOException
 import java.nio.ByteBuffer
 
-import com.github.blemale.scaffeine.{Cache, LoadingCache, Scaffeine}
-import com.ibm.aspen.core.read.FatalReadError
+import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import com.ibm.aspen.amoeba
 import com.ibm.aspen.amoeba.impl.SimpleFileHandle
 import com.ibm.aspen.amoeba.{DirectoryEntry => _, Inode => _, _}
+import com.ibm.aspen.core.read.FatalReadError
 import javax.security.auth.Subject
 import org.apache.logging.log4j.scala.Logging
 import org.dcache.auth.Subjects
@@ -44,44 +44,37 @@ class AmoebaNFS(val fs: FileSystem,
   private val NoAcl = new Array[nfsace4](0)
   private val IdMapper = new SimpleIdMap
 
-  private[this] val inodes: Cache[Long, NFSBaseFile] = Scaffeine().
-    maximumSize(inodeCacheMax).
-    build[Long, NFSBaseFile]()
-
   private[this] val fileHandles: LoadingCache[Long, NFSFileHandle] = Scaffeine().
     maximumSize(fileHandleCacheMax).
+    removalListener[Long, NFSFileHandle]( (_,v,_) => v.close()).
     build[Long, NFSFileHandle]((inode: Long) => {
       load(inode) match {
-      case f: NFSFile => new NFSFileHandle(new SimpleFileHandle(f.file, writeBufferSize))
+      case f: NFSFile => f.open()
       case _ => throw new NotSuppException("Cannot open non-regular file")
     }
   })
 
   private def getFileHandle(inode: Inode): NFSFileHandle = fileHandles.get(inode)
 
-  def load(inode: Long, cache: Boolean = true): NFSBaseFile = inodes.getIfPresent(inode) match {
-    case Some(f) => f
-    case None => blockingCall {
-      fs.lookup(inode) map {
-        case Some(f) =>
-          val nfsFile = f match {
-            case x: BlockDevice => new NFSBlockDevice(x)
-            case x: CharacterDevice => new NFSCharacterDevice(x)
-            case x: Directory => new NFSDirectory(x)
-            case x: File => new NFSFile(x)
-            case x: Symlink => new NFSSymlink(x)
-            case x: FIFO => new NFSFIFO(x)
-            case x: UnixSocket => new NFSUnixSocket(x)
-          }
-          if (cache)
-            inodes.put(inode, nfsFile)
-          nfsFile
-        case None => throw new NoEntException(s"no such inode $inode")
-      } recover {
-        case _: FatalReadError => throw new ServerFaultException("sumthin broke")
-      }
+  def load(inode: Long): NFSBaseFile = blockingCall {
+    fs.lookup(inode) map {
+      case Some(f) =>
+        val nfsFile = f match {
+          case x: BlockDevice => new NFSBlockDevice(x)
+          case x: CharacterDevice => new NFSCharacterDevice(x)
+          case x: Directory => new NFSDirectory(x)
+          case x: File => new NFSFile(x)
+          case x: Symlink => new NFSSymlink(x)
+          case x: FIFO => new NFSFIFO(x)
+          case x: UnixSocket => new NFSUnixSocket(x)
+        }
+        nfsFile
+      case None => throw new NoEntException(s"no such inode $inode")
+    } recover {
+      case _: FatalReadError => throw new ServerFaultException("sumthin broke")
     }
   }
+
 
   private def getDirectory(inode: Long): NFSDirectory = load(inode) match {
     case d: NFSDirectory => d
@@ -256,7 +249,7 @@ class AmoebaNFS(val fs: FileSystem,
 
     val entries = dir.getContents().zipWithIndex.map { t =>
       val (amoeba.DirectoryEntry(name, iptr), cookie) = t
-      val file = load(iptr.number, cache=false)
+      val file = load(iptr.number)
       new DirectoryEntry(name, iptr.number, file.nfsStat, cookie)
     }
 
@@ -507,7 +500,7 @@ class AmoebaNFS(val fs: FileSystem,
     val stat = load(inode).nfsStat
 
     if (inode2long(inode) == 1)
-      stat.setMode(stat.getMode() | FileMode.S_IRWXO)
+      stat.setMode(stat.getMode | FileMode.S_IRWXO)
 
     logger.info(s"getattr ${inode2long(inode)}: $stat")
     stat

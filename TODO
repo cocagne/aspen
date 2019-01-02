@@ -1,4 +1,13 @@
 
+
+* Refreshes before retries get a LOT more important when using cached inodes.
+   - Double check that all retries first refresh the nodes
+
+
+-----------------------
+
+* Segment Allocater UUID should go into file inode @ file creation time
+
 * Hardlinks aren't being updated due to cached inode update being done to FileSystem inode object, not
   the one held by the NFS wrapper object
 
@@ -25,9 +34,7 @@ Bootstrap Procedure:
     rm -r ~/temp/aspen/*
     ./target/pack/bin/demo bootstrap local/t.yaml
     emacs local/cfg.yaml
-    ./target/pack/bin/demo amoeba local/cfg.yaml local/amoeba-log4j.yaml 127.0.0.1 1111
-       OR
-    ./target/pack/bin/demo amoeba-nfs local/cfg.yaml local/amoeba-log4j.yaml
+    ./target/pack/bin/demo amoeba local/cfg.yaml local/amoeba-log4j.yaml
 
   For each node:
     ./target/pack/bin/demo node local/cfg.yaml node_a

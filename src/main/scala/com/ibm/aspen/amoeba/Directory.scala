@@ -13,7 +13,7 @@ trait Directory extends BaseFile {
   def inode: DirectoryInode
 
   def getInode()(implicit ec: ExecutionContext): Future[(DirectoryInode, ObjectRevision)] = {
-    fs.inodeLoader.load(pointer)
+    fs.inodeLoader.load(pointer).map(t => (t._1.asInstanceOf[DirectoryInode], t._2))
   }
   
   def lookup(name: String)(implicit ec: ExecutionContext): Future[Option[InodePointer]] = name match {

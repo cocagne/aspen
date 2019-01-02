@@ -1,5 +1,6 @@
 package com.ibm.aspen.amoeba.impl
 
+import com.ibm.aspen.amoeba.FileInode
 import com.ibm.aspen.base.{TestSystemSuite, Transaction}
 import com.ibm.aspen.core.DataBuffer
 
@@ -24,7 +25,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
 
     (newInode, revision) <- fs.inodeLoader.load(newFilePointer)
   } yield {
-    new SimpleFile(newFilePointer, revision, newInode, fs, osegmentSize, otierNodeSize)
+    new SimpleFile(newFilePointer, revision, newInode.asInstanceOf[FileInode], fs, osegmentSize, otierNodeSize)
   }
   
   test("Read empty File") {

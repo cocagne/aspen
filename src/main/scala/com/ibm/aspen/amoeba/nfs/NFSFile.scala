@@ -27,4 +27,6 @@ class NFSFile(val file: File)(implicit ec: ExecutionContext) extends NFSBaseFile
 
     stats
   }
+
+  def open(): NFSFileHandle = new NFSFileHandle(file.open())
 }

@@ -22,4 +22,6 @@ class NFSFileHandle(fh: FileHandle)(implicit ec: ExecutionContext) {
   def truncate(offset: Long): Unit = blockingCall(fh.truncate(offset))
 
   def flush(): Unit = blockingCall(fh.flush())
+
+  def close(): Unit = fh.close()
 }
