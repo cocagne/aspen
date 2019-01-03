@@ -12,7 +12,11 @@ trait BaseFile {
   def inode: Inode
   def revision: ObjectRevision
 
+  def inodeNumber: Long = pointer.number
+
   def refresh()(implicit ec: ExecutionContext): Future[Unit]
+
+  protected def setCachedInode(newInode: Inode, newRevision:ObjectRevision): Unit
   
   def mode: Int
   def uid: Int

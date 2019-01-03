@@ -89,7 +89,7 @@ trait AspenSystem extends ObjectReader {
     } yield prepResult
     
     fresult.failed.foreach(err => tx.invalidateTransaction(err))
-    
+
     fresult
   }
   

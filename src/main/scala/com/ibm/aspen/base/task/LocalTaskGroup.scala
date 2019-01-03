@@ -278,8 +278,11 @@ class LocalTaskGroup(
           val task = taskType.createTask(system, it.taskPointer, tx.txRevision, content)
 
           executeTask(ActiveTask(it.taskNumber, it.taskPointer, task))
-          
-          taskPromise completeWith task.completed.map(t => t._2)
+
+          task.completed.onComplete {
+            case Success(t) => taskPromise.success(t._2)
+            case Failure(cause) => taskPromise.failure(cause)
+          }
         }
       }
     }

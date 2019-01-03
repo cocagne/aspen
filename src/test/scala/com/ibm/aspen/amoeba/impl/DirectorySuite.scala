@@ -6,7 +6,7 @@ import com.ibm.aspen.base.{TestSystemSuite, Transaction}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRevision}
 import com.ibm.aspen.core.read.InvalidObject
 import com.ibm.aspen.amoeba._
-import com.ibm.aspen.amoeba.error.{DirectoryNotEmpty, InvalidInode}
+import com.ibm.aspen.amoeba.error.{DirectoryEntryDoesNotExist, DirectoryEntryExists, DirectoryNotEmpty, InvalidInode}
 
 import scala.concurrent._
 
@@ -135,17 +135,91 @@ class DirectorySuite extends TestSystemSuite with AmoebaBootstrap {
        initialContent.length should be (0)
      }
   }
+
+  test("Create file fails if file already exists") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- recoverToSucceededIf[DirectoryEntryExists](rootDir.createFile("foo", mode=0, uid=1, gid=2))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
+
+  test("Insert file fails if file already exists") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- recoverToSucceededIf[DirectoryEntryExists](rootDir.insert("foo",rootDir.pointer))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
+
+  test("Delete file fails if file does not exist") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- recoverToSucceededIf[DirectoryEntryDoesNotExist](rootDir.delete("INVALID"))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
+
+  test("Rename file fails if source file does not exist") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- recoverToSucceededIf[DirectoryEntryDoesNotExist](rootDir.rename("INVALID", "bar"))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
+
+  test("Rename file fails if destination file exists") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- cdir(rootDir, "bar", mode=0, uid=1, gid=2)
+      _ <- recoverToSucceededIf[DirectoryEntryExists](rootDir.rename("foo", "bar"))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
+
+  test("HardLink file fails if destination file exists") {
+    for {
+      fs <- bootstrap()
+      rootDir <- fs.loadRoot()
+      initialContent <- rootDir.getContents()
+      fooptr <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+      _ <- cdir(rootDir, "bar", mode=0, uid=1, gid=2)
+      foo <- fs.lookup(fooptr)
+      _ <- recoverToSucceededIf[DirectoryEntryExists](rootDir.hardLink("bar", foo))
+    } yield {
+      initialContent.length should be (0)
+    }
+  }
   
   test("Delete empty Directory") {
      for {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
-       initialContent <- rootDir.getContents()
-       newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
-       _ <- rootDir.delete("foo")       
-       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newDirPointer))
+       _ <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
+       _ <- rootDir.delete("foo")
+       oentry <- rootDir.getEntry("foo")
      } yield {
-       initialContent.length should be (0)
+       oentry should be (None)
      }
   }
   
@@ -153,18 +227,18 @@ class DirectorySuite extends TestSystemSuite with AmoebaBootstrap {
      for {
        fs <- bootstrap()
        rootDir <- fs.loadRoot()
-       initialContent <- rootDir.getContents()
        newDirPointer <- cdir(rootDir, "foo", mode=0, uid=1, gid=2)
        newDir <- fs.loadDirectory(newDirPointer)
-       newInode <- cdir(newDir, "bar", mode=0, uid=1, gid=2)
+       _ <- cdir(newDir, "bar", mode=0, uid=1, gid=2)
        dc <- newDir.getContents()
        if dc.length == 1
        _ <- newDir.delete("bar")       
-       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newInode))
+       obar <- newDir.getEntry("bar")
        _ <- rootDir.delete("foo")
-       _ <- recoverToSucceededIf[InvalidInode](fs.inodeLoader.load(newDirPointer))
+       ofoo <- rootDir.getEntry("foo")
      } yield {
-       initialContent.length should be (0)
+       obar should be (None)
+       ofoo should be (None)
      }
   }
   

@@ -19,9 +19,9 @@ object ExponentialBackoffRetryStrategy {
     ec = ExecutionContext.fromExecutorService(scheduler)
   }
   
-  def getScheduler(): ScheduledExecutorService = synchronized { scheduler }
+  def getScheduler: ScheduledExecutorService = synchronized { scheduler }
   
-  def getExecutionContext(): ExecutionContext = synchronized { ec }
+  def getExecutionContext: ExecutionContext = synchronized { ec }
   
   val rand = new java.util.Random
 }
@@ -36,23 +36,33 @@ class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetr
   def retryUntilSuccessful[T](attempt: => Future[T]): Future[T] = {
     val p = Promise[T]()
     
-    implicit val ec = getExecutionContext()
+    implicit val ec: ExecutionContext = getExecutionContext
     
     def retry(limit: Int): Unit = {
       val shouldAttempt = synchronized { !exit }
       
       if (shouldAttempt) {
-        attempt onComplete {
-          case Success(result) => p.success(result)
-          
-          case Failure(cause) => cause match {
-            case StopRetrying(reason) => p.failure(reason)
-            
-            case _ =>
-              val delay = rand.nextInt(limit)
-              val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
-              getScheduler().schedule(new Runnable { override def run(): Unit = retry(nextLimit) }, delay, TimeUnit.MILLISECONDS)
+
+        def scheduleNextAttempt(): Unit = {
+          val delay = rand.nextInt(limit)
+          val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
+          getScheduler.schedule(new Runnable {
+            override def run(): Unit = retry(nextLimit)
+          }, delay, TimeUnit.MILLISECONDS)
+        }
+
+        try {
+          attempt onComplete {
+            case Success(result) => p.success(result)
+
+            case Failure(cause) => cause match {
+              case StopRetrying(reason) => p.failure(reason)
+              case _: Throwable => scheduleNextAttempt()
+            }
           }
+        } catch {
+          case StopRetrying(reason) => p.failure(reason)
+          case _: Throwable => scheduleNextAttempt()
         }
       }
     }
@@ -62,35 +72,42 @@ class ExponentialBackoffRetryStrategy(backoffLimit: Int = 60 * 1000, initialRetr
     p.future
   }
   
-  def retryUntilSuccessful[T](onAttemptFailure: (Throwable) => Future[Unit])(attempt: => Future[T]): Future[T] = {
+  def retryUntilSuccessful[T](onAttemptFailure: Throwable => Future[Unit])(attempt: => Future[T]): Future[T] = {
     val p = Promise[T]()
     
-    implicit val ec = getExecutionContext()
+    implicit val ec: ExecutionContext = getExecutionContext
     
     def retry(limit: Int): Unit = {
       val shouldAttempt = synchronized { !exit }
       
       if (shouldAttempt) {
-        attempt onComplete {
-          case Success(result) => p.success(result)
-          
-          case Failure(cause) => cause match {
-            case StopRetrying(reason) => p.failure(reason)
-            
-            case cause: Throwable =>
-              
-              val delay = rand.nextInt(limit)
-              val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
-              
-              val runnable = new Runnable { override def run(): Unit = {
-                retryUntilSuccessful(onAttemptFailure(cause)).onComplete {
-                  case Failure(reason) => p.failure(reason)
-                  case Success(_) => retry(nextLimit) 
-                }
-              }}
-              
-              getScheduler().schedule(runnable, delay, TimeUnit.MILLISECONDS)
+
+        def scheduleNextAttempt(cause: Throwable): Unit = {
+          val delay = rand.nextInt(limit)
+          val nextLimit = if (limit * limit < backoffLimit) limit * limit else backoffLimit
+
+          val runnable = new Runnable { override def run(): Unit = {
+            retryUntilSuccessful(onAttemptFailure(cause)).onComplete {
+              case Failure(reason) => p.failure(reason)
+              case Success(r) => retry(nextLimit)
+            }
+          }}
+
+          getScheduler.schedule(runnable, delay, TimeUnit.MILLISECONDS)
+        }
+
+        try {
+          attempt onComplete {
+            case Success(result) => p.success(result)
+
+            case Failure(cause) => cause match {
+              case StopRetrying(reason) => p.failure(reason)
+              case cause: Throwable => scheduleNextAttempt(cause)
+            }
           }
+        } catch {
+          case StopRetrying(reason) => p.failure(reason)
+          case cause: Throwable => scheduleNextAttempt(cause)
         }
       }
     }

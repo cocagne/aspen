@@ -5,8 +5,9 @@ import java.nio.ByteBuffer
 
 import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import com.ibm.aspen.amoeba
-import com.ibm.aspen.amoeba.impl.SimpleFileHandle
-import com.ibm.aspen.amoeba.{DirectoryEntry => _, Inode => _, _}
+import com.ibm.aspen.amoeba.error.{DirectoryEntryDoesNotExist, DirectoryEntryExists, InvalidInode}
+import com.ibm.aspen.amoeba.{FileHandle, DirectoryEntry => _, Inode => _, _}
+import com.ibm.aspen.base.StopRetrying
 import com.ibm.aspen.core.read.FatalReadError
 import javax.security.auth.Subject
 import org.apache.logging.log4j.scala.Logging
@@ -17,7 +18,8 @@ import org.dcache.nfs.v4.{NfsIdMapping, SimpleIdMap}
 import org.dcache.nfs.vfs._
 
 import scala.collection.JavaConverters.asJavaCollection
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 // mount -v -t nfs4 -o "vers=4.1" 192.168.56.1:/ /mnt
 
@@ -31,6 +33,48 @@ object AmoebaNFS {
     ByteBuffer.wrap(arr).putLong(fd)
     Inode.forFile(arr)
   }
+
+  def nfsFileType(pointer: InodePointer): Int = FileType.toMode(pointer.ftype)
+
+  def nfsStat(file: BaseFile): Stat = {
+    val stats: Stat = new Stat
+
+    stats.setMode(file.mode)
+    stats.setNlink(file.links)
+    stats.setGeneration(0L)
+    stats.setIno(file.pointer.number.asInstanceOf[Int])
+    stats.setATime(file.atime.millis)
+    stats.setMTime(file.mtime.millis)
+    stats.setCTime(file.ctime.millis)
+    stats.setFileid(file.pointer.number.asInstanceOf[Int])
+    stats.setUid(file.uid)
+    stats.setGid(file.gid)
+
+    file match {
+      case f: File => stats.setSize(f.size)
+      case l: Symlink => stats.setSize(l.symLink.length)
+      case _ => stats.setSize(0)
+    }
+
+    file match {
+      case d: CharacterDevice => stats.setRdev(d.rdev)
+      case d: BlockDevice => stats.setRdev(d.rdev)
+      case _ =>
+    }
+
+    stats
+  }
+
+  def blockingCall[T](fn: => Future[T])(implicit ec: ExecutionContext): T = try {
+    Await.result(fn, Duration.Inf)
+  } catch {
+    case e: DirectoryEntryExists => throw new ExistException(e.toString)
+    case e: DirectoryEntryDoesNotExist => throw new NoEntException(e.toString)
+    case _: FatalReadError => throw new IOException("Fatal Aspen Read Error")
+    case t: Throwable => throw t
+  }
+
+
 }
 
 class AmoebaNFS(val fs: FileSystem,
@@ -44,59 +88,37 @@ class AmoebaNFS(val fs: FileSystem,
   private val NoAcl = new Array[nfsace4](0)
   private val IdMapper = new SimpleIdMap
 
-  private[this] val fileHandles: LoadingCache[Long, NFSFileHandle] = Scaffeine().
+  private[this] val fileHandles: LoadingCache[Long, FileHandle] = Scaffeine().
     maximumSize(fileHandleCacheMax).
-    removalListener[Long, NFSFileHandle]( (_,v,_) => v.close()).
-    build[Long, NFSFileHandle]((inode: Long) => {
+    removalListener[Long, FileHandle]( (_,v,_) => v.close()).
+    build[Long, FileHandle]((inode: Long) => {
       load(inode) match {
-      case f: NFSFile => f.open()
+      case f: File => f.open()
       case _ => throw new NotSuppException("Cannot open non-regular file")
     }
   })
 
-  private def getFileHandle(inode: Inode): NFSFileHandle = fileHandles.get(inode)
+  private def getFileHandle(inode: Inode): FileHandle = fileHandles.get(inode)
 
-  def load(inode: Long): NFSBaseFile = blockingCall {
+  def load(inode: Long): BaseFile = blockingCall {
     fs.lookup(inode) map {
-      case Some(f) =>
-        val nfsFile = f match {
-          case x: BlockDevice => new NFSBlockDevice(x)
-          case x: CharacterDevice => new NFSCharacterDevice(x)
-          case x: Directory => new NFSDirectory(x)
-          case x: File => new NFSFile(x)
-          case x: Symlink => new NFSSymlink(x)
-          case x: FIFO => new NFSFIFO(x)
-          case x: UnixSocket => new NFSUnixSocket(x)
-        }
-        nfsFile
+      case Some(f) => f
       case None => throw new NoEntException(s"no such inode $inode")
     } recover {
       case _: FatalReadError => throw new ServerFaultException("sumthin broke")
     }
   }
 
-
-  private def getDirectory(inode: Long): NFSDirectory = load(inode) match {
-    case d: NFSDirectory => d
+  private def getDirectory(inode: Long): Directory = load(inode) match {
+    case d: Directory => d
     case _ => throw new NotDirException(s"Inode $inode is not a directory")
   }
 
-  private def getFile(inode: Long): NFSFile = load(inode) match {
-    case f: NFSFile => f
+  private def getSymLink(inode: Long): Symlink = load(inode) match {
+    case f: Symlink => f
     case _ => throw new NotSuppException(s"Operation supported only on regular file")
   }
 
-  private def getSymLink(inode: Long): NFSSymlink = load(inode) match {
-    case f: NFSSymlink => f
-    case _ => throw new NotSuppException(s"Operation supported only on regular file")
-  }
-
-  private def getInodePointer(inode: Long): InodePointer = blockingCall {
-    fs.lookupInodePointer(inode) map {
-      case Some(iptr) => iptr
-      case _ => throw new NotSuppException(s"Operation supported only on regular file")
-    }
-  }
 
   /**
     * Check access to file system object.
@@ -126,24 +148,19 @@ class AmoebaNFS(val fs: FileSystem,
 
     val dir = getDirectory(parent)
 
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    dir.getEntry(name) match {
-      case Some(_) => throw new ExistException(s"$name already exists")
-      case None =>
-    }
-
     val uid = Subjects.getUid(subject).toInt
     val gid = Subjects.getPrimaryGid(subject).toInt
 
     val iptr = `type` match {
-      case Stat.Type.REGULAR => dir.createFile(name, mode, uid, gid)
-      case Stat.Type.DIRECTORY => dir.createDirectory(name, mode, uid, gid)
-      case Stat.Type.SYMLINK => dir.createSymlink(name, mode, uid, gid, "")
-      case Stat.Type.CHAR => dir.createCharacterDevice(name, mode, uid, gid, 0)
-      case Stat.Type.BLOCK => dir.createBlockDevice(name, mode, uid, gid, 0)
-      case Stat.Type.FIFO => dir.createFIFO(name, mode, uid, gid)
-      case Stat.Type.SOCK => dir.createUnixSocket(name, mode, uid, gid)
-      case _ => throw new NotSuppException("Unknown FileType")
+      case Stat.Type.REGULAR => blockingCall { dir.createFile(name, mode, uid, gid) }
+      case Stat.Type.DIRECTORY => blockingCall { dir.createDirectory(name, mode, uid, gid) }
+      case Stat.Type.SYMLINK => blockingCall { dir.createSymlink(name, mode, uid, gid, "") }
+      case Stat.Type.CHAR => blockingCall { dir.createCharacterDevice(name, mode, uid, gid, 0) }
+      case Stat.Type.BLOCK => blockingCall { dir.createBlockDevice(name, mode, uid, gid, 0) }
+      case Stat.Type.FIFO => blockingCall { dir.createFIFO(name, mode, uid, gid) }
+      case Stat.Type.SOCK => blockingCall { dir.createUnixSocket(name, mode, uid, gid) }
+      case _ =>
+        throw new NotSuppException("Unknown FileType")
     }
 
     logger.info(s"Created ${iptr.ftype} with name $name and inode ${iptr.number}")
@@ -187,12 +204,14 @@ class AmoebaNFS(val fs: FileSystem,
   @throws[IOException]
   def lookup(parent: Inode, name: String): Inode = {
     logger.info(s"lookup ${inode2long(parent)} $name")
-    getDirectory(parent).getEntry(name) match {
+    val dir = getDirectory(parent)
+
+    blockingCall { dir.getEntry(name) } match {
       case Some(iptr) => iptr.number
       case None =>
         val d = getDirectory(parent)
         val mm = Stat.S_IFDIR | 0x1ff
-        logger.info(s"   lookup throwing NoEntException. Known good mode: ${mm.toOctalString}. Actual: ${d.nfsStat.getMode().toOctalString}")
+        logger.info(s"   lookup throwing NoEntException. Known good mode: ${mm.toOctalString}. Actual: ${nfsStat(d).getMode.toOctalString}")
         throw new NoEntException(s"No such file $name")
     }
   }
@@ -213,15 +232,9 @@ class AmoebaNFS(val fs: FileSystem,
     val pdir = getDirectory(parent)
     val target = load(link)
 
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    pdir.getEntry(name) match {
-      case Some(_) => throw new ExistException(s"$name already exists")
-      case None =>
-    }
+    blockingCall { pdir.hardLink(name, target) }
 
-    pdir.hardLink(name, target.file)
-
-    target.file.pointer.number
+    target.inodeNumber
   }
 
   /**
@@ -245,12 +258,12 @@ class AmoebaNFS(val fs: FileSystem,
 
     val dir = getDirectory(inode)
 
-    logger.info(s"Directory stats: ${dir.nfsStat}")
+    logger.info(s"Directory stats: ${nfsStat(dir)}")
 
-    val entries = dir.getContents().zipWithIndex.map { t =>
+    val entries = blockingCall { dir.getContents() }.zipWithIndex.map { t =>
       val (amoeba.DirectoryEntry(name, iptr), cookie) = t
       val file = load(iptr.number)
-      new DirectoryEntry(name, iptr.number, file.nfsStat, cookie)
+      new DirectoryEntry(name, iptr.number, nfsStat(file), cookie)
     }
 
     new DirectoryStream(DirectoryStream.ZERO_VERIFIER, asJavaCollection(entries))
@@ -283,18 +296,12 @@ class AmoebaNFS(val fs: FileSystem,
 
     val pdir = getDirectory(parent)
 
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    pdir.getEntry(name) match {
-      case Some(_) => throw new ExistException(s"$name already exists")
-      case None =>
-    }
-
     val uid = Subjects.getUid(subject).toInt
     val gid = Subjects.getPrimaryGid(subject).toInt
 
-    val iptr = pdir.createDirectory(name, mode, uid, gid)
+    val iptr = blockingCall { pdir.createDirectory(name, mode, uid, gid) }
 
-    logger.info(s"Created new directory $name in parent dir ${pdir.pointer.number} with inode number ${iptr.number}")
+    logger.info(s"Created new directory $name in parent dir ${pdir.inodeNumber} with inode number ${iptr.number}")
 
     iptr.number
   }
@@ -314,16 +321,11 @@ class AmoebaNFS(val fs: FileSystem,
     val s = getDirectory(src)
     val d = getDirectory(dest)
 
-    logger.info(s"move $oldName to $newName. Src ${s.pointer.number} Dst ${d.pointer.number}")
+    logger.info(s"move $oldName to $newName. Src ${s.inodeNumber} Dst ${d.inodeNumber}")
 
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    d.getEntry(newName) match {
-      case Some(_) => throw new ExistException(s"$newName already exists")
-      case None =>
-    }
-
-    s.getEntry(oldName) match {
+    blockingCall { s.getEntry(oldName) } match {
       case None => throw new NoEntException(s"$oldName does not exist")
+
       case Some(iptr) =>
 
         val odir = iptr.ftype match {
@@ -333,15 +335,33 @@ class AmoebaNFS(val fs: FileSystem,
 
         val refreshOnFailure = s :: d :: odir.map(t => t :: Nil).getOrElse(Nil)
 
-        retryTransactionUntilSuccessful(fs.system, refreshOnFailure) { implicit tx =>
-          // TODO: Fix race conditions with concurrent writers. Need to accruately detect failures and error out
-          s.file.prepareDelete(oldName, decref = false)
-          d.file.prepareInsert(newName, iptr, incref = false)
+        def onFail(err: Throwable): Future[Unit] = err match {
+          case e: InvalidInode => throw StopRetrying(e)
+          case e: DirectoryEntryExists => throw StopRetrying(e)
+          case e: DirectoryEntryDoesNotExist => throw StopRetrying(e)
+          case e: FatalReadError => throw StopRetrying(e)
+          case _ =>
+            val refreshOld = s.getEntry(oldName)
+            val refreshNew = d.getEntry(newName)
+            for {
+              _ <- Future.sequence(refreshOnFailure.map(_.refresh())).map(_ => ())
+              oldf <- refreshOld
+              newf <- refreshNew
+            } yield {
+              if (oldf.isEmpty)
+                throw StopRetrying(DirectoryEntryDoesNotExist(s.pointer, oldName))
+              if (newf.nonEmpty)
+                throw StopRetrying(DirectoryEntryExists(d.pointer, newName))
+            }
+        }
+
+        fs.system.transactUntilSuccessfulWithRecovery(onFail) {  implicit tx =>
+
+          s.prepareDelete(oldName, decref = false)
+          d.prepareInsert(newName, iptr, incref = false)
 
           odir.foreach { tdir =>
-            val updatedInode = tdir.file.inode.setParentDirectory(Some(d.file.pointer))
-
-            tx.overwrite(tdir.file.pointer.pointer, tdir.file.revision, updatedInode.toDataBuffer)
+            tdir.prepareSetParentDirectory(d)
           }
 
           Future.unit
@@ -360,7 +380,11 @@ class AmoebaNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def parentOf(inode: Inode): Inode = getDirectory(inode).parentInodeNumber
+  def parentOf(inode: Inode): Inode = getDirectory(inode).inode.oparent match {
+    case None => throw new NoEntException()
+    case Some(ptr) => ptr.number
+  }
+
 
   /**
     * Read data from file with a given inode into data.
@@ -377,10 +401,10 @@ class AmoebaNFS(val fs: FileSystem,
   def read(inode: Inode, data: Array[Byte], offset: Long, count: Int): Int = {
     logger.info(s"read ${inode2long(inode)} offset $offset count $count")
     val fh = getFileHandle(inode)
-    if (offset > fh.size)
+    if (offset > fh.file.size)
       -1
     else {
-      fh.read(offset, count) match {
+      blockingCall { fh.read(offset, count) } match {
         case None => -1
         case Some(db) =>
           db.asReadOnlyBuffer().get(data, 0, db.size)
@@ -411,13 +435,7 @@ class AmoebaNFS(val fs: FileSystem,
   def remove(parent: Inode, name: String): Unit = {
     val dir = getDirectory(parent)
 
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    dir.getEntry(name) match {
-      case Some(_) =>
-      case None => throw new NoEntException(s"$name does not exist")
-    }
-
-    dir.delete(name)
+    blockingCall { dir.delete(name) }
   }
 
   /**
@@ -432,19 +450,13 @@ class AmoebaNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def symlink(parent: Inode, name: String, link: String, subject: Subject, mode: Int): Inode = synchronized {
+  def symlink(parent: Inode, name: String, link: String, subject: Subject, mode: Int): Inode = {
     val pdir = getDirectory(parent)
-
-    // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
-    pdir.getEntry(name) match {
-      case Some(_) => throw new ExistException(s"$name already exists")
-      case None =>
-    }
 
     val uid = Subjects.getUid(subject).toInt
     val gid = Subjects.getPrimaryGid(subject).toInt
 
-    val iptr = pdir.createSymlink(name, mode, uid, gid, link)
+    val iptr = blockingCall { pdir.createSymlink(name, mode, uid, gid, link) }
 
     logger.info(s"Created new symlink $name in parent dir ${pdir.pointer.number} with inode number ${iptr.number} pointing to $link")
 
@@ -463,15 +475,18 @@ class AmoebaNFS(val fs: FileSystem,
     * @throws IOException meh
     */
   @throws[IOException]
-  def write(inode: Inode, data: Array[Byte], offset: Long, count: Int, stabilityLevel: VirtualFileSystem.StabilityLevel): VirtualFileSystem.WriteResult = synchronized {
+  def write(inode: Inode, data: Array[Byte], offset: Long, count: Int, stabilityLevel: VirtualFileSystem.StabilityLevel): VirtualFileSystem.WriteResult = {
     logger.info(s"write ${inode2long(inode)} offset $offset count $count")
 
     val fh = getFileHandle(inode)
 
-    fh.write(offset, data)
+    blockingCall { fh.write(offset, data) }
 
-    if (stabilityLevel != VirtualFileSystem.StabilityLevel.UNSTABLE)
-      fh.flush()
+    if (stabilityLevel != VirtualFileSystem.StabilityLevel.DATA_SYNC)
+      blockingCall { fh.flush() }
+
+    if (stabilityLevel == VirtualFileSystem.StabilityLevel.FILE_SYNC)
+      blockingCall { Future.sequence( fh.flush() :: fh.file.flush() :: Nil ) }
 
     new VirtualFileSystem.WriteResult(stabilityLevel, count)
   }
@@ -497,7 +512,7 @@ class AmoebaNFS(val fs: FileSystem,
     */
   @throws[IOException]
   def getattr(inode: Inode): Stat = {
-    val stat = load(inode).nfsStat
+    val stat = nfsStat(load(inode))
 
     if (inode2long(inode) == 1)
       stat.setMode(stat.getMode | FileMode.S_IRWXO)
@@ -518,38 +533,37 @@ class AmoebaNFS(val fs: FileSystem,
     val i = load(inode)
 
     if (stat.isDefined(Stat.StatAttribute.OWNER))
-      i.setUID(stat.getUid)
+      blockingCall { i.setUID(stat.getUid) }
 
     if (stat.isDefined(Stat.StatAttribute.GROUP))
-      i.setGID(stat.getGid)
+      blockingCall { i.setGID(stat.getGid) }
 
     if (stat.isDefined(Stat.StatAttribute.DEV)) i match {
-      case d: NFSBlockDevice => // TODO what to do with this?
-      case d: NFSCharacterDevice => // TODO what to do with this?
+      case _: BlockDevice => // TODO what to do with this?
+      case _: CharacterDevice => // TODO what to do with this?
       case _ => new InvalException("Can't set device attribute on non-device file")
     }
 
     if (stat.isDefined(Stat.StatAttribute.RDEV)) i match {
-      case d: NFSBlockDevice => d.setrdev(stat.getRdev)
-      case d: NFSCharacterDevice => d.setrdev(stat.getRdev)
+      case d: BlockDevice => blockingCall { d.setrdev(stat.getRdev) }
+      case d: CharacterDevice => blockingCall { d.setrdev(stat.getRdev) }
       case _ => new InvalException("Can't set rdevice attribute on non-device file")
     }
 
-
     if (stat.isDefined(Stat.StatAttribute.MODE))
-      i.setMode(stat.getMode)
+      blockingCall { i.setMode(stat.getMode) }
 
     if (stat.isDefined(Stat.StatAttribute.SIZE)) i match {
 
-      case _: NFSFile =>
-        getFileHandle(inode).truncate(stat.getSize)
+      case _: File =>
+        blockingCall { getFileHandle(inode).truncate(stat.getSize) }
 
       case _ => throw new InvalException("Can't change size of non-regular file")
     }
 
-    if (stat.isDefined(Stat.StatAttribute.ATIME)) i.setAtime(Timespec(stat.getATime))
-    if (stat.isDefined(Stat.StatAttribute.MTIME)) i.setMtime(Timespec(stat.getMTime))
-    if (stat.isDefined(Stat.StatAttribute.CTIME)) i.setCtime(Timespec(stat.getCTime))
+    if (stat.isDefined(Stat.StatAttribute.ATIME)) blockingCall { i.setAtime(Timespec(stat.getATime)) }
+    if (stat.isDefined(Stat.StatAttribute.MTIME)) blockingCall { i.setMtime(Timespec(stat.getMTime)) }
+    if (stat.isDefined(Stat.StatAttribute.CTIME)) blockingCall { i.setCtime(Timespec(stat.getCTime)) }
   }
 
   /**

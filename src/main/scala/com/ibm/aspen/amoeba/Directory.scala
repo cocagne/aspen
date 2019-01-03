@@ -1,6 +1,6 @@
 package com.ibm.aspen.amoeba
 
-import com.ibm.aspen.amoeba.error.{DirectoryEntryDoesNotExist, DirectoryEntryExists, InvalidInode}
+import com.ibm.aspen.amoeba.error.{DirectoryEntryDoesNotExist, DirectoryEntryExists, DirectoryNotEmpty, InvalidInode}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import com.ibm.aspen.base.{StopRetrying, Transaction}
@@ -34,21 +34,6 @@ trait Directory extends BaseFile with Logging {
   def prepareDelete(name: String, decref: Boolean=true)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[Unit]]
   
   def prepareRename(oldName: String, newName: String)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
-  
-  def delete(name: String)(implicit ec: ExecutionContext): Future[Unit] = {
-    implicit val tx: Transaction = fs.system.newTransaction()
-
-    val f = for {
-      fcomplete <- prepareDelete(name)
-
-      _ <- tx.commit()
-
-      _ <- fcomplete
-    } yield ()
-    
-    f.failed.foreach( tx.invalidateTransaction )
-    f
-  }
 
   def prepareHardLink(name: String, file: BaseFile)(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
   
@@ -59,14 +44,18 @@ trait Directory extends BaseFile with Logging {
   private def retryUntilSuccessfulOr[T](prepare: Transaction => Future[T])
                                        (checkForErrors: => Future[Unit])
                                        (implicit ec: ExecutionContext): Future[T] = {
-    def onFail(err: Throwable): Future[Unit] = err match {
-      case e: FatalReadError => throw StopRetrying(e)
-      case _ =>
-        logger.info(s"retryUntilSuccessOr error $err")
-        refresh().recover {
-          case e: InvalidInode => throw StopRetrying(e)
-          case other => throw other
-        }.map(_ => checkForErrors)
+    def onFail(err: Throwable): Future[Unit] = {
+      err match {
+        case e: InvalidInode => throw StopRetrying(e)
+        case e: FatalReadError => throw StopRetrying(e)
+        case e: DirectoryNotEmpty => throw StopRetrying(e)
+        case _ =>
+          logger.info(s"retryUntilSuccessOr error $err")
+          refresh().recover {
+            case e: InvalidInode => throw StopRetrying(e)
+            case other => throw other
+          }.flatMap(_ => checkForErrors)
+      }
     }
     fs.system.transactUntilSuccessfulWithRecovery(onFail) { tx =>
       prepare(tx)
@@ -78,12 +67,15 @@ trait Directory extends BaseFile with Logging {
                                 (implicit ec: ExecutionContext): Future[T] = {
     val p = Promise[T]()
 
-    def onFail(err: Throwable): Future[Unit] = err match {
-      case e: FatalReadError => throw StopRetrying(e)
-      case _ => refresh().recover {
+    def onFail(err: Throwable): Future[Unit] = {
+      err match {
         case e: InvalidInode => throw StopRetrying(e)
-        case other => throw other
-      }.map(_ => checkForErrors)
+        case e: FatalReadError => throw StopRetrying(e)
+        case _ => refresh().recover {
+          case e: InvalidInode => throw StopRetrying(e)
+          case other => throw other
+        }.flatMap(_ => checkForErrors)
+      }
     }
 
     val fcreate = fs.system.transactUntilSuccessfulWithRecovery(onFail) { tx =>
@@ -91,14 +83,11 @@ trait Directory extends BaseFile with Logging {
     }
 
     fcreate.foreach { ft =>
-      ft.foreach { t =>
-        p.success(t)
-      }
+      ft.foreach(p.success)
+      ft.failed.foreach(p.failure)
     }
 
-    fcreate.failed.foreach { err =>
-      p.failure(err)
-    }
+    fcreate.failed.foreach(p.failure)
 
     p.future
   }
@@ -225,6 +214,16 @@ trait Directory extends BaseFile with Logging {
         case None =>
         case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
       }
+    }
+  }
+
+  def prepareSetParentDirectory(parent: Directory)(implicit tx: Transaction, ec: ExecutionContext): Unit = {
+    val updatedInode = inode.setParentDirectory(Some(parent.pointer))
+
+    tx.overwrite(pointer.pointer, revision, updatedInode.toDataBuffer)
+
+    tx.result.foreach { _ =>
+      setCachedInode(updatedInode, tx.txRevision)
     }
   }
   

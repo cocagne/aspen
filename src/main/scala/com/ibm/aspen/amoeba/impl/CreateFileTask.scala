@@ -113,7 +113,7 @@ class CreateFileTask private (
         failTask(tx, err)
         fs.lookup(newInode).flatMap(file => DeleteFileTask.prepareFileDeletion(fs, file).map(_ => ()))
       } map { _ =>
-        throw StopRetrying(new Exception())
+        throw StopRetrying(err)
       }
     }
 
