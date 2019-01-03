@@ -10,7 +10,7 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 object SimpleFileHandle {
 
   private class PendingWrite(val writeNumber: Int,
-                             val offset: Long,
+                             var offset: Long,
                              var nbytes: Int,
                              var reversedBuffers: List[DataBuffer]) {
 
@@ -82,8 +82,6 @@ class SimpleFileHandle(
 
   def write(offset: Long, buffers: List[DataBuffer])(implicit ec: ExecutionContext): Future[Unit] = synchronized {
 
-    // TODO - Track down source of corruption on DataBuffers being passed into this method. While queued, the head
-    //        buffers are occasionally being overwritten
     val copies = buffers.map(_.copy())
 
     val wsize = copies.foldLeft(0)((sz, db) => sz + db.size)
@@ -91,18 +89,26 @@ class SimpleFileHandle(
 
     nbuffered += wsize
 
-    val pw = writeQueue.find(_.endOffset == offset) match {
+    val pw = writeQueue.find(pw => pw.offset == offset + wsize || pw.endOffset == offset) match {
       case None =>
         writeCount += 1
-        logger.info(s"Queuing new write number $writeCount at offset $offset, end offset ${offset + wsize}. CRCs ${copies.map(_.hashString)}")
+        logger.info(s"Queuing new write number $writeCount at offset $offset, end offset ${offset + wsize}.")
         val p = new PendingWrite(writeCount, offset, wsize, rbuffers)
         writeQueue = writeQueue.enqueue(p)
         p
 
       case Some(p) =>
-        logger.info(s"Buffering write in pending write number ${p.writeNumber} with end offset $offset, new end offset ${offset + wsize} CRCs ${copies.map(_.hashString)}")
+        val ooff = p.offset
+        val oend = p.offset + p.nbytes
         p.nbytes += wsize
-        p.reversedBuffers = rbuffers ++ p.reversedBuffers
+        if (p.offset == offset + wsize) {
+          p.reversedBuffers = p.reversedBuffers ++ rbuffers
+          p.offset -= wsize
+          logger.info(s"Buffering write of $wsize bytes as Prepend to write number ${p.writeNumber} (off:$ooff, end:$oend). New (off:${p.offset}, end:${p.offset + p.nbytes})")
+        } else {
+          p.reversedBuffers = rbuffers ++ p.reversedBuffers
+          logger.info(s"Buffering write of $wsize bytes as Append  to write number ${p.writeNumber} (off:$ooff, end:$oend). New (off:${p.offset}, end:${p.offset + p.nbytes})")
+        }
         p
     }
 
