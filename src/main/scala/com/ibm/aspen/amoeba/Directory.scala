@@ -1,12 +1,15 @@
 package com.ibm.aspen.amoeba
 
-import scala.concurrent.Future
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.amoeba.error.{DirectoryEntryDoesNotExist, DirectoryEntryExists, InvalidInode}
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import com.ibm.aspen.base.{StopRetrying, Transaction}
 import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.amoeba.impl.CreateFileTask
+import com.ibm.aspen.core.read.FatalReadError
+import org.apache.logging.log4j.scala.Logging
 
-trait Directory extends BaseFile {
+trait Directory extends BaseFile with Logging {
   val pointer: DirectoryPointer
   val fs: FileSystem
 
@@ -52,6 +55,178 @@ trait Directory extends BaseFile {
   /** Ensures the directory is empty and that all resources are cleaned up if the transaction successfully commits 
    */
   def prepareForDirectoryDeletion()(implicit tx: Transaction, ec: ExecutionContext): Future[Unit]
+
+  private def retryUntilSuccessfulOr[T](prepare: Transaction => Future[T])
+                                       (checkForErrors: => Future[Unit])
+                                       (implicit ec: ExecutionContext): Future[T] = {
+    def onFail(err: Throwable): Future[Unit] = err match {
+      case e: FatalReadError => throw StopRetrying(e)
+      case _ =>
+        logger.info(s"retryUntilSuccessOr error $err")
+        refresh().recover {
+          case e: InvalidInode => throw StopRetrying(e)
+          case other => throw other
+        }.map(_ => checkForErrors)
+    }
+    fs.system.transactUntilSuccessfulWithRecovery(onFail) { tx =>
+      prepare(tx)
+    }
+  }
+
+  private def retryCreationOr[T](prepare: Transaction => Future[Future[T]])
+                                (checkForErrors: => Future[Unit])
+                                (implicit ec: ExecutionContext): Future[T] = {
+    val p = Promise[T]()
+
+    def onFail(err: Throwable): Future[Unit] = err match {
+      case e: FatalReadError => throw StopRetrying(e)
+      case _ => refresh().recover {
+        case e: InvalidInode => throw StopRetrying(e)
+        case other => throw other
+      }.map(_ => checkForErrors)
+    }
+
+    val fcreate = fs.system.transactUntilSuccessfulWithRecovery(onFail) { tx =>
+      prepare(tx)
+    }
+
+    fcreate.foreach { ft =>
+      ft.foreach { t =>
+        p.success(t)
+      }
+    }
+
+    fcreate.failed.foreach { err =>
+      p.failure(err)
+    }
+
+    p.future
+  }
+
+  def insert(name: String, fpointer: InodePointer, incref: Boolean=true)(implicit ec: ExecutionContext): Future[Unit] = {
+    retryUntilSuccessfulOr { implicit tx =>
+      prepareInsert(name, fpointer, incref)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+
+  def delete(name: String, decref: Boolean=true)(implicit ec: ExecutionContext): Future[Unit] = {
+    retryUntilSuccessfulOr { implicit tx =>
+      prepareDelete(name, decref).map(_ => ())
+    }{
+      getEntry(name).map {
+        case None =>  throw StopRetrying(DirectoryEntryDoesNotExist(pointer, name))
+        case Some(_) =>
+      }
+    }
+  }
+
+  def rename(oldName: String, newName: String)(implicit ec: ExecutionContext): Future[Unit] = {
+    retryUntilSuccessfulOr { implicit tx =>
+      prepareRename(oldName, newName)
+    }{
+      Future.sequence(getEntry(oldName) :: getEntry(newName) :: Nil).map { lst =>
+        if (lst.head.isEmpty)
+          throw StopRetrying(DirectoryEntryDoesNotExist(pointer, oldName))
+
+        if (lst.tail.head.nonEmpty)
+          throw StopRetrying(DirectoryEntryExists(pointer, newName))
+      }
+    }
+  }
+
+  def hardLink(name: String, f: BaseFile)(implicit ec: ExecutionContext): Future[Unit] = {
+    retryUntilSuccessfulOr { implicit tx =>
+      prepareHardLink(name, f)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[DirectoryPointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateDirectory(name, mode, uid, gid)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createFile(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FilePointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateFile(name, mode, uid, gid)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createSymlink(name: String, mode: Int, uid: Int, gid: Int, link: String)(implicit ec: ExecutionContext): Future[SymlinkPointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateSymlink(name, mode, uid, gid, link)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createUnixSocket(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[UnixSocketPointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateUnixSocket(name, mode, uid, gid)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createFIFO(name: String, mode: Int, uid: Int, gid: Int)(implicit ec: ExecutionContext): Future[FIFOPointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateFIFO(name, mode, uid, gid)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createCharacterDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[CharacterDevicePointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateCharacterDevice(name, mode, uid, gid, rdev)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
+
+  def createBlockDevice(name: String, mode: Int, uid: Int, gid: Int, rdev: Int)(implicit ec: ExecutionContext): Future[BlockDevicePointer] = {
+    retryCreationOr { implicit tx =>
+      prepareCreateBlockDevice(name, mode, uid, gid, rdev)
+    }{
+      getEntry(name).map {
+        case None =>
+        case Some(_) => throw StopRetrying(DirectoryEntryExists(pointer, name))
+      }
+    }
+  }
   
   def prepareCreateDirectory(name: String, mode: Int, uid: Int, gid: Int)(implicit tx: Transaction, ec: ExecutionContext): Future[Future[DirectoryPointer]] = {
     val newInode = DirectoryInode.init(mode, uid, gid, Some(pointer))

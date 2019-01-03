@@ -211,7 +211,7 @@ class AmoebaNFS(val fs: FileSystem,
   def link(parent: Inode, link: Inode, name: String, subject: Subject): Inode = {
     logger.info(s"link $name")
     val pdir = getDirectory(parent)
-    val target = getInodePointer(link)
+    val target = load(link)
 
     // TODO: Move this check into Directory impl. This is racy and incorrect with concurrent writers
     pdir.getEntry(name) match {
@@ -219,9 +219,9 @@ class AmoebaNFS(val fs: FileSystem,
       case None =>
     }
 
-    pdir.insert(name, target)
+    pdir.hardLink(name, target.file)
 
-    target.number
+    target.file.pointer.number
   }
 
   /**
