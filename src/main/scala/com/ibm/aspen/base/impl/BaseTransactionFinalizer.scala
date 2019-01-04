@@ -1,11 +1,15 @@
 package com.ibm.aspen.base.impl
 
+import java.util.UUID
+
 import com.ibm.aspen.core.transaction.TransactionFinalizer
+
 import scala.concurrent.Future
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
 import com.ibm.aspen.base.FinalizationAction
+
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.base.UpdateableFinalizationAction
 import com.ibm.aspen.base.TypeRegistry
@@ -37,8 +41,8 @@ class BaseTransactionFinalizer(val system: BasicAspenSystem)(implicit ec: Execut
 
     def debugStatus: List[(String, Boolean)] = falist.map(fa => fa.getClass.getName -> fa.complete.isCompleted)
 
-    def updateCommittedPeer(peer: DataStoreID): Unit = falist.foreach {
-      case ufah: UpdateableFinalizationAction => ufah.updateCommittedPeer(peer)
+    def updateCommitErrors(commitErrors: Map[DataStoreID, List[UUID]]): Unit = falist.foreach {
+      case ufah: UpdateableFinalizationAction => ufah.updateCommitErrors(commitErrors)
       case _ =>
     }
     

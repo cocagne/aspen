@@ -76,8 +76,10 @@ object TransactionDriverSuite {
       created = true
       this
     }
-    
-    override def updateCommittedPeer(peer: DataStoreID): Unit = synchronized { peers += peer }
+
+    def updateCommitErrors(commitErrors: Map[DataStoreID, List[UUID]]): Unit = synchronized {
+      peers = commitErrors.keySet
+    }
   }
   
 }

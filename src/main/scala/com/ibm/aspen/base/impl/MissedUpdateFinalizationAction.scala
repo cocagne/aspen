@@ -56,36 +56,53 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
     val complete: Future[Unit] = promise.future
     
     private val startTime = System.nanoTime() / 1000000
-    
-    private val allPeers = txd.allDataStores
-    private val numPeers = allPeers.size
-    
+
+    private val allStores = txd.allDataStores
+    private val numStores = allStores.size
+
     private[this] var executing = false
-    private[this] var committedPeers = Set[DataStoreID]()
-    
+    private[this] var commitErrors: Map[DataStoreID, List[UUID]] = Map()
+
     addHandler(this)
-    
-    def updateCommittedPeer(peer: DataStoreID): Unit = synchronized {
+
+    def updateCommitErrors(commitErrors: Map[DataStoreID, List[UUID]]): Unit = synchronized {
       if (!executing) {
-        committedPeers += peer
-        if (committedPeers.size == numPeers) {
-          executing = true
-          removeHandler(this)
-          promise.success(()) // All peers committed, no missed updates to log
+        this.commitErrors = commitErrors
+        if (commitErrors.size == numStores) {
+          if (commitErrors.forall(t => t._2.isEmpty)) {
+            executing = true
+            removeHandler(this)
+            promise.success(()) // All peers committed, no missed updates to log
+          } else {
+            markMissedPeers()
+          }
         }
       }
     }
-    
+
     def checkTimeout(now: Long): Unit = synchronized {
-      if (!executing && now - startTime > missedCommitDelayInMs) {
-        executing = true
-        removeHandler(this)
-        markMissedPeers(allPeers &~ committedPeers)
-      }
+      if (!executing && now - startTime > missedCommitDelayInMs)
+        markMissedPeers()
     }
     
-    def markMissedPeers(missedStores: Set[DataStoreID]): Unit = {
-      
+    def markMissedPeers(): Unit = {
+
+      executing = true
+      removeHandler(this)
+
+      // Invert commit errors map
+      val reportedErrors = commitErrors.foldLeft(Map[UUID, List[Byte]]()) { (m, t) =>
+        val (storeId, errorUUIDs) = t
+        errorUUIDs.foldLeft(m) { (subm, objectUUID) =>
+          val lst = subm.get(objectUUID) match {
+            case None => storeId.poolIndex :: Nil
+
+            case Some(l) => storeId.poolIndex :: l
+          }
+          subm + (objectUUID -> lst)
+        }
+      }
+
       case class MissedUpdate(pointer: ObjectPointer, stores: List[Byte])
       
       // TODO: Handle deleted pool
@@ -97,16 +114,21 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
         } yield ()
       }
       
-      val misses = txd.allReferencedObjectsSet.foldLeft(List[MissedUpdate]()) { (l, ptr) =>
-        val ms = ptr.hostingStores.toSet.intersect(missedStores) 
+      val misses = txd.allReferencedObjectsSet.foldLeft(List[MissedUpdate]()) { (lmiss, ptr) =>
+        val missedIndicies = ptr.hostingStores.foldLeft(reportedErrors.getOrElse(ptr.uuid, Nil)) { (l, storeId) =>
+          if (commitErrors.contains(storeId))
+            l
+          else
+            storeId.poolIndex :: l
+        }
         
-        if (ms.isEmpty)
-          l
+        if (missedIndicies.isEmpty)
+          lmiss
         else 
-          MissedUpdate(ptr, ms.map(storeId => storeId.poolIndex).toList) :: l
+          MissedUpdate(ptr, missedIndicies) :: lmiss
       }
       
-      promise.completeWith(Future.sequence(misses.map(markObject(_))).map(_=>()))
+      promise.completeWith(Future.sequence(misses.map(mu => markObject(mu))).map(_=>()))
     }
   }
 }

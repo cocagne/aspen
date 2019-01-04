@@ -36,6 +36,9 @@ abstract class TransactionDriver(
   protected var acceptedPeers: Set[DataStoreID] = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
 
+  // Stores UUIDs of objects that could not be updated on stores as part of a successful commit
+  protected var commitErrors: Map[DataStoreID, List[UUID]] = Map()
+
   private val completionPromise: Promise[TransactionDescription] = Promise()
 
   def complete: Future[TransactionDescription] = completionPromise.future
@@ -180,7 +183,8 @@ abstract class TransactionDriver(
   }
   
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
-    finalizer.foreach(_.updateCommittedPeer(msg.from))
+    commitErrors += (msg.from -> msg.objectCommitErrors)
+    finalizer.foreach(_.updateCommitErrors(commitErrors))
   }
   
   def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 

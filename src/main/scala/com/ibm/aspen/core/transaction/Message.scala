@@ -59,6 +59,7 @@ final case class TxCommitted(
     to: DataStoreID,
     from: DataStoreID,
     transactionUUID: UUID,
+    // List of object UUIDs that could not be committed due to transaction requirement errors
     objectCommitErrors: List[UUID]) extends Message
     
 final case class TxFinalized(

@@ -1,17 +1,11 @@
 
-* Found missed update race condition
-   - TxCommitted messgages can arrive before we launch the finalizers. this would result in false
-     missed update markings
+* Need common error hierarchy
+  - UnknownStoragePool
+     - Update MissedUpdateFinalizationAction to skip deleted/unknown pools
 
-* Update MissedUpdate handling to use explicit storeId,List[ObjectUUID]
-
-* Add list of object UUIDs that couldnt be committed to TxCommitted message since they aren't all-or-nothing on
-  a per-store basis.
-    - update missed update to take this into account
-
-* Add this error list to TransactionStatusCache
-   - When sending TxResolved message to TransactionDriver from cached result, also send the TxCommitted message
-     to allow for fewer missed update marks
+* Really need to add pre-transaction opportunistic rebuild
+   - Will often prevent stores from reporting errors to update local objects
+   - thereby avoids FAs and associated transactions + contention from clogging up the system
 
 * Lots of Read & Transaction hangs during large file deletion
    - need to determine underlying cause
