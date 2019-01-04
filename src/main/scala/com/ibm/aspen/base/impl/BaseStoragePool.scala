@@ -9,6 +9,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.ida.IDA
 import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer, ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.core.objects.keyvalue.Key
+import com.ibm.aspen.core.read.FatalReadError
 import com.ibm.aspen.util.byte2uuid
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -32,7 +33,9 @@ object BaseStoragePool {
     def createStoragePool(
         system: AspenSystem, 
         poolDefinitionPointer: KeyValueObjectPointer)(implicit ec: ExecutionContext): Future[BaseStoragePool] = {
-      system.readObject(poolDefinitionPointer) flatMap { 
+      system.readObject(poolDefinitionPointer).recover {
+        case _: FatalReadError => throw new UnknownStoragePool(poolDefinitionPointer.uuid)
+      } flatMap {
         kvos =>
           val poolUUID = byte2uuid(kvos.contents(PoolUUIDKey).value)
           val numStores = ByteBuffer.wrap(kvos.contents(NumberOfStoresKey).value).getInt()

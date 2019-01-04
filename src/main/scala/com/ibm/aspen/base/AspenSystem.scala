@@ -60,7 +60,10 @@ trait AspenSystem extends ObjectReader {
         objectIDA: IDA,
         initialContent: List[KeyValueOperation])(implicit t: Transaction, ec: ExecutionContext): Future[KeyValueObjectPointer]
 
+  /** Fails with UnknownStoragePool exception if the requested pool cannot be found */
   def getStoragePool(poolUUID: UUID): Future[StoragePool]
+
+  /** Fails with UnknownStoragePool exception if the pool definition object cannot be read */
   def getStoragePool(storagePoolDefinitionPointer: KeyValueObjectPointer): Future[StoragePool]
   
   def getObjectAllocater(allocaterUUID: UUID): Future[ObjectAllocater]

@@ -246,8 +246,10 @@ class BasicAspenSystem(
     for {
       spTree <- storagePoolTree
       v <- spTree.get(poolUUID)
-      if v.isDefined
-      pool <- getStoragePool(KeyValueObjectPointer(v.get.value))
+      pool <- v match {
+        case Some(v) => getStoragePool(KeyValueObjectPointer(v.value))
+        case None => throw new UnknownStoragePool(poolUUID)
+      }
     } yield pool
   }
   
