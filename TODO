@@ -1,11 +1,20 @@
 
-* Need common error hierarchy
-  - UnknownStoragePool
-     - Update MissedUpdateFinalizationAction to skip deleted/unknown pools
-
 * Really need to add pre-transaction opportunistic rebuild
    - Will often prevent stores from reporting errors to update local objects
    - thereby avoids FAs and associated transactions + contention from clogging up the system
+
+* OpportunisticRebuildManager
+   - At end of successful read
+      - Data: Mark which objects are behind and hold a copy of the just-read object
+      - KeyValue: Mark which KV-pairs are behind and hold a copy of behind KV-pairs
+   - Can use a very short-lived cache (5 sec)
+   - getPreTransactionOpportunisticRebuild(objectUUID)
+      - build a map of opportunistic rebuild ops for each store
+      - include list of rebuild ops with TxPrepare & localState
+      - rebuild ops are applied before TxPrepare is processed
+   - If tx isn't invoked, send direct opportunistic rebuild message?
+      - what criteria should be used for send?
+      - most interesting cases will be handled by pre-tx rebuilds
 
 * Lots of Read & Transaction hangs during large file deletion
    - need to determine underlying cause

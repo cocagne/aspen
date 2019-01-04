@@ -327,6 +327,15 @@ class RebuildSuite extends AsyncFunSuite with Matchers {
       delayedReader = new DelayedReader(o)
       frebuild = ds.rebuildObject(delayedReader, ptr)
 
+      // Note, this is inherently racy as we're doing to calls to async rebuildObject and we need the
+      // first call to lock the object before the second call starts. It's not a very good solution but
+      // we can do a copy calls go ds.getObject between them to reduce the chance of race conditions.
+      _ <- ds.getObject(ptr)
+      _ <- ds.getObject(ptr)
+      _ <- ds.getObject(ptr)
+      _ <- ds.getObject(ptr)
+      _ <- ds.getObject(ptr)
+
       second <- ds.rebuildObject(delayedReader, ptr)
 
       _ = delayedReader.allowRead()
