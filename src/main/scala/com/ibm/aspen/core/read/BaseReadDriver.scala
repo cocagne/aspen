@@ -23,6 +23,8 @@ class BaseReadDriver(
     val disableOpportunisticRebuild: Boolean = false
     )(implicit ec: ExecutionContext) extends ReadDriver with Logging {
 
+  logger.info(s"Read UUID $readUUID: Beginning read of ${objectPointer.objectType} object ${objectPointer.uuid}")
+
   // Detect invalid combinations
   val objectReader: ObjectReader = (objectPointer, readType) match {
     case (p: KeyValueObjectPointer, _:MetadataOnly) => new KeyValueObjectReader(true, p, sendReadRequest)
@@ -47,24 +49,30 @@ class BaseReadDriver(
   def shutdown(): Unit = {}
   
   /** Sends a Read request to the specified store. */
-  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = {
+  protected def sendReadRequestNoLogMessage(dataStoreId: DataStoreID): Unit = {
+    clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
+  }
 
+  /** Sends a Read request to the specified store. */
+  protected def sendReadRequest(dataStoreId: DataStoreID): Unit = {
+    logger.trace(s"Read UUID $readUUID: Sending read request for object ${objectPointer.uuid} to store $dataStoreId")
     clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
   }
 
   /** Sends a Read request to all stores that have not already responded. May be called outside a synchronized block */
   protected def sendReadRequests(): Unit = {
-    logger.info(s"sending read requests for object ${objectPointer.uuid}. Read UUID $readUUID")
+    logger.trace(s"Read UUID $readUUID: sending read requests to all stores for object ${objectPointer.uuid}")
     synchronized { 
       retryCount += 1
       if (retryCount > 3)
-        println(s"RESENDING READ REQUEST")
+        logger.debug(s"RESENDING READ REQUESTS for Read UUID $readUUID")
     }
-    objectPointer.storePointers.foreach(sp => sendReadRequest(DataStoreID(objectPointer.poolUUID, sp.poolIndex)))
+    objectPointer.storePointers.foreach(sp => sendReadRequestNoLogMessage(DataStoreID(objectPointer.poolUUID, sp.poolIndex)))
   }
 
   protected def sendOpportunisticRebuild(storeId: DataStoreID, os: ObjectState): Unit = {
     if (!rebuildsSent.contains(storeId)) {
+      logger.info(s"Read UUID $readUUID: Sending Opprotunistic Rebuild to store $storeId for objerct ${objectPointer.uuid}")
       rebuildsSent += storeId
       clientMessenger.send(OpportunisticRebuild(storeId, clientMessenger.clientId, objectPointer, os.revision,
         os.refcount, os.timestamp, os.getRebuildDataForStore(storeId).get))
@@ -72,6 +80,7 @@ class BaseReadDriver(
   }
 
   def receiveReadResponse(response:ReadResponse): Boolean = synchronized {
+    logger.trace(s"Read UUID $readUUID: Received read response from store ${response.fromStore}")
 
     val hasLocksForKnownCommittedTransactions = response.result match {
       case Left(_) => false
@@ -97,9 +106,7 @@ class BaseReadDriver(
             case Right(os) =>
               // Ensure any commit transactions will use timestamps after all read objects last update time
               os match {
-                case dos: DataObjectState =>
-                  logger.info(s"Successfully read DataObject ${dos.pointer.uuid} Rev ${dos.revision} Ref ${dos.refcount} Size ${dos.data.size} Hash ${dos.data.hashString}")
-                  HLCTimestamp.update(dos.timestamp)
+                case dos: DataObjectState => HLCTimestamp.update(dos.timestamp)
                 case kvos: KeyValueObjectState => HLCTimestamp.update(kvos.lastUpdateTimestamp)
                 case mos: MetadataObjectState => HLCTimestamp.update(mos.timestamp)
               }
@@ -108,6 +115,16 @@ class BaseReadDriver(
 
               Right(os)
           }
+
+          result match {
+            case Left(err) => logger.info(s"Read UUID $readUUID: Failed to read object ${objectPointer.uuid}. Reason: $err")
+            case Right(obj) => obj match {
+              case dos: DataObjectState => logger.info(s"Read UUID $readUUID: Successfully read DataObject ${objectPointer.uuid} Rev ${dos.revision} Ref ${dos.refcount} Size ${dos.data.size} Hash ${dos.data.hashString}")
+              case kvos: KeyValueObjectState => logger.info(s"Read UUID $readUUID: Successfully read KeyValueObject ${objectPointer.uuid} Rev ${kvos.revision} Ref ${kvos.refcount} Num Entries ${kvos.contents.size}")
+              case mos: MetadataObjectState => logger.info(s"Read UUID $readUUID: Successfully read MetadataObject ${objectPointer.uuid} Rev ${mos.revision} Ref ${mos.refcount}")
+            }
+          }
+
           promise.success(result)
         }
 

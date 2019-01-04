@@ -1,10 +1,20 @@
 
+* Add list of object UUIDs that couldnt be committed to TxCommitted message since they aren't all-or-nothing on
+  a per-store basis.
+    - update missed update to take this into account
+
+* Add this error list to TransactionStatusCache
+   - When sending TxResolved message to TransactionDriver from cached result, also send the TxCommitted message
+     to allow for fewer missed update marks
 
 * Lots of Read & Transaction hangs during large file deletion
    - need to determine underlying cause
    - requires adding in greater traceability in underyling messages and better hung read/tx status info
 
 -----------------------
+
+* TxCommit message should contain a list of object UUIDs for which there were errors
+  UpdateableFinalizationAction then takes a (storeId, List(error UUIDS))
 
 * Segment Allocater UUID should go into file inode @ file creation time
 
