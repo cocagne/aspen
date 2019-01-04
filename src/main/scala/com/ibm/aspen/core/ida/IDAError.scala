@@ -1,6 +1,8 @@
 package com.ibm.aspen.core.ida
 
-sealed abstract class IDAError extends Exception
+import com.ibm.aspen.base.AspenError
+
+sealed abstract class IDAError extends AspenError
 
 /** Thrown when an unknown IDA type is found embedded within a serialized ObjectPointer */
 class IDAEncodingError extends IDAError

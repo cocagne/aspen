@@ -3,7 +3,7 @@ package com.ibm.aspen.base
 import com.ibm.aspen.core.transaction.TransactionDescription
 import com.ibm.aspen.core.objects.ObjectPointer
 
-sealed abstract class TransactionError extends Throwable
+sealed abstract class TransactionError extends AspenError
 
 abstract class TransactionCreationError extends TransactionError 
 

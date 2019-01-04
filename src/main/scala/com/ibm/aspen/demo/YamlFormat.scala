@@ -3,9 +3,11 @@ package com.ibm.aspen.demo
 import java.util.UUID
 import java.io.File
 
+import com.ibm.aspen.base.AspenError
+
 object YamlFormat {
   
-  class FormatError(val msg: String) extends Exception(msg)
+  class FormatError(val msg: String) extends AspenError(msg)
   
   trait Format[T] {
     def format(o: Object): T

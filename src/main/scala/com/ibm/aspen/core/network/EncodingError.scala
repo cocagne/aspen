@@ -1,3 +1,5 @@
 package com.ibm.aspen.core.network
 
-class EncodingError(msg: String) extends Exception(msg)
+import com.ibm.aspen.base.AspenError
+
+class EncodingError(msg: String) extends AspenError(msg)

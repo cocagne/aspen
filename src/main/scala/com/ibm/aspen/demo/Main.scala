@@ -38,7 +38,7 @@ object Main {
                   host:String="",
                   port:Int=0)
 
-  class ConfigError(msg: String) extends Exception(msg)
+  class ConfigError(msg: String) extends AspenError(msg)
 
   def setLog4jConfigFile(f: File): Unit = {
     //System.setProperty("log4j2.debug", "true")

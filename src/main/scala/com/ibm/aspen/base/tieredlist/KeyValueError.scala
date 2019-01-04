@@ -1,8 +1,9 @@
 package com.ibm.aspen.base.tieredlist
 
+import com.ibm.aspen.base.AspenError
 import com.ibm.aspen.core.objects.keyvalue.Key
 
-sealed abstract class KeyValueError extends Exception
+sealed abstract class KeyValueError extends AspenError
 
 class BelowMinimumError(minimum: Key, attempted: Key) extends KeyValueError
 

@@ -1,10 +1,9 @@
 package com.ibm.aspen.core.read
 
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.data_store
+import com.ibm.aspen.base.AspenError
 import com.ibm.aspen.core.objects.ObjectPointer
 
-sealed abstract class ReadError(msg: String) extends Exception(msg) {
+sealed abstract class ReadError(msg: String) extends AspenError(msg) {
   val pointer: ObjectPointer
   
   override def toString(): String = s"${this.getClass.getSimpleName}(${pointer.getClass.getSimpleName}:${pointer.uuid})"

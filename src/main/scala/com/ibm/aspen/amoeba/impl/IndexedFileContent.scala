@@ -16,12 +16,11 @@ import com.ibm.aspen.core.objects.ObjectRevision
 import com.ibm.aspen.util.Varint
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.base.Transaction
+import com.ibm.aspen.base.{AspenSystem, Transaction}
 import com.ibm.aspen.amoeba.FileInode
 import com.ibm.aspen.base.task.SteppedDurableTask
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.base.task.DurableTaskType
-import com.ibm.aspen.base.AspenSystem
 import com.ibm.aspen.base.task.DurableTaskPointer
 import com.ibm.aspen.core.objects.keyvalue.Value
 import com.ibm.aspen.base.task.DurableTask
