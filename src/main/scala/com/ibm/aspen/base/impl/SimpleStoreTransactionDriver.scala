@@ -64,7 +64,6 @@ class SimpleStoreTransactionDriver(
       sendCount += 1
 
       if (sendCount % 10 == 0) {
-        logger.debug("****************** HUNG TX STATUS *****************")
         printState(s => logger.debug(s))
       }
 

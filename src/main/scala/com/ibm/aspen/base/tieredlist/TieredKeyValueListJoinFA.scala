@@ -1,38 +1,25 @@
 package com.ibm.aspen.base.tieredlist
 
 import java.util.UUID
-import com.ibm.aspen.base.Transaction
-import com.ibm.aspen.core.objects.keyvalue.Key
-import com.ibm.aspen.core.objects.KeyValueObjectPointer
-import scala.concurrent.Future
+
+import com.ibm.aspen.base.{AspenSystem, FinalizationAction, FinalizationActionHandler, Transaction}
 import com.ibm.aspen.base.impl.BaseCodec
-import com.ibm.aspen.base.RetryStrategy
-import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.base.FinalizationActionHandler
-import com.ibm.aspen.base.FinalizationAction
-import scala.concurrent.ExecutionContext
-import com.ibm.aspen.core.objects.keyvalue.KeyOrdering
-import scala.util.Failure
-import scala.util.Success
-import com.ibm.aspen.core.objects.keyvalue.Delete
-import com.ibm.aspen.core.objects.KeyValueObjectState
-import com.ibm.aspen.core.objects.ObjectPointer
+import com.ibm.aspen.core.objects.KeyValueObjectPointer
+import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.transaction.KeyValueUpdate.KVRequirement
-import com.ibm.aspen.core.transaction.KeyValueUpdate
-import scala.concurrent.Promise
-import com.ibm.aspen.core.data_store.DataStoreID
-import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.transaction.{KeyValueUpdate, TransactionDescription}
 import org.apache.logging.log4j.scala.Logging
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 
 object TieredKeyValueListJoinFA extends Logging {
-  val FinalizationActionUUID = UUID.fromString("fb262a22-8aea-4bbd-8da8-9c3a939c3786")
+  val FinalizationActionUUID: UUID = UUID.fromString("fb262a22-8aea-4bbd-8da8-9c3a939c3786")
   
   /** 
    * @param transaction Transaction to add the FinalizationAction to
-   * @param treeIdentifier Unique identifer for the tree root key-value pair
-   * @param treeContainer Either a stand-alone key-value object that contains the tree root or a tiered list that contains the key
-   * @param keyOrdering Defines key comparisons for sorting
+   * @param mtkvl MutableTieredKeyValueList being modified
    * @param targetTier the tier number into which the new node pointer should be inserted
    * @param left Pointer to the node to the left of the one removed
    * @param removed Pointer to the removed node
@@ -56,7 +43,9 @@ object TieredKeyValueListJoinFA extends Logging {
     }
   }
       
-  class RemoveFromUpperTier(val system: AspenSystem, val c: TieredKeyValueListSplitFA.Content)(implicit ec: ExecutionContext) extends FinalizationAction {
+  class RemoveFromUpperTier(val system: AspenSystem,
+                            val parentTransactionUUID: UUID,
+                            val c: TieredKeyValueListSplitFA.Content)(implicit ec: ExecutionContext) extends FinalizationAction {
     
     def remove(mtkvl: MutableTieredKeyValueList): Future[Unit] = system.transact { implicit tx =>
         
@@ -91,17 +80,17 @@ object TieredKeyValueListJoinFA extends Logging {
         
         _ = tx.ensureHappensAfter(value.timestamp)
         
-        test <- system.readObject(kvos.pointer)
+        _ <- system.readObject(kvos.pointer)
 
-        _=tx.note(s"TieredKeyValueListJoinFA - removing pointer to ${removed.pointer.uuid} from upper tier ${c.targetTier}")
+        _=tx.note(s"TieredKeyValueListJoinFA($parentTransactionUUID) - removing pointer to ${removed.pointer.uuid} from upper tier ${c.targetTier}")
 
-        ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
+        _ <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
         
-        done <- tx.commit()
+        _ <- tx.commit()
       } yield ()
     }
     
-    val complete = system.retryStrategy.retryUntilSuccessful {
+    val complete: Future[Unit] = system.retryStrategy.retryUntilSuccessful {
       val p = Promise[Unit]()
       
       MutableTieredKeyValueList.load(system, c.rootManagerType, c.serializedRootManager) onComplete {
@@ -128,6 +117,6 @@ class TieredKeyValueListJoinFA extends FinalizationActionHandler {
       system: AspenSystem,
       txd: TransactionDescription,
       serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
-    new RemoveFromUpperTier(system, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData) )
+    new RemoveFromUpperTier(system, txd.transactionUUID, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData) )
   }
 }

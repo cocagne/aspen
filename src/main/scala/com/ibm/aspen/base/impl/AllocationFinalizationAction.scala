@@ -24,6 +24,7 @@ object AllocationFinalizationAction {
   
   class AddToAllocationTree(
       val system: AspenSystem,
+      val parentTransactionUUID: UUID,
       val storagePoolDefinitionPointer:KeyValueObjectPointer, 
       val newNodePointer:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction {
     
@@ -38,7 +39,7 @@ object AllocationFinalizationAction {
         pool <- system.getStoragePool(storagePoolDefinitionPointer)
         tree <- pool.getAllocationTree(system.retryStrategy)
         _ <- tree.preparePut(newNodePointer.uuid, newNodePointer.toArray)
-        _=tx.note(s"AllocationFinalizationAction - Adding ${newNodePointer.uuid} to allocation tree")
+        _=tx.note(s"AllocationFinalizationAction($parentTransactionUUID) - Adding ${newNodePointer.uuid} to allocation tree")
         _ <- tx.commit()
       } yield ()
       
@@ -62,7 +63,7 @@ class AllocationFinalizationAction extends FinalizationActionHandler {
 
     val fa = BaseCodec.decodeAllocationFinalizationActionContent(serializedActionData)
     
-    new AddToAllocationTree(system, fa.storagePoolDefinitionPointer, fa.newNodePointer)      
+    new AddToAllocationTree(system, txd.transactionUUID, fa.storagePoolDefinitionPointer, fa.newNodePointer)
   }
 }
 

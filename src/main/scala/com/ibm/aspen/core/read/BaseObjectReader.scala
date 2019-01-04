@@ -1,5 +1,7 @@
 package com.ibm.aspen.core.read
 
+import java.util.UUID
+
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.objects._
@@ -26,15 +28,25 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
 
   def numResponses: Int = responses.size
 
-  def debugLogStatus(log: String => Unit): Unit = {
+  def debugLogStatus(readUUID: UUID, header: String, log: String => Unit): Unit = {
+    val sb = new StringBuilder
+    sb.append(header)
+    sb.append("\n")
+    sb.append(s"Read Transaction: $readUUID\n")
     responses.keys.toList.sortWith((a,b) => a.poolIndex < b.poolIndex).foreach { storeId =>
       responses(storeId) match {
-        case Left(err) => log(s"StoreID: $storeId. Err: $err")
+        case Left(err) =>
+          sb.append(s"StoreID: $storeId\n")
+          sb.append(s"  Error: $err\n")
         case Right(s) =>
-          log(s"StoreID: $storeId")
-          s.debugLogStatus(log)
+          sb.append(s"StoreID: $storeId\n")
+          s.debugLogStatus {str =>
+            sb.append(str)
+            sb.append("\n")
+          }
       }
     }
+    log(sb.toString)
   }
 
   protected def createObjectState(storeId:DataStoreID, readTime: HLCTimestamp, cs: ReadResponse.CurrentState): StoreStateType

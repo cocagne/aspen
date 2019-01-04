@@ -1,7 +1,8 @@
 
 
-* Refreshes before retries get a LOT more important when using cached inodes.
-   - Double check that all retries first refresh the nodes
+* Lots of Read & Transaction hangs during large file deletion
+   - need to determine underlying cause
+   - requires adding in greater traceability in underyling messages and better hung read/tx status info
 
 -----------------------
 

@@ -48,6 +48,7 @@ class BaseReadDriver(
   
   /** Sends a Read request to the specified store. */
   protected def sendReadRequest(dataStoreId: DataStoreID): Unit = {
+
     clientMessenger.send(Read(dataStoreId, clientMessenger.clientId, readUUID, objectPointer, readType))
   }
 
@@ -75,7 +76,7 @@ class BaseReadDriver(
     val hasLocksForKnownCommittedTransactions = response.result match {
       case Left(_) => false
       case Right(cs) => ! cs.lockedWriteTransactions.forall { txuuid =>
-        transactionCache.getTransactionResolved(txuuid) match {
+        transactionCache.getTransactionResolution(txuuid) match {
           case None => true
           case Some(result) => !result
         }

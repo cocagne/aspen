@@ -11,6 +11,7 @@ import com.ibm.aspen.core.objects.{KeyValueObjectState, ObjectPointer}
 import com.ibm.aspen.core.read.CorruptedObject
 import com.ibm.aspen.core.transaction.KeyValueUpdate
 import com.ibm.aspen.util.byte2uuid
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -21,7 +22,7 @@ import scala.concurrent.{ExecutionContext, Future}
  *  pre-split compaction.
  *  
  */
-object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
+object PerStoreMissedUpdate extends MissedUpdateHandlerFactory with Logging {
  
   val typeUUID: UUID = UUID.fromString("fed25913-19e0-4045-b45c-2fc30d3200f1")
   
@@ -218,11 +219,12 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
   }
   
   def markMissedObject(
-      system: AspenSystem, 
+      system: AspenSystem,
+      transactionUUID: UUID,
       obj: ObjectPointer, 
       storeIndex: Byte)(implicit ec: ExecutionContext): Future[Unit] = {
     
-    println(s"**** MARKING MISSED UPDATE **** ${obj.uuid} for store $storeIndex")
+    logger.info(s"MARKING MISSED UPDATE($transactionUUID) of ${obj.uuid} on store $storeIndex")
     
     // Fail if the pool object has been deleted
     def onAttemptFailure(t: Throwable): Future[Unit] = t match {
@@ -248,12 +250,13 @@ object PerStoreMissedUpdate extends MissedUpdateHandlerFactory {
   }
   
   def createHandler(
-      mus: MissedUpdateStrategy, 
+      mus: MissedUpdateStrategy,
       system: AspenSystem,
+      transactionUUID: UUID,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
 
-    () => Future.sequence( missedStores.map(storeIdx => markMissedObject(system, pointer, storeIdx)) ).map(_=>())
+    () => Future.sequence( missedStores.map(storeIdx => markMissedObject(system, transactionUUID, pointer, storeIdx)) ).map(_=>())
 
   }
   

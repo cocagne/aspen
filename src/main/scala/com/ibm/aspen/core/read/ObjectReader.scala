@@ -1,5 +1,7 @@
 package com.ibm.aspen.core.read
 
+import java.util.UUID
+
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
@@ -17,5 +19,5 @@ trait ObjectReader {
 
   def receivedResponsesFromAllStores: Boolean = numResponses == pointer.ida.width
 
-  def debugLogStatus(log: String => Unit): Unit
+  def debugLogStatus(readUUID: UUID, header: String, log: String => Unit): Unit
 }

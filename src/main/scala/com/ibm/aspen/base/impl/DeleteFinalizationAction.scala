@@ -29,6 +29,7 @@ object DeleteFinalizationAction {
   
   class RemoveFromAllocationTree(
       val system: AspenSystem,
+      val parentTransactionUUID: UUID,
       val victim:ObjectPointer)(implicit ec: ExecutionContext) extends FinalizationAction with Logging {
 
     private[this] var count = 0
@@ -44,7 +45,7 @@ object DeleteFinalizationAction {
         pool <- system.getStoragePool(victim.poolUUID)
         tree <- pool.getAllocationTree(system.retryStrategy)
         _ <- tree.prepareDelete(victim.uuid)
-        _=tx.note(s"DeleteFinalizationAction - Removing ${victim.uuid} from allocation tree")
+        _=tx.note(s"DeleteFinalizationAction($parentTransactionUUID) - Removing ${victim.uuid} from allocation tree")
         _ <- tx.commit()
       } yield {
 
@@ -53,7 +54,7 @@ object DeleteFinalizationAction {
       fcommit.failed.foreach { reason =>
 
         synchronized {
-          logger.info(s"Failed to remove ${victim.uuid} from allocation tree in transaction ${tx.uuid} attempt number $count")
+          logger.info(s"DeleteFinalizationAction($parentTransactionUUID) -Failed to remove ${victim.uuid} from allocation tree in transaction ${tx.uuid} attempt number $count")
           count += 1
         }
 
@@ -61,7 +62,7 @@ object DeleteFinalizationAction {
       }
 
       fcommit.foreach { _ =>
-        logger.info(s"Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
+        logger.info(s"DeleteFinalizationAction($parentTransactionUUID) -Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
       }
       
       fcommit
@@ -80,7 +81,7 @@ class DeleteFinalizationAction extends FinalizationActionHandler {
       txd: TransactionDescription,
       serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
 
-    new RemoveFromAllocationTree(system, ObjectPointer(serializedActionData))      
+    new RemoveFromAllocationTree(system, txd.transactionUUID, ObjectPointer(serializedActionData))
   }
 }
 

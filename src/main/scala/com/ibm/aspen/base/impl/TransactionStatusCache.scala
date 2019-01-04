@@ -30,12 +30,12 @@ class TransactionStatusCache(cacheDuration: Duration = Duration(30, SECONDS)) {
 
   def transactionFinalized(txuuid: UUID): Unit = transactionCache.put(txuuid, Finalized())
 
-  def getTransactionResolved(txuuid: UUID): Option[Boolean] = transactionCache.getIfPresent(txuuid).map {
+  def getTransactionResolution(txuuid: UUID): Option[Boolean] = transactionCache.getIfPresent(txuuid).map {
     case _: Aborted => false
     case _ => true
   }
 
-  def getTransactionComplete(txuuid: UUID): Option[Boolean] = transactionCache.getIfPresent(txuuid).flatMap {
+  def getTransactionFinalizedResult(txuuid: UUID): Option[Boolean] = transactionCache.getIfPresent(txuuid).flatMap {
     case _: Aborted => Some(false)
     case _: Committed => None
     case _: Finalized => Some(true)

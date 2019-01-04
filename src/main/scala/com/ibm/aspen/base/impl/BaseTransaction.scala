@@ -135,13 +135,11 @@ class BaseTransaction(
         val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
 
         //---- Tx Debugging ----
-        val olist = txd.allReferencedObjectsSet.map(_.uuid).toList.sortWith((a,b) => a.toString > b.toString)
         result.onComplete {
           case Success(_) =>
-            logger.info(s"TX SUCCESS: ${txd.shortString}")
+            logger.info(s"TX SUCCESS: ${txd.shortString}\n${txd.shortString}")
           case Failure(e) =>
-            logger.info(s"TX FAILURE: ${txd.shortString}: $e")
-            logger.info(stack)
+            logger.info(s"TX FAILURE: ${txd.shortString}: $e\n$stack")
         }
         //---------------------
 

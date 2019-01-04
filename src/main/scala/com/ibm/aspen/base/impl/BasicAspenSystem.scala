@@ -257,11 +257,12 @@ class BasicAspenSystem(
   
   def createMissedUpdateHandler(
       mus: MissedUpdateStrategy,
+      transactionUUID: UUID,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
     typeRegistry.getTypeFactory[MissedUpdateHandlerFactory](mus.strategyUUID) match {
       case None => throw new Exception(s"Invalid Missed Update Strategy ${mus.strategyUUID}")
-      case Some(f) => f.createHandler(mus, this, pointer, missedStores)
+      case Some(f) => f.createHandler(mus, this, transactionUUID, pointer, missedStores)
     }
   }
   

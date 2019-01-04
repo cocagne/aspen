@@ -55,7 +55,9 @@ object TieredKeyValueListSplitFA extends Logging {
       left: KeyValueListPointer, 
       inserted: List[KeyValueListPointer])
       
-  class InsertIntoUpperTier(val system: AspenSystem, val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
+  class InsertIntoUpperTier(val system: AspenSystem,
+                            val parentTransactionUUID: UUID,
+                            val c: Content)(implicit ec: ExecutionContext) extends FinalizationAction {
 
     def createNewTier(
         mtkvl: MutableTieredKeyValueList,
@@ -63,7 +65,6 @@ object TieredKeyValueListSplitFA extends Logging {
         inserted: List[KeyValueListPointer]): Future[Unit] = system.transact { implicit tx =>
       mtkvl.rootManager.prepareRootUpdate(newRootTier, mtkvl.allocater, inserted)
     }
-
     
     def insertIntoExistingTier(
         mtkvl: MutableTieredKeyValueList,
@@ -91,7 +92,7 @@ object TieredKeyValueListSplitFA extends Logging {
         deletes = Nil
         requirements = Nil
 
-        _=tx.note(s"TieredKeyValueListSplitFA - Adding pointer(s) to ${ins.map(_.pointer.uuid)} to tier ${c.targetTier}")
+        _=tx.note(s"TieredKeyValueListSplitFA($parentTransactionUUID) - Adding pointer(s) to ${ins.map(_.pointer.uuid)} to tier ${c.targetTier}")
 
         ready <- KeyValueList.prepreUpdateTransaction(kvos, nodeSizeLimit, nodeKVPairLimit, inserts, deletes, requirements, c.keyOrdering, system, allocater, onSplit, onJoin)
         
@@ -107,7 +108,7 @@ object TieredKeyValueListSplitFA extends Logging {
       
       MutableTieredKeyValueList.load(system, c.rootManagerType, c.serializedRootManager) onComplete {
         case Failure(err) =>
-          logger.error(s"Failed to load MutableTieredKeyValueList for Split FinalizationAction. Error: $err")
+          logger.error(s"TieredKeyValueListSplitFA($parentTransactionUUID) - Failed to load MutableTieredKeyValueList for Split FinalizationAction. Error: $err")
           p.success(()) // Nothing we can do to recover. Hopefully the tree has been deleted
           
         case Success(mtkvl) =>
@@ -134,6 +135,6 @@ class TieredKeyValueListSplitFA extends FinalizationActionHandler {
       system: AspenSystem,
       txd: TransactionDescription,
       serializedActionData: Array[Byte])(implicit ec: ExecutionContext): FinalizationAction = {
-    new InsertIntoUpperTier(system, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData))
+    new InsertIntoUpperTier(system, txd.transactionUUID, BaseCodec.decodeTieredKeyValueListSplitFA(serializedActionData))
   }
 }

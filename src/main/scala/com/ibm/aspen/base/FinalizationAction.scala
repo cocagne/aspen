@@ -1,10 +1,15 @@
 package com.ibm.aspen.base
 
-import scala.concurrent.ExecutionContext
+import java.util.UUID
+
 import scala.concurrent.Future
 
 trait FinalizationAction {
-  
+
+  /** Transaction UUID that spawned this FinalizationAction
+    */
+  val parentTransactionUUID: UUID
+
   /** Future completes when the action is completed or completionDetected() is called.
    *
    * Note, all retry logic must be included within the execute() method. The future

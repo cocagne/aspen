@@ -45,8 +45,7 @@ class SuperSimpleRetryingReadDriver(
     synchronized {
       retries += 1
       if (retries % 3 == 0) {
-        logger.info(s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID")
-        objectReader.debugLogStatus(s => logger.info(s"* $s"))
+        objectReader.debugLogStatus(readUUID, s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID", s => logger.info(s"* $s"))
       }
     }
     sendReadRequests()

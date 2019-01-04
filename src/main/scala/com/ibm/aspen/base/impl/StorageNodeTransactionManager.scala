@@ -204,7 +204,7 @@ class StorageNodeTransactionManager(
       //println(s"Store RCV: to ${message.to} from ${message.from} class ${message.getClass}")
       message match {
         case m: TxPrepare =>
-          transactionCache.getTransactionComplete(m.txd.transactionUUID) match {
+          transactionCache.getTransactionFinalizedResult(m.txd.transactionUUID) match {
 
             case Some(result) =>
               // If we know the transaction is already complete, most likely the driver is attempting to recover from
@@ -212,32 +212,45 @@ class StorageNodeTransactionManager(
               messenger.send(TxFinalized(m.from, store.storeId, m.txd.transactionUUID, result))
 
             case None =>
-              val (tx, odriver) = synchronized {
-                val tx = transactions.getOrElse(m.txd.transactionUUID, {
 
-                  val t = Transaction(crl, messenger, onTransactionDiscarded, store, m.txd, updateContent)
+              val (otx, odriver) = transactionCache.getTransactionResolution(m.txd.transactionUUID) match {
+                case Some(result) =>
+                  // If we know the transaction is already complete, most likely the driver is attempting to recover from
+                  // lost messages. No need to re-run the transaction when we already know the end result.
+                  messenger.send(TxResolved(m.from, store.storeId, m.txd.transactionUUID, result))
 
-                  transactions += (m.txd.transactionUUID -> t)
-
-                  if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
-                    val driver = driveTransaction(m.txd)
-
-                    // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
-                    prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach { lst =>
-                      lst.foreach( p => driver.receiveTxPrepareResponse(p, transactionCache))
-
-                      // No need to keep the cached entries around
-                      prepareResponseCache.invalidate(m.txd.transactionUUID)
-                    }
+                  synchronized {
+                    (None, transactionDrivers.get(m.txd.transactionUUID))
                   }
 
-                  t
-                })
+                case None =>
+                  synchronized {
+                    val tx = transactions.getOrElse(m.txd.transactionUUID, {
 
-                (tx, transactionDrivers.get(m.txd.transactionUUID))
+                      val t = Transaction(crl, messenger, onTransactionDiscarded, store, m.txd, updateContent)
+
+                      transactions += (m.txd.transactionUUID -> t)
+
+                      if (m.txd.designatedLeaderUID == store.storeId.poolIndex) {
+                        val driver = driveTransaction(m.txd)
+
+                        // If any TxPrepareResponse messages were received before we noticed that we're the transaction driver, process them now
+                        prepareResponseCache.getIfPresent(m.txd.transactionUUID).foreach { lst =>
+                          lst.foreach( p => driver.receiveTxPrepareResponse(p, transactionCache))
+
+                          // No need to keep the cached entries around
+                          prepareResponseCache.invalidate(m.txd.transactionUUID)
+                        }
+                      }
+
+                      t
+                    })
+
+                    (Some(tx), transactionDrivers.get(m.txd.transactionUUID))
+                  }
               }
 
-              tx.receivePrepare(m, updateContent)
+              otx.foreach(_.receivePrepare(m, updateContent))
               odriver.foreach(td => td.receiveTxPrepare(m))
           }
 
@@ -251,7 +264,7 @@ class StorageNodeTransactionManager(
               // in the result cache, We'll hold on to these for a while so that if we receive the prepare message, we can immediately
               // process the replies rather than having to rely on the driver to recover the transaction via retransmissions or 
               // another Paxos round.
-              transactionCache.getTransactionResolved(m.transactionUUID) match {
+              transactionCache.getTransactionResolution(m.transactionUUID) match {
                 case Some(result) => messenger.send(TxResolved(m.from, store.storeId, m.transactionUUID, result))
                 
                 case None => cachePrepareResponse(m)
@@ -271,7 +284,6 @@ class StorageNodeTransactionManager(
           else
             transactionCache.transactionAborted(m.transactionUUID)
 
-
           getTransaction(m.transactionUUID).foreach( _.receiveResolved(m) )
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxResolved(m) )
           
@@ -290,7 +302,7 @@ class StorageNodeTransactionManager(
         case m: TxHeartbeat => getTransaction(m.transactionUUID).foreach( _.heartbeatReceived() )
 
         case m: TxStatusRequest =>
-          val ostatus = transactionCache.getTransactionResolved(m.transactionUUID) match {
+          val ostatus = transactionCache.getTransactionResolution(m.transactionUUID) match {
             case Some(result) =>
               val finalized = getTransaction(m.transactionUUID).isEmpty
               val status = if (result) TransactionStatus.Committed else TransactionStatus.Aborted

@@ -33,6 +33,7 @@ trait StoragePool {
   def getMissedUpdateStrategy(): MissedUpdateStrategy
   
   def createMissedUpdateHandler(
+      transactionUUID: UUID,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
       

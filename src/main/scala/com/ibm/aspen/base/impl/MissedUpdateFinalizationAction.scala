@@ -8,8 +8,8 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.transaction.{SerializedFinalizationAction, TransactionDescription}
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   
@@ -45,10 +45,12 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
   }
   
   class MissedUpdateHandler(
-      val system: AspenSystem, 
+      val system: AspenSystem,
       val txd: TransactionDescription,
       val missedCommitDelayInMs: Int)(implicit ec: ExecutionContext) extends UpdateableFinalizationAction {
-    
+
+    val parentTransactionUUID: UUID = txd.transactionUUID
+
     private val promise = Promise[Unit]()
     
     val complete: Future[Unit] = promise.future
@@ -90,7 +92,7 @@ object MissedUpdateFinalizationAction extends FinalizationActionHandler {
       def markObject(mu: MissedUpdate): Future[Unit] = system.retryStrategy.retryUntilSuccessful {
         for {
           pool <- system.getStoragePool(mu.pointer.poolUUID)
-          muh = pool.createMissedUpdateHandler(mu.pointer, mu.stores)
+          muh = pool.createMissedUpdateHandler(txd.transactionUUID, mu.pointer, mu.stores)
           _ <- muh.execute()
         } yield ()
       }

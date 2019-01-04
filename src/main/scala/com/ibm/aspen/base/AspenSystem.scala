@@ -69,6 +69,7 @@ trait AspenSystem extends ObjectReader {
   
   def createMissedUpdateHandler(
       mus: MissedUpdateStrategy,
+      transactionUUID: UUID,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler
       

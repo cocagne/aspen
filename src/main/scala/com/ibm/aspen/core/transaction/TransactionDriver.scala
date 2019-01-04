@@ -47,12 +47,15 @@ abstract class TransactionDriver(
   def printState(print: String => Unit = println): Unit = synchronized {
     val sb = new StringBuilder
 
-    sb.append(s"Transaction Status: Tx:${txd.transactionUUID} Store: $storeId\n")
+    sb.append("\n")
+    sb.append(s"***** Transaction Status: ${txd.transactionUUID}")
+    sb.append(s"  Store: $storeId\n")
     sb.append(s"  Objects: ${txd.requirements.map(_.objectPointer)}\n")
     sb.append(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}\n")
     sb.append(s"  Peer Dispositions: $peerDispositions\n")
     sb.append(s"  Accepted Peers: $acceptedPeers\n")
     sb.append(s"  Finalizer: ${finalizer.map(o => o.debugStatus)}\n")
+    sb.append(s"  ${txd.shortString}")
 
     print(sb.toString)
   }
@@ -83,7 +86,7 @@ abstract class TransactionDriver(
     val collisionsWithCompletedTransactions = msg.errors.nonEmpty && msg.errors.forall { e =>
       e.conflictingTransaction match {
         case None => false
-        case Some((txuuid, _)) =>transactionCache.getTransactionComplete(txuuid) match {
+        case Some((txuuid, _)) =>transactionCache.getTransactionFinalizedResult(txuuid) match {
           case None => false
           case Some(b) => b
         }
@@ -230,17 +233,32 @@ abstract class TransactionDriver(
   }
   
   protected def sendPrepareMessages(): Unit = {
-    val (proposalId, alreadyPrepared) = synchronized { (proposer.currentProposalId, peerDispositions) }
+    val (proposalId, alreadyPrepared, ofinal) = synchronized { (proposer.currentProposalId, peerDispositions, learner.finalValue) }
 
-    val messages = txd.allDataStores.filter(!alreadyPrepared.contains(_)).map(TxPrepare(_, storeId, txd, proposalId))
+    // Send TxResolved if resolution has been achieved, otherwise Prepare messages
+    val messages = ofinal match {
+      case Some(result) => txd.allDataStores.map(TxResolved(_, storeId, txd.transactionUUID, result))
+      case None => txd.allDataStores.filter(!alreadyPrepared.contains(_)).map(TxPrepare(_, storeId, txd, proposalId))
+    }
+
+    if (messages.nonEmpty)
+      logger.trace(s"Sending ${messages.head.getClass.getSimpleName}(${txd.transactionUUID}) to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex).toList})")
 
     messenger.send(messages.toList)
   }
   
-  protected def sendPrepareMessage(storeId: DataStoreID): Unit = {
-    val proposalId = synchronized { proposer.currentProposalId }
-    
-    messenger.send(TxPrepare(storeId, storeId, txd, proposalId))
+  protected def sendPrepareMessage(toStoreId: DataStoreID): Unit = {
+    val (proposalId, ofinal) = synchronized { (proposer.currentProposalId, learner.finalValue) }
+
+    ofinal match {
+      case Some(result) =>
+        logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $result to $toStoreId")
+        messenger.send(TxResolved(toStoreId, storeId, txd.transactionUUID, result))
+
+      case None =>
+        logger.trace(s"Sending TxPrepare(${txd.transactionUUID}) to $toStoreId")
+        messenger.send(TxPrepare(toStoreId, storeId, txd, proposalId))
+    }
   }
   
   protected def sendAcceptMessages(): Unit = {
@@ -251,6 +269,8 @@ abstract class TransactionDriver(
       val messages = primaryObjectDataStores.filter(!alreadyAccepted.contains(_)).map { toStoreId =>
         TxAccept(toStoreId, storeId, txd.transactionUUID, paxAccept.proposalId, paxAccept.proposalValue)
       }.toList
+      if (messages.nonEmpty)
+        logger.trace(s"Sending TxAccept(${txd.transactionUUID}) to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
       messenger.send(messages)
     }
   }
@@ -264,8 +284,11 @@ abstract class TransactionDriver(
     val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
       TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
     }.toList
+    if (messages.nonEmpty)
+      logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
     messenger.send(messages)
     txd.originatingClient.foreach { clientId =>
+      logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to originating client $clientId")
       messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
     }
   }

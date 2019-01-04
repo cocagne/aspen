@@ -106,9 +106,10 @@ class BaseStoragePool(
   def getMissedUpdateStrategy(): MissedUpdateStrategy = missedUpdateStrategy
   
   def createMissedUpdateHandler(
+      transactionUUID: UUID,
       pointer: ObjectPointer, 
       missedStores: List[Byte])(implicit ec: ExecutionContext): MissedUpdateHandler = {
-    system.createMissedUpdateHandler(missedUpdateStrategy, pointer, missedStores)
+    system.createMissedUpdateHandler(missedUpdateStrategy, transactionUUID, pointer, missedStores)
   }
 
   def createMissedUpdateIterator(poolIndex: Byte)(implicit ec: ExecutionContext): MissedUpdateIterator = {
