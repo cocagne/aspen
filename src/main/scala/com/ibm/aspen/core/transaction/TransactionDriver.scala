@@ -169,34 +169,15 @@ abstract class TransactionDriver(
       case Right(accepted) => 
         acceptedPeers += msg.from
         
-        val alreadyResolved = resolved
-        
-        val ocommitted = learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
+        learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
 
-        if (!alreadyResolved ) { // && acceptedPeers.size == txd.primaryObject.ida.width) {
-
-          ocommitted.foreach { committed =>
-            resolved = true
-
-            if (committed) {
-
-              val f = finalizerFactory.create(txd, messenger)
-
-              f.complete foreach {
-                _ => onFinalized(committed)
-              }
-
-              finalizer = Some(f)
-            } else
-              onFinalized(false)
-
-            onResolution(committed)
-          }
-        }
+        learner.finalValue.foreach(onResolution(_, sendResolutionMessage = true))
     }
   }
   
-  def receiveTxResolved(msg: TxResolved): Unit = {}
+  def receiveTxResolved(msg: TxResolved): Unit = synchronized {
+    onResolution(msg.committed, sendResolutionMessage=false)
+  }
   
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
     finalizer.foreach(_.updateCommittedPeer(msg.from))
@@ -216,10 +197,14 @@ abstract class TransactionDriver(
       shutdown() // release retry resources
 
       txd.originatingClient.foreach(client => {
+        logger.trace(s"Sending TxFinalized(${txd.transactionUUID}) to originating client $client)")
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))
       })
       
       val messages = allDataStores.map(toStoreId => TxFinalized(toStoreId, storeId, txd.transactionUUID, committed))
+
+      logger.trace(s"Sending TxFinalized(${txd.transactionUUID}) to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
+
       messenger.send(messages)
 
       completionPromise.success(txd)
@@ -280,16 +265,42 @@ abstract class TransactionDriver(
     nextRound()
   }
   
-  protected def onResolution(committed: Boolean): Unit = {
-    val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
-      TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
-    }.toList
-    if (messages.nonEmpty)
+  protected def onResolution(committed: Boolean, sendResolutionMessage: Boolean): Unit = if (!resolved) {
+
+    resolved = true
+
+    if (committed) {
+
+      // TODO: If sendResolutionMessage is false, another driver sent us a resolution message and will have
+      //       started executing the finalizers. Ideally, we'd watch the heartbeats of the other driver and
+      //       only start the finalizers ourselves if they time out to prevent contention. Could be tricky to
+      //       get this right though so we'll go with the simple approach for now
+
+      logger.trace(s"Running finalization actions for transaction ${txd.transactionUUID}")
+      val f = finalizerFactory.create(txd, messenger)
+
+      f.complete foreach { _ =>
+        logger.trace(s"Finalization actions completed for transaction ${txd.transactionUUID}")
+        onFinalized(committed)
+      }
+
+      finalizer = Some(f)
+    } else
+      onFinalized(false)
+
+    if (sendResolutionMessage) {
+      val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
+        TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
+      }.toList
+
       logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
-    messenger.send(messages)
-    txd.originatingClient.foreach { clientId =>
-      logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to originating client $clientId")
-      messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
+
+      messenger.send(messages)
+
+      txd.originatingClient.foreach { clientId =>
+        logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to originating client $clientId")
+        messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
+      }
     }
   }
 }
