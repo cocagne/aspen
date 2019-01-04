@@ -765,19 +765,47 @@ object NetworkCodec {
   def encode(builder:FlatBufferBuilder, o:TxCommitted): Int = {
     val to = encode(builder, o.to)
     val from = encode(builder, o.from)
+
+    val errors: Int = if (o.objectCommitErrors.isEmpty) -1 else {
+      val arr = new Array[Byte](o.objectCommitErrors.size * 16)
+
+      val bb = ByteBuffer.wrap(arr)
+      bb.order(ByteOrder.BIG_ENDIAN)
+      o.objectCommitErrors.foreach { uuid =>
+        bb.putLong(uuid.getMostSignificantBits)
+        bb.putLong(uuid.getLeastSignificantBits)
+      }
+
+      P.TxCommitted.createObjectCommitErrorsVector(builder, arr)
+    }
     
     P.TxCommitted.startTxCommitted(builder)
     P.TxCommitted.addTo(builder, to)
     P.TxCommitted.addFrom(builder, from)
     P.TxCommitted.addTransactionUuid(builder, encode(builder, o.transactionUUID))
+    if (errors != -1)
+      P.TxCommitted.addObjectCommitErrors(builder, errors)
     P.TxCommitted.endTxCommitted(builder)
   }
   def decode(n: P.TxCommitted): TxCommitted = {
     val to = decode(n.to())
     val from = decode(n.from())
     val transactionUUID = decode(n.transactionUuid())
+
+    val objectCommitErrors = n.objectCommitErrorsAsByteBuffer() match {
+      case null => Nil
+      case bb =>
+        bb.order(ByteOrder.BIG_ENDIAN)
+        var errs: List[UUID] = Nil
+        while (bb.remaining() != 0) {
+          val msb = bb.getLong()
+          val lsb = bb.getLong()
+          errs = new UUID(msb, lsb) :: errs
+        }
+        errs
+    }
     
-    TxCommitted(to, from, transactionUUID)
+    TxCommitted(to, from, transactionUUID, objectCommitErrors)
   }
   
   

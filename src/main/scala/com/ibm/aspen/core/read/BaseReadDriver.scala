@@ -87,7 +87,7 @@ class BaseReadDriver(
       case Right(cs) => ! cs.lockedWriteTransactions.forall { txuuid =>
         transactionCache.getTransactionResolution(txuuid) match {
           case None => true
-          case Some(result) => !result
+          case Some((result, _)) => !result
         }
       }
     }

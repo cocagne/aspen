@@ -356,12 +356,19 @@ class DataStoreFrontend(
     activeTransactions.get(txd.transactionUUID).foreach(st => st.discard())
   }
   
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = synchronized {
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]] = synchronized {
     val st = getStoreTransaction(txd, localUpdates)
     
     st.objectsLoaded flatMap { _ => 
-      synchronized { 
-        st.commit().map( _ => synchronized { st.releaseObjects() } )
+      val fcommit = synchronized {
+        st.commit()
+      }
+
+      fcommit.map { commitErrors =>
+        synchronized {
+          st.releaseObjects()
+        }
+        commitErrors
       }
     }
   }

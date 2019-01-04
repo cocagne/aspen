@@ -1,5 +1,7 @@
 package com.ibm.aspen.core.transaction
 
+import java.util.UUID
+
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.data_store._
@@ -11,6 +13,7 @@ import scala.concurrent.{ExecutionContext, Future}
 class Transaction(
     val crl: CrashRecoveryLog, 
     val messenger: StoreSideTransactionMessenger,
+    onCommit: List[UUID] => Unit,
     val onDiscard: Transaction => Unit,
     val store: DataStore,
     trs: TransactionRecoveryState)(implicit ec: ExecutionContext) {
@@ -24,7 +27,7 @@ class Transaction(
 
   private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates  
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
-  private[this] var commitFuture: Option[Future[Unit]] = None
+  private[this] var commitFuture: Option[Future[List[UUID]]] = None
 
   private[this] var resolved = false
   private[this] var discarded = false
@@ -203,7 +206,10 @@ class Transaction(
     
     if (msg.committed) {
       commitFuture.foreach { fcommit =>
-        fcommit.foreach(_ => messenger.send(TxCommitted(msg.from, store.storeId, txd.transactionUUID)))
+        fcommit.foreach { objectCommitErrors =>
+          onCommit(objectCommitErrors)
+          messenger.send(TxCommitted(msg.from, store.storeId, txd.transactionUUID, objectCommitErrors))
+        }
       }
     }
   }
@@ -229,11 +235,12 @@ object Transaction {
   def apply(
       crl: CrashRecoveryLog,
       messenger: StoreSideTransactionMessenger,
+      onCommit: List[UUID] => Unit,
       onDiscard: Transaction => Unit,
       store: DataStore, 
       txd: TransactionDescription, 
       localUpdates: Option[List[LocalUpdate]])(implicit ec: ExecutionContext): Transaction = {
-    new Transaction(crl, messenger, onDiscard, store, TransactionRecoveryState(
+    new Transaction(crl, messenger, onCommit, onDiscard, store, TransactionRecoveryState(
         store.storeId,
         txd, 
         localUpdates, 
@@ -244,10 +251,11 @@ object Transaction {
   
   def apply(
       crl: CrashRecoveryLog, 
-      messenger: StoreSideTransactionMessenger, 
+      messenger: StoreSideTransactionMessenger,
+      onCommit: List[UUID] => Unit,
       onDiscard: Transaction => Unit,
       store: DataStore,
-      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onDiscard, store, trs)
+      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onCommit, onDiscard, store, trs)
   
   def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
     case e: TransactionReadError => e.kind match {

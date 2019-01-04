@@ -58,7 +58,8 @@ final case class TxResolved(
 final case class TxCommitted(
     to: DataStoreID,
     from: DataStoreID,
-    transactionUUID: UUID) extends Message
+    transactionUUID: UUID,
+    objectCommitErrors: List[UUID]) extends Message
     
 final case class TxFinalized(
     to: DataStoreID,

@@ -143,8 +143,13 @@ class StorageNodeTransactionManager(
   protected class StoreState(val store: DataStore, txRecoveryState: List[TransactionRecoveryState]) {
     private[this] var opIdle: Option[Promise[Unit]] = None
     private[this] var transactionDrivers: Map[UUID, TransactionDriver] = Map()
-    private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs => 
-      trs.txd.transactionUUID -> Transaction(crl, messenger, onTransactionDiscarded, store, trs.txd, trs.localUpdates)
+    private[this] var transactions: Map[UUID, Transaction] = txRecoveryState.map { trs =>
+
+      def onCommit(objectErrors: List[UUID]): Unit = {
+        transactionCache.onLocalCommit(trs.txd.transactionUUID, store.storeId, objectErrors)
+      }
+
+      trs.txd.transactionUUID -> Transaction(crl, messenger, onCommit, onTransactionDiscarded, store, trs.txd, trs.localUpdates)
     }.toMap
 
     def idle: Future[Unit] = synchronized {
@@ -202,6 +207,22 @@ class StorageNodeTransactionManager(
     
     def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
       //println(s"Store RCV: to ${message.to} from ${message.from} class ${message.getClass}")
+      def sendResolved(committed: Boolean, transactionUUID: UUID, oerrMap: Option[Map[DataStoreID, List[UUID]]]): Unit = {
+        messenger.send(TxResolved(message.from, store.storeId, transactionUUID, committed))
+
+        // In addition to sending hte resolved message, we'll also send a TxCommitted message to inform the
+        // transaction driver of which objects we were not able to successfully update. This will allow it
+        // to skip marking missed updates for the objects we were able to successfully update. If we didn't
+        // send this, the driver would have to be conservative and mark every object we host
+        if (committed) {
+          oerrMap.foreach { errMap =>
+            errMap.get(store.storeId).foreach { objectErrors =>
+              messenger.send(TxCommitted(message.from, store.storeId, transactionUUID, objectErrors))
+            }
+          }
+        }
+      }
+
       message match {
         case m: TxPrepare =>
           transactionCache.getTransactionFinalizedResult(m.txd.transactionUUID) match {
@@ -214,10 +235,12 @@ class StorageNodeTransactionManager(
             case None =>
 
               val (otx, odriver) = transactionCache.getTransactionResolution(m.txd.transactionUUID) match {
-                case Some(result) =>
+                case Some((result, oerrs)) =>
                   // If we know the transaction is already complete, most likely the driver is attempting to recover from
-                  // lost messages. No need to re-run the transaction when we already know the end result.
-                  messenger.send(TxResolved(m.from, store.storeId, m.txd.transactionUUID, result))
+                  // lost messages. No need to re-run the transaction when we already know the end result. Unlike further
+                  // down, we don't need to send a TxCommitted message here since the missed updates have already been
+                  // marked
+                  sendResolved(result, m.txd.transactionUUID, oerrs)
 
                   synchronized {
                     (None, transactionDrivers.get(m.txd.transactionUUID))
@@ -227,7 +250,11 @@ class StorageNodeTransactionManager(
                   synchronized {
                     val tx = transactions.getOrElse(m.txd.transactionUUID, {
 
-                      val t = Transaction(crl, messenger, onTransactionDiscarded, store, m.txd, updateContent)
+                      def onCommit(objectErrors: List[UUID]): Unit = {
+                        transactionCache.onLocalCommit(m.txd.transactionUUID, store.storeId, objectErrors)
+                      }
+
+                      val t = Transaction(crl, messenger, onCommit, onTransactionDiscarded, store, m.txd, updateContent)
 
                       transactions += (m.txd.transactionUUID -> t)
 
@@ -265,8 +292,8 @@ class StorageNodeTransactionManager(
               // process the replies rather than having to rely on the driver to recover the transaction via retransmissions or 
               // another Paxos round.
               transactionCache.getTransactionResolution(m.transactionUUID) match {
-                case Some(result) => messenger.send(TxResolved(m.from, store.storeId, m.transactionUUID, result))
-                
+                case Some((result, oerrs)) => sendResolved(result, m.transactionUUID, oerrs)
+
                 case None => cachePrepareResponse(m)
               }              
           }
@@ -303,7 +330,7 @@ class StorageNodeTransactionManager(
 
         case m: TxStatusRequest =>
           val ostatus = transactionCache.getTransactionResolution(m.transactionUUID) match {
-            case Some(result) =>
+            case Some((result, _)) =>
               val finalized = getTransaction(m.transactionUUID).isEmpty
               val status = if (result) TransactionStatus.Committed else TransactionStatus.Aborted
               Some(TxStatusResponse.TxStatus(status, finalized))

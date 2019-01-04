@@ -80,6 +80,7 @@ class StoreTransaction(val store: DataStoreFrontend,
 
   var locked = false
   var committed = false
+  var objectCommitErrors: List[UUID] = Nil // List of object UUIDs we couldn't commit due to tx requirement errors
 
   // Filter Objects & Transaction Requirements down to just the set of objects hosted by this store
 
@@ -438,8 +439,8 @@ class StoreTransaction(val store: DataStoreFrontend,
   }
 
 
-  def commit(): Future[Unit] = if (committed)
-    Future.unit
+  def commit(): Future[List[UUID]] = if (committed)
+    Future.successful(objectCommitErrors)
   else {
     //println(s"$storeId tx: ${txd.transactionUUID} Committing")
     logger.info(s"$storeId tx: ${txd.transactionUUID} Committing")
@@ -462,13 +463,21 @@ class StoreTransaction(val store: DataStoreFrontend,
         cs
     }
 
+    var objectErrors = Set[UUID]()
+
     requirements.foreach { requirement =>
+
+      val objectUUID = requirement.objectPointer.uuid
+
       val cs = getCommitState(requirement.objectPointer.uuid)
 
       // It's possible we've been asked to commit a transaction that references objects we don't have (missed the
       // creation transaction). We can safely ignore these objects and allow the repair process to clean up what
       // we miss
-      if (cs.obj.loadError.isEmpty) {
+      if (cs.obj.loadError.nonEmpty){
+        objectErrors += objectUUID
+      }
+      else  {
 
         // Before committing the updates associated with each transaction requirement, we must first ensure
         // that the requirement is $met. We may be committing a transaction that we didn't vote to commit due
@@ -555,6 +564,7 @@ class StoreTransaction(val store: DataStoreFrontend,
               }
           }
         } else {
+          objectErrors += objectUUID
           if (logger.delegate.isWarnEnabled()) {
             logger.warn(s"$storeId tx: ${txd.transactionUUID} SKIPPING commit for operation ${requirement.getClass.getSimpleName} on object ${requirement.objectPointer.uuid} due to errors:")
             requirementErrors.foreach( err => logger.warn(s"$storeId tx: ${txd.transactionUUID} ERROR: $err") )
@@ -562,6 +572,8 @@ class StoreTransaction(val store: DataStoreFrontend,
         }
       }
     }
+
+    objectCommitErrors = objectErrors.toList
 
     Future.sequence { csmap.valuesIterator.map { cs =>
       if (cs.obj.deleted) {
@@ -579,6 +591,6 @@ class StoreTransaction(val store: DataStoreFrontend,
         else
           Future.successful(())
       }
-    }}.map(_ => ())
+    }}.map(_ => objectCommitErrors)
   }
 }

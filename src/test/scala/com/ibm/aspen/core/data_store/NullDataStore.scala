@@ -65,7 +65,7 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
    
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
   
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit] = Future.successful(())
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]] = Future.successful(Nil)
   
   def discardTransaction(txd: TransactionDescription): Unit = ()
   

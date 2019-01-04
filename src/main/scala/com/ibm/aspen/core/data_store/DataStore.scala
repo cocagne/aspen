@@ -117,12 +117,13 @@ trait DataStore {
   def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]]
   
   
-  /** Commits the transaction changes and returns a Future to the completion of the commit operation.
+  /** Commits the transaction changes and returns a Future to the completion of the commit operation. The returned list
+   *  of UUIDs is the list of objects for which updates could not be committed due to transaction requirement errors
    *  
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[Unit]
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]]
   
   
   /** Called at the end of each transaction to ensure all object locks are released.
