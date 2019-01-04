@@ -168,18 +168,35 @@ abstract class TransactionDriver(
       
       case Right(accepted) => 
         acceptedPeers += msg.from
+        
+        val alreadyResolved = resolved
+        
+        val ocommitted = learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
 
-        val pax = paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value)
+        if (!alreadyResolved ) { // && acceptedPeers.size == txd.primaryObject.ida.width) {
 
-        learner.receiveAccepted(pax).foreach { committed =>
-          onResolution(committed, sendResolutionMessage = false)
+          ocommitted.foreach { committed =>
+            resolved = true
+
+            if (committed) {
+
+              val f = finalizerFactory.create(txd, messenger)
+
+              f.complete foreach {
+                _ => onFinalized(committed)
+              }
+
+              finalizer = Some(f)
+            } else
+              onFinalized(false)
+
+            onResolution(committed)
+          }
         }
     }
   }
   
-  def receiveTxResolved(msg: TxResolved): Unit = synchronized {
-    onResolution(msg.committed, sendResolutionMessage = false)
-  }
+  def receiveTxResolved(msg: TxResolved): Unit = {}
   
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
     finalizer.foreach(_.updateCommittedPeer(msg.from))
@@ -263,42 +280,17 @@ abstract class TransactionDriver(
     nextRound()
   }
   
-  protected def onResolution(committed: Boolean, sendResolutionMessage: Boolean): Unit = if (!resolved) {
-
-    resolved = true
-
-    // If this is true, we drove the transaction to resolution and must send the TxResolved message to inform our peers
-    if (sendResolutionMessage) {
-      val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
-        TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
-      }.toList
-
+  protected def onResolution(committed: Boolean): Unit = {
+    val messages = (allDataStores.iterator ++ txd.notifyOnResolution.iterator).map { toStoreId =>
+      TxResolved(toStoreId, storeId, txd.transactionUUID, committed)
+    }.toList
+    if (messages.nonEmpty)
       logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
-
-      messenger.send(messages)
-
-      txd.originatingClient.foreach { clientId =>
-        logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to originating client $clientId")
-        messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
-      }
+    messenger.send(messages)
+    txd.originatingClient.foreach { clientId =>
+      logger.trace(s"Sending TxResolved(${txd.transactionUUID}) committed = $committed to originating client $clientId")
+      messenger.send(clientId, TxResolved(NullDataStoreId, storeId, txd.transactionUUID, committed))
     }
-
-    // Regardless of whether or not we drove the transaction to resolution, the finalizers must be executed if the
-    // transaction committed
-    if (committed) {
-
-      logger.trace(s"Beginning finalizers for transaction ${txd.transactionUUID}")
-
-      val f = finalizerFactory.create(txd, messenger)
-
-      f.complete foreach { _ =>
-        logger.trace(s"All finzlizers completed for transaction ${txd.transactionUUID}")
-        onFinalized(committed)
-      }
-
-      finalizer = Some(f)
-    } else
-      onFinalized(false)
   }
 }
 
