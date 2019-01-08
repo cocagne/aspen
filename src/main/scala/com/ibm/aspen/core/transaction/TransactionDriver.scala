@@ -283,6 +283,10 @@ abstract class TransactionDriver(
       logger.trace(s"Running finalization actions for transaction ${txd.transactionUUID}")
       val f = finalizerFactory.create(txd, messenger)
 
+      // Update with initial commitErrors. This avoids problems when all TxCommit messages arrive
+      // before we notice that resolution has been achieved
+      f.updateCommitErrors(commitErrors)
+
       f.complete foreach { _ =>
         logger.trace(s"Finalization actions completed for transaction ${txd.transactionUUID}")
         onFinalized(committed)
