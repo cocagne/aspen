@@ -166,7 +166,8 @@ class TestSystem(
         radiclePointer = radiclePointer,
         retryStrategy = retryStrategy,
         userTypeRegistry = Some(userTypeRegistry),
-        otransactionCache = None
+        otransactionCache = None,
+        oobjectCache = None
         )
 
     sys.registerRetryStrategy(FinalizationActionRetryStrategyUUID, retryStrategy)

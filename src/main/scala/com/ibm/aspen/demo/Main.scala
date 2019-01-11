@@ -177,7 +177,8 @@ object Main {
         radiclePointer = radiclePointer,
         retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
         userTypeRegistry = Some(typeRegistry),
-        otransactionCache = None
+        otransactionCache = None,
+        oobjectCache = None
         )
   }
 

@@ -2,7 +2,7 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
-import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.{AspenSystem, ObjectCache}
 import com.ibm.aspen.base.impl.TransactionStatusCache
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.ida.Replication
@@ -80,7 +80,7 @@ class BaseReadDriverSuite  extends AsyncFunSuite with Matchers {
                retrieveLockedTransaction: Boolean = true,
                readUUID:UUID = readUUID,
                transactionStatusCache: TransactionStatusCache = noTxCache) = {
-    new BaseReadDriver(transactionStatusCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+    new BaseReadDriver(ObjectCache.NoCache, transactionStatusCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
   }
   
   test("Fail with invalid object") {

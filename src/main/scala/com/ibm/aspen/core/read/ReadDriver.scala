@@ -2,6 +2,7 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
+import com.ibm.aspen.base.ObjectCache
 import com.ibm.aspen.base.impl.TransactionStatusCache
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
@@ -35,5 +36,5 @@ object ReadDriver {
    * ,        readUUID:UUID,
    *          disableOpportunisticRebuild: Boolean)
    */
-  type Factory = (TransactionStatusCache, ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
+  type Factory = (ObjectCache, TransactionStatusCache, ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
 }

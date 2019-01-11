@@ -103,8 +103,8 @@ class ClientReadManager(
       driverFactory: ReadDriver.Factory): Future[Either[ReadError, ObjectState]] = {
     
     val readUUID = UUID.randomUUID()
-    
-    val driver = driverFactory(transactionCache, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
+
+    val driver = driverFactory(system.objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     

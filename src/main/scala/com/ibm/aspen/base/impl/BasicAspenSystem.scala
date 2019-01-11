@@ -53,7 +53,8 @@ class BasicAspenSystem(
     val radiclePointer: KeyValueObjectPointer,
     val retryStrategy: RetryStrategy,
     userTypeRegistry: Option[TypeRegistry],
-    otransactionCache: Option[TransactionStatusCache]
+    otransactionCache: Option[TransactionStatusCache],
+    oobjectCache: Option[ObjectCache]
     )(implicit ec: ExecutionContext) extends AspenSystem with Logging {
   
   import BasicAspenSystem._
@@ -62,7 +63,8 @@ class BasicAspenSystem(
 
   private[this] var attributes: Map[String,String] = Map()
   
-  val transactionCache = otransactionCache.getOrElse(new TransactionStatusCache)
+  val transactionCache: TransactionStatusCache = otransactionCache.getOrElse(new TransactionStatusCache)
+  val objectCache: ObjectCache = oobjectCache.getOrElse(new DefaultObjectCache)
         
   protected val readManager = new ClientReadManager(this, transactionCache, net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)

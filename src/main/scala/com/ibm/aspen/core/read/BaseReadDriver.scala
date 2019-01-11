@@ -2,6 +2,7 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
+import com.ibm.aspen.base.ObjectCache
 import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
@@ -13,6 +14,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class BaseReadDriver(
+    val objectCache: ObjectCache,
     val transactionCache: TransactionStatusCache,
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
@@ -104,12 +106,15 @@ class BaseReadDriver(
             case Left(ObjectReadError.InvalidLocalPointer) => Left(new InvalidObject(objectPointer))
             case Left(_) => Left(new CorruptedObject(objectPointer))
             case Right(os) =>
+
               // Ensure any commit transactions will use timestamps after all read objects last update time
               os match {
                 case dos: DataObjectState => HLCTimestamp.update(dos.timestamp)
                 case kvos: KeyValueObjectState => HLCTimestamp.update(kvos.lastUpdateTimestamp)
                 case mos: MetadataObjectState => HLCTimestamp.update(mos.timestamp)
               }
+
+              objectCache.put(objectPointer, os)
 
               objectReader.rereadCandidates.keysIterator.foreach(sendOpportunisticRebuild(_, os))
 
@@ -148,6 +153,7 @@ object BaseReadDriver {
 
 
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
+      objectCache: ObjectCache,
       transactionCache: TransactionStatusCache,
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
@@ -155,7 +161,7 @@ object BaseReadDriver {
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new BaseReadDriver(transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
+    new BaseReadDriver(objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
 
       var hung = false
 

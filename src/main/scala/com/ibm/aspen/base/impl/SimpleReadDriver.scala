@@ -5,7 +5,7 @@ import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 
-import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.ObjectCache
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
@@ -17,13 +17,15 @@ object SimpleReadDriver {
       val initialDelay: Duration, 
       val maxDelay: Duration)(implicit ec: ExecutionContext) {
     def apply(
+        objectCache: ObjectCache,
         transactionCache: TransactionStatusCache,
         clientMessenger: ClientSideReadMessenger,
         objectPointer: ObjectPointer,
         readType: ReadType,
         retrieveLockedTransaction: Boolean, 
         readUUID:UUID): ReadDriver = {
-      new SimpleReadDriver(initialDelay, maxDelay, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)
+      new SimpleReadDriver(initialDelay, maxDelay, objectCache, transactionCache, clientMessenger, objectPointer,
+        readType, retrieveLockedTransaction, readUUID)
     }
   }
 }
@@ -35,13 +37,14 @@ object SimpleReadDriver {
 class SimpleReadDriver(
     val initialDelay: Duration, 
     val maxDelay: Duration,
+    objectCache: ObjectCache,
     transactionCache: TransactionStatusCache,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
+        objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
   
   private[this] var task: Option[BackgroundTask.ScheduledTask] = None
 

@@ -5,7 +5,7 @@ import com.ibm.aspen.core.objects.ObjectPointer
 import com.ibm.aspen.core.read.ReadType
 import java.util.UUID
 
-import com.ibm.aspen.base.AspenSystem
+import com.ibm.aspen.base.{AspenSystem, ObjectCache}
 
 import scala.concurrent.ExecutionContext
 import com.ibm.aspen.core.read.BaseReadDriver
@@ -15,6 +15,7 @@ import com.ibm.aspen.core.read.ReadDriver
 
 object SuperSimpleRetryingReadDriver {
   def factory(opportunisticRebuildDelay: Duration, ec: ExecutionContext)(
+      objectCache: ObjectCache,
       transactionCache: TransactionStatusCache,
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
@@ -22,12 +23,13 @@ object SuperSimpleRetryingReadDriver {
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new SuperSimpleRetryingReadDriver(transactionCache, clientMessenger, objectPointer, readType,
+    new SuperSimpleRetryingReadDriver(objectCache, transactionCache, clientMessenger, objectPointer, readType,
       retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)(ec)
   }
 }
 
 class SuperSimpleRetryingReadDriver(
+    objectCache: ObjectCache,
     transactionCache: TransactionStatusCache,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
@@ -36,7 +38,7 @@ class SuperSimpleRetryingReadDriver(
     readUUID:UUID,
     opportunisticRebuildDelay: Duration,
     disableOpportunisticRebuild: Boolean)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        transactionCache, clientMessenger, objectPointer,
+        objectCache, transactionCache, clientMessenger, objectPointer,
         readType, retrieveLockedTransaction, readUUID, opportunisticRebuildDelay, disableOpportunisticRebuild)  {
 
   private var retries = 0

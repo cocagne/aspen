@@ -20,6 +20,8 @@ trait AspenSystem extends ObjectReader {
   val retryStrategy: RetryStrategy
   
   val typeRegistry: TypeRegistry
+
+  val objectCache: ObjectCache
   
   def newTransaction(): Transaction
   

@@ -1,3 +1,19 @@
+* Have common ObjectCache for all reads
+    - Opportunistic rebuild can use this for deriving rebuild state rather than maintaining its own cache
+
+* ObjectReader base can track which object revisions are behind - applies to both Data and KV objects
+  - KVObjectReader.resolve could be extended to know what kind of thing it's resolving
+      - (KeyType.Value, Option[Key])
+      - Rather than just update "knownBehind", could update a KV specific entry to track just which keys on which stores
+        are behind
+      - No attempts to resolve are made unless a threshold number of KV objects match the object revision and only
+        matching object-level revisions attempt restoration. So, top-level object handles full-rebuild for store and
+        anything detected in resolve() can be used for key-specific rebuilds.
+  - ObjectReader just needs an OpportunisiticRebuildManager
+
+  - Maybe for simplicity, stick with full-object rebuild for KV object revision mismatch (should be relatively rare anyway)
+  - OPZ is individual KV pairs with matching top-level object revision
+
 
 * Really need to add pre-transaction opportunistic rebuild
    - Will often prevent stores from reporting errors to update local objects
