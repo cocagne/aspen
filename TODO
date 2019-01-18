@@ -1,18 +1,19 @@
+
+* Need to get PreTransactionRebuild to accompany TxPrepare message
+  - Not included as part of TxPrepare for same reason as Data
+  - Potentially large and requries copies.. not ideal.
+  - Try to extend existing mechanism first. Roll into TxPrepare if necessary
+
+
 * Have common ObjectCache for all reads
     - Opportunistic rebuild can use this for deriving rebuild state rather than maintaining its own cache
 
-* ObjectReader base can track which object revisions are behind - applies to both Data and KV objects
-  - KVObjectReader.resolve could be extended to know what kind of thing it's resolving
-      - (KeyType.Value, Option[Key])
-      - Rather than just update "knownBehind", could update a KV specific entry to track just which keys on which stores
-        are behind
-      - No attempts to resolve are made unless a threshold number of KV objects match the object revision and only
-        matching object-level revisions attempt restoration. So, top-level object handles full-rebuild for store and
-        anything detected in resolve() can be used for key-specific rebuilds.
-  - ObjectReader just needs an OpportunisiticRebuildManager
 
-  - Maybe for simplicity, stick with full-object rebuild for KV object revision mismatch (should be relatively rare anyway)
-  - OPZ is individual KV pairs with matching top-level object revision
+* ObjectReader just needs an OpportunisiticRebuildManager
+   - @ restore time, mark which objects are knownBehind along with objectPointer to restored object
+   - Only need to keep UUID and set of missed peers
+      - on request we fetch the cached object. Return nothing if object is not cached, otherwise
+        return object plus rebuild data for all known-behind peers.
 
 
 * Really need to add pre-transaction opportunistic rebuild
@@ -21,16 +22,31 @@
 
 * OpportunisticRebuildManager
    - At end of successful read
-      - Data: Mark which objects are behind and hold a copy of the just-read object
-      - KeyValue: Mark which KV-pairs are behind and hold a copy of behind KV-pairs
+      - Mark which objects are behind and cache a copy of the restored object
    - Can use a very short-lived cache (5 sec)
-   - getPreTransactionOpportunisticRebuild(objectUUID)
+   - getPreTransactionOpportunisticRebuild(objectUUID): Option[Map[Byte, OpportunisticRebuild]]
       - build a map of opportunistic rebuild ops for each store
       - include list of rebuild ops with TxPrepare & localState
       - rebuild ops are applied before TxPrepare is processed
    - If tx isn't invoked, send direct opportunistic rebuild message?
       - what criteria should be used for send?
       - most interesting cases will be handled by pre-tx rebuilds
+
+   Initial Implementation:
+      - DataObjects must always do a full rebuild. Can't reliably distinguish between append and overwrite
+      - KeyValueObjects
+            - Send full object state for first pass
+            - Future OPZ will be to send only the out-of-date KV pairs and attributes (reduced network load for larger objects)
+            - Not needed for first pass and this approach is already implemented on the backend
+
+   Future Optimization:
+      - KVObjectReader.resolve could be extended to know what kind of thing it's resolving
+            - (KeyType.Value, Option[Key])
+            - Rather than just update "knownBehind", could update a KV specific entry to track just which keys on which stores
+              are behind
+            - No attempts to resolve are made unless a threshold number of KV objects match the object revision and only
+              matching object-level revisions attempt restoration. So, top-level object handles full-rebuild for store and
+              anything detected in resolve() can be used for key-specific rebuilds.
 
 * Lots of Read & Transaction hangs during large file deletion
    - need to determine underlying cause

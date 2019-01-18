@@ -167,7 +167,8 @@ class TestSystem(
         retryStrategy = retryStrategy,
         userTypeRegistry = Some(userTypeRegistry),
         otransactionCache = None,
-        oobjectCache = None
+        oobjectCache = None,
+        oopRebuildManager = None
         )
 
     sys.registerRetryStrategy(FinalizationActionRetryStrategyUUID, retryStrategy)

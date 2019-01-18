@@ -54,7 +54,8 @@ class BasicAspenSystem(
     val retryStrategy: RetryStrategy,
     userTypeRegistry: Option[TypeRegistry],
     otransactionCache: Option[TransactionStatusCache],
-    oobjectCache: Option[ObjectCache]
+    oobjectCache: Option[ObjectCache],
+    oopRebuildManager: Option[OpportunisticRebuildManager]
     )(implicit ec: ExecutionContext) extends AspenSystem with Logging {
   
   import BasicAspenSystem._
@@ -65,6 +66,8 @@ class BasicAspenSystem(
   
   val transactionCache: TransactionStatusCache = otransactionCache.getOrElse(new TransactionStatusCache)
   val objectCache: ObjectCache = oobjectCache.getOrElse(new DefaultObjectCache)
+
+  private[aspen] val opportunisticRebuildManager = oopRebuildManager.getOrElse(new SimpleOpportunisticRebuildManager(this))
         
   protected val readManager = new ClientReadManager(this, transactionCache, net.readHandler)
   protected val txManager = new ClientTransactionManager(net.transactionHandler, defaultTransactionDriverFactory)

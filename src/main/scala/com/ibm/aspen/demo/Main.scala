@@ -178,7 +178,8 @@ object Main {
         retryStrategy = new ExponentialBackoffRetryStrategy(backoffLimit = 10, initialRetryDelay = 1),
         userTypeRegistry = Some(typeRegistry),
         otransactionCache = None,
-        oobjectCache = None
+        oobjectCache = None,
+        oopRebuildManager = None
         )
   }
 

@@ -22,6 +22,8 @@ trait AspenSystem extends ObjectReader {
   val typeRegistry: TypeRegistry
 
   val objectCache: ObjectCache
+
+  private[aspen] val opportunisticRebuildManager: OpportunisticRebuildManager
   
   def newTransaction(): Transaction
   
