@@ -139,7 +139,6 @@ object Main {
 
     val prepareRetransmitDelay = Duration(1, SECONDS)
     val allocationRetransmitDelay = Duration(1, SECONDS)
-    val opportunisticRebuildDelay = Duration(3, SECONDS)
 
     val allocaterFactories = cfg.allocaters.values.foldLeft(Map[UUID,TypeFactory]()){ (m, a) =>
       m + (a.uuid -> new ObjectAllocaterFactory {
@@ -168,7 +167,7 @@ object Main {
         chooseDesignatedLeader = cliNet.onlineTracker.chooseDesignatedLeader,
         getStorageHostFn = cliNet.onlineTracker.getStorageHostForStore,
         net = cliNet,
-        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(opportunisticRebuildDelay, ExecutionContext.Implicits.global),
+        defaultReadDriverFactory = SuperSimpleRetryingReadDriver.factory(ExecutionContext.Implicits.global),
         defaultTransactionDriverFactory = SimpleClientTransactionDriver.factory(prepareRetransmitDelay),
         defaultAllocationDriverFactory = SuperSimpleRetryingAllocationDriver.factory(allocationRetransmitDelay),
         transactionFactory = BaseTransaction.Factory,

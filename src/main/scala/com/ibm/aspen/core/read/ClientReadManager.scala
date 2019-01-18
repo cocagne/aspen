@@ -52,7 +52,7 @@ class ClientReadManager(
   val pruneStaleReadsTask: BackgroundTask.ScheduledTask = BackgroundTask.schedulePeriodic(Duration(1, SECONDS)) {
     val completionSnap = synchronized { completionTimes }
     val now = System.nanoTime()/1000000
-    val prune = completionSnap.filter( t => (now - t._2._1) > t._2._2.opportunisticRebuildDelay.toMillis )
+    val prune = completionSnap.filter( t => (now - t._2._1) > t._2._2.opportunisticRebuildManager.slowReadReplyDuration.toMillis )
     if (prune.nonEmpty) { synchronized {
       prune.foreach { t =>
         completionTimes -= t._1
@@ -104,7 +104,8 @@ class ClientReadManager(
     
     val readUUID = UUID.randomUUID()
 
-    val driver = driverFactory(system.objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
+    val driver = driverFactory(system.objectCache, system.opportunisticRebuildManager, transactionCache,
+      clientMessenger, objectPointer, readType, retrieveTransactionLocks, readUUID, disableOpportunisticRebuild)
                                       
     synchronized { outstandingReads += (readUUID -> driver) }
     

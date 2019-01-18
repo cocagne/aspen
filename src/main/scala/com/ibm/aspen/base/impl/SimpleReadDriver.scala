@@ -5,7 +5,7 @@ import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects.ObjectPointer
 import java.util.UUID
 
-import com.ibm.aspen.base.ObjectCache
+import com.ibm.aspen.base.{ObjectCache, OpportunisticRebuildManager}
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
@@ -18,14 +18,15 @@ object SimpleReadDriver {
       val maxDelay: Duration)(implicit ec: ExecutionContext) {
     def apply(
         objectCache: ObjectCache,
+        opRebuildManager: OpportunisticRebuildManager,
         transactionCache: TransactionStatusCache,
         clientMessenger: ClientSideReadMessenger,
         objectPointer: ObjectPointer,
         readType: ReadType,
         retrieveLockedTransaction: Boolean, 
         readUUID:UUID): ReadDriver = {
-      new SimpleReadDriver(initialDelay, maxDelay, objectCache, transactionCache, clientMessenger, objectPointer,
-        readType, retrieveLockedTransaction, readUUID)
+      new SimpleReadDriver(initialDelay, maxDelay, objectCache, opRebuildManager, transactionCache, clientMessenger,
+        objectPointer, readType, retrieveLockedTransaction, readUUID)
     }
   }
 }
@@ -38,13 +39,14 @@ class SimpleReadDriver(
     val initialDelay: Duration, 
     val maxDelay: Duration,
     objectCache: ObjectCache,
+    opRebuildManager: OpportunisticRebuildManager,
     transactionCache: TransactionStatusCache,
     clientMessenger: ClientSideReadMessenger,
     objectPointer: ObjectPointer,
     readType: ReadType,
     retrieveLockedTransaction: Boolean, 
     readUUID:UUID)(implicit ec: ExecutionContext) extends BaseReadDriver(
-        objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
+        objectCache, opRebuildManager, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID) {
   
   private[this] var task: Option[BackgroundTask.ScheduledTask] = None
 

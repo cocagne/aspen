@@ -2,13 +2,12 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
-import com.ibm.aspen.base.ObjectCache
 import com.ibm.aspen.base.impl.TransactionStatusCache
+import com.ibm.aspen.base.{ObjectCache, OpportunisticRebuildManager}
 import com.ibm.aspen.core.network.ClientSideReadMessenger
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
 
 import scala.concurrent.Future
-import scala.concurrent.duration.Duration
 
 trait ReadDriver {
   def readResult: Future[Either[ReadError, ObjectState]]
@@ -21,20 +20,23 @@ trait ReadDriver {
   
   /** Returns True when all stores have been heard from */
   def receiveReadResponse(response:ReadResponse): Boolean
-  
-  val opportunisticRebuildDelay: Duration
+
+  val opportunisticRebuildManager: OpportunisticRebuildManager
 }
 
 object ReadDriver {
+
   /**
-   * Signature: 
-   * 
-   * Factory( clientMessenger: ClientSideReadMessenger
-   *          objectPointer: ObjectPointer,
-   *          readType: ReadType,
-   *          retrieveLockedTransaction: Boolean,
-   * ,        readUUID:UUID,
-   *          disableOpportunisticRebuild: Boolean)
-   */
-  type Factory = (ObjectCache, TransactionStatusCache, ClientSideReadMessenger, ObjectPointer, ReadType, Boolean, UUID, Boolean) => ReadDriver
+    * objectCache: ObjectCache,
+    * opRebuildManager: OpportunisticRebuildManager,
+    * transactionCache: TransactionStatusCache,
+    * clientMessenger: ClientSideReadMessenger,
+    * objectPointer: ObjectPointer,
+    * readType: ReadType,
+    * retrieveLockedTransaction: Boolean,
+    * readUUID:UUID
+    */
+  type Factory = (ObjectCache, OpportunisticRebuildManager, TransactionStatusCache, ClientSideReadMessenger, ObjectPointer, ReadType,
+    Boolean, UUID, Boolean) => ReadDriver
+
 }

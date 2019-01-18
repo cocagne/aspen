@@ -17,6 +17,8 @@ class SimpleOpportunisticRebuildManager(system: AspenSystem) extends Opportunist
     .maximumSize(5000)
     .build[UUID, Set[Byte]]()
 
+  val slowReadReplyDuration: Duration = Duration(5, SECONDS)
+
   def markRepairNeeded(os: ObjectState, repairNeeded: Set[Byte]): Unit = repairCache.put(os.pointer.uuid, repairNeeded)
 
   def getPreTransactionOpportunisticRebuild(pointer: ObjectPointer): Map[Byte, (ObjectMetadata, DataBuffer)] = {

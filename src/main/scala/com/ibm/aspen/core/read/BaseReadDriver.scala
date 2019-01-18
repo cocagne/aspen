@@ -2,7 +2,7 @@ package com.ibm.aspen.core.read
 
 import java.util.UUID
 
-import com.ibm.aspen.base.ObjectCache
+import com.ibm.aspen.base.{ObjectCache, OpportunisticRebuildManager}
 import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
@@ -15,13 +15,13 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class BaseReadDriver(
     val objectCache: ObjectCache,
+    val opportunisticRebuildManager: OpportunisticRebuildManager,
     val transactionCache: TransactionStatusCache,
     val clientMessenger: ClientSideReadMessenger,
     val objectPointer: ObjectPointer,
     val readType: ReadType,
     val retrieveLockedTransaction: Boolean, 
     val readUUID:UUID,
-    val opportunisticRebuildDelay: Duration = BaseReadDriver.DefaultOpportunisticRebuildDelay,
     val disableOpportunisticRebuild: Boolean = false
     )(implicit ec: ExecutionContext) extends ReadDriver with Logging {
 
@@ -116,8 +116,6 @@ class BaseReadDriver(
 
               objectCache.put(objectPointer, os)
 
-              objectReader.rereadCandidates.keysIterator.foreach(sendOpportunisticRebuild(_, os))
-
               Right(os)
           }
 
@@ -131,6 +129,21 @@ class BaseReadDriver(
           }
 
           promise.success(result)
+        }
+
+        if (promise.isCompleted) {
+          e match {
+            case Right(os) =>
+
+              val repairNeeded: Set[Byte] = if (disableOpportunisticRebuild)
+                Set()
+              else
+                objectReader.rereadCandidates.keys.map(_.poolIndex).toSet
+
+              opportunisticRebuildManager.markRepairNeeded(os, repairNeeded)
+
+            case _ =>
+          }
         }
 
         e match {
@@ -149,11 +162,9 @@ class BaseReadDriver(
 
 object BaseReadDriver {
 
-  val DefaultOpportunisticRebuildDelay = Duration(5, SECONDS)
-
-
   def noErrorRecoveryReadDriver(ec: ExecutionContext)(
       objectCache: ObjectCache,
+      opRebuildManager: OpportunisticRebuildManager,
       transactionCache: TransactionStatusCache,
       clientMessenger: ClientSideReadMessenger,
       objectPointer: ObjectPointer,
@@ -161,7 +172,9 @@ object BaseReadDriver {
       retrieveLockedTransaction: Boolean,
       readUUID:UUID,
       disableOpportunisticRebuild: Boolean): ReadDriver = {
-    new BaseReadDriver(objectCache, transactionCache, clientMessenger, objectPointer, readType, retrieveLockedTransaction, readUUID)(ec) {
+
+    new BaseReadDriver(objectCache, opRebuildManager, transactionCache, clientMessenger, objectPointer, readType,
+      retrieveLockedTransaction, readUUID)(ec) {
 
       var hung = false
 
