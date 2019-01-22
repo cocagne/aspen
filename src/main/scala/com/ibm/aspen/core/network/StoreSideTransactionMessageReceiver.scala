@@ -1,10 +1,7 @@
 package com.ibm.aspen.core.network
 
-import com.ibm.aspen.core.transaction.Message
-import com.ibm.aspen.core.data_store.DataStoreID
-import java.nio.ByteBuffer
-import com.ibm.aspen.core.transaction.LocalUpdate
+import com.ibm.aspen.core.transaction.{Message, TransactionData}
 
 trait StoreSideTransactionMessageReceiver {
-  def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit  
+  def receive(message: Message, updateContent: Option[TransactionData]): Unit
 }

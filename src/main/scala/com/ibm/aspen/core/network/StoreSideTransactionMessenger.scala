@@ -13,8 +13,8 @@ trait StoreSideTransactionMessenger {
   def send(client: ClientID, resolved: TxResolved): Unit
   def send(client: ClientID, finalized: TxFinalized): Unit
   
-  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit
+  def sendPrepare(message: TxPrepare, updateContent: Option[TransactionData] = None): Unit
   
   def send(messages: List[Message]): Unit = messages.foreach(m => send(m))
-  def sendPrepares(messages: List[(TxPrepare, Option[List[LocalUpdate]])]): Unit = messages.foreach(t => sendPrepare(t._1, t._2))
+  def sendPrepares(messages: List[(TxPrepare, Option[TransactionData])]): Unit = messages.foreach(t => sendPrepare(t._1, t._2))
 }

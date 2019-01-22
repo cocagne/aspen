@@ -11,5 +11,5 @@ class NullMessenger extends StoreSideTransactionMessenger {
   override def send(client: ClientID, resolved: TxResolved): Unit = ()
   override def send(client: ClientID, finalized: TxFinalized): Unit = ()
   
-  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = ()
+  def sendPrepare(message: TxPrepare, transactionData: Option[TransactionData] = None): Unit = ()
 }

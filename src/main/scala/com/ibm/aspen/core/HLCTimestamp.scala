@@ -24,6 +24,8 @@ final class HLCTimestamp private (private val longValue: Long) extends AnyVal {
 }
 
 object HLCTimestamp {
+
+  val EncodedSize: Int = 8
   
   private def currentWallTime: Long = System.currentTimeMillis() << 16
 

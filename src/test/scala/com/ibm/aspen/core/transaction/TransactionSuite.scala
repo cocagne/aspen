@@ -132,7 +132,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       }
-      override def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
+      override def sendPrepare(message: TxPrepare, transactionData: Option[TransactionData] = None): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       }
@@ -534,7 +534,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       }
-      override def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
+      override def sendPrepare(message: TxPrepare, transactionData: Option[TransactionData] = None): Unit = {
         stateSavedBeforeMessageSent = crlStateSaved
         super.send(message)
       } 

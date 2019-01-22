@@ -5,7 +5,7 @@ import com.ibm.aspen.core.allocation.Allocate
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.data_store.{DataStore, DataStoreID}
 import com.ibm.aspen.core.network.{StoreSideAllocationMessageReceiver, StoreSideNetwork, StoreSideTransactionMessageReceiver}
-import com.ibm.aspen.core.transaction.{LocalUpdate, TxFinalized, TxResolved, Message => TransactionMessage}
+import com.ibm.aspen.core.transaction.{TransactionData, TxFinalized, TxResolved, Message => TransactionMessage}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
@@ -39,7 +39,7 @@ class StorageNode(
     transactionManager: StorageNodeTransactionManager,
     allocationManager: StorageNodeAllocationManager) 
     
-  private[this] val missedUpdatePoller = BackgroundTask.schedulePeriodic(Duration(15, SECONDS), callNow=false) {
+  private[this] val missedUpdatePoller = BackgroundTask.schedulePeriodic(Duration(15, SECONDS)) {
     val ssnap = synchronized { stores }
     ssnap.values.foreach( _.pollAndRepairMissedUpdates(system) )
   }
@@ -94,20 +94,20 @@ class StorageNode(
   
   override def receive(message: Allocate): Unit = recovered.foreach(r => r.allocationManager.receive(message))
     
-  override def receive(message: TransactionMessage, updateContent: Option[List[LocalUpdate]]): Unit = recovered.foreach { r =>
+  override def receive(message: TransactionMessage, transactionData: Option[TransactionData]): Unit = recovered.foreach { r =>
     message match {
       case m: TxResolved => r.allocationManager.receive(m)
       case m: TxFinalized => r.allocationManager.receive(m)
       case _ =>
     }
-    r.transactionManager.receive(message, updateContent)
+    r.transactionManager.receive(message, transactionData)
   }
     
   def addStore(storeId: DataStoreID, factory: DataStore.Factory): Future[DataStore] = { 
     val ltrs = crl.getTransactionRecoveryStateForStore(storeId)
     val lars = crl.getAllocationRecoveryStateForStore(storeId)
     
-    factory(storeId, ltrs, lars) map { case store => 
+    factory(storeId, ltrs, lars) map { store =>
       readManager.addStore(store)
       net.registerHostedStore(store.storeId)
       recovered foreach { r =>

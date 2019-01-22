@@ -9,7 +9,7 @@ import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network._
 import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, TransactionCompletionQuery}
-import com.ibm.aspen.core.transaction.{LocalUpdate, TxPrepare}
+import com.ibm.aspen.core.transaction.{LocalUpdate, PreTransactionOpportunisticRebuild, TransactionData, TxPrepare}
 import org.apache.logging.log4j.scala.Logging
 
 class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork 
@@ -114,8 +114,8 @@ class NClientNetwork(nnet: NettyNetwork) extends ClientSideNetwork
     stores(message.toStore).send(msg)
   }
   
-  def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = {
-    val msg = encodeMessage(message, Some(updateContent))
+  def send(message: TxPrepare, transactionData: TransactionData): Unit = {
+    val msg = encodeMessage(message, Some(transactionData))
     
     val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
     

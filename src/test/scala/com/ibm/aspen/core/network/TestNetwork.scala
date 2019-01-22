@@ -89,16 +89,16 @@ class TestNetwork(otac: Option[TestActionContext] = None) {
     def send(client: ClientID, resolved: TxResolved): Unit = csend(client, _.t.foreach(t => t.receive(resolved)))
     def send(client: ClientID, finalized: TxFinalized): Unit = csend(client, _.t.foreach(t => t.receive(finalized)))
     
-    def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
-      ssend(message.to, _.t.foreach(t => t.receive(message, updateContent)))
+    def sendPrepare(message: TxPrepare, transactionData: Option[TransactionData] = None): Unit = {
+      ssend(message.to, _.t.foreach(t => t.receive(message, transactionData)))
     }
 
     override def send(messages: List[Message]): Unit = messages.foreach(msg => ssend(msg.to, _.t.foreach(_.receive(msg, None))))
 
-    override def sendPrepares(messages: List[(TxPrepare, Option[List[LocalUpdate]])]): Unit = {
+    override def sendPrepares(messages: List[(TxPrepare, Option[TransactionData])]): Unit = {
       messages.foreach { tpl =>
-        val (prep, localupdate) = tpl
-        ssend(prep.to, _.t.foreach(_.receive(prep, localupdate)))
+        val (prep, transactionData) = tpl
+        ssend(prep.to, _.t.foreach(_.receive(prep, transactionData)))
       }
     }
     
@@ -142,9 +142,8 @@ class TestNetwork(otac: Option[TestActionContext] = None) {
     def send(message: read.Read): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
     def send(message: read.OpportunisticRebuild): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
     def send(message: read.TransactionCompletionQuery): Unit = ssend(message.toStore, _.r.foreach(r=> r.receive(message)))
-    def send(message: TxPrepare, updateContent: List[LocalUpdate]): Unit = ssend(message.to, sn => {
-      val oarr = if (updateContent.isEmpty) None else Some(updateContent)
-      sn.t.foreach(t => t.receive(message, oarr))
+    def send(message: TxPrepare, transactionData: TransactionData): Unit = ssend(message.to, sn => {
+      sn.t.foreach(t => t.receive(message, Some(transactionData)))
     })
   }
 

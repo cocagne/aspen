@@ -25,7 +25,8 @@ class Transaction(
   private[this] val acceptor = new Acceptor(store.storeId.poolIndex, trs.paxosAcceptorState)
   private[this] val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
 
-  private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates  
+  private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates
+  private[this] var preTxRebuilds: List[PreTransactionOpportunisticRebuild] = Nil
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
   private[this] var commitFuture: Option[Future[List[UUID]]] = None
 
@@ -33,6 +34,8 @@ class Transaction(
   private[this] var discarded = false
   
   private[this] var heartbeatTimestamp: Long = 0
+
+  def preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = synchronized(preTxRebuilds)
 
   private[this] def transactionStatus: TransactionStatus.Value = learner.finalValue match {
     case None => TransactionStatus.Unresolved
@@ -47,21 +50,26 @@ class Transaction(
   
   def currentTransactionStatus(): TransactionStatus.Value = synchronized { transactionStatus }
   
-  def receivePrepare(prepare: TxPrepare, optDataUpdates: Option[List[LocalUpdate]]): Unit = {
-    
+  def receivePrepare(prepare: TxPrepare, otxData: Option[TransactionData]): Unit = {
+
     // Proposal ID 1 is always sent by the client initiating the transaction. We don't want to update
-    // the timestamp for this since the client can't drive the transaction to completion and it'll 
+    // the timestamp for this since the client can't drive the transaction to completion and it'll
     // continually re-transmit the request to work around connection issues. Prepares sent by stores,
     // which will use a proposalId > 1 should up the the timestamp so we don't time out and also
     // attempt to drive the transaction forward.
     if (prepare.proposalId.number != 1)
       updateTimestamp()
-    
+
     val (response, acceptorState, originalDisposition, dataUpdates) = synchronized {
-      if (localUpdates.isEmpty && optDataUpdates.isDefined)
-        localUpdates = optDataUpdates
-        
-       (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition, localUpdates)
+      otxData.foreach { txData =>
+        if (localUpdates.isEmpty && txData.localUpdates.nonEmpty)
+          localUpdates = Some(txData.localUpdates)
+
+        if (preTxRebuilds.isEmpty && txData.preTransactionRebuilds.nonEmpty)
+          preTxRebuilds = txData.preTransactionRebuilds
+      }
+
+      (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition, localUpdates)
     }
     
     response match {
@@ -232,18 +240,19 @@ class Transaction(
 }
 
 object Transaction {
+
   def apply(
       crl: CrashRecoveryLog,
       messenger: StoreSideTransactionMessenger,
       onCommit: List[UUID] => Unit,
       onDiscard: Transaction => Unit,
       store: DataStore, 
-      txd: TransactionDescription, 
+      txd: TransactionDescription,
       localUpdates: Option[List[LocalUpdate]])(implicit ec: ExecutionContext): Transaction = {
     new Transaction(crl, messenger, onCommit, onDiscard, store, TransactionRecoveryState(
         store.storeId,
-        txd, 
-        localUpdates, 
+        txd,
+        localUpdates,
         TransactionDisposition.Undetermined, 
         TransactionStatus.Unresolved, 
         PersistentState(None, None)))
@@ -255,7 +264,11 @@ object Transaction {
       onCommit: List[UUID] => Unit,
       onDiscard: Transaction => Unit,
       store: DataStore,
-      trs: TransactionRecoveryState)(implicit ec: ExecutionContext) = new Transaction(crl, messenger, onCommit, onDiscard, store, trs)
+      trs: TransactionRecoveryState)(implicit ec: ExecutionContext): Transaction ={
+
+    new Transaction(crl, messenger, onCommit, onDiscard, store, trs)
+
+  }
   
   def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
     case e: TransactionReadError => e.kind match {

@@ -4,10 +4,10 @@ import java.nio.ByteBuffer
 import java.util.UUID
 
 import com.ibm.aspen.base.AspenSystem
-import com.ibm.aspen.core.data_store.DataStoreID
+import com.ibm.aspen.core.data_store.{DataStoreID, ObjectMetadata}
 import com.ibm.aspen.core.network._
 import com.ibm.aspen.core.network.protocol.Message
-import com.ibm.aspen.core.transaction.{LocalUpdate, TxAcceptResponse, TxFinalized, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
+import com.ibm.aspen.core.transaction.{LocalUpdate, PreTransactionOpportunisticRebuild, TransactionData, TxAcceptResponse, TxFinalized, TxPrepare, TxPrepareResponse, TxResolved, Message => TransactionMessage}
 import com.ibm.aspen.core.{DataBuffer, allocation, read}
 import org.apache.logging.log4j.scala.Logging
 
@@ -66,17 +66,24 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
     else if (p.prepare() != null) {
       //println("got prepare")
       val message = NetworkCodec.decode(p.prepare())
+
+      val contentSize = bb.getInt()
+      val preTxSize = bb.getInt()
+
+      val contentEndPos = bb.position() + contentSize
+      val preTxEndPos = contentEndPos + preTxSize
       
-      val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
+      //val sb = message.txd.allReferencedObjectsSet.foldLeft(new StringBuilder)((sb, o) => sb.append(s" ${o.uuid}"))
       //println(s"got prepare txid ${message.txd.transactionUUID} Leader ${message.txd.designatedLeaderUID} for objects: ${sb.toString()}")
 
       val updateContent = if (bb.remaining() == 0) None else {
         
         var localUpdates: List[LocalUpdate] = Nil
+        var preTxRebuilds: List[PreTransactionOpportunisticRebuild] = Nil
         
         // local update content is a series of <16-byte-uuid><4-byte-length><data>
         
-        while (bb.remaining() != 0) {
+        while (bb.position() != contentEndPos) {
           val msb = bb.getLong()
           val lsb = bb.getLong()
           val len = bb.getInt()
@@ -87,8 +94,23 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
           bb.position( bb.position() + len )
           localUpdates = LocalUpdate(uuid, DataBuffer(slice)) :: localUpdates
         }
+
+        // PreTx Rebuilds are a series of <16-byte-uuid><encoded-object-metadata><4-byte-length><data>
+
+        while (bb.remaining() != preTxEndPos) {
+          val msb = bb.getLong()
+          val lsb = bb.getLong()
+          val uuid = new UUID(msb, lsb)
+          val metadata = ObjectMetadata(bb)
+          val len = bb.getInt()
+
+          val slice = bb.asReadOnlyBuffer()
+          slice.limit( slice.position() + len )
+          bb.position( bb.position() + len )
+          preTxRebuilds = PreTransactionOpportunisticRebuild(uuid, metadata, DataBuffer(slice)) :: preTxRebuilds
+        }
         
-        Some(localUpdates)
+        Some(TransactionData(localUpdates, preTxRebuilds))
       }
       
       t.foreach(receiver => receiver.receive(message, updateContent))
@@ -186,7 +208,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
     connectionMgr.sendMessageToClient(client.uuid, encodeMessage(finalized))
   }
   
-  def sendPrepare(message: TxPrepare, updateContent: Option[List[LocalUpdate]] = None): Unit = {
+  def sendPrepare(message: TxPrepare, updateContent: Option[TransactionData] = None): Unit = {
     stores(message.to).send(encodeMessage(message, updateContent))
   }
   

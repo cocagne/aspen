@@ -4,14 +4,15 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.FlatBufferBuilder
 import com.ibm.aspen.core.allocation.{Allocate, AllocateResponse, Message => AllocationMessage}
+import com.ibm.aspen.core.data_store.ObjectMetadata
 import com.ibm.aspen.core.network.NetworkCodec
 import com.ibm.aspen.core.network.protocol.Message
 import com.ibm.aspen.core.read.{OpportunisticRebuild, Read, ReadResponse, TransactionCompletionQuery, TransactionCompletionResponse, Message => ReadMessage}
-import com.ibm.aspen.core.transaction.{LocalUpdate, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, TxStatusRequest, TxStatusResponse, Message => TransactionMessage}
+import com.ibm.aspen.core.transaction.{TransactionData, TxAccept, TxAcceptResponse, TxCommitted, TxFinalized, TxHeartbeat, TxPrepare, TxPrepareResponse, TxResolved, TxStatusRequest, TxStatusResponse, Message => TransactionMessage}
 
 object NMessageEncoder {
   
-  def encodeMessage(message: TransactionMessage, updateContent: Option[List[LocalUpdate]] = None): Array[Byte] = {
+  def encodeMessage(message: TransactionMessage, updateContent: Option[TransactionData] = None): Array[Byte] = {
     val builder = new FlatBufferBuilder(4096)
     
     val encodedMsg = message match {
@@ -116,24 +117,38 @@ object NMessageEncoder {
         builder.sizedByteArray()
     }
     
-    val dataLength = updateContent match {
-      case None => 0
-      case Some(l) => l.foldLeft(0)((sz, lu) => sz + 16 + 4 + lu.data.size)
+    val (contentSize, preTxSize) = updateContent match {
+      case None => (0, 0)
+      case Some(td) =>
+        val luSize = td.localUpdates.foldLeft(0)((sz, lu) => sz + 16 + 4 + lu.data.size)
+        val lpSize = td.preTransactionRebuilds.foldLeft(0)((sz, p) => sz + 16 + ObjectMetadata.EncodedSize + 4 + p.data.size)
+
+        (luSize, lpSize)
     }
     
-    val msg = new Array[Byte](4 + encodedMsg.length + dataLength)
+    val msg = new Array[Byte](4 + encodedMsg.length + 4 + 4 + contentSize + preTxSize)
     val bb = ByteBuffer.wrap(msg)
     
     bb.putInt(encodedMsg.length)
     bb.put(encodedMsg)
+    bb.putInt(contentSize)
+    bb.putInt(preTxSize)
    
-    updateContent.foreach { l =>
-      l.foreach { lu =>
-        val startOffset = bb.position()
+    updateContent.foreach { td =>
+
+      td.localUpdates.foreach { lu =>
         bb.putLong(lu.objectUUID.getMostSignificantBits)
         bb.putLong(lu.objectUUID.getLeastSignificantBits)
         bb.putInt(lu.data.size)
         bb.put(lu.data.asReadOnlyBuffer())
+      }
+
+      td.preTransactionRebuilds.foreach { pt =>
+        bb.putLong(pt.objectUUID.getMostSignificantBits)
+        bb.putLong(pt.objectUUID.getLeastSignificantBits)
+        pt.metadata.encodeInto(bb)
+        bb.putInt(pt.data.size)
+        bb.put(pt.data.asReadOnlyBuffer())
       }
     }
     

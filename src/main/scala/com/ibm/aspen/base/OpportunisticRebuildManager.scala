@@ -1,8 +1,7 @@
 package com.ibm.aspen.base
 
-import com.ibm.aspen.core.DataBuffer
-import com.ibm.aspen.core.data_store.ObjectMetadata
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
+import com.ibm.aspen.core.transaction.PreTransactionOpportunisticRebuild
 
 import scala.concurrent.duration.Duration
 
@@ -13,7 +12,7 @@ trait OpportunisticRebuildManager {
     */
   def markRepairNeeded(os: ObjectState, repairNeeded: Set[Byte]): Unit
 
-  def getPreTransactionOpportunisticRebuild(pointer: ObjectPointer): Map[Byte, (ObjectMetadata, DataBuffer)]
+  def getPreTransactionOpportunisticRebuild(pointer: ObjectPointer): Map[Byte, PreTransactionOpportunisticRebuild]
 
   /** Defines how long the reads should await tardy store reads for updating the rebuild manager. Responses
     * received after this duration may be dropped
@@ -26,7 +25,7 @@ object OpportunisticRebuildManager {
   object None extends OpportunisticRebuildManager {
     def markRepairNeeded(os: ObjectState, repairNeeded: Set[Byte]): Unit = ()
 
-    def getPreTransactionOpportunisticRebuild(pointer: ObjectPointer): Map[Byte, (ObjectMetadata, DataBuffer)] = Map()
+    def getPreTransactionOpportunisticRebuild(pointer: ObjectPointer): Map[Byte, PreTransactionOpportunisticRebuild] = Map()
 
     def slowReadReplyDuration: Duration = Duration.Zero
   }

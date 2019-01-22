@@ -2,13 +2,13 @@ package com.ibm.aspen.base.impl
 
 import java.util.UUID
 
-import com.ibm.aspen.base.{ConflictingRequirements, MultipleDataUpdatesToObject, MultipleRefcountUpdatesToObject}
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
+import com.ibm.aspen.base.{ConflictingRequirements, MultipleDataUpdatesToObject, MultipleRefcountUpdatesToObject, OpportunisticRebuildManager}
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.ClientID
-import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer, ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.core.objects.keyvalue.KeyValueOperation
+import com.ibm.aspen.core.objects.{KeyValueObjectPointer, ObjectPointer, ObjectRefcount, ObjectRevision}
 import com.ibm.aspen.core.transaction._
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 
 object TransactionBuilder {
   case class KVUpdate(
@@ -41,7 +41,8 @@ class TransactionBuilder(
   private [this] var missedCommitDelayInMs = 1000
   private [this] val minimumTimestamp = HLCTimestamp.now
 
-  def buildTranaction(transactionUUID: UUID): (TransactionDescription, Map[DataStoreID, List[LocalUpdate]], HLCTimestamp) = synchronized {
+  def buildTranaction(opportunisticRebuildManager: OpportunisticRebuildManager, transactionUUID: UUID): (TransactionDescription,
+    Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])], HLCTimestamp) = synchronized {
 
     HLCTimestamp.update(minimumTimestamp)
 
@@ -65,19 +66,33 @@ class TransactionBuilder(
                                      requirements, finalizationActions, originatingClient, notifyOnResolution.toList,
                                      notes)
 
-    var updates = Map[DataStoreID, List[LocalUpdate]]()
+    var updates = Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]()
 
     def addUpdate(pointer: ObjectPointer, encoded: Array[DataBuffer]): Unit = {
+      val mpr = opportunisticRebuildManager.getPreTransactionOpportunisticRebuild(pointer)
+
       pointer.storePointers zip encoded foreach { x =>
         val (sp, bb) = x
         val storeId = DataStoreID(pointer.poolUUID, sp.poolIndex)
         val lu = LocalUpdate(pointer.uuid, bb)
 
+        val opr = mpr.get(sp.poolIndex)
+
         updates.get(storeId) match {
-          case None => updates += (storeId -> List(lu))
-          case Some(lst) =>
-            val newList = lu :: lst
-            updates += (storeId -> newList)
+          case None =>
+            val lpr = opr match {
+              case None => List()
+              case Some(pr) => pr :: Nil
+            }
+            updates += (storeId -> (List(lu), lpr))
+
+          case Some(t) =>
+            val newLu = lu :: t._1
+            val newLp = opr match {
+              case None => t._2
+              case Some(pr) => pr :: t._2
+            }
+            updates += (storeId -> (newLu, newLp))
         }
       }
     }

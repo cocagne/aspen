@@ -132,7 +132,7 @@ class BaseTransaction(
     if (!promise.isCompleted) {
 
       state.foreach { bldr =>
-        val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(uuid)
+        val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(system.opportunisticRebuildManager, uuid)
 
         //---- Tx Debugging ----
         result.onComplete {

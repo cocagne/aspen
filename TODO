@@ -4,6 +4,10 @@
   - Potentially large and requries copies.. not ideal.
   - Try to extend existing mechanism first. Roll into TxPrepare if necessary
 
+* Have PreTxRebuilds making it all the way to the Transaction instance
+  - Verify pass-through to Transaction from TxBegining
+  - Add usage to DataStore
+
 
 * Have common ObjectCache for all reads
     - Opportunistic rebuild can use this for deriving rebuild state rather than maintaining its own cache

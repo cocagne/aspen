@@ -128,8 +128,8 @@ class StorageNodeTransactionManager(
     stores.foreach(t => t._2.logTransactionStatus(log))
   }
   
-  def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
-    getStore(message.to).foreach(_.receive(message, updateContent))
+  def receive(message: Message, transactionData: Option[TransactionData]): Unit = {
+    getStore(message.to).foreach(_.receive(message, transactionData))
   }
   
   def getTransactionStatus(storeId: DataStoreID, txUUID: UUID): Option[TransactionStatus.Value] = {
@@ -205,7 +205,7 @@ class StorageNodeTransactionManager(
       driver
     }
     
-    def receive(message: Message, updateContent: Option[List[LocalUpdate]]): Unit = {
+    def receive(message: Message, transactionData: Option[TransactionData]): Unit = {
       //println(s"Store RCV: to ${message.to} from ${message.from} class ${message.getClass}")
       def sendResolved(committed: Boolean, transactionUUID: UUID, oerrMap: Option[Map[DataStoreID, List[UUID]]]): Unit = {
         messenger.send(TxResolved(message.from, store.storeId, transactionUUID, committed))
@@ -254,7 +254,7 @@ class StorageNodeTransactionManager(
                         transactionCache.onLocalCommit(m.txd.transactionUUID, store.storeId, objectErrors)
                       }
 
-                      val t = Transaction(crl, messenger, onCommit, onTransactionDiscarded, store, m.txd, updateContent)
+                      val t = Transaction(crl, messenger, onCommit, onTransactionDiscarded, store, m.txd, transactionData.map(_.localUpdates))
 
                       transactions += (m.txd.transactionUUID -> t)
 
@@ -277,7 +277,7 @@ class StorageNodeTransactionManager(
                   }
               }
 
-              otx.foreach(_.receivePrepare(m, updateContent))
+              otx.foreach(_.receivePrepare(m, transactionData))
               odriver.foreach(td => td.receiveTxPrepare(m))
           }
 

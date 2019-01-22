@@ -36,4 +36,6 @@ object ObjectRevision {
   }
   
   val Null = ObjectRevision(new UUID(0,0))
+
+  val EncodedSize: Int = 16
 }
