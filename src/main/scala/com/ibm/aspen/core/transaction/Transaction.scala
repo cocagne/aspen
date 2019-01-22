@@ -87,7 +87,7 @@ class Transaction(
             
       case Right(_) =>
         
-        store.lockTransaction(txd, dataUpdates).foreach { errors => synchronized {
+        store.lockTransaction(txd, dataUpdates, rebuilds).foreach { errors => synchronized {
           
           if (discarded && errors.isEmpty) {
             // It's possible for a slow load & lock operation to return long after the transaction has completed

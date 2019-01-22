@@ -338,7 +338,8 @@ class DataStoreFrontend(
     activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(this, txd, localUpdates))
   }
   
-  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[ObjectTransactionError]] = synchronized {
+  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
+                      preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]] = synchronized {
     val p = Promise[List[ObjectTransactionError]]()
     
     val st = getStoreTransaction(txd, localUpdates)

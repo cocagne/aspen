@@ -7,7 +7,7 @@ import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.allocation._
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectRefcount, StorePointer}
 import com.ibm.aspen.core.read.OpportunisticRebuild
-import com.ibm.aspen.core.transaction.{LocalUpdate, TransactionDescription, TransactionRecoveryState}
+import com.ibm.aspen.core.transaction.{LocalUpdate, PreTransactionOpportunisticRebuild, TransactionDescription, TransactionRecoveryState}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -109,12 +109,14 @@ trait DataStore {
   def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]
 
 
-  /** Attempts to locks all objects referenced by the transaction that are hosted by this store.
+  /** Attempts to locks all objects referenced by the transaction that are hosted by this store. If pre-transaction
+   *  opportunistic rebuilds are provided, those will be applied prior to attempting to lock to the transaction
    *  
    *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,
    *  no object locks are granted.
    */
-  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[ObjectTransactionError]]
+  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
+                      preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation. The returned list

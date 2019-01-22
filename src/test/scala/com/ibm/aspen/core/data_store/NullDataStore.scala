@@ -1,7 +1,7 @@
 package com.ibm.aspen.core.data_store
 
 import scala.concurrent._
-import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.transaction.{LocalUpdate, PreTransactionOpportunisticRebuild, TransactionDescription, TransactionRecoveryState}
 import java.util.UUID
 
 import com.ibm.aspen.core.objects.ObjectRevision
@@ -11,8 +11,6 @@ import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.allocation._
 import java.nio.ByteBuffer
 
-import com.ibm.aspen.core.transaction.TransactionRecoveryState
-import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.base.AspenSystem
@@ -63,7 +61,8 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]= Future.successful(Left(new InvalidLocalPointer))
    
-  def lockTransaction(txd: TransactionDescription, updateData: List[LocalUpdate]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
+  def lockTransaction(txd: TransactionDescription, updateData: List[LocalUpdate],
+                      preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]] = Future.successful(Nil)
 
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[UUID]] = Future.successful(Nil)
   
