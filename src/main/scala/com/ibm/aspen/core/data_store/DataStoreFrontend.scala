@@ -334,14 +334,14 @@ class DataStoreFrontend(
     }
   }
 
-  private[this] def getStoreTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): StoreTransaction = synchronized {
-    activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(this, txd, updateData.getOrElse(Nil)))
+  private[this] def getStoreTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): StoreTransaction = synchronized {
+    activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(this, txd, localUpdates))
   }
   
-  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = synchronized {
+  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[ObjectTransactionError]] = synchronized {
     val p = Promise[List[ObjectTransactionError]]()
     
-    val st = getStoreTransaction(txd, updateData)
+    val st = getStoreTransaction(txd, localUpdates)
     
     st.objectsLoaded.foreach { _ =>
       synchronized {
@@ -356,7 +356,7 @@ class DataStoreFrontend(
     activeTransactions.get(txd.transactionUUID).foreach(st => st.discard())
   }
   
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]] = synchronized {
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[UUID]] = synchronized {
     val st = getStoreTransaction(txd, localUpdates)
     
     st.objectsLoaded flatMap { _ => 

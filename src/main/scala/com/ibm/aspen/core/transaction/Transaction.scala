@@ -25,7 +25,7 @@ class Transaction(
   private[this] val acceptor = new Acceptor(store.storeId.poolIndex, trs.paxosAcceptorState)
   private[this] val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
 
-  private[this] var localUpdates: Option[List[LocalUpdate]] = trs.localUpdates
+  private[this] var localUpdates: List[LocalUpdate] = trs.localUpdates.getOrElse(Nil)
   private[this] var preTxRebuilds: List[PreTransactionOpportunisticRebuild] = Nil
   private[this] var txdisposition: TransactionDisposition.Value = trs.disposition
   private[this] var commitFuture: Option[Future[List[UUID]]] = None
@@ -60,16 +60,16 @@ class Transaction(
     if (prepare.proposalId.number != 1)
       updateTimestamp()
 
-    val (response, acceptorState, originalDisposition, dataUpdates) = synchronized {
+    val (response, acceptorState, originalDisposition, dataUpdates, rebuilds) = synchronized {
       otxData.foreach { txData =>
         if (localUpdates.isEmpty && txData.localUpdates.nonEmpty)
-          localUpdates = Some(txData.localUpdates)
+          localUpdates = txData.localUpdates
 
         if (preTxRebuilds.isEmpty && txData.preTransactionRebuilds.nonEmpty)
           preTxRebuilds = txData.preTransactionRebuilds
       }
 
-      (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition, localUpdates)
+      (acceptor.receivePrepare(Prepare(prepare.proposalId)), acceptor.persistentState, txdisposition, localUpdates, preTxRebuilds)
     }
     
     response match {
@@ -113,8 +113,10 @@ class Transaction(
                 // Once we've voted to commit, we're committed to committing :-)
                 TransactionDisposition.VoteCommit
             }
-              
-            val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition,
+
+            val oupdates = if (localUpdates.isEmpty) None else Some(localUpdates)
+
+            val recoveryState = TransactionRecoveryState(store.storeId, txd, oupdates, txdisposition,
                                                          transactionStatus, acceptorState)
 
             val response = TxPrepareResponse(
@@ -166,7 +168,9 @@ class Transaction(
         
       case Right(accept) =>
 
-        val recoveryState = TransactionRecoveryState(store.storeId, txd, localUpdates, txdisposition,
+        val oupdates = if (localUpdates.isEmpty) None else Some(localUpdates)
+
+        val recoveryState = TransactionRecoveryState(store.storeId, txd, oupdates, txdisposition,
           transactionStatus, acceptorState)
 
         val response = TxAcceptResponse(

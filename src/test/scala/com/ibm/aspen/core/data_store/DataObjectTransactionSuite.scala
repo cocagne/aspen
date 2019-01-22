@@ -49,7 +49,7 @@ object DataObjectTransactionSuite {
     TransactionDescription(txdUUID, timestamp.asLong, allocObj, 0, reqs, Nil)
   }
   
-  def mklu(objectPointer: ObjectPointer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(objectPointer.uuid, DataBuffer(ByteBuffer.allocate(0)))))
+  def mklu(objectPointer: ObjectPointer): List[LocalUpdate] = List(LocalUpdate(objectPointer.uuid, DataBuffer(ByteBuffer.allocate(0))))
   
   val storeId = DataStoreID(poolUUID, 1)
   
@@ -263,7 +263,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
-    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+    val lu = List(LocalUpdate(op0.uuid, newContent))
     
     val errs = Await.result(ds.lockTransaction(txd, lu), awaitDuration)
     //println(s"Errors is $errs")
@@ -362,13 +362,13 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val txd = mktxd(RevisionLock(op0, irev) :: Nil)
          
-    val errs = Await.result(ds.lockTransaction(txd, None), awaitDuration)
+    val errs = Await.result(ds.lockTransaction(txd, Nil), awaitDuration)
     
     errs.toSet should be (Set())
     
     val txd2 = mktxd(RevisionLock(op0, irev) :: Nil)
     
-    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, Nil), awaitDuration)
     
     errs2.toSet should be (Set())
   }
@@ -424,7 +424,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
-    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+    val lu = List(LocalUpdate(op0.uuid, newContent))
 
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     
@@ -461,7 +461,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
-    val lu = Some(List(LocalUpdate(op0.uuid, newContent), LocalUpdate(bad.uuid, newContent)))
+    val lu = List(LocalUpdate(op0.uuid, newContent), LocalUpdate(bad.uuid, newContent))
 
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     
@@ -490,7 +490,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
     
-    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+    val lu = List(LocalUpdate(op0.uuid, newContent))
     
     val errs = Await.result(ds.lockTransaction(txd, lu), awaitDuration)
     
@@ -519,7 +519,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
                     
     val newContent = DataBuffer(List[Byte](7,8,9,10).toArray)
 
-    Await.result(ds.commitTransactionUpdates(txd, None), awaitDuration)
+    Await.result(ds.commitTransactionUpdates(txd, Nil), awaitDuration)
     
     val newRev = ObjectRevision(txd.transactionUUID)
     
@@ -547,7 +547,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val appended = DataBuffer(bb)
     
-    val lu = Some(List(LocalUpdate(op0.uuid, newContent)))
+    val lu = List(LocalUpdate(op0.uuid, newContent))
 
     Await.result(ds.commitTransactionUpdates(txd, lu), awaitDuration)
     
@@ -568,7 +568,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val op1 = mkObjPtr(uuid1, sp1)
     val txd = mktxd(VersionBump(op0, irev) :: RefcountUpdate(op1, oneRef, newRef) :: Nil)
 
-    Await.result(ds.commitTransactionUpdates(txd, None), awaitDuration)
+    Await.result(ds.commitTransactionUpdates(txd, Nil), awaitDuration)
     
     val newRev = ObjectRevision(txd.transactionUUID)
     
@@ -596,7 +596,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
     
-    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, Nil), awaitDuration)
     
     errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd, Some(irev)), new TransactionCollision(op1, txd, Some(irev))))
   }
@@ -619,7 +619,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val txd2 = mktxd(VersionBump(op0, irev) :: DataUpdate(op1, irev, DataUpdateOperation.Overwrite) :: Nil, new UUID(99,99))
     
-    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, Nil), awaitDuration)
     
     errs2.toSet should be (Set(new MissingUpdateContent(op1), new TransactionCollision(op0, txd, Some(irev)), new TransactionCollision(op1, txd, Some(irev))))
   }
@@ -644,7 +644,7 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     
     val txd2 = mktxd(RefcountUpdate(op1, oneRef, newRef) :: Nil, new UUID(99,99))
     
-    val errs2 = Await.result(ds.lockTransaction(txd2, None), awaitDuration)
+    val errs2 = Await.result(ds.lockTransaction(txd2, Nil), awaitDuration)
     
     errs2.toSet should be (Set(new TransactionCollision(op1, txd, None)))
   }

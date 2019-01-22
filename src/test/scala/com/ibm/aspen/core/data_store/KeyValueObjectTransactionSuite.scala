@@ -49,7 +49,7 @@ object KeyValueObjectTransactionSuite {
     TransactionDescription(txdUUID, HLCTimestamp.now.asLong, allocObj, 0, reqs, Nil)
   }
   
-  def lu(op: ObjectPointer, db: DataBuffer): Option[List[LocalUpdate]] = Some(List(LocalUpdate(op.uuid, db)))
+  def lu(op: ObjectPointer, db: DataBuffer): List[LocalUpdate] = List(LocalUpdate(op.uuid, db))
   
   val storeId = DataStoreID(poolUUID, 1)
   

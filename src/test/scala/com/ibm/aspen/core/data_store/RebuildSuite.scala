@@ -48,8 +48,8 @@ object RebuildSuite {
     TransactionDescription(txdUUID, txts.asLong, allocObj, 0, reqs, Nil)
   }
 
-  def mklu(objectPointer: ObjectPointer, content: DataBuffer = DataBuffer.Empty): Option[List[LocalUpdate]] = {
-    Some(List(LocalUpdate(objectPointer.uuid, content)))
+  def mklu(objectPointer: ObjectPointer, content: DataBuffer = DataBuffer.Empty): List[LocalUpdate] = {
+    List(LocalUpdate(objectPointer.uuid, content))
   }
 
   class TReader(val o: ObjectState) extends ObjectReader {

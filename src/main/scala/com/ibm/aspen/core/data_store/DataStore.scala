@@ -114,7 +114,7 @@ trait DataStore {
    *  If the returned list of errors is empty, the transaction successfully locked all objects. If any errors are returned,
    *  no object locks are granted.
    */
-  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]]
+  def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[ObjectTransactionError]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation. The returned list
@@ -123,7 +123,7 @@ trait DataStore {
    *  This method always returns Success() since there are no recovery steps the transaction logic can take for failures
    *  that occur after the commit decision has been made. 
    */
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]]
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[UUID]]
   
   
   /** Called at the end of each transaction to ensure all object locks are released.

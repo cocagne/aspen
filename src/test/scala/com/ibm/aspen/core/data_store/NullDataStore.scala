@@ -22,7 +22,7 @@ import com.ibm.aspen.core.read.OpportunisticRebuild
  * mock stores used in tests. The "stored" objects have ObjectRevision(1,10)
  */
 class NullDataStore(val storeId: DataStoreID) extends DataStore {
-  
+
   import NullDataStore._
   
   override val executionContext: ExecutionContext = ExecutionContext.global
@@ -63,9 +63,9 @@ class NullDataStore(val storeId: DataStoreID) extends DataStore {
   
   def getObjectData(pointer: ObjectPointer): Future[Either[ObjectReadError, (DataBuffer, List[Lock], Set[UUID])]]= Future.successful(Left(new InvalidLocalPointer))
    
-  def lockTransaction(txd: TransactionDescription, updateData: Option[List[LocalUpdate]]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
-  
-  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: Option[List[LocalUpdate]]): Future[List[UUID]] = Future.successful(Nil)
+  def lockTransaction(txd: TransactionDescription, updateData: List[LocalUpdate]): Future[List[ObjectTransactionError]] = Future.successful(Nil)
+
+  def commitTransactionUpdates(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[UUID]] = Future.successful(Nil)
   
   def discardTransaction(txd: TransactionDescription): Unit = ()
   
