@@ -1,23 +1,6 @@
 
-* Need to get PreTransactionRebuild to accompany TxPrepare message
-  - Not included as part of TxPrepare for same reason as Data
-  - Potentially large and requries copies.. not ideal.
-  - Try to extend existing mechanism first. Roll into TxPrepare if necessary
-
-* Have PreTxRebuilds making it all the way to the Transaction instance
-  - Verify pass-through to Transaction from TxBegining
-  - Add usage to DataStore
-
-
-* Have common ObjectCache for all reads
-    - Opportunistic rebuild can use this for deriving rebuild state rather than maintaining its own cache
-
-
-* ObjectReader just needs an OpportunisiticRebuildManager
-   - @ restore time, mark which objects are knownBehind along with objectPointer to restored object
-   - Only need to keep UUID and set of missed peers
-      - on request we fetch the cached object. Return nothing if object is not cached, otherwise
-        return object plus rebuild data for all known-behind peers.
+* Added pre-transaction Opportunistic Rebuilds
+   - How do we test it?
 
 
 * Really need to add pre-transaction opportunistic rebuild

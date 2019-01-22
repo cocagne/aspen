@@ -67,7 +67,8 @@ object StoreTransaction {
 
 class StoreTransaction(val store: DataStoreFrontend, 
                        val txd: TransactionDescription, 
-                       updateData: List[LocalUpdate]) extends Logging {
+                       updateData: List[LocalUpdate],
+                       preTransactionRebuilds: List[PreTransactionOpportunisticRebuild]) extends Logging {
 
   import StoreTransaction._
   import store.executionContext
@@ -97,20 +98,29 @@ class StoreTransaction(val store: DataStoreFrontend,
   val (objects: Map[UUID, ObjectStoreState],
        objectsLoaded: Future[Unit]) = {
 
+    val rebuilds = preTransactionRebuilds.map(p => p.objectUUID -> p).toMap
+
     val temp = getObjectLoadRequirements(requirements).map { t =>
       val (ptr, loadType) = t
-      val (obj, loadFuture) = loadType match {
-        case LoadType.MetadataOnly =>
-          val o = store.loadObject(ptr, obj => obj.loadMetadata())
-          (o, o.loadMetadata())
-
-        case LoadType.DataOnly =>
-          val o = store.loadObject(ptr, obj => obj.loadData())
-          (o, o.loadData())
-
-        case LoadType.Both =>
+      val (obj, loadFuture) = rebuilds.get(ptr.uuid) match {
+        case Some(ptxRebuild) =>
           val o = store.loadObject(ptr, obj => obj.loadBoth())
-          (o, o.loadBoth())
+          (o, o.opportunisticRebuild(ptxRebuild))
+
+        case None =>
+          loadType match {
+            case LoadType.MetadataOnly =>
+              val o = store.loadObject(ptr, obj => obj.loadMetadata())
+              (o, o.loadMetadata())
+
+            case LoadType.DataOnly =>
+              val o = store.loadObject(ptr, obj => obj.loadData())
+              (o, o.loadData())
+
+            case LoadType.Both =>
+              val o = store.loadObject(ptr, obj => obj.loadBoth())
+              (o, o.loadBoth())
+          }
       }
 
       ptr.uuid -> (obj, loadFuture)

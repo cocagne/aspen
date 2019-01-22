@@ -59,7 +59,7 @@ class DataStoreFrontend(
     allocationRecoveryStates.foreach(loadAllocatedObject)
     
     val ftxrecovery = transactionRecoveryStates.foldLeft(List[Future[Unit]]()) { (l, trs) => 
-      val t = new StoreTransaction(this, trs.txd, trs.localUpdates.getOrElse(Nil))
+      val t = new StoreTransaction(this, trs.txd, trs.localUpdates.getOrElse(Nil), Nil)
       
       if (trs.disposition == TransactionDisposition.VoteCommit) {
         // Re-establish locks on all transactions we voted to commit
@@ -334,15 +334,16 @@ class DataStoreFrontend(
     }
   }
 
-  private[this] def getStoreTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate]): StoreTransaction = synchronized {
-    activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(this, txd, localUpdates))
+  private[this] def getStoreTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
+                                        preTransactionRebuilds: List[PreTransactionOpportunisticRebuild]): StoreTransaction = synchronized {
+    activeTransactions.getOrElse(txd.transactionUUID, new StoreTransaction(this, txd, localUpdates, preTransactionRebuilds))
   }
   
   def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
                       preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]] = synchronized {
     val p = Promise[List[ObjectTransactionError]]()
     
-    val st = getStoreTransaction(txd, localUpdates)
+    val st = getStoreTransaction(txd, localUpdates, preTransactionRebuilds)
     
     st.objectsLoaded.foreach { _ =>
       synchronized {
@@ -358,7 +359,7 @@ class DataStoreFrontend(
   }
   
   def commitTransactionUpdates(txd: TransactionDescription, localUpdates: List[LocalUpdate]): Future[List[UUID]] = synchronized {
-    val st = getStoreTransaction(txd, localUpdates)
+    val st = getStoreTransaction(txd, localUpdates, Nil)
     
     st.objectsLoaded flatMap { _ => 
       val fcommit = synchronized {

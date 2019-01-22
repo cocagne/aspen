@@ -17,5 +17,6 @@ case class ClientID(uuid: UUID) extends NetworkID {
 object ClientID {
   
   def apply(data:Array[Byte]): ClientID = ClientID(NetworkID.decodeUUID(data))
-  
+
+  val Null = ClientID(new UUID(0,0))
 }

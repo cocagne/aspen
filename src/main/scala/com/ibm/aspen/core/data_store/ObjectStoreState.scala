@@ -3,13 +3,12 @@ package com.ibm.aspen.core.data_store
 import java.util.UUID
 
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
-import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 import com.ibm.aspen.core.objects.{ObjectRefcount, ObjectRevision, StorePointer}
 import com.ibm.aspen.core.read.OpportunisticRebuild
-import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.transaction.{PreTransactionOpportunisticRebuild, TransactionDescription}
+import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 
 import scala.concurrent.{Future, Promise}
-import scala.util.Success
 
 object ObjectStoreState {
   val NullUUID = new UUID(0,0)
@@ -116,10 +115,15 @@ sealed abstract class ObjectStoreState(val frontend: DataStoreFrontend,
 
   def opportunisticRebuild(msg: OpportunisticRebuild): Future[Unit] = loadBoth().map {
     case Left(_) => ()
-    case Right(_) => doOpportunisticRebuild(msg)
+    case Right(_) => doOpportunisticRebuild(ObjectMetadata(msg.revision, msg.refcount, msg.timestamp), msg.data)
   }
 
-  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit
+  def opportunisticRebuild(ptx: PreTransactionOpportunisticRebuild): Future[Unit] = loadBoth().map {
+    case Left(_) => ()
+    case Right(_) => doOpportunisticRebuild(ptx.metadata, ptx.data)
+  }
+
+  protected def doOpportunisticRebuild(rmeta: ObjectMetadata, rdata: DataBuffer): Unit
 
   protected def dataUpdated(): Unit = {}
 
@@ -292,15 +296,15 @@ class DataObjectStoreState(frontend: DataStoreFrontend,
 
   def appendData(append: DataBuffer): Unit = data = this.db.append(append)
 
-  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit = if (locks.isEmpty) {
+  protected def doOpportunisticRebuild(rmeta: ObjectMetadata, rdata: DataBuffer): Unit = if (locks.isEmpty) {
     var commit = false
-    if (refcount.updateSerial < msg.refcount.updateSerial) {
-      meta = meta.copy(refcount=msg.refcount)
+    if (refcount.updateSerial < rmeta.refcount.updateSerial) {
+      meta = meta.copy(refcount=rmeta.refcount)
       commit = true
     }
-    if (revision != msg.revision && msg.timestamp > timestamp) {
-      meta = meta.copy(revision = msg.revision, timestamp = msg.timestamp)
-      data = msg.data
+    if (revision != rmeta.revision && rmeta.timestamp > timestamp) {
+      meta = meta.copy(revision = rmeta.revision, timestamp = rmeta.timestamp)
+      data = rdata
       commit = true
     }
     if (commit)
@@ -368,20 +372,20 @@ class KeyValueObjectStoreState(frontend: DataStoreFrontend,
     }
   }
 
-  protected def doOpportunisticRebuild(msg: OpportunisticRebuild): Unit = if (locks.isEmpty) {
+  protected def doOpportunisticRebuild(rmeta: ObjectMetadata, rdata: DataBuffer): Unit = if (locks.isEmpty) {
     // TODO: Evaluate locks on a per-item basis rather than requiring no locks at all
     var commit = false
 
-    if (refcount.updateSerial < msg.refcount.updateSerial) {
-      meta = meta.copy(refcount=msg.refcount)
+    if (refcount.updateSerial < rmeta.refcount.updateSerial) {
+      meta = meta.copy(refcount=rmeta.refcount)
       commit = true
     }
-    if (revision != msg.revision && msg.timestamp > timestamp) {
-      meta = meta.copy(revision = msg.revision, timestamp = msg.timestamp)
+    if (revision != rmeta.revision && rmeta.timestamp > timestamp) {
+      meta = meta.copy(revision = rmeta.revision, timestamp = rmeta.timestamp)
       commit = true
     }
 
-    val m = StoreKeyValueObjectContent(msg.data)
+    val m = StoreKeyValueObjectContent(rdata)
     val l = kvcontent
 
     val minimum = (m.minimum, l.minimum) match {

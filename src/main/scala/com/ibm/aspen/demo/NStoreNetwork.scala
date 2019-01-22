@@ -97,7 +97,7 @@ class NStoreNetwork(val nodeName: String, val nnet: NettyNetwork) extends StoreS
 
         // PreTx Rebuilds are a series of <16-byte-uuid><encoded-object-metadata><4-byte-length><data>
 
-        while (bb.remaining() != preTxEndPos) {
+        while (bb.position() != preTxEndPos) {
           val msb = bb.getLong()
           val lsb = bb.getLong()
           val uuid = new UUID(msb, lsb)
