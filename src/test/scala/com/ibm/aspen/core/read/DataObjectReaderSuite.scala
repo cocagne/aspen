@@ -5,12 +5,12 @@ import java.util.UUID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.ida.Replication
-import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRefcount, ObjectRevision}
+import com.ibm.aspen.core.objects.{DataObjectPointer, ObjectRefcount, ObjectRevision, ObjectState}
 import org.scalatest.{FunSuite, Matchers}
 
 object DataObjectReaderSuite {
-  class TestReader(pointer: DataObjectPointer, reread: DataStoreID => Unit)
-    extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](false, pointer, reread) {
+  class TestReader(pointer: DataObjectPointer)
+    extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](false, pointer, new UUID(0,0)) {
 
     var rstates: Option[List[StoreState]] = None
 
@@ -20,16 +20,17 @@ object DataObjectReaderSuite {
 
     override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
                                          readTime: HLCTimestamp, matchingStoreStates: List[DataObjectStoreState],
-                                         allStoreStates: List[DataObjectStoreState]): Unit = {
+                                         allStoreStates: List[DataObjectStoreState]): ObjectState = {
       rstates = Some(matchingStoreStates)
+      null
     }
   }
   object TestReader {
-    def apply(width: Int, threshold: Int, reread: DataStoreID => Unit): TestReader = {
+    def apply(width: Int, threshold: Int): TestReader = {
 
         val ida = Replication(width, threshold)
 
-        new TestReader(DataObjectPointer(objUUID, pool, None, ida, Array()), reread)
+        new TestReader(DataObjectPointer(objUUID, pool, None, ida, Array()))
     }
   }
   val pool = new UUID(0,1)
@@ -87,7 +88,7 @@ object ReadResponse {
 
       */
   test("Simple Success") {
-    val r = TestReader(3,2, _ => ())
+    val r = TestReader(3,2)
     r.receiveReadResponse(ok(0, r0, t0))
     r.rstates should be (None)
     r.receiveReadResponse(ok(0, r0, t0))
@@ -97,7 +98,7 @@ object ReadResponse {
   }
 
   test("Simple InvalidLocalPointer Failure") {
-    val r = TestReader(3,2, _ => ())
+    val r = TestReader(3,2)
     r.receiveReadResponse(ok(0, r0, t0))
     r.result should be (None)
     r.receiveReadResponse(err(1, ObjectReadError.InvalidLocalPointer))
@@ -107,7 +108,7 @@ object ReadResponse {
   }
 
   test("Simple Mismatch Failure") {
-    val r = TestReader(3,2, _ => ())
+    val r = TestReader(3,2)
     r.receiveReadResponse(ok(0, r0, t0))
     r.result should be (None)
     r.receiveReadResponse(err(1, ObjectReadError.ObjectMismatch))
@@ -117,7 +118,7 @@ object ReadResponse {
   }
 
   test("Simple Corruption Failure") {
-    val r = TestReader(3,2, _ => ())
+    val r = TestReader(3,2)
     r.receiveReadResponse(ok(0, r0, t0))
     r.result should be (None)
     r.receiveReadResponse(err(1, ObjectReadError.CorruptedObject))
@@ -127,7 +128,7 @@ object ReadResponse {
   }
 
   test("Mixed error response failure") {
-    val r = TestReader(3,2, _ => ())
+    val r = TestReader(3,2)
     r.receiveReadResponse(ok(0, r0, t0))
     r.result should be (None)
     r.receiveReadResponse(err(1, ObjectReadError.ObjectMismatch))
@@ -137,9 +138,7 @@ object ReadResponse {
   }
 
   test("Use highest revision") {
-    var rereads: Set[Int] = Set()
-    def reread(storeId: DataStoreID): Unit = rereads += storeId.poolIndex.asInstanceOf[Int]
-    val r = TestReader(5,3, reread)
+    val r = TestReader(5,3)
     r.receiveReadResponse(ok(0, r0, t0))
     r.rstates should be (None)
     r.receiveReadResponse(ok(1, r0, t0))
@@ -147,7 +146,7 @@ object ReadResponse {
     r.receiveReadResponse(ok(2, r1, t1))
     r.rstates should be (None)
     r.rereadCandidates.keySet should be (Set(s0,s1))
-    rereads should be (Set(0,1))
+    //rereads should be (Set(0,1))
     r.receiveReadResponse(ok(3, r0, t0))
     r.rstates should be (None)
     r.rereadCandidates.keySet should be (Set(s0,s1,s3))
@@ -159,7 +158,7 @@ object ReadResponse {
   }
 
   test("Resolve with errors") {
-    val r = TestReader(5,3, _ => ())
+    val r = TestReader(5,3)
     r.receiveReadResponse(err(0, ObjectReadError.CorruptedObject))
     r.rstates should be (None)
     r.receiveReadResponse(ok(1, r0, t0))
@@ -173,16 +172,14 @@ object ReadResponse {
   }
 
   test("Rereads override previous state") {
-    var rereads: Set[Int] = Set()
-    def reread(storeId: DataStoreID): Unit = rereads += storeId.poolIndex.asInstanceOf[Int]
-    val r = TestReader(5,3, reread)
+    val r = TestReader(5,3)
     r.receiveReadResponse(ok(0, r0, t0))
     r.rstates should be (None)
     r.receiveReadResponse(ok(1, r0, t0))
     r.rstates should be (None)
     r.receiveReadResponse(ok(2, r1, t1))
     r.rstates should be (None)
-    rereads should be (Set(0,1))
+    //rereads should be (Set(0,1))
     r.receiveReadResponse(ok(0, r1, t1))
     r.rstates should be (None)
     r.receiveReadResponse(ok(1, r1, t1))

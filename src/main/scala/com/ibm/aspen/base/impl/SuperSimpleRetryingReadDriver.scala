@@ -51,11 +51,27 @@ class SuperSimpleRetryingReadDriver(
     val rt = BackgroundTask.schedulePeriodic(period=Duration(1000, MILLISECONDS)) {
       synchronized {
         retries += 1
-        if (retries % 3 == 0) {
+
+        val now = System.currentTimeMillis()
+
+        objectReader.rereadCandidates.foreach { t =>
+          if (now - t._2.wallTime > 1000) {
+            logger.info(s"ReadUUID $readUUID - Sending reread request to known-behind store ${t._1}")
+            sendReadRequest(t._1)
+          }
+        }
+
+        if (retries % 3 == 0)
           objectReader.debugLogStatus(readUUID, s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID", s => logger.info(s"* $s"))
+
+        if (retries % 10 == 0) {
+          val noResponses = objectReader.noResponses
+          if (noResponses.nonEmpty) {
+            logger.info(s"ReadUUID $readUUID - Resending reads to non responding stores $noResponses")
+            noResponses.foreach(sendReadRequest)
+          }
         }
       }
-      sendReadRequests()
     }
 
     oretryTask = Some(rt)

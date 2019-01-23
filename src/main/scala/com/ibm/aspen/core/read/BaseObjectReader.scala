@@ -5,11 +5,18 @@ import java.util.UUID
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.{DataStoreID, ObjectReadError}
 import com.ibm.aspen.core.objects._
+import org.apache.logging.log4j.scala.Logging
+
+object BaseObjectReader {
+  case class NotRestorable(reason: String) extends Throwable
+}
 
 abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: StoreState](
     val metadataOnly: Boolean,
     val pointer: PointerType,
-    protected val reread: DataStoreID => Unit) extends ObjectReader {
+    val readUUID: UUID) extends ObjectReader with Logging {
+
+  import BaseObjectReader._
 
   def width: Int = pointer.ida.width
   def threshold: Int = pointer.ida.consistentRestoreThreshold
@@ -17,6 +24,10 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
   protected var responses: Map[DataStoreID, Either[ObjectReadError.Value, StoreStateType]] = Map()
   protected var endResult: Option[Either[ObjectReadError.Value, ObjectState]] = None
   protected var knownBehind: Map[DataStoreID, HLCTimestamp] = Map()
+
+  def receivedResponseFrom(storeId: DataStoreID): Boolean = responses.contains(storeId)
+
+  def noResponses: Set[DataStoreID] = allStores &~ responses.keySet
 
   /** Returns the map of store ids that are known to have returned responses with out-of-date results. The value
     * is the read time of the returned read response. If a reread is also out-of-date the timestamp value will be
@@ -52,11 +63,13 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
   protected def createObjectState(storeId:DataStoreID, readTime: HLCTimestamp, cs: ReadResponse.CurrentState): StoreStateType
 
   /** Called with a list of store states with matching, highest-seen revisions. The list will contain >= threshold
-    * elements
+    * elements.
+    *
+    * @throws NotRestorable if the object cannot be restored
     */
   protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
                               readTime: HLCTimestamp, matchingStoreStates: List[StoreStateType],
-                              allStoreStates: List[StoreStateType]): Unit
+                              allStoreStates: List[StoreStateType]): ObjectState
 
   def numErrors: Int = responses.valuesIterator.foldLeft(0) { (count, e) => e match {
     case Left(_) => count + 1
@@ -138,15 +151,12 @@ abstract class BaseObjectReader[PointerType <: ObjectPointer, StoreStateType <: 
 
       if (metadataOnly)
         endResult = Some(Right(MetadataObjectState(pointer, revision, refcount, timestamp, readTime)))
-      else
-        restoreObject(revision, refcount, timestamp, readTime, matchingStoreStates, allStoreStates)
-    }
-    else {
-      responses.values.foreach {
-        case Left(_) =>
-        case Right(ss) => if (ss.revision != mostRecent._1 && !ss.rereadRequired) {
-          ss.rereadRequired = true
-          reread(ss.storeId)
+      else {
+        try {
+          val restoredObject = restoreObject(revision, refcount, timestamp, readTime, matchingStoreStates, allStoreStates)
+          endResult = Some(Right(restoredObject))
+        } catch {
+          case NotRestorable(reason) => logger.info(s"Read $readUUID object ${pointer.uuid} cannot be restored due to: $reason")
         }
       }
     }

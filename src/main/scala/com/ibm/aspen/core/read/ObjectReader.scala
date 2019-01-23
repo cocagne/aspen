@@ -9,6 +9,12 @@ import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
 trait ObjectReader {
   val pointer: ObjectPointer
 
+  val allStores: Set[DataStoreID] = pointer.hostingStores.toSet
+
+  def receivedResponseFrom(storeId: DataStoreID): Boolean
+
+  def noResponses: Set[DataStoreID] 
+
   def rereadCandidates: Map[DataStoreID, HLCTimestamp]
 
   def result: Option[Either[ObjectReadError.Value, ObjectState]]

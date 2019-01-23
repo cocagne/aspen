@@ -1,21 +1,23 @@
 package com.ibm.aspen.core.read
 
+import java.util.UUID
+
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects.keyvalue.{Key, Value}
-import com.ibm.aspen.core.objects.{KeyValueObjectPointer, KeyValueObjectState, ObjectRefcount, ObjectRevision}
+import com.ibm.aspen.core.objects._
 
 
 object KeyValueObjectReader {
-  private case class NotRestorable() extends Throwable
+
 
   private case class Segment[T](revision: ObjectRevision, timestamp: HLCTimestamp, storeID: DataStoreID, data: T)
 
   private case class Restorable[T](revision: ObjectRevision, timestamp: HLCTimestamp, slices: List[(Byte, T)])
 }
 
-class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer, reread: DataStoreID => Unit)
-  extends BaseObjectReader[KeyValueObjectPointer, KeyValueObjectStoreState](metadataOnly, pointer, reread) {
+class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer, readUUID: UUID)
+  extends BaseObjectReader[KeyValueObjectPointer, KeyValueObjectStoreState](metadataOnly, pointer, readUUID) {
 
   import KeyValueObjectReader._
 
@@ -25,29 +27,29 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
 
   override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
                                        readTime: HLCTimestamp, matchingStoreStates: List[KeyValueObjectStoreState],
-                                       allStoreStates: List[KeyValueObjectStoreState]): Unit = try {
+                                       allStoreStates: List[KeyValueObjectStoreState]): ObjectState = {
 
     val storeStates = allStoreStates
 
-    val min = resolve(storeStates, storeStates.map(ss => ss.kvoss.minimum.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.key))).collect {
+    val min = resolve("Min", storeStates, storeStates.map(ss => ss.kvoss.minimum.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.key))).collect {
       case Some(x) => x
     }).map { r =>
       KeyValueObjectState.Min(r.slices.head._2, r.revision, r.timestamp)
     }
 
-    val max = resolve(storeStates, storeStates.map(ss => ss.kvoss.maximum.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.key))).collect {
+    val max = resolve("Max", storeStates, storeStates.map(ss => ss.kvoss.maximum.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.key))).collect {
       case Some(x) => x
     }).map { r =>
       KeyValueObjectState.Max(r.slices.head._2, r.revision, r.timestamp)
     }
 
-    val left = resolve(storeStates, storeStates.map(ss => ss.kvoss.left.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.idaEncodedContent))).collect {
+    val left = resolve("Left", storeStates, storeStates.map(ss => ss.kvoss.left.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.idaEncodedContent))).collect {
       case Some(x) => x
     }).map { r =>
       KeyValueObjectState.Left(pointer.ida.restoreArray(r.slices), r.revision, r.timestamp)
     }
 
-    val right = resolve(storeStates, storeStates.map(ss => ss.kvoss.right.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.idaEncodedContent))).collect {
+    val right = resolve("Right", storeStates, storeStates.map(ss => ss.kvoss.right.map(m => Segment(m.revision, m.timestamp, ss.storeId, m.idaEncodedContent))).collect {
       case Some(x) => x
     }).map { r =>
       KeyValueObjectState.Right(pointer.ida.restoreArray(r.slices), r.revision, r.timestamp)
@@ -61,24 +63,23 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
         }
         subm + (v.key -> x)
       }
-    }.map(t => t._1 -> resolve(storeStates, t._2))
+    }.map(t => t._1 -> resolve(s"Key(${t._1}", storeStates, t._2))
 
     val contents = kvrestores.foldLeft(Map[Key,Value]()) { (m, t) => t._2 match {
       case None => m
       case Some(r) => m + (t._1 -> Value(t._1, pointer.ida.restoreArray(r.slices), r.timestamp, r.revision))
     }}
 
-    endResult = Some(Right(new KeyValueObjectState(pointer, revision, refcount, timestamp, readTime, min, max, left, right, contents)))
+    new KeyValueObjectState(pointer, revision, refcount, timestamp, readTime, min, max, left, right, contents)
   }
-  catch {
-    case _:NotRestorable => ()
-  }
+
 
   private def anyStoreHasLocked(rev: ObjectRevision, storeStates: List[KeyValueObjectStoreState]): Boolean = {
     storeStates.exists(_.lockedWriteTransactions.contains(rev.lastUpdateTxUUID))
   }
 
-  private def resolve[T](storeStates: List[KeyValueObjectStoreState],
+  private def resolve[T](what: String,
+                         storeStates: List[KeyValueObjectStoreState],
                          segments: List[Segment[T]]): Option[Restorable[T]] = if (segments.isEmpty) None else {
 
     val highestRevision = segments.foldLeft((HLCTimestamp.Zero, ObjectRevision.Null)) { (h,s) =>
@@ -107,7 +108,7 @@ class KeyValueObjectReader(metadataOnly: Boolean, pointer: KeyValueObjectPointer
       val potential = width - matching - mismatching
 
       if (matching + potential >= threshold || anyStoreHasLocked(highestRevision, storeStates))
-        throw NotRestorable()
+        throw BaseObjectReader.NotRestorable(s"KVObject $what is below threshold")
       else
         None // Item deleted
     } else {

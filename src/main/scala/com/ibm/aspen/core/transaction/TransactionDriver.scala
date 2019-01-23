@@ -35,6 +35,8 @@ abstract class TransactionDriver(
   protected var peerDispositions: Map[DataStoreID, TransactionDisposition.Value] = Map()
   protected var acceptedPeers: Set[DataStoreID] = Set[DataStoreID]()
   protected var finalizer: Option[TransactionFinalizer] = None
+  protected var knownResolved: Set[DataStoreID] = Set()
+  protected var resolvedValue: Boolean = false
 
   // Stores UUIDs of objects that could not be updated on stores as part of a successful commit
   protected var commitErrors: Map[DataStoreID, List[UUID]] = Map()
@@ -65,21 +67,21 @@ abstract class TransactionDriver(
 
     print(sb.toString)
   }
- 
+
   protected def isValidAcceptor(ds: DataStoreID): Boolean = {
     ds.poolUUID == txd.primaryObject.poolUUID && validAcceptorSet.contains(ds.poolIndex)
   }
-  
+
   def shutdown(): Unit = {}
-  
+
   def heartbeat(): Unit = {
     messenger.send(allDataStores.map(toStoreId => TxHeartbeat(toStoreId, storeId, txd.transactionUUID)))
   }
-      
+
   def receiveTxPrepare(msg: TxPrepare): Unit = synchronized {
       proposer.updateHighestProposalId(msg.proposalId)
   }
-  
+
   def receiveTxPrepareResponse(msg: TxPrepareResponse,
                                transactionCache: TransactionStatusCache): Unit = synchronized {
 
@@ -98,28 +100,28 @@ abstract class TransactionDriver(
         }
       }
     }
-    
+
     if (collisionsWithCompletedTransactions) {
       // Race condition. Drop this message and re-send the prepare
       sendPrepareMessage(msg.from)
       return
     }
-      
+
     msg.response match {
       case Left(nack) =>
         onNack(nack.promisedId)
-      
-      case Right(promise) => 
-        
+
+      case Right(promise) =>
+
         peerDispositions += (msg.from -> msg.disposition)
-        
+
         if (isValidAcceptor(msg.from))
           proposer.receivePromise(paxos.Promise(msg.from.poolIndex, msg.proposalId, promise.lastAccepted))
-            
+
         if (proposer.prepareQuorumReached && !proposer.haveLocalProposal) {
-          
+
           var canCommitTransaction = true
-          
+
           // Before we can make a decision, we must ensure that we have a write-threshold number of replies for
           // each of the objects referenced by the transaction
           for (ptr <- allObjects) {
@@ -146,57 +148,60 @@ abstract class TransactionDriver(
 
             if (ptr.ida.width - nAbortVotes < ptr.ida.writeThreshold)
               canCommitObject = false
-              
+
             // Once canCommitTransaction flips to false, it stays there
             canCommitTransaction = canCommitTransaction && canCommitObject
           }
-          
+
           // If we get here, we've made our decision
           proposer.setLocalProposal(canCommitTransaction)
-          
+
           sendAcceptMessages()
         }
     }
   }
-  
+
   def receiveTxAcceptResponse(msg: TxAcceptResponse): Unit = synchronized {
-    
+
     if (msg.proposalId != proposer.currentProposalId)
       return
-      
+
     // We shouldn't ever receive an AcceptResponse from a non-acceptor but just to be safe...
     if (!isValidAcceptor(msg.from))
-      return 
-      
+      return
+
     msg.response match {
-      case Left(nack) => 
+      case Left(nack) =>
         onNack(nack.promisedId)
-      
-      case Right(accepted) => 
+
+      case Right(accepted) =>
         acceptedPeers += msg.from
-        
+
         learner.receiveAccepted(paxos.Accepted(msg.from.poolIndex, msg.proposalId, accepted.value))
 
         learner.finalValue.foreach(onResolution(_, sendResolutionMessage = true))
     }
   }
-  
+
   def receiveTxResolved(msg: TxResolved): Unit = synchronized {
+    knownResolved += msg.from
     onResolution(msg.committed, sendResolutionMessage=false)
   }
-  
+
   def receiveTxCommitted(msg: TxCommitted): Unit = synchronized {
+    knownResolved += msg.from
     commitErrors += (msg.from -> msg.objectCommitErrors)
     finalizer.foreach(_.updateCommitErrors(commitErrors))
   }
-  
-  def receiveTxFinalized(msg: TxFinalized): Unit = synchronized { 
+
+  def receiveTxFinalized(msg: TxFinalized): Unit = synchronized {
+    knownResolved += msg.from
     finalizer.foreach( _.cancel() )
     onFinalized(msg.committed)
   }
-  
+
   def mayBeDiscarded: Boolean = synchronized { finalized }
-  
+
   protected def onFinalized(committed: Boolean): Unit = synchronized {
     if (!finalized) {
       finalized = true
@@ -207,7 +212,7 @@ abstract class TransactionDriver(
         logger.trace(s"Sending TxFinalized(${txd.transactionUUID}) to originating client $client)")
         messenger.send(client, TxFinalized(NullDataStoreId, storeId, txd.transactionUUID, committed))
       })
-      
+
       val messages = allDataStores.map(toStoreId => TxFinalized(toStoreId, storeId, txd.transactionUUID, committed))
 
       logger.trace(s"Sending TxFinalized(${txd.transactionUUID}) to ${messages.head.to.poolUUID}:(${messages.map(_.to.poolIndex)})")
@@ -217,13 +222,13 @@ abstract class TransactionDriver(
       completionPromise.success(txd)
     }
   }
-  
+
   protected def nextRound(): Unit = {
     peerDispositions = Map()
     acceptedPeers = Set()
     proposer.nextRound()
   }
-  
+
   protected def sendPrepareMessages(): Unit = {
     val (proposalId, alreadyPrepared, ofinal) = synchronized { (proposer.currentProposalId, peerDispositions, learner.finalValue) }
 
@@ -238,7 +243,7 @@ abstract class TransactionDriver(
 
     messenger.send(messages.toList)
   }
-  
+
   protected def sendPrepareMessage(toStoreId: DataStoreID): Unit = {
     val (proposalId, ofinal) = synchronized { (proposer.currentProposalId, learner.finalValue) }
 
@@ -252,7 +257,7 @@ abstract class TransactionDriver(
         messenger.send(TxPrepare(toStoreId, storeId, txd, proposalId))
     }
   }
-  
+
   protected def sendAcceptMessages(): Unit = {
     synchronized {
       proposer.currentAcceptMessage().map(paxAccept => (paxAccept, acceptedPeers))
@@ -266,15 +271,17 @@ abstract class TransactionDriver(
       messenger.send(messages)
     }
   }
-  
+
   protected def onNack(promisedId: paxos.ProposalID): Unit = {
     proposer.updateHighestProposalId(promisedId)
     nextRound()
   }
-  
+
   protected def onResolution(committed: Boolean, sendResolutionMessage: Boolean): Unit = if (!resolved) {
 
     resolved = true
+
+    resolvedValue = committed
 
     if (committed) {
 

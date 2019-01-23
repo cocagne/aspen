@@ -1,11 +1,13 @@
 package com.ibm.aspen.core.read
 
+import java.util.UUID
+
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.objects._
 import com.ibm.aspen.core.{DataBuffer, HLCTimestamp}
 
-class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, reread: DataStoreID => Unit)
-  extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](metadataOnly, pointer, reread) {
+class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, readUUID: UUID)
+  extends BaseObjectReader[DataObjectPointer, DataObjectStoreState](metadataOnly, pointer, readUUID) {
 
   override protected def createObjectState(storeId:DataStoreID, readTime: HLCTimestamp, cs: ReadResponse.CurrentState): DataObjectStoreState = {
     new DataObjectStoreState(storeId, cs.revision, cs.refcount, cs.timestamp, readTime, cs.sizeOnStore, cs.objectData)
@@ -13,7 +15,7 @@ class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, reread
 
   override protected def restoreObject(revision:ObjectRevision, refcount: ObjectRefcount, timestamp:HLCTimestamp,
                                        readTime: HLCTimestamp, matchingStoreStates: List[DataObjectStoreState],
-                                       allStoreStates: List[DataObjectStoreState]): Unit = {
+                                       allStoreStates: List[DataObjectStoreState]): ObjectState = {
 
     val sizeOnStore = matchingStoreStates.head.sizeOnStore
 
@@ -25,7 +27,9 @@ class DataObjectReader(metadataOnly: Boolean, pointer: DataObjectPointer, reread
     if (segments.size >= threshold) {
       val data = pointer.ida.restore(segments)
       val obj = DataObjectState(pointer, revision, refcount, timestamp, readTime, sizeOnStore, data)
-      endResult = Some(Right(obj))
+      obj
     }
+    else
+      throw BaseObjectReader.NotRestorable(s"Below Threshold")
   }
 }

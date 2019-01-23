@@ -1,15 +1,6 @@
-
-* May need ReadResponse cache
-   - Short duration cache of UUID -> lastModifiedTimestamp
-   - Load object look in cache. If not present or object lastModified TS is greater than cached value, respond and cache
-   - otherwise drop the message (response is in transit)
-
-* Reads sent to all stores even though valid state was received for 1 store
-   - broken selective reads or dropping state too soon?
-
-
-* Each store sent 12 responses but ReadDriver only got 2. Rest vanished
-
+* Reduced read requests to hopefully manageable level
+* Fixed bug where multiple stores could try to immediately drive transactions
+* Once resolved, no Prepare/Accept messages will be sent from a TxDriver
 
 
 * Added pre-transaction Opportunistic Rebuilds

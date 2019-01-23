@@ -34,7 +34,7 @@ class Transaction(
   private[this] var discarded = false
   private[this] var locked = false
   
-  private[this] var heartbeatTimestamp: Long = 0
+  private[this] var heartbeatTimestamp: Long = System.currentTimeMillis()
 
   def preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = synchronized(preTxRebuilds)
 

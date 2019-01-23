@@ -75,8 +75,8 @@ object KeyValueObjectReaderSuite {
   val right1 = SetRight(bar, Some(t1), Some(r1))
   val right2 = SetRight(baz, Some(t2), Some(r2))
 
-  class TestReader(val ida: IDA, reread: DataStoreID => Unit) extends KeyValueObjectReader(
-    false, KeyValueObjectPointer(objUUID, pool, None, ida, Array()), reread) {
+  class TestReader(val ida: IDA) extends KeyValueObjectReader(
+    false, KeyValueObjectPointer(objUUID, pool, None, ida, Array()), new UUID(0,0)) {
 
     def err(store: Int, e: ObjectReadError.Value): Unit = {
       receiveReadResponse(ReadResponse(DataStoreID(pool, store.asInstanceOf[Byte]), readUUID, HLCTimestamp.Zero, Left(e)))
@@ -106,7 +106,7 @@ object KeyValueObjectReaderSuite {
   }
 
   object TestReader {
-    def apply(ida: IDA, reread: DataStoreID => Unit): TestReader = new TestReader(ida, reread)
+    def apply(ida: IDA): TestReader = new TestReader(ida)
   }
 }
 
@@ -114,7 +114,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   import KeyValueObjectReaderSuite._
 
   test("Resolve empty object") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set())
     r.result should be (None)
     r.ok(1, v0, Set())
@@ -123,7 +123,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve single kv pair, simple") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set(), a0)
     r.result should be (None)
     r.ok(1, v0, Set(), a0)
@@ -136,7 +136,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve single kv pair, upreved") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set(), a0)
     r.result should be (None)
     r.rereadCandidates.keySet should be (Set())
@@ -153,7 +153,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve multiple kv pair, simple") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set(), a0, b0)
     r.result should be (None)
     r.ok(1, v0, Set(), b0, a0)
@@ -169,7 +169,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve three kv pair, simple") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set(), a0, b0, c1)
     r.result should be (None)
     r.ok(1, v0, Set(), c1, b0, a0)
@@ -186,7 +186,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve three kv pair, intermixed and partial") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v1, Set(), a0, b0)
     r.result should be (None)
     r.ok(1, v0, Set(), c0, b0)
@@ -205,7 +205,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve multiple kv pair, upreved intermixed") {
-    val r = TestReader(ida3, _ => ())
+    val r = TestReader(ida3)
     r.ok(0, v0, Set(), a0, b1)
     r.result should be (None)
     r.rereadCandidates.keySet should be (Set())
@@ -225,7 +225,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve multiple kv pair, upreved intermixed 5-way") {
-    val r = TestReader(ida5, _ => ())
+    val r = TestReader(ida5)
     r.ok(0, v0, Set(), a0, b1, c0)
     r.result should be (None)
     r.ok(1, v0, Set(), a1, b0, c1)
@@ -248,7 +248,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve multiple kv pair, upreved intermixed 5-way with deletion") {
-    val r = TestReader(ida5, _ => ())
+    val r = TestReader(ida5)
     r.ok(0, v0, Set(), a0, c0)
     r.result should be (None)
     r.ok(1, v0, Set(), a1, c1)
@@ -270,7 +270,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   test("Resolve multiple kv pair, upreved intermixed 5-way with deletion and min/max") {
-    val r = TestReader(ida5, _ => ())
+    val r = TestReader(ida5)
     r.ok(0, v0, Set(), a0, c0, max1)
     r.result should be (None)
     r.ok(1, v0, Set(), a1, c1, min0, max1)
@@ -296,7 +296,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   def tdeleted(op0: KeyValueOperation): Assertion = {
-    val r = TestReader(ida5, _ => ())
+    val r = TestReader(ida5)
     r.ok(0, v0, Set())
     r.result should be (None)
     r.ok(1, v0, Set(), op0)
@@ -324,7 +324,7 @@ class KeyValueObjectReaderSuite extends FunSuite with Matchers {
   }
 
   def tdeletedWithLock(op0: KeyValueOperation): Assertion = {
-    val r = TestReader(ida5, _ => ())
+    val r = TestReader(ida5)
     r.ok(0, v0, Set(r0))
     r.result should be (None)
     r.ok(1, v0, Set(), op0)

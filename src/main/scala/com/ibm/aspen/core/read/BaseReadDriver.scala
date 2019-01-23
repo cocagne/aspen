@@ -29,11 +29,11 @@ class BaseReadDriver(
 
   // Detect invalid combinations
   val objectReader: ObjectReader = (objectPointer, readType) match {
-    case (p: KeyValueObjectPointer, _:MetadataOnly) => new KeyValueObjectReader(true, p, sendReadRequest)
-    case (p: KeyValueObjectPointer, _) => new KeyValueObjectReader(false, p, sendReadRequest)
+    case (p: KeyValueObjectPointer, _:MetadataOnly) => new KeyValueObjectReader(true, p, readUUID)
+    case (p: KeyValueObjectPointer, _) => new KeyValueObjectReader(false, p, readUUID)
 
-    case (p: DataObjectPointer,     _:MetadataOnly) => new DataObjectReader(true, p, sendReadRequest)
-    case (p: DataObjectPointer,     _:FullObject) => new DataObjectReader(false, p, sendReadRequest)
+    case (p: DataObjectPointer,     _:MetadataOnly) => new DataObjectReader(true, p, readUUID)
+    case (p: DataObjectPointer,     _:FullObject) => new DataObjectReader(false, p, readUUID)
 
     case _ => throw new AssertionError("Invalid read combination")
   }
