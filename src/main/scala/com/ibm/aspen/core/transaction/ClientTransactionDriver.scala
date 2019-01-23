@@ -8,18 +8,18 @@ import com.ibm.aspen.core.transaction.paxos.{Learner, ProposalID}
 import scala.concurrent.{Future, Promise}
 
 object ClientTransactionDriver {
-  type Factory = (ClientSideTransactionMessenger, TransactionDescription, Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]) => ClientTransactionDriver
+  type Factory = (ClientSideTransactionMessenger, TransactionDescription, Map[DataStoreID, TransactionData]) => ClientTransactionDriver
  
   def noErrorRecoveryFactory(
     messenger: ClientSideTransactionMessenger,
     txd: TransactionDescription, 
-    updateData: Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]): ClientTransactionDriver = new ClientTransactionDriver(messenger, txd, updateData)
+    updateData: Map[DataStoreID, TransactionData]): ClientTransactionDriver = new ClientTransactionDriver(messenger, txd, updateData)
 }
 
 class ClientTransactionDriver(
     val messenger: ClientSideTransactionMessenger,
     val txd: TransactionDescription, 
-    val updateData: Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]) {
+    val updateData: Map[DataStoreID, TransactionData]) {
   
   protected val learner = new Learner(txd.primaryObject.ida.width, txd.primaryObject.ida.writeThreshold)
   protected val promise: Promise[Boolean] = Promise()
@@ -62,13 +62,10 @@ class ClientTransactionDriver(
     
     txd.allDataStores.foreach { toStore =>
       val initialPrepare = TxPrepare(toStore, fromStore, txd, ProposalID.initialProposal(txd.designatedLeaderUID))
+
+      val transactionData = updateData.getOrElse(toStore, TransactionData(Nil, Nil))
       
-      val (updateContent, preTxRebuildContent) = updateData.get(toStore) match {
-        case None => (Nil, Nil)
-        case Some(tpl) => tpl
-      }
-      
-      messenger.send(initialPrepare, TransactionData(updateContent, preTxRebuildContent))
+      messenger.send(initialPrepare, transactionData)
     }
   }
 }

@@ -2,15 +2,10 @@
 * Added pre-transaction Opportunistic Rebuilds
    - How do we test it?
 
-
-* Really need to add pre-transaction opportunistic rebuild
-   - Will often prevent stores from reporting errors to update local objects
-   - thereby avoids FAs and associated transactions + contention from clogging up the system
-
 * OpportunisticRebuildManager
    - At end of successful read
       - Mark which objects are behind and cache a copy of the restored object
-   - Can use a very short-lived cache (5 sec)
+   - Uses a very short-lived cache (5 sec)
    - getPreTransactionOpportunisticRebuild(objectUUID): Option[Map[Byte, OpportunisticRebuild]]
       - build a map of opportunistic rebuild ops for each store
       - include list of rebuild ops with TxPrepare & localState
@@ -41,12 +36,9 @@
 
 -----------------------
 
-* TxCommit message should contain a list of object UUIDs for which there were errors
-  UpdateableFinalizationAction then takes a (storeId, List(error UUIDS))
-
 * Segment Allocater UUID should go into file inode @ file creation time
 
-** Need to fix Opportunistic Rebuild
+* Add send of OpportunisticRebuild messages
 
 sbt "test:testOnly *KeyValueListSuite"
 

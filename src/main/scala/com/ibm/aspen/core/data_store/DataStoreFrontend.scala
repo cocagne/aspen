@@ -342,7 +342,10 @@ class DataStoreFrontend(
   def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
                       preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]] = synchronized {
     val p = Promise[List[ObjectTransactionError]]()
-    
+
+    if (preTransactionRebuilds.nonEmpty)
+      log.tx.info(s"Transaction ${txd.transactionUUID} includes pre-transaction rebuilds for objects: ${preTransactionRebuilds.map(_.objectUUID)}")
+
     val st = getStoreTransaction(txd, localUpdates, preTransactionRebuilds)
     
     st.objectsLoaded.foreach { _ =>

@@ -23,7 +23,7 @@ class ClientTransactionManager(
   
   def runTransaction(
       txd: TransactionDescription,
-      updateData: Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])],
+      updateData: Map[DataStoreID, TransactionData],
       driverFactory: Option[ClientTransactionDriver.Factory]): Future[Boolean] = {
                                  
     val td = driverFactory.getOrElse(defaultDriverFactory)(messenger, txd, updateData)

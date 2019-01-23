@@ -132,7 +132,7 @@ class BaseTransaction(
     if (!promise.isCompleted) {
 
       state.foreach { bldr =>
-        val (txd, encodedDataUpdates, timestamp) = bldr.buildTranaction(system.opportunisticRebuildManager, uuid)
+        val (txd, transactionData, timestamp) = bldr.buildTranaction(system.opportunisticRebuildManager, uuid)
 
         //---- Tx Debugging ----
         result.onComplete {
@@ -147,7 +147,7 @@ class BaseTransaction(
         if (txd.requirements.isEmpty)
           promise.success(HLCTimestamp(txd.startTimestamp))
         else {
-          txManager.runTransaction(txd, encodedDataUpdates, transactionDriverStrategy) onComplete {
+          txManager.runTransaction(txd, transactionData, transactionDriverStrategy) onComplete {
             case Failure(cause) =>
               // TODO Catch transaction timeout from lower layer and convert to TransactionError.TransactionTimedOut
               system.transactionCache.transactionAborted(txd.transactionUUID)

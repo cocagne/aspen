@@ -42,7 +42,7 @@ class TransactionBuilder(
   private [this] val minimumTimestamp = HLCTimestamp.now
 
   def buildTranaction(opportunisticRebuildManager: OpportunisticRebuildManager, transactionUUID: UUID): (TransactionDescription,
-    Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])], HLCTimestamp) = synchronized {
+    Map[DataStoreID, TransactionData], HLCTimestamp) = synchronized {
 
     HLCTimestamp.update(minimumTimestamp)
 
@@ -66,7 +66,7 @@ class TransactionBuilder(
                                      requirements, finalizationActions, originatingClient, notifyOnResolution.toList,
                                      notes)
 
-    var updates = Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]()
+    var updates = Map[DataStoreID, TransactionData]()
 
     def addUpdate(pointer: ObjectPointer, encoded: Array[DataBuffer]): Unit = {
       val mpr = opportunisticRebuildManager.getPreTransactionOpportunisticRebuild(pointer)
@@ -84,15 +84,15 @@ class TransactionBuilder(
               case None => List()
               case Some(pr) => pr :: Nil
             }
-            updates += (storeId -> (List(lu), lpr))
+            updates += (storeId -> TransactionData(List(lu), lpr))
 
-          case Some(t) =>
-            val newLu = lu :: t._1
+          case Some(td) =>
+            val newLu = lu :: td.localUpdates
             val newLp = opr match {
-              case None => t._2
-              case Some(pr) => pr :: t._2
+              case None => td.preTransactionRebuilds
+              case Some(pr) => pr :: td.preTransactionRebuilds
             }
-            updates += (storeId -> (newLu, newLp))
+            updates += (storeId -> TransactionData(newLu, newLp))
         }
       }
     }

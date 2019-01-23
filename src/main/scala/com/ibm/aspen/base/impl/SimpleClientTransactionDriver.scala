@@ -15,7 +15,7 @@ object SimpleClientTransactionDriver {
     def f(
       messenger: ClientSideTransactionMessenger,
       txd: TransactionDescription, 
-      updateData: Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])]): ClientTransactionDriver = new SimpleClientTransactionDriver(retransmitDelay, messenger, txd, updateData)
+      updateData: Map[DataStoreID, TransactionData]): ClientTransactionDriver = new SimpleClientTransactionDriver(retransmitDelay, messenger, txd, updateData)
     
     f
   }
@@ -27,7 +27,7 @@ class SimpleClientTransactionDriver(
     val retransmitDelay: Duration,
     messenger: ClientSideTransactionMessenger,
     txd: TransactionDescription, 
-    updateData: Map[DataStoreID, (List[LocalUpdate], List[PreTransactionOpportunisticRebuild])])
+    updateData: Map[DataStoreID, TransactionData])
     (implicit ec: ExecutionContext) extends ClientTransactionDriver(messenger, txd, updateData) with Logging {
   
   private var haveUpdateContent = Set[DataStoreID]()
@@ -65,13 +65,10 @@ class SimpleClientTransactionDriver(
     
     txd.allDataStores.filter(!responded.contains(_)).foreach { toStore =>
       val initialPrepare = TxPrepare(toStore, fromStore, txd, pid)
+
+      val transactionData = updateData.getOrElse(toStore, TransactionData(Nil, Nil))
       
-      val (updateContent, preTxRebuild) = updateData.get(toStore) match {
-        case None => (Nil, Nil)
-        case Some(tpl) => if (haveUpdateContent.contains(toStore)) (Nil, Nil) else tpl
-      }
-      
-      messenger.send(initialPrepare, TransactionData(updateContent, preTxRebuild))
+      messenger.send(initialPrepare, transactionData)
     }
   }
   
