@@ -43,22 +43,32 @@ class SuperSimpleRetryingReadDriver(
         readType, retrieveLockedTransaction, readUUID, disableOpportunisticRebuild)  {
 
   private var retries = 0
-  
-  val retryTask: BackgroundTask.ScheduledTask = BackgroundTask.schedulePeriodic(period=Duration(1000, MILLISECONDS)) {
-    synchronized {
-      retries += 1
-      if (retries % 3 == 0) {
-        objectReader.debugLogStatus(readUUID, s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID", s => logger.info(s"* $s"))
+
+  private var oretryTask: Option[BackgroundTask.ScheduledTask] = None
+
+  override def begin(): Unit = synchronized {
+
+    val rt = BackgroundTask.schedulePeriodic(period=Duration(1000, MILLISECONDS)) {
+      synchronized {
+        retries += 1
+        if (retries % 3 == 0) {
+          objectReader.debugLogStatus(readUUID, s"***** HUNG READ of object ${objectPointer.uuid}. Read UUID $readUUID", s => logger.info(s"* $s"))
+        }
       }
+      sendReadRequests()
     }
-    sendReadRequests()
+
+    oretryTask = Some(rt)
+
+    super.begin()
   }
+
 
   //println(s"Beginning read of object ${objectPointer.uuid}")
   readResult.onComplete {
     _ =>
       synchronized {
-        retryTask.cancel()
+        oretryTask.foreach(_.cancel())
         if (retries > 3)
           logger.info(s"***** HUNG READ COMPLETED for object ${objectPointer.uuid}. Read UUID $readUUID")
       }

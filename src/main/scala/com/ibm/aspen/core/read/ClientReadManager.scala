@@ -7,6 +7,7 @@ import com.ibm.aspen.base.impl.{BackgroundTask, TransactionStatusCache}
 import com.ibm.aspen.core.data_store.DataStoreID
 import com.ibm.aspen.core.network.{ClientSideReadMessageReceiver, ClientSideReadMessenger}
 import com.ibm.aspen.core.objects.{ObjectPointer, ObjectState}
+import org.apache.logging.log4j.scala.Logging
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
@@ -14,7 +15,8 @@ import scala.concurrent.duration._
 class ClientReadManager(
     val system: AspenSystem,
     val transactionCache: TransactionStatusCache,
-    val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext) extends ClientSideReadMessageReceiver {
+    val clientMessenger: ClientSideReadMessenger)(implicit ec: ExecutionContext)
+  extends ClientSideReadMessageReceiver with Logging {
   
   private[this] var outstandingReads = Map[UUID, ReadDriver]()
   private[this] var completionTimes = Map[UUID, (Long, ReadDriver)]()
@@ -62,20 +64,24 @@ class ClientReadManager(
   }
   
   override def receive(m: ReadResponse): Unit = {
-    synchronized { outstandingReads.get(m.readUUID) } foreach {
-      driver =>
+    synchronized { outstandingReads.get(m.readUUID) } match {
+      case None => logger.warn(s"Received ReadResponse for UNKNOWN read ${m.readUUID}")
+
+      case Some(driver) =>
         val wasCompleted = driver.readResult.isCompleted
         val allResponded = driver.receiveReadResponse(m)
         val isCompleted = driver.readResult.isCompleted
         
-        if (isCompleted) { synchronized {
-          if (allResponded) {
-            completionTimes -= m.readUUID
-            outstandingReads -= m.readUUID
+        if (isCompleted) {
+          synchronized {
+            if (allResponded) {
+              completionTimes -= m.readUUID
+              outstandingReads -= m.readUUID
+            }
+            else if (!wasCompleted)
+              completionTimes += (m.readUUID -> (System.nanoTime()/1000000, driver))
           }
-          else if (!wasCompleted)
-            completionTimes += (m.readUUID -> (System.nanoTime()/1000000, driver))
-        }}
+        }
     }
   }
 
@@ -84,7 +90,7 @@ class ClientReadManager(
   }
   
   
-  def shutdown(): Unit = {
+  def shutdown(): Unit = synchronized {
     outstandingReads.foreach( t => t._2.shutdown() )
   }
   

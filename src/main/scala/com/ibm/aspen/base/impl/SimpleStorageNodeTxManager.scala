@@ -2,11 +2,11 @@ package com.ibm.aspen.base.impl
 
 import com.ibm.aspen.core.crl.CrashRecoveryLog
 import com.ibm.aspen.core.network.StoreSideTransactionMessenger
-import com.ibm.aspen.core.transaction.TransactionDriver
-import com.ibm.aspen.core.transaction.TransactionFinalizer
+import com.ibm.aspen.core.transaction.{TransactionDriver, TransactionFinalizer}
+import org.apache.logging.log4j.scala.Logging
+
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.{ Duration, MILLISECONDS }
-import java.util.UUID
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 
 /** Provides simple mechanism for detecting and recovering from stalled transactions */
 class SimpleStorageNodeTxManager(
@@ -17,7 +17,8 @@ class SimpleStorageNodeTxManager(
     messenger: StoreSideTransactionMessenger,
     driverFactory: TransactionDriver.Factory,
     finalizerFactory: TransactionFinalizer.Factory)
-    (implicit ec: ExecutionContext) extends StorageNodeTransactionManager(crl, transactionCache, messenger, driverFactory, finalizerFactory) {
+    (implicit ec: ExecutionContext)
+  extends StorageNodeTransactionManager(crl, transactionCache, messenger, driverFactory, finalizerFactory) with Logging {
   
   // Periodically send out heartbeats for all driven transactions and look for transactions that haven't received
   // heartbeats within the timeout window.
@@ -30,8 +31,10 @@ class SimpleStorageNodeTxManager(
       drivers.valuesIterator.foreach { driver => driver.heartbeat() }
       
       transactions.valuesIterator.foreach { t =>
-        if ( Duration(now - t.lastHeartbeat, MILLISECONDS) > heartbeatTimeout && ! drivers.contains(t.txd.transactionUUID) )
+        if ( Duration(now - t.lastHeartbeat, MILLISECONDS) > heartbeatTimeout && ! drivers.contains(t.txd.transactionUUID) ) {
+          logger.warn(s"TransactionDriver for ${t.txd.transactionUUID} timed out with delay ${Duration(now - t.lastHeartbeat, MILLISECONDS)} > $heartbeatTimeout")
           store.driveTransaction(t.txd)
+        }
       }
     }
   }

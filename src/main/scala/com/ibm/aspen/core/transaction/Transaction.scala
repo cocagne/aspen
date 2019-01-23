@@ -32,6 +32,7 @@ class Transaction(
 
   private[this] var resolved = false
   private[this] var discarded = false
+  private[this] var locked = false
   
   private[this] var heartbeatTimestamp: Long = 0
 
@@ -86,9 +87,23 @@ class Transaction(
         messenger.send(response)
             
       case Right(_) =>
+
+        // We only need to lock once and if the transaction is already resolved, there's no point in locking since
+        // the results will already have been applied. We don't need to worry about preserving the error list either
+        // since Paxos guarantees that the resolved value cannot change.
+        //
+        val flock = synchronized {
+          if (locked || resolved)
+            Future.successful(Nil)
+          else
+            store.lockTransaction(txd, dataUpdates, rebuilds)
+        }
         
-        store.lockTransaction(txd, dataUpdates, rebuilds).foreach { errors => synchronized {
-          
+        flock.foreach { errors => synchronized {
+
+          if (errors.isEmpty)
+            locked = true
+
           if (discarded && errors.isEmpty) {
             // It's possible for a slow load & lock operation to return long after the transaction has completed
             // and been discarded. If so, we'll simply ignore the message and release the lock if it was acquired.

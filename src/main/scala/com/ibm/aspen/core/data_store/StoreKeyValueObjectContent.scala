@@ -24,7 +24,7 @@ class StoreKeyValueObjectContent(val minimum: Option[StoreKeyValueObjectContent.
     log(s"  Left $left Right $right")
 
     idaEncodedContents.values.toList.sortWith((a,b) => ByteArrayKeyOrdering.compare(a.key, b.key) > 0).foreach {
-      v => log(s"  Key ${v.key} Rev ${v.revision}")
+      v => log(s"  Key ${v.key} Rev ${v.revision} TS ${v.timestamp}")
     }
   }
 

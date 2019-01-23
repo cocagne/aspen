@@ -54,7 +54,7 @@ object DeleteFinalizationAction {
       fcommit.failed.foreach { reason =>
 
         synchronized {
-          logger.info(s"DeleteFinalizationAction($parentTransactionUUID) -Failed to remove ${victim.uuid} from allocation tree in transaction ${tx.uuid} attempt number $count")
+          logger.info(s"DeleteFinalizationAction($parentTransactionUUID) - Failed to remove ${victim.uuid} from allocation tree in transaction ${tx.uuid} attempt number $count")
           count += 1
         }
 
@@ -62,7 +62,7 @@ object DeleteFinalizationAction {
       }
 
       fcommit.foreach { _ =>
-        logger.info(s"DeleteFinalizationAction($parentTransactionUUID) -Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
+        logger.info(s"DeleteFinalizationAction($parentTransactionUUID) - Removed from allocation tree: ${victim.objectType}:${victim.uuid}")
       }
       
       fcommit

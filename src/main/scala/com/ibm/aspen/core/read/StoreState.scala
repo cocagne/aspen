@@ -53,7 +53,7 @@ class KeyValueObjectStoreState(
   def lastUpdateTimestamp: HLCTimestamp = kvoss.lastUpdateTimestamp
 
   def debugLogStatus(log: String => Unit): Unit = {
-    log(s"  KVOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
+    log(s"  KVOSS ${storeId.poolIndex} Rev $revision Ref $refcount TS $timestamp")
     kvoss.debugLogStatus(log)
   }
 }

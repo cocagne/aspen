@@ -315,6 +315,7 @@ class StorageNodeTransactionManager(
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxResolved(m) )
           
         case m: TxCommitted =>
+          transactionCache.transactionCommitted(m.transactionUUID)
           getTransactionDriver(m.transactionUUID).foreach( _.receiveTxCommitted(m) )
           
         case m: TxFinalized =>
