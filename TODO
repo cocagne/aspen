@@ -1,3 +1,11 @@
+
+* Need to re-implement file deletion
+   - Reading WAY too many things concurrently
+   - Far too many concurrent transactions
+   - We can easily afford for this to be slow. Serial Tx execution
+
+* One node went into an infinite read loop related to a tier-1 index node.
+
 * Reduced read requests to hopefully manageable level
 * Fixed bug where multiple stores could try to immediately drive transactions
 * Once resolved, no Prepare/Accept messages will be sent from a TxDriver

@@ -46,8 +46,11 @@ abstract class TransactionDriver(
   def complete: Future[TransactionDescription] = completionPromise.future
 
   {
-    val kind = if (txd.designatedLeaderUID == storeId.poolIndex) "(Designated Leader)" else "(Transaction Recovery)"
-    logger.info(s"Driving transaction to completion: ${txd.shortString} $kind")
+    val kind: String = if (txd.designatedLeaderUID == storeId.poolIndex)
+      "Designated Leader"
+    else
+      "Transaction Recovery"
+    logger.info(s"Driving transaction to completion ($kind): ${txd.shortString}")
   }
 
   complete.foreach(_ => logger.info(s"Transaction driven to completion: ${txd.transactionUUID}"))

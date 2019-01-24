@@ -32,7 +32,7 @@ class DataObjectStoreState(
 
   def lastUpdateTimestamp: HLCTimestamp = timestamp
 
-  def debugLogStatus(log: String => Unit): Unit = log(s"  DOSS ${storeId.poolIndex} Rev $revision Ref $refcount")
+  def debugLogStatus(log: String => Unit): Unit = log(s"  DOSS ${storeId.poolIndex} Rev $revision Ref $refcount $timestamp")
 
 }
 
