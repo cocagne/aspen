@@ -362,8 +362,6 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
                         beginOffset: Long,
                         beginBuffers: List[DataBuffer])(implicit tx: Transaction, ec: ExecutionContext): Future[WriteStatus] = {
     val nbytes = beginBuffers.foldLeft(0)((sz, db) => sz + db.size)
-    //val writeEnd = beginOffset + nbytes
-    //val newTailSegment = getSegmentOffset(writeEnd)
 
     tx.note(s"IndexedFileContent - writeTail(offset=$beginOffset, nbytes=$nbytes)")
 
@@ -1028,14 +1026,7 @@ object IndexedFileContent {
      *  are present within (range queries can potentially span multiple index nodes) 
      */
     def getIndexEntriesForRange(offset: Long, nbytes: Int)(implicit ec: ExecutionContext): Future[(List[IndexNode], List[(DownPointer, IndexNode)])] = {
-      val seekOffset = if (offset >= index.segmentSize) {
-        if (offset % index.segmentSize == 0) 
-          offset
-        else
-          offset - index.segmentSize
-      }
-      else
-        0
+      val seekOffset = offset - offset % index.segmentSize
         
       val endOffset = offset + nbytes
       
