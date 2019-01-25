@@ -216,11 +216,10 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
       b should be (w2)
     }
   }
-  test("Overwrite segment with allocation leaves remaining data") {
+  test("Full write tail overwrite segment with allocation") {
     implicit val tx:Transaction = sys.newTransaction()
     val w1 = Array[Byte](0,1)
     val w2 = Array[Byte](0,1,2,3,4,5,6)
-    val e = Array[Byte](0,1,2,3,4)
     for {
       file <- boot(Some(5), Some(500))
       (_, _) <- file.write(0, w1)
@@ -228,9 +227,26 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
       (remainingOffset, remainingData) <- file.write(0, w2)
       b <- file.debugReadFully()
     } yield {
-      file.inode.size should be (5)
-      remainingOffset should be (5)
-      remainingData.foldLeft(0)((sz, db) => sz + db.size) should be (2)
+      file.inode.size should be (w2.length)
+      remainingData.isEmpty should be (true)
+      a should be (w1)
+      b should be (w2)
+    }
+  }
+  test("Partial write tail overwrite segment with allocation") {
+    implicit val tx:Transaction = sys.newTransaction()
+    val w1 = Array[Byte](0,9)
+    val w2 = Array[Byte](1,2,3,4,5,6)
+    val e = Array[Byte](0,1,2,3,4,5,6)
+    for {
+      file <- boot(Some(5), Some(500))
+      (_, _) <- file.write(0, w1)
+      a <- file.debugReadFully()
+      (remainingOffset, remainingData) <- file.write(1, w2)
+      b <- file.debugReadFully()
+    } yield {
+      file.inode.size should be (7)
+      remainingData.isEmpty should be (true)
       a should be (w1)
       b should be (e)
     }
