@@ -1,0 +1,42 @@
+Configuration:
+  status: info
+  name: YAMLConfigTest
+  properties:
+    property:
+      name: filename
+      value: local/amoeba.log
+  #thresholdFilter:
+  #  level: trace
+  appenders:
+    Console:
+      name: STDOUT
+      PatternLayout:
+        Pattern: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
+      Filters:
+        ThresholdFilter:
+          level: info
+    File:
+      name: File
+      threshold: trace
+      fileName: ${filename}
+      PatternLayout:
+        Pattern: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
+ 
+  Loggers:
+    logger:
+      -
+        name: com.ibm.aspen
+        level: trace
+        additivity: true
+        AppenderRef:
+          ref: File
+      -
+        name: org.apache.logging.log4j.test2
+        level: debug
+        additivity: false
+        AppenderRef:
+          ref: File
+    Root:
+      level: info
+      AppenderRef:
+        ref: STDOUT

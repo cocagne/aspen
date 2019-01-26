@@ -1,0 +1,81 @@
+# Radicle Pointer Definition
+radicle:
+    uuid:      fed95901-312e-49fe-b932-d57c68cfb5d7
+    pool-uuid: 00000000-0000-0000-0000-000000000000
+    ida:
+        type:            replication
+        width:           3
+        write-threshold: 2
+    store-pointers:
+        - pool-index: 0
+        - pool-index: 1
+        - pool-index: 2
+
+pools:
+  - name: bootstrap-pool
+    uuid: 00000000-0000-0000-0000-000000000000
+    width: 3
+    missed-update-strategy:
+        type: per-store-set
+        tier-allocaters:
+            - bootstrap-allocater
+        tier-node-sizes:
+            - 8192
+            
+object-allocaters:
+  - name: bootstrap-allocater
+    pool: bootstrap-pool
+    uuid: 00000000-0000-0000-0000-000000000000
+    ida:
+        type:            replication
+        width:           3
+        write-threshold: 2
+
+storage-nodes:
+  - name: node_a
+    uuid: dd3fb420-601f-4228-bcad-1a6c6dcc1a01
+    log4j-config: /Users/tcocagne/devel/aspen/local/node_a-log4j.yaml
+    endpoint:
+      host: 0.0.0.0
+      port: 5001
+    crl:
+      storage-engine: rocksdb
+      path:           /Users/tcocagne/temp/aspen/node_a_crl
+    stores:
+      - pool: bootstrap-pool
+        store: 0
+        backend:
+          storage-engine: rocksdb
+          path:           /Users/tcocagne/temp/aspen/bootstrap-pool0
+          
+  - name: node_b
+    uuid: 1d2b4a5e-77dd-4354-9c6e-be3a3e9d860a
+    log4j-config: /Users/tcocagne/devel/aspen/local/node_b-log4j.yaml
+    endpoint:
+      host: 0.0.0.0
+      port: 5002
+    crl:
+      storage-engine: rocksdb
+      path:           /Users/tcocagne/temp/aspen/node_b_crl
+    stores:
+      - pool: bootstrap-pool
+        store: 1
+        backend:
+          storage-engine: rocksdb
+          path:           /Users/tcocagne/temp/aspen/bootstrap-pool1
+
+  - name: node_c
+    uuid: 709c04fc-aa9e-42e1-a6f9-05c3ce2ca6b6
+    log4j-config: /Users/tcocagne/devel/aspen/local/node_c-log4j.yaml
+    endpoint:
+      host: 0.0.0.0
+      port: 5003
+    crl:
+      storage-engine: rocksdb
+      path:           /Users/tcocagne/temp/aspen/node_c_crl
+    stores:
+      - pool: bootstrap-pool
+        store: 2
+        backend:
+          storage-engine: rocksdb
+          path:           /Users/tcocagne/temp/aspen/bootstrap-pool2
