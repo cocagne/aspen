@@ -329,7 +329,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
     } yield {
       inode2.size should be (e1.length)
       file.inode.size should be (e2.length)
-      remainingOffset should be (0)
+      remainingOffset should be (7)
       remainingData should be (Nil)
       a should be (e1)
       b should be (e2)
@@ -351,7 +351,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
     } yield {
       inode2.size should be (e1.length)
       file.inode.size should be (e2.length)
-      remainingOffset should be (0)
+      remainingOffset should be (8)
       remainingData should be (Nil)
       a should be (e1)
       b should be (e2)
@@ -373,7 +373,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
     } yield {
       inode2.size should be (e1.length)
       file.inode.size should be (e2.length)
-      remainingOffset should be (0)
+      remainingOffset should be (11)
       remainingData should be (Nil)
       a should be (e1)
       b should be (e2)
@@ -395,7 +395,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
     } yield {
       inode2.size should be (e1.length)
       file.inode.size should be (e2.length)
-      remainingOffset should be (0)
+      remainingOffset should be (12)
       remainingData should be (Nil)
       a should be (e1)
       b should be (e2)
@@ -417,7 +417,7 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
     } yield {
       inode2.size should be (e1.length)
       file.inode.size should be (e2.length)
-      remainingOffset should be (0)
+      remainingOffset should be (13)
       remainingData should be (Nil)
       a should be (e1)
       b should be (e2)
@@ -443,6 +443,31 @@ class IndexedFileContentSuite extends TestSystemSuite with AmoebaBootstrap {
       remainingData.foldLeft(0)((sz, db) => sz + db.size) should be (3)
       a should be (e1)
       b should be (e2)
+    }
+  }
+  test("Allocate into hole, over disjoint segments stops short") {
+    implicit val tx:Transaction = sys.newTransaction()
+    val w1 = Array[Byte](5,6,7)
+    val w2 = Array[Byte](1,2,3,4,9,9,9,8,9,10,11,12,13,14,15,16)
+    val e1 = Array[Byte](0,0,0,0,0,5,6,7,0,0,0,0,0,0,0,5,6,7)
+    val e2 = Array[Byte](0,1,2,3,4,9,9,9,8,9,0,0,0,0,0,5,6,7)
+    val r = Array[Byte](10,11,12,13,14,15,16)
+    for {
+      file <- boot(Some(5), Some(500))
+      (_, _) <- file.write(5, w1)
+      (_, _) <- file.write(15, w1)
+      a <- file.debugReadFully()
+      inode2 = file.inode
+      (remainingOffset, remainingData) <- file.write(1, w2)
+      b <- file.debugReadFully()
+    } yield {
+      inode2.size should be (e1.length)
+      file.inode.size should be (e2.length)
+      remainingOffset should be (10)
+      remainingData.foldLeft(0)((sz, db) => sz + db.size) should be (7)
+      a should be (e1)
+      b should be (e2)
+      DataBuffer.compact(100, remainingData)._1.getByteArray() should be (r)
     }
   }
   test("Append to file, partial segment") {

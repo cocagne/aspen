@@ -430,27 +430,59 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
      val inode = file.inode
 
+     val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
+     val writeEnd = offset + nbytes
+
      val tailSegment = getSegmentOffset(inode.size)
 
      if (offset >= tailSegment.segmentBeginOffset)
          writeTail(inode, offset, buffers)
      else {
-       
+
+       def checkTail(): Unit = if (writeEnd > tailSegment.segmentBeginOffset) {
+         synchronized {
+           otail.foreach { tail =>
+             if (writeEnd > tail.offset)
+               otail = None // We've overwritten the tail. Drop the cached copy
+           }
+         }
+       }
+
+       def dropRangeAtFirstDiscontinuity(remaining: List[(DownPointer, IndexNode)],
+                                         contiguous: List[(DownPointer, IndexNode)] = Nil): List[(DownPointer, IndexNode)] = {
+         if (remaining.isEmpty)
+           contiguous.reverse
+         else {
+           if (contiguous.isEmpty)
+             dropRangeAtFirstDiscontinuity(remaining.tail, remaining.head :: Nil)
+           else {
+             if (contiguous.head._1.offset + segmentSize == remaining.head._1.offset)
+               dropRangeAtFirstDiscontinuity(remaining.tail, remaining.head :: contiguous)
+             else
+               contiguous.reverse // Discontinuity found, drop the remaining entries
+           }
+         }
+       }
+
+       // Note, the entries must be filtered by dropRangeAtFirstDiscontinuity above to ensure that no allocations
+       // will be required to fill any gaps. Allocations must be avoided to avoid potentially disjoint updates to
+       // the index structure which can't be handled by the current recursive index update mechanism. Instead we'll,
+       // write what we can and return the rest as unwritten data in the WriteStatus object.
        def updateContiguousRange(
            segmentSize: Long,
            beginOffset: Long, 
            remaining: List[DataBuffer], 
            entries: List[(DownPointer, IndexNode, DataObjectState)] ): (Long, List[DataBuffer]) = {
-         
+
          require(beginOffset >= entries.head._1.offset && beginOffset < entries.head._1.offset + segmentSize)
          
          def rupdate(writeOffset: Long, toWrite: List[DataBuffer], elist: List[(DownPointer, IndexNode, DataObjectState)]): (Long, List[DataBuffer]) = {
            if (toWrite.isEmpty)
-             (0, Nil)
+             (writeOffset, Nil)
            else if (elist.isEmpty)
              (writeOffset, toWrite)
            else if (writeOffset < elist.head._1.offset || writeOffset >= elist.head._1.offset + segmentSize)
-             (writeOffset, toWrite)
+             (writeOffset, toWrite) // shouldn't be possible due to discontiguous range filter but just to be safe...
            else {
              
              val (d, _, dos) = elist.head
@@ -475,7 +507,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
              bb.position(objOffset)
              bb.put(writeBuff)
              bb.position(0)
-             //println(s"objOffset $objOffset, bufsize ${writeBuff.size} bb size ${bb.limit} content ${writeBuff.getByteArray().toList} remaining: ${remaining.size} elist: ${elist.size}")
+             
              tx.note(s"IndexedFileContent - updateContiguousRange(segment=${dos.pointer.uuid}, nbytes=${bb.remaining()})")
              tx.overwrite(dos.pointer, dos.revision, bb)
              
@@ -487,21 +519,16 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
        }
        
        def prepareWrite(headPath: List[IndexNode], entries: List[(DownPointer, IndexNode, DataObjectState)]): Future[WriteStatus] = {
-         
-         val segmentSize = headPath.head.index.segmentSize
-         val beginObjectOffset = if (offset < segmentSize) 0 else offset - (offset.asInstanceOf[Int] % segmentSize) 
-         
+
          def entryContains(d: DownPointer, tgtOffset: Long): Boolean = tgtOffset >= d.offset && tgtOffset < d.offset + segmentSize
 
          val rootNode = headPath.last
          
          if (entries.isEmpty) {
            // pure allocation within a hole in the file
-           
-           val allocBuffers = if (beginObjectOffset == offset) buffers else DataBuffer.zeroed(offset - beginObjectOffset) :: buffers
-           
+
            for {
-             allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, allocBuffers, Nil))
+             allocated <- Future.sequence(recursiveAlloc(offset, buffers, Nil))
              (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
            } yield {
              val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
@@ -509,48 +536,38 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
            }
          }
          else if (!entryContains(entries.head._1, offset)) {
-           // Write begins with an allocation in a hole and extends over at least one object
+           // Write begins with an allocation in a hole and extends over at least one object.
            val allocSize = (entries.head._1.offset - offset).asInstanceOf[Int]
-           
-           // returns (allocBuffers, remaining)
-           def rgetAllocBuffers(nalloc: Int, remaining: List[DataBuffer], abuffs: List[DataBuffer]): (List[DataBuffer], List[DataBuffer]) = {
-             val db = remaining.head
-             
-             if (nalloc == allocSize) {
-               val allocBuffers = if (beginObjectOffset == offset) abuffs.reverse else DataBuffer.zeroed(offset - beginObjectOffset) :: abuffs.reverse
-               (allocBuffers, remaining)
-             }
-             else if (nalloc + db.size <= allocSize)
-               rgetAllocBuffers(nalloc + db.size, remaining.tail, db :: abuffs)
-             else {
-               val (a, b) = db.split(allocSize - nalloc)
-               rgetAllocBuffers(nalloc + a.size, b :: remaining.tail, a :: abuffs)
-             }
-           }
-           
-           val (alloc, remaining) = rgetAllocBuffers(0, buffers, Nil)
-           
+
+           val (alloc, remaining) = DataBuffer.compact(allocSize, buffers)
+
            for {
-             allocated <- Future.sequence(recursiveAlloc(beginObjectOffset, alloc, Nil))
+             allocated <- Future.sequence(recursiveAlloc(offset, alloc :: Nil, Nil))
              (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
            } yield {
              val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, entries.head._1.offset, remaining, entries)
-             val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
+             val fcomplete = tx.result.map { _ =>
+               checkTail()
+               invalidateCachedNodes(updatedNodes)
+             }
              WriteStatus(Some(newRoot.pointer), remainingOffset, remainingData, fcomplete)
            }
          } else {
            // Write begins in an allocated segment
            val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, offset, buffers, entries)
+
+           val fcomplete = tx.result.map { _ =>
+             checkTail()
+           }
            
-           Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, tx.result.map(_=>())))
+           Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, fcomplete))
          }
        }
        
-       val nbytes = buffers.foldLeft(0)((sz, db) => sz + db.size)
-       
        for { 
          root <- getOrAllocateRoot()
-         (headPath, entries) <- root.getIndexEntriesForRange(offset, nbytes)
+         (headPath, rawEntries) <- root.getIndexEntriesForRange(offset, nbytes)
+         entries = dropRangeAtFirstDiscontinuity(rawEntries)
          objs <- Future.sequence(entries.map( t => fs.system.readObject(t._1.pointer).map{ dos => (t._1, t._2, dos) } )) 
          ftuple <- prepareWrite(headPath, objs)
        } yield ftuple
