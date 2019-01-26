@@ -1,56 +1,13 @@
 
-* Need to re-implement file deletion
-   - Reading WAY too many things concurrently
-   - Far too many concurrent transactions
-   - We can easily afford for this to be slow. Serial Tx execution
-
-* One node went into an infinite read loop related to a tier-1 index node.
-
-* Reduced read requests to hopefully manageable level
-* Fixed bug where multiple stores could try to immediately drive transactions
-* Once resolved, no Prepare/Accept messages will be sent from a TxDriver
-
-
-* Added pre-transaction Opportunistic Rebuilds
-   - How do we test it?
-
-* OpportunisticRebuildManager
-   - At end of successful read
-      - Mark which objects are behind and cache a copy of the restored object
-   - Uses a very short-lived cache (5 sec)
-   - getPreTransactionOpportunisticRebuild(objectUUID): Option[Map[Byte, OpportunisticRebuild]]
-      - build a map of opportunistic rebuild ops for each store
-      - include list of rebuild ops with TxPrepare & localState
-      - rebuild ops are applied before TxPrepare is processed
-   - If tx isn't invoked, send direct opportunistic rebuild message?
-      - what criteria should be used for send?
-      - most interesting cases will be handled by pre-tx rebuilds
-
-   Initial Implementation:
-      - DataObjects must always do a full rebuild. Can't reliably distinguish between append and overwrite
-      - KeyValueObjects
-            - Send full object state for first pass
-            - Future OPZ will be to send only the out-of-date KV pairs and attributes (reduced network load for larger objects)
-            - Not needed for first pass and this approach is already implemented on the backend
-
-   Future Optimization:
-      - KVObjectReader.resolve could be extended to know what kind of thing it's resolving
-            - (KeyType.Value, Option[Key])
-            - Rather than just update "knownBehind", could update a KV specific entry to track just which keys on which stores
-              are behind
-            - No attempts to resolve are made unless a threshold number of KV objects match the object revision and only
-              matching object-level revisions attempt restoration. So, top-level object handles full-rebuild for store and
-              anything detected in resolve() can be used for key-specific rebuilds.
-
-* Lots of Read & Transaction hangs during large file deletion
-   - need to determine underlying cause
-   - requires adding in greater traceability in underyling messages and better hung read/tx status info
-
 -----------------------
 
-* Segment Allocater UUID should go into file inode @ file creation time
+* Base File Addition
+  - File Type UUID: Allows loading of correct BaseFile subclass (SimpleFile vs ConcurrentWriteOptimized vs ...)
 
-* Add send of OpportunisticRebuild messages
+* File Inode Additions
+  - Segment Allocater UUID should be embedded here
+
+* Move send of OpportunisticRebuild messages into OpportunisticRebuildManager
 
 sbt "test:testOnly *KeyValueListSuite"
 
@@ -61,6 +18,7 @@ sbt "test:testOnly *KeyValueListSuite"
 Bootstrap Procedure:
     sbt pack
     rm -r ~/temp/aspen/*
+    rm -r local/*log
     ./target/pack/bin/demo bootstrap local/t.yaml
     emacs local/cfg.yaml
     ./target/pack/bin/demo amoeba local/cfg.yaml local/amoeba-log4j.yaml
@@ -117,12 +75,9 @@ Amoeba File System
 
 ----------------------------------
 
-* Hunt down Fuse bug that's causing buffered DataBuffers passed to the FileHandle.write() to be overwritten
-  while those buffers are queued for sending out.
-    -> Seems to be a wrap-around problem
-
-Allocating into TKVL *may* not be possible. Need to handle all cases in which a key doesn't exist, is deleted,
-and is migrated. Could be tricky to guarantee forced failure in all situations.
+* PreTransactionOpportunisticRebuilds
+    - Currently we have no tests
+    - Don't know if this is working or not
 
 * Remove 5 file op retry limit from SimpleBaseFile
 
@@ -184,6 +139,7 @@ This may not be a problem in practice
 
 Basic Error Handling
   * Opportunistic Rebuild
+      - TODO: Currently this is in BaseReadDriver, move this to OpportunisticRebuildManager
       - When reads successfully restore an object, they send an OpportunisticRebuild message to each store this is observed
         to have a timestamp behind that of the restored version and revision/refcount/updateSet that does not match the restored object.
         This message includes the old state of the object to compare against and the full rebuild data for the object. Upon receiving
@@ -193,6 +149,28 @@ Basic Error Handling
         Messages received after the read has successfully restored the object and between either the timeout or all peers are
         heard from will similarly be responded to with OpportunisticRebuild messages if the responding peer is observed to
         be behind the restored version
+
+  * OpportunisticRebuildManager
+     - At end of successful read, mark which objects are behind and cache a copy of the restored object
+     - Uses a very short-lived cache (5 sec)
+     - getPreTransactionOpportunisticRebuild(objectUUID): Option[Map[Byte, OpportunisticRebuild]]
+        - build a map of opportunistic rebuild ops for each store
+     - If tx isn't invoked, send direct opportunistic rebuild message?
+        - This will replace the mechanism currently in BaseReadDriver
+        - what criteria should be used for send?
+        - most interesting cases will be handled by pre-tx rebuilds
+
+     Initial Implementation:
+        - Full rebuild of both Data & KeyValue objects for all out-of-date conditions
+
+     Future Optimization:
+        - Send only the KV content that is out-of-date
+
+  * PreTransactionOpportunisticRebuilds
+      - When transactions are being built they check with the OpportunisticRebuildManager to see if any of the objects
+        referenced by the transaction have slices that are known to be out of date. If so, it includes the rebuild data
+        for those objects when sending the transaction to the behind store. Those updates are applied prior to attempting
+        to lock to the transaction (best-effort and can fail in presence of locks)
         
   * Missed Object Update
       - Each pool has a configurable MissedUpdateStrategy
@@ -206,7 +184,11 @@ Basic Error Handling
       
   * Read
       - SuperSimpleRetryingReadDriver
-          Fixed delay between retries
+          - Fixed delay between retries with some basic filtering of re-read requests to prevent overloading the stores
+            with redundant reads.
+          - If a read returns known-behind data but the read shows the object is locked to known-successful transactions,
+            re-reads will be immediately preformed. This relies on a relatively short delay between the end of the resolution
+            process and the store learning of the completed transaction. An exponential backoff would be better here
           
   * Transaction
       - SimpleClientTransactionDriver
@@ -215,6 +197,8 @@ Basic Error Handling
           Background Task polls transactions. If last heartbeat exceeds a threshold timeout, launch a Tx driver
       - SimpleFixedDelayTransactionDriver
           Starts a new Paxos round after a fixed delay. Should be sufficient for simple situations
+          Once resolution is known to have been achieved, drivers will switch to sending only heartbeats and
+          TxResolved messages (there's no need to run the Paxos algorithm any more)
           
   * Allocation Recovery
       - SuperSimpleRetryingAllocationDriver

@@ -80,16 +80,21 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
   
   private val cache: Cache[UUID, IndexNode] = Scaffeine().maximumSize(50).build[UUID, IndexNode]()
   
-  private def dropCache(): Unit = synchronized {
+  def dropCache(): Unit = synchronized {
     otail = None
     cache.invalidateAll()
   }
   
-  private def invalidateCachedNodes(l: List[IndexNode]): Unit = l.foreach(n => cache.invalidate(n.uuid))
+  private def updateCachedNodes(updatedNodes: List[IndexNode])(implicit tx: Transaction): Unit = {
+    logger.trace(s"Tx ${tx.uuid} Updating IndexNodes ${updatedNodes.map(n => (n.uuid, n.revision))}")
+    updatedNodes.foreach(n => cache.put(n.uuid, n))
+  }
   
   private def load(nodePointer: DataObjectPointer)(implicit ec: ExecutionContext): Future[IndexNode] = {
     cache.getIfPresent(nodePointer.uuid) match {
-      case Some(n) => Future.successful(n)
+      case Some(n) =>
+        logger.trace(s"Loading cached IndexNode ${nodePointer.uuid} revision ${n.revision}")
+        Future.successful(n)
       case None => fs.system.readObject(nodePointer).flatMap { dos =>
         val n = IndexNode(dos.pointer, dos.revision, dos.data, this)
         //println(s"Loading Index Node ${n.uuid}. Tier ${n.tier} Entries: ${n.entries.toList.map(e => (e.offset -> e.pointer.uuid))}")
@@ -319,35 +324,45 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
   private def getTail()(implicit tx: Transaction, ec: ExecutionContext): Future[(Option[Tail], List[IndexNode])] = synchronized {
 
-    otail match {
-      case Some(tail) => Future.successful((Some(tail), tail.path))
+    val validCachedTail = otail.flatMap { tail =>
+      val tailPath = tail.path.map { dp =>
+        cache.getIfPresent(dp.pointer.uuid) match {
+          case None => None
+          case Some(node) =>
+
+            if (tail.offset >= node.startOffset && node.endOffset.isEmpty)
+              Some(node)
+            else
+              None
+        }
+      }.collect {
+        case Some(node) => node
+      }
+
+      if (tailPath.size == tail.path.size)
+        Some((tail, tailPath))
+      else
+        None
+    }
+
+    validCachedTail match {
+      case Some((tail, tailPath)) => Future.successful((Some(tail), tailPath))
 
       case None =>
-
         def readTail(tailPath: List[IndexNode]): Future[(Option[Tail], List[IndexNode])] = synchronized {
           val tailIndexNode = tailPath.head
 
-          otail match {
-            case Some(tail) => Future.successful((Some(tail), tail.path))
-            case None =>
-              if (tailIndexNode.entries.isEmpty)
-                Future.successful((None, tailPath))
-              else {
-                val tailDP = tailIndexNode.entries.last
-                read(tailDP.pointer).map { dos =>
-                  synchronized {
-                    otail match {
-                      case Some(tail) => (Some(tail), tail.path)
-                      case None =>
-                        otail = Some(Tail(tailDP.offset, tailDP.pointer, dos.revision, dos.data, tailPath))
-                        (otail, tailPath)
-                    }
-                  }
-                }
+          if (tailIndexNode.entries.isEmpty)
+            Future.successful((None, tailPath))
+          else {
+            val tailDP = tailIndexNode.entries.last
+            read(tailDP.pointer).map { dos =>
+              synchronized {
+                otail = Some(Tail(tailDP.offset, tailDP.pointer, dos.revision, dos.data, tailPath))
+                (otail, tailPath)
               }
-
+            }
           }
-
         }
 
         for {
@@ -402,7 +417,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
         val fcomplete = tx.result.map { _ =>
           synchronized {
             otail = Some(newTail)
-            invalidateCachedNodes(prep.updatedNodes)
+            updateCachedNodes(prep.updatedNodes)
           }
         }
 
@@ -440,11 +455,9 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
      else {
 
        def checkTail(): Unit = if (writeEnd > tailSegment.segmentBeginOffset) {
-         synchronized {
-           otail.foreach { tail =>
-             if (writeEnd > tail.offset)
-               otail = None // We've overwritten the tail. Drop the cached copy
-           }
+         otail.foreach { tail =>
+           if (writeEnd > tail.offset)
+             otail = None // We've overwritten the tail. Drop the cached copy
          }
        }
 
@@ -507,7 +520,7 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
              bb.position(objOffset)
              bb.put(writeBuff)
              bb.position(0)
-             
+
              tx.note(s"IndexedFileContent - updateContiguousRange(segment=${dos.pointer.uuid}, nbytes=${bb.remaining()})")
              tx.overwrite(dos.pointer, dos.revision, bb)
              
@@ -522,16 +535,19 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
          def entryContains(d: DownPointer, tgtOffset: Long): Boolean = tgtOffset >= d.offset && tgtOffset < d.offset + segmentSize
 
-         val rootNode = headPath.last
-         
          if (entries.isEmpty) {
            // pure allocation within a hole in the file
 
            for {
              allocated <- Future.sequence(recursiveAlloc(offset, buffers, Nil))
-             (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
+             (newRoot, updatedNodes, _) <- IndexNode.rupdate(logger, allocated.map(t => t._1), headPath, headPath.head)
            } yield {
-             val fcomplete = tx.result.map( _ => invalidateCachedNodes(updatedNodes) )
+             val fcomplete = tx.result.map { _ =>
+               synchronized {
+                 checkTail()
+                 updateCachedNodes(updatedNodes)
+               }
+             }
              WriteStatus(Some(newRoot.pointer), 0, Nil, fcomplete)
            }
          }
@@ -543,21 +559,26 @@ class IndexedFileContent(file: SimpleFile, osegmentSize: Option[Int]=None, otier
 
            for {
              allocated <- Future.sequence(recursiveAlloc(offset, alloc :: Nil, Nil))
-             (newRoot, updatedNodes) <- rootNode.insert(logger, allocated.map(t => t._1))
+             (newRoot, updatedNodes, _) <- IndexNode.rupdate(logger, allocated.map(t => t._1), headPath, headPath.head)
            } yield {
              val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, entries.head._1.offset, remaining, entries)
              val fcomplete = tx.result.map { _ =>
-               checkTail()
-               invalidateCachedNodes(updatedNodes)
+               synchronized {
+                 checkTail()
+                 updateCachedNodes(updatedNodes)
+               }
              }
              WriteStatus(Some(newRoot.pointer), remainingOffset, remainingData, fcomplete)
            }
-         } else {
+         }
+         else {
            // Write begins in an allocated segment
            val (remainingOffset, remainingData) = updateContiguousRange(segmentSize, offset, buffers, entries)
 
            val fcomplete = tx.result.map { _ =>
-             checkTail()
+             synchronized {
+               checkTail()
+             }
            }
            
            Future.successful(WriteStatus(Some(headPath.last.pointer), remainingOffset, remainingData, fcomplete))
@@ -590,8 +611,18 @@ object IndexedFileContent {
   case class SegmentOffset(segmentBeginOffset: Long, offsetWithinSegment: Int)
 
   /** path is reversed where the first element is the tier-0 IndexNode and the last element is the root IndexNode */
-  private case class Tail(offset: Long, pointer: DataObjectPointer, revision: ObjectRevision, data: DataBuffer, path: List[IndexNode]) {
+  private class Tail(val offset: Long,
+                     val pointer: DataObjectPointer,
+                     val revision: ObjectRevision,
+                     val data: DataBuffer,
+                     val path: List[DownPointer]) {
     def size: Int = data.size
+  }
+
+  private object Tail {
+    def apply(offset: Long, pointer: DataObjectPointer, revision: ObjectRevision, data: DataBuffer, path: List[IndexNode]): Tail = {
+      new Tail(offset, pointer, revision, data, path.map(n => DownPointer(n.startOffset, n.pointer)))
+    }
   }
  
   private case class DownPointer(offset: Long, pointer: DataObjectPointer) {

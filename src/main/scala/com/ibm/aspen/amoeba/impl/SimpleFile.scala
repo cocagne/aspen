@@ -19,6 +19,14 @@ class SimpleFile(override val pointer: FilePointer,
 
   private var oifc: Option[IndexedFileContent] = None
 
+  // This is called whenever file operations fail. Drop the IFC cache as well just to be safe
+  override def refresh()(implicit ec: ExecutionContext): Future[Unit] =  {
+    synchronized {
+      oifc.foreach(_.dropCache())
+    }
+    super.refresh()
+  }
+
   private def content: IndexedFileContent = synchronized {
     if (oifc.isEmpty)
       oifc = Some(new IndexedFileContent(this, osegmentSize, otierNodeSize))
