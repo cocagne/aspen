@@ -1,4 +1,19 @@
 
+* Filesystem snapshots
+
+* Use hierarchical snapshot controller
+   - Hierarchy of snapshot coordinators. One per world/continent/site/lan
+       - Implemented as durable, fault-tolerante service
+   - Each client has local object that contains the snapshot info
+   - Sapshot begins with top-level updating begin object and writing command down to sub hierarchy
+   - Sub-hierarchy propagates down and ultimately updates each client's snapshot controller
+   - controller object is used in every Tx with RequiredRevision = last-known
+      - will force transactions to fail after snapshot takes hold
+   - hierarhcy propagtes up with last-updated object timestamp
+   - max time of completed update for all clients is the time the snapshot fully took effect
+      - Duration is "snapshot window"
+   - Will require careful consideration for all writes and deletes
+
 -----------------------
 
 * Base File Addition
