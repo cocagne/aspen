@@ -13,4 +13,5 @@ object UpdateError extends Enumeration {
   val InvalidObjectType         = Value("InvalidObjectType")
   val KeyValueRequirementError  = Value("KeyValueRequirementError")
   val TransactionTimestampError = Value("TransactionTimestampError")
+  val LocalTimeError            = Value("LocalTimeError")
 }

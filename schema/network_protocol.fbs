@@ -79,7 +79,8 @@ enum UpdateError:byte
     InsufficientFreeSpace,
     InvalidObjectType,
     KeyValueRequirementError,
-    TransactionTimestampError
+    TransactionTimestampError,
+    LocalTimeError
 }
 
 enum DataUpdateOperation:byte {
@@ -134,12 +135,24 @@ table KeyValueUpdate {
   timestamp: long;
 }
 
+enum LocalTimeRequirementEnum:byte {
+  LessThan,
+  GreaterThan
+}
+
+
+table LocalTimeRequirement {
+  timestamp: long;
+  requirement: LocalTimeRequirementEnum;
+}
+
 table TransactionRequirement {
   data_update: DataUpdate;
   refcount_update: RefcountUpdate;
   version_bump: VersionBump;
   revision_lock: RevisionLock;
   kv_update: KeyValueUpdate;
+  localtime: LocalTimeRequirement;
 }
 
 table SerializedFinalizationAction {

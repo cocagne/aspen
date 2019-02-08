@@ -385,7 +385,25 @@ object NetworkCodec {
         
     KeyValueUpdate(objectPointer.asInstanceOf[KeyValueObjectPointer], updateType, requiredRevision, requirements(n.requirementsLength()-1, Nil), timestamp)
   }
-  
+
+  def encode(builder:FlatBufferBuilder, o:LocalTimeRequirement): Int = {
+    val req = o.tsRequirement match {
+      case LocalTimeRequirement.Requirement.GreaterThan => P.LocalTimeRequirementEnum.GreaterThan
+      case LocalTimeRequirement.Requirement.LessThan => P.LocalTimeRequirementEnum.LessThan
+    }
+    P.LocalTimeRequirement.startLocalTimeRequirement(builder)
+    P.LocalTimeRequirement.addTimestamp(builder, o.timestamp.asLong)
+    P.LocalTimeRequirement.addRequirement(builder, req)
+    P.LocalTimeRequirement.endLocalTimeRequirement(builder)
+  }
+  def decode(n: P.LocalTimeRequirement): LocalTimeRequirement = {
+    val timestamp = HLCTimestamp(n.timestamp())
+    val requirement = n.requirement() match {
+      case P.LocalTimeRequirementEnum.GreaterThan => LocalTimeRequirement.Requirement.GreaterThan
+      case P.LocalTimeRequirementEnum.LessThan => LocalTimeRequirement.Requirement.LessThan
+    }
+    LocalTimeRequirement(timestamp, requirement)
+  }
   
   def encode(builder:FlatBufferBuilder, o:TransactionRequirement): Int = {
     val offset = o match {
@@ -394,6 +412,7 @@ object NetworkCodec {
       case vb: VersionBump => encode(builder, vb)
       case rl: RevisionLock => encode(builder, rl)
       case kv: KeyValueUpdate => encode(builder, kv)
+      case lt: LocalTimeRequirement => encode(builder, lt)
     }
     
     P.TransactionRequirement.startTransactionRequirement(builder)
@@ -403,6 +422,7 @@ object NetworkCodec {
       case _: VersionBump => P.TransactionRequirement.addVersionBump(builder, offset)
       case _: RevisionLock => P.TransactionRequirement.addRevisionLock(builder, offset)
       case _: KeyValueUpdate => P.TransactionRequirement.addKvUpdate(builder, offset)
+      case _: LocalTimeRequirement => P.TransactionRequirement.addLocaltime(builder, offset)
     }
     P.TransactionRequirement.endTransactionRequirement(builder)
   }
@@ -417,6 +437,8 @@ object NetworkCodec {
       decode(n.revisionLock())
     else if (n.kvUpdate() != null)
       decode(n.kvUpdate())
+    else if (n.localtime() != null)
+      decode(n.localtime())
     else
       throw new EncodingError("Unknown Transaction Requirement")
   }
@@ -561,7 +583,7 @@ object NetworkCodec {
   
   def encode(builder:FlatBufferBuilder, o:UpdateErrorResponse): Int = {
     val updateError = encodeUpdateError(o.updateError)
-    var collidingTx = o.conflictingTransaction match {
+    val collidingTx = o.conflictingTransaction match {
       case None => -1
       case Some(t) =>
         val arr = new Array[Byte](16 + 8)
@@ -574,7 +596,7 @@ object NetworkCodec {
     }
     
     P.UpdateErrorResponse.startUpdateErrorResponse(builder)
-    P.UpdateErrorResponse.addObjectUuid(builder, encode(builder, o.objectUUID))
+    o.objectUUID.foreach(objectUUID => P.UpdateErrorResponse.addObjectUuid(builder, encode(builder, objectUUID)))
     P.UpdateErrorResponse.addUpdateError(builder, updateError)
     if (o.currentRevision.isDefined)
       P.UpdateErrorResponse.addCurrentRevision(builder, encodeObjectRevision(builder, o.currentRevision.get))
@@ -585,7 +607,7 @@ object NetworkCodec {
     P.UpdateErrorResponse.endUpdateErrorResponse(builder)
   }
   def decode(n: P.UpdateErrorResponse): UpdateErrorResponse = {
-    val objectUUID = decode(n.objectUuid())
+    val objectUUID = if (n.objectUuid() == null) None else Some(decode(n.objectUuid()))
     val updateError = decodeUpdateErrore(n.updateError())
     val currentRev = if(n.currentRevision() == null) None else Some(decode(n.currentRevision()))
     val currentRef = if(n.currentRefcount() == null) None else Some(decode(n.currentRefcount()))

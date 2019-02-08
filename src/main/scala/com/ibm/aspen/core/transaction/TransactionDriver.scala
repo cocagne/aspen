@@ -61,7 +61,7 @@ abstract class TransactionDriver(
     sb.append("\n")
     sb.append(s"***** Transaction Status: ${txd.transactionUUID}")
     sb.append(s"  Store: $storeId\n")
-    sb.append(s"  Objects: ${txd.requirements.map(_.objectPointer)}\n")
+    sb.append(s"  Objects: ${txd.allReferencedObjectsSet}\n")
     sb.append(s"  Resolved: $resolved. Finalized: $finalized. Result: ${learner.finalValue}\n")
     sb.append(s"  Peer Dispositions: $peerDispositions\n")
     sb.append(s"  Accepted Peers: $acceptedPeers\n")

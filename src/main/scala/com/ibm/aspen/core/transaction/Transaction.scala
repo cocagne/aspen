@@ -289,22 +289,23 @@ object Transaction {
 
   }
   
-  def createUpdateErrorResponse(txErr: ObjectTransactionError): UpdateErrorResponse = txErr match {
+  def createUpdateErrorResponse(txErr: StoreTransactionError): UpdateErrorResponse = txErr match {
     case e: TransactionReadError => e.kind match {
-      case _: InvalidLocalPointer    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidLocalPointer, None, None, None)
-      case _: ObjectMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.ObjectMismatch, None, None, None)
-      case _: CorruptedObject        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.CorruptedObject, None, None, None)
-    }                                
-    case e: RevisionMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RevisionMismatch, Some(e.current), None, None)
-    case e: RefcountMismatch         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RefcountMismatch, None, Some(e.current), None)
-    case e: TransactionCollision     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.TransactionCollision, None, None,
-                                                            Some((e.lockedTransaction.transactionUUID, HLCTimestamp(e.lockedTransaction.startTimestamp))))
-    case e: RebuildCollision         => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.RebuildCollision, None, None, None)
-    case e: MissingUpdateContent     => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.MissingUpdateData, None, None, None)
-    case e: InsufficientFreeSpace    => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InsufficientFreeSpace, None, None, None)
-    case e: InvalidObjectType        => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.InvalidObjectType, None, None, None)
-    case e: KeyValueRequirementError => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.KeyValueRequirementError, None, None, None)
-    case e: TransactionTimestampError => UpdateErrorResponse(e.objectPointer.uuid, UpdateError.TransactionTimestampError, None, None, None)
+      case _: InvalidLocalPointer     => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.InvalidLocalPointer, None, None, None)
+      case _: ObjectMismatch          => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.ObjectMismatch, None, None, None)
+      case _: CorruptedObject         => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.CorruptedObject, None, None, None)
+    }
+    case e: RevisionMismatch          => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.RevisionMismatch, Some(e.current), None, None)
+    case e: RefcountMismatch          => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.RefcountMismatch, None, Some(e.current), None)
+    case e: TransactionCollision      => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.TransactionCollision, None, None,
+                                                             Some((e.lockedTransaction.transactionUUID, HLCTimestamp(e.lockedTransaction.startTimestamp))))
+    case e: RebuildCollision          => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.RebuildCollision, None, None, None)
+    case e: MissingUpdateContent      => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.MissingUpdateData, None, None, None)
+    case e: InsufficientFreeSpace     => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.InsufficientFreeSpace, None, None, None)
+    case e: InvalidObjectType         => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.InvalidObjectType, None, None, None)
+    case e: KeyValueRequirementError  => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.KeyValueRequirementError, None, None, None)
+    case e: TransactionTimestampError => UpdateErrorResponse(Some(e.objectPointer.uuid), UpdateError.TransactionTimestampError, None, None, None)
+    case _: LocalTimeError            => UpdateErrorResponse(None, UpdateError.LocalTimeError, None, None, None)
   }
   
 }

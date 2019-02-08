@@ -116,7 +116,7 @@ trait DataStore {
    *  no object locks are granted.
    */
   def lockTransaction(txd: TransactionDescription, localUpdates: List[LocalUpdate],
-                      preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[ObjectTransactionError]]
+                      preTransactionRebuilds: List[PreTransactionOpportunisticRebuild] = Nil): Future[List[StoreTransactionError]]
   
   
   /** Commits the transaction changes and returns a Future to the completion of the commit operation. The returned list

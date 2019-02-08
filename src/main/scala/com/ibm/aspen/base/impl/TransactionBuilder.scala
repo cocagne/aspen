@@ -55,7 +55,11 @@ class TransactionBuilder(
     // Ensure the transaction has at least one requirement
     require(requirements.nonEmpty)
 
-    val primaryObject = requirements.map(_.objectPointer).maxBy(ptr => ptr.ida)
+    val primaryObject = requirements.flatMap {
+      case tor: TransactionObjectRequirement => Some(tor)
+      case _ => None
+    }.map(_.objectPointer).maxBy(ptr => ptr.ida)
+
     val designatedLeaderUID = chooseDesignatedLeader(primaryObject)
     val originatingClient = Some(clientId)
 

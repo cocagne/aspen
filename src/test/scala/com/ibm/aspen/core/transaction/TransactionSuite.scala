@@ -219,7 +219,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(op.uuid, UpdateError.MissingUpdateData, None, None, None)))
+            List(UpdateErrorResponse(Some(op.uuid), UpdateError.MissingUpdateData, None, None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -257,7 +257,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None)))
+            List(UpdateErrorResponse(Some(op.uuid), UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -293,7 +293,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             Right(TxPrepareResponse.Promise(None)), 
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
-            List(UpdateErrorResponse(op.uuid, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
+            List(UpdateErrorResponse(Some(op.uuid), UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -331,8 +331,8 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None),
-                UpdateErrorResponse(op.uuid, UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
+                UpdateErrorResponse(Some(op.uuid), UpdateError.RevisionMismatch, Some(ObjectRevision(new UUID(0,9))), None, None),
+                UpdateErrorResponse(Some(op.uuid), UpdateError.RefcountMismatch, None, Some(ObjectRefcount(9,9)), None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -369,7 +369,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
+                UpdateErrorResponse(Some(op.uuid), UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -406,7 +406,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.InvalidLocalPointer, None, None, None)))
+                UpdateErrorResponse(Some(op.uuid), UpdateError.InvalidLocalPointer, None, None, None)))
             
     futureResponse map { msg => msg should be ((DataStoreID(poolUUID, 2), response)) }
 	}
@@ -445,7 +445,7 @@ class TransactionSuite  extends AsyncFunSuite with Matchers {
             ProposalID(1,2),
             TransactionDisposition.VoteAbort,
             List(
-                UpdateErrorResponse(op.uuid, UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
+                UpdateErrorResponse(Some(op.uuid), UpdateError.TransactionCollision, None, None, Some((collidingTxd.transactionUUID, HLCTimestamp(collidingTxd.startTimestamp))))))
             
     futureResponse map { 
       

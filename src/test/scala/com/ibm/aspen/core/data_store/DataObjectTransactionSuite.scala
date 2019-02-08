@@ -10,23 +10,16 @@ import com.ibm.aspen.core.ida.Replication
 import com.ibm.aspen.core.objects.StorePointer
 import com.ibm.aspen.core.objects.ObjectRefcount
 import com.ibm.aspen.core.objects.ObjectRevision
-import com.ibm.aspen.core.transaction.DataUpdate
-import com.ibm.aspen.core.transaction.DataUpdateOperation
-import com.ibm.aspen.core.transaction.RefcountUpdate
-import com.ibm.aspen.core.transaction.TransactionDescription
+import com.ibm.aspen.core.transaction._
 
 import scala.util.Success
 import scala.util.Failure
 import java.nio.ByteBuffer
 
-import com.ibm.aspen.core.transaction.LocalUpdate
 import com.ibm.aspen.core.DataBuffer
 import com.ibm.aspen.core.allocation.{Allocate, DataAllocationOptions, ObjectAllocationRevisionGuard}
 import com.ibm.aspen.core.HLCTimestamp
 import com.ibm.aspen.core.objects.DataObjectPointer
-import com.ibm.aspen.core.transaction.VersionBump
-import com.ibm.aspen.core.transaction.TransactionRequirement
-import com.ibm.aspen.core.transaction.RevisionLock
 
 object DataObjectTransactionSuite {
   val awaitDuration = Duration(100, MILLISECONDS)
@@ -201,6 +194,68 @@ class DataObjectTransactionSuite extends AsyncFunSuite with Matchers {
     val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
     
     errs should be (Nil)
+  }
+
+  test("Lock With LocalTimeRequirement.LessThan and Error") {
+    val (ds, sp0, sp1) = initObjects()
+
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val tsr = HLCTimestamp( HLCTimestamp.now.asLong + 9999999 )
+    val txd = mktxd(LocalTimeRequirement(tsr, LocalTimeRequirement.Requirement.LessThan) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+
+    errs.length should be (1)
+
+    errs.head match {
+      case _: LocalTimeError => succeed
+      case _ => fail("Local time error not returned")
+    }
+  }
+
+  test("Lock With LocalTimeRequirement.LessThan Without Error") {
+    val (ds, sp0, sp1) = initObjects()
+
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val tsr = HLCTimestamp( HLCTimestamp.now.asLong - 9999999 )
+    val txd = mktxd(LocalTimeRequirement(tsr, LocalTimeRequirement.Requirement.LessThan) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+
+    errs.length should be (0)
+  }
+
+  test("Lock With LocalTimeRequirement.GreaterThan and Error") {
+    val (ds, sp0, sp1) = initObjects()
+
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val tsr = HLCTimestamp( HLCTimestamp.now.asLong - 9999999 )
+    val txd = mktxd(LocalTimeRequirement(tsr, LocalTimeRequirement.Requirement.GreaterThan) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+
+    errs.length should be (1)
+
+    errs.head match {
+      case _: LocalTimeError => succeed
+      case _ => fail("Local time error not returned")
+    }
+  }
+
+  test("Lock With LocalTimeRequirement.GreaterThan Without Error") {
+    val (ds, sp0, sp1) = initObjects()
+
+    val op0 = mkObjPtr(uuid0, sp0)
+    val op1 = mkObjPtr(uuid1, sp1)
+    val tsr = HLCTimestamp( HLCTimestamp.now.asLong + 9999999 )
+    val txd = mktxd(LocalTimeRequirement(tsr, LocalTimeRequirement.Requirement.GreaterThan) :: RefcountUpdate(op1, oneRef, oneRef) :: Nil)
+
+    val errs = Await.result(ds.lockTransaction(txd, mklu(op0)), awaitDuration)
+
+    errs.length should be (0)
   }
   
   test("Discard Locked Transaction") {

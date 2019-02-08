@@ -7,29 +7,46 @@ import com.ibm.aspen.core.objects.KeyValueObjectPointer
 import com.ibm.aspen.core.objects.keyvalue.Key
 import com.ibm.aspen.core.HLCTimestamp
 
-sealed abstract class TransactionRequirement {
+sealed abstract class TransactionRequirement
+
+case class LocalTimeRequirement(timestamp: HLCTimestamp,
+                                tsRequirement: LocalTimeRequirement.Requirement.Value) extends TransactionRequirement
+
+object LocalTimeRequirement {
+
+  object Requirement extends Enumeration {
+    val LessThan = Value("LessThan")
+    val GreaterThan = Value("GreaterThan")
+  }
+
+  case class Requirement(timestamp: HLCTimestamp, tsRequirement: Requirement.Value)
+
+}
+
+
+sealed abstract class TransactionObjectRequirement extends TransactionRequirement {
   val objectPointer: ObjectPointer
 }
 
 case class DataUpdate(
     objectPointer: ObjectPointer, 
     requiredRevision: ObjectRevision, 
-    operation: DataUpdateOperation.Value) extends TransactionRequirement
+    operation: DataUpdateOperation.Value) extends TransactionObjectRequirement
     
 case class RefcountUpdate(
     objectPointer: ObjectPointer, 
     requiredRefcount: ObjectRefcount, 
-    newRefcount: ObjectRefcount) extends TransactionRequirement
+    newRefcount: ObjectRefcount) extends TransactionObjectRequirement
     
 case class VersionBump(
     objectPointer: ObjectPointer, 
-    requiredRevision: ObjectRevision) extends TransactionRequirement
+    requiredRevision: ObjectRevision) extends TransactionObjectRequirement
     
 case class RevisionLock(
     objectPointer: ObjectPointer, 
-    requiredRevision: ObjectRevision) extends TransactionRequirement
+    requiredRevision: ObjectRevision) extends TransactionObjectRequirement
     
-sealed abstract class KeyValueTransactionRequirement extends TransactionRequirement {
+sealed abstract class KeyValueTransactionRequirement extends TransactionObjectRequirement {
     override val objectPointer: KeyValueObjectPointer
 }
     
@@ -56,3 +73,6 @@ object KeyValueUpdate {
   
   case class KVRequirement(key: Key, timestamp: HLCTimestamp, tsRequirement: TimestampRequirement.Value)
 }
+
+
+

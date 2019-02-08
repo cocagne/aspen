@@ -28,18 +28,18 @@ object StoreTransaction {
       LoadType.MetadataOnly
   }
 
-  def getObjectLoadRequirements(requirements: List[TransactionRequirement]): List[(ObjectPointer, LoadType.Value)] = {
+  def getObjectLoadRequirements(requirements: List[TransactionObjectRequirement]): List[(ObjectPointer, LoadType.Value)] = {
     var helpers = Map[ObjectPointer, Ohelper]()
 
-    def getHelper(req: TransactionRequirement): Ohelper = helpers.getOrElse(req.objectPointer, new Ohelper(req.objectPointer))
+    def getHelper(req: TransactionObjectRequirement): Ohelper = helpers.getOrElse(req.objectPointer, new Ohelper(req.objectPointer))
 
-    def needMeta(req: TransactionRequirement): Unit = {
+    def needMeta(req: TransactionObjectRequirement): Unit = {
       val helper = getHelper(req)
       helper.loadMeta = true
       helpers += (req.objectPointer -> helper)
     }
 
-    def needBoth(req: TransactionRequirement): Unit = {
+    def needBoth(req: TransactionObjectRequirement): Unit = {
       val helper = getHelper(req)
       helper.loadMeta = true
       helper.loadData = true
@@ -89,11 +89,11 @@ class StoreTransaction(val store: DataStoreFrontend,
     ptr.poolUUID == storeId.poolUUID && ptr.storePointers.exists(_.poolIndex == storeId.poolIndex)
   }
 
-  val requirements: List[TransactionRequirement] = txd.requirements.filter(r => localObjects.contains(r.objectPointer))
+  val requirements: List[TransactionObjectRequirement] = txd.objectRequirements.filter(r => localObjects.contains(r.objectPointer))
 
   val dataUpdates: Map[UUID, DataBuffer] = updateData.map(lu => lu.objectUUID -> lu.data).toMap
 
-  private var lockRequests: List[Promise[List[ObjectTransactionError]]] = Nil
+  private var lockRequests: List[Promise[List[StoreTransactionError]]] = Nil
 
   val (objects: Map[UUID, ObjectStoreState],
        objectsLoaded: Future[Unit]) = {
@@ -220,13 +220,25 @@ class StoreTransaction(val store: DataStoreFrontend,
     unblockDelayedTransactions()
   }
 
-  def checkRequirementsAndLock(op: Option[Promise[List[ObjectTransactionError]]]): Unit = {
+  def checkRequirementsAndLock(op: Option[Promise[List[StoreTransactionError]]]): Unit = {
     if (locked)
       op.foreach(p => p.success(Nil))
     else {
       var waitingForTransactions = Set[UUID]()
 
-      val errors = requirements.flatMap( requirement => getRequirementErrors(requirement) )
+      val localTimeErrors: List[StoreTransactionError] = txd.requirements.flatMap {
+        case ltr: LocalTimeRequirement =>
+          val now = HLCTimestamp.now
+          val ok = ltr.tsRequirement match {
+            case LocalTimeRequirement.Requirement.LessThan => ltr.timestamp < now
+            case LocalTimeRequirement.Requirement.GreaterThan => ltr.timestamp > now
+          }
+
+          if (ok) Nil else List(LocalTimeError(ltr.timestamp, ltr.tsRequirement, now))
+        case _ => Nil
+      }
+
+      val errors = requirements.flatMap( requirement => getRequirementErrors(requirement) ) ++ localTimeErrors
 
       if (errors.isEmpty)
         lockObjects()
@@ -285,9 +297,7 @@ class StoreTransaction(val store: DataStoreFrontend,
     }
   }
 
-
-
-  def getRequirementErrors(requirement: TransactionRequirement): List[ObjectTransactionError] = {
+  def getRequirementErrors(requirement: TransactionObjectRequirement): List[ObjectTransactionError] = {
     var errors = List[ObjectTransactionError]()
 
     def err(e: ObjectTransactionError): Unit = errors = e :: errors

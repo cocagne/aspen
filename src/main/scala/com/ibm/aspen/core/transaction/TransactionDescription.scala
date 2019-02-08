@@ -56,11 +56,16 @@ final case class TransactionDescription(
     */
   notes: List[String] = Nil) {
 
-  def allReferencedObjectsSet = requirements.map(_.objectPointer).toSet
+  def objectRequirements: List[TransactionObjectRequirement] = requirements.flatMap {
+    case tor: TransactionObjectRequirement => Some(tor)
+    case _ => None
+  }
+
+  def allReferencedObjectsSet: Set[ObjectPointer] = objectRequirements.map(_.objectPointer).toSet
   
   def primaryObjectDataStores: Set[DataStoreID] = primaryObject.storePointers.foldLeft(Set[DataStoreID]())((s, sp) => s + DataStoreID(primaryObject.poolUUID, sp.poolIndex))
   
-  def allDataStores = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex)))
+  def allDataStores: Set[DataStoreID] = allReferencedObjectsSet.flatMap(ptr => ptr.storePointers.map(sp => DataStoreID(ptr.poolUUID, sp.poolIndex)))
   
   def allHostedObjects(storeId: DataStoreID): List[ObjectPointer] = allReferencedObjectsSet.foldLeft(List[ObjectPointer]())((l, op) => {
       if (op.poolUUID == storeId.poolUUID) {
