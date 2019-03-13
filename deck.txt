@@ -1,0 +1,162 @@
+Aspen/AmoebaFS slide deck
+
+Perspective difference as primary focus?
+
+* As you may know, I’ve spent the last several years developing a new distributed object system
+* I’ve described the low level details surrounding how it works but I’ve never really explained the why behind it
+* So as a result, it probably looks like an obviously inferior and potentially competing solution for large-scale object storage
+* So why bother?
+* The purpose of this presentation is to answer that by explaining what Aspen is and where it fits in the distributed systems domain
+
+Conventional Distributed Systems
+* Distributed data today is almost universally placed behind high-level, abstract APIs
+* Goal is to isolate application-level logic from the details of distributed data management and organization
+* As a result most modern distributed systems can be categorized as either:
+    * Systems designed to store distributed data - Cassandra, Kafka, Spanner, dsNet, etcd
+    * Systems designed to consume distributed data - Kubernetes, MapReduce, Docker, Cloud Services, etc
+* Aspen is intended to provide a third option:
+    * Systems designed in terms of distributed data
+
+What do I mean by “in terms of”?
+* Consider a distributed Index
+* Elastic Search uses the traditional sharding approach:
+    * Divide the index into ranges and spread them over a collection of servers
+    * Internally each server maintains a traditional single-system index structure and services requests for the range it holds
+* The dsNet uses an in terms of approach where the index structure itself is designed and implemented in terms of distributed data objects
+* Aspen’s intent is to expand upon this simple concept to the extent that it can serve as an effective foundation for building scalable distributed systems of all types
+
+Why?
+* Designing systems in terms of distributed data offers a degree of flexibility that is difficult to achieve via the conventional approach
+    * This is probably best illustrated by example
+
+Example: Distributed File System
+* Well known subject
+* No de-facto, general-purpose solution
+    * Existing systems aren’t very flexible
+* Goal: Design a flexible distributed file system capable of becoming the de-facto standard
+    * Runs anywhere. Laptop, cloud, hybrid-cloud, embedded devices, etc
+    * Easily absorbs new storage capacity of various types and configurations 
+    * Adaptable on-the-fly to changing workloads and runtime environments
+    * Supports future extension
+        * COW, snapshotting, deduplication, etc
+
+Aspen Primer
+* Goal here is to describe how Aspen can be used, not how it works
+* Nevertheless, the basics must be understood in order to understand how everything fits together
+* Fortunately, its pretty simple from a user perspective
+
+Aspen Primer
+* Aspen consists of 7 primary components:
+    * Storage Pools
+    * Data Stores
+    * Objects
+    * Object Pointers
+    * Object Allocaters
+    * Transactions
+    * Finalization Actions
+
+Storage Pools
+* Contain a small group of Data Stores that share object slices/replicas
+    * Thus pools define the data dependency relationships between stores
+* Only as wide as the largest IDA intended for use with the pool
+
+Data Stores
+* Contains object slices/replicas
+* Smaller than physical disks
+    * Small size helps with migration
+* May be freely migrated between
+    * Physical backing media
+    * Network hosts
+    * Backend storage implementations: Flat file, LevelDB, etc
+
+Objects
+* Discrete units of data allocated out of storage pools
+* The IDA for each object is defined at the time of allocation
+* Two forms
+    * Data 
+        * Contains opaque, binary data that supports append and overwrite operations
+    * KeyValue 
+        * Contains a mapping of keys to tuples of (revision, HLC timestamp, value)
+        * Supports non-conflicting concurrent operations on disjoint sets of keys
+* Reference counted
+    * No explicit delete operation
+* No built-in segmentation layer
+    * Objects should generally be kept small
+
+Object Pointer
+* Aspen does not use a global namespace
+* All objects must be located via a pointer with embedded metadata which identifies
+    * Object UUID
+    * Containing Storage Pool
+    * Stores within the pool hosting the object slices/replicas
+    * Optional location of the object within each store (such as a file offset or hash key)
+* Approximately 50 bytes in size when encoded.
+
+Object Allocaters
+* Abstract interface used to allocate objects from storage pools
+* Decouples application-level logic from storage pool management
+* Allows pool management policy to be configured at deployment time
+* Base interface may be wrapped by application-level logic to provide fine-grained allocation configuration options
+    * For example:
+        * Upper layers of a distributed index could be configured to allocate replicated nodes from pools backed by SSD
+        * Lowest layer could allocate erasure-coded nodes backed by spinning disks
+
+Transactions
+* Immediately consistent
+* Optimistic Concurrency Control
+* Multiple Objects (CASN)
+* Supports 1RTT 
+* Flexible commit criteria
+    * Example commit criteria for a single transaction:
+        * Data object A
+            * Must be exactly revision 1 with a refcount of 5
+        * KeyValue object B
+            * Must not contain key “bar” 
+            * Must have a timestamp greater than 5 and less than 100
+            * Revision of the object itself must be 1
+        * The local clock on the data store must be less than 200
+
+Finalization Action
+* Defines follow-on activities that must occur if the transaction successfully commits
+* Similar to dsNet intents but stronger durability guarantees
+* Data Stores are not allowed to forget transaction state until all Finalization Actions are known to have completed
+* Provides “at least once” guarantee
+* Must tolerate multiple concurrent and delayed executions
+* Good for short-duration activities
+
+Aspen: Derived Components
+* Aspen also includes three additional components that are implemented in terms of the core components
+    * Tiered Key Value Lists (TKVL)
+    * Durable Task
+    * Durable Service
+
+Derived Component: Tiered Key Value List (TKVL)
+* Aspen’s analogue to the dsNet’s distributed index
+    * Same basic structure and use case
+    * B-tree-like hierarchy of linked lists used to quickly locate sorted content
+* Operations within a tier are immediately consistent
+* Tier structure is maintained asynchronously via Finalization Actions
+    * Similar error navigation handling mechanisms to dsNet index
+* Key Differences
+    * Multi-object transactions prevent race conditions during node join/split
+    * Uses KeyValue objects for mitigating write amplification and contention
+
+Derived Component: Durable Task
+* Used for longer-running activities where a Finalization Action would be a poor fit
+* Provides “exactly once” guarantees
+* General Idea
+    * The state for a long-running task is stored in an object
+    * Each time the task preforms an exactly-once operation, it includes an update to the task state in the transaction
+        * Either the update will succeed and the task state will reflect this or the operation will fail and must be tried again
+        * Protects against multiple potential error scenarios, including concurrent execution attempts
+    * Checkpoints may also be periodically made to speed recovery in the event of failure
+    * If the host running the task dies, another node can use the task state to pick up where it left off
+
+Derived Component: Durable Service
+* Similar to Durable Tasks but intended for long-lived services where a single instance should be running at all times
+* Has a state object similar to tasks but uses a “Master Lease” strategy to ensure a single executor at all times
+* Leases are maintained by updating the state object on a regular basis
+* All transactions performed on behalf of the service include a timestamp requirement
+    * Storage nodes will vote to abort the transaction if their local clock exceeds the lease timeout
+    * Prevents a number of timing-related error scenarios
+
