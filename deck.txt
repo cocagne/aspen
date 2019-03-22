@@ -1,20 +1,54 @@
 Aspen/AmoebaFS slide deck
 
-Perspective difference as primary focus?
+Background
+* Started as a hobby project in 2005 for building a reliable distributed file system on top of disparate, heterogenous storage capacity present in dynamic environments
+* Attempting to use existing systems failed miserably so I started looking into building one from scratch
+    * This led me down a rabbit hole and an explosion in complexity
+    * It quickly became clear that conventional tools and techniques weren’t going to get the job done
+* Periodically revisited the issue looking for something that would work
+* About six years ago I started developing Aspen, a new distributed object system that had some of the basic characteristics I’d been looking for
+* Since then I’ve been fleshing out and expanding the concept
 
-* As you may know, I’ve spent the last several years developing a new distributed object system
-* I’ve described the low level details surrounding how it works but I’ve never really explained the why behind it
-* So as a result, it probably looks like an obviously inferior and potentially competing solution for large-scale object storage
-* So why bother?
-* The purpose of this presentation is to answer that by explaining what Aspen is and where it fits in the distributed systems domain
+Taking a Different Tack
+* Previous presentations discussed the low-level details of how this system works
+    * Lesson Learned: Nobody cares
+* This time my intent is to try and describe what Aspen is and why I’ve been pursuing it
 
-Conventional Distributed Systems
+Approach
+* Focus on a  real-world problem & Aspen-based solution rather than abstract concepts
+* Talk in terms of something that actually exists, not just theory
+
+Problem: Build a Distributed File System emphasizing flexibility & on-the-fly adaptation
+*  Scratches a personal itch
+    * There are lots of distributed files systems but none of them have the properties I want
+* Many of the properties I’m interested are also good fit for hybrid cloud environments
+* A functional prototype currently exists
+
+Desired Properties
+* Useful everywhere: embedded, cloud-scale, and everything in between
+* Adaptable on-the-fly to dynamic, changing environments
+    * Added/removed sites, storage nodes, backing media
+    * Evolving workloads
+    * Evolving feature sets (snapshotting, copy-on-write, deduplication, etc)
+* Effective use of heterogenous media
+    * Persistent RAM, NVMe, SSD, HDD, Tape
+* Transparent, fine-grained content control. Such as:
+    * Move content from one geographic location to another
+    * Migrate content from high-performance media to slower media: SSD -> HDD -> Tape
+    * Re-IDA file content, say from 5 way replication to 10/16 erasure coding
+    * Time-to-first byte optimization, 3-way replicate first 50 meg at each site with the rest 10/16 erasure coded and geo-dispersed
+    * Write optimizations such as always write new, smaller segments to SSD then migrate to larger, HDD-backed segments in the background
+    * Background deduplication
+    * …
+
+System Design Approach
 * Distributed data today is almost universally placed behind high-level, abstract APIs
-* Goal is to isolate application-level logic from the details of distributed data management and organization
+    * Goal is to isolate application-level logic from the details of distributed data management and organization
 * As a result most modern distributed systems can be categorized as either:
     * Systems designed to store distributed data - Cassandra, Kafka, Spanner, dsNet, etcd
     * Systems designed to consume distributed data - Kubernetes, MapReduce, Docker, Cloud Services, etc
-* Aspen is intended to provide a third option:
+* Neither approach provided a good foundation for the solution I was looking to build
+* So I designed Aspen to explore a third option:
     * Systems designed in terms of distributed data
 
 What do I mean by “in terms of”?
@@ -23,26 +57,11 @@ What do I mean by “in terms of”?
     * Divide the index into ranges and spread them over a collection of servers
     * Internally each server maintains a traditional single-system index structure and services requests for the range it holds
 * The dsNet uses an in terms of approach where the index structure itself is designed and implemented in terms of distributed data objects
-* Aspen’s intent is to expand upon this simple concept to the extent that it can serve as an effective foundation for building scalable distributed systems of all types
-
-Why?
-* Designing systems in terms of distributed data offers a degree of flexibility that is difficult to achieve via the conventional approach
-    * This is probably best illustrated by example
-
-Example: Distributed File System
-* Well known subject
-* No de-facto, general-purpose solution
-    * Existing systems aren’t very flexible
-* Goal: Design a flexible distributed file system capable of becoming the de-facto standard
-    * Runs anywhere. Laptop, cloud, hybrid-cloud, embedded devices, etc
-    * Easily absorbs new storage capacity of various types and configurations 
-    * Adaptable on-the-fly to changing workloads and runtime environments
-    * Supports future extension
-        * COW, snapshotting, deduplication, etc
+* Aspen’s intent is to expand upon this simple concept to the extent that it can serve as an effective foundation for full-scale distributed systems
 
 Aspen Primer
 * Goal here is to describe how Aspen can be used, not how it works
-* Nevertheless, the basics must be understood in order to understand how everything fits together
+* Nevertheless, a few basic concepts must be understood in order to understand how everything fits together
 * Fortunately, its pretty simple from a user perspective
 
 Aspen Primer
@@ -71,13 +90,13 @@ Data Stores
 
 Objects
 * Discrete units of data allocated out of storage pools
-* The IDA for each object is defined at the time of allocation
+* The IDA for each object is defined at time of allocation
 * Two forms
     * Data 
         * Contains opaque, binary data that supports append and overwrite operations
     * KeyValue 
         * Contains a mapping of keys to tuples of (revision, HLC timestamp, value)
-        * Supports non-conflicting concurrent operations on disjoint sets of keys
+        * Supports non-conflicting, concurrent operations on disjoint key sets
 * Reference counted
     * No explicit delete operation
 * No built-in segmentation layer
@@ -85,20 +104,21 @@ Objects
 
 Object Pointer
 * Aspen does not use a global namespace
-* All objects must be located via a pointer with embedded metadata which identifies
+* All objects must be located via a pointer with embedded metadata:
+    * Object IDA
     * Object UUID
     * Containing Storage Pool
     * Stores within the pool hosting the object slices/replicas
     * Optional location of the object within each store (such as a file offset or hash key)
-* Approximately 50 bytes in size when encoded.
+* Approximately 50 bytes in size when encoded
 
 Object Allocaters
 * Abstract interface used to allocate objects from storage pools
 * Decouples application-level logic from storage pool management
-* Allows pool management policy to be configured at deployment time
+    * Allows pool management policy to be configured at deployment & run time
 * Base interface may be wrapped by application-level logic to provide fine-grained allocation configuration options
     * For example:
-        * Upper layers of a distributed index could be configured to allocate replicated nodes from pools backed by SSD
+        * Upper layers of a distributed index could be configured to allocate replicated nodes backed by SSD media
         * Lowest layer could allocate erasure-coded nodes backed by spinning disks
 
 Transactions
@@ -112,16 +132,15 @@ Transactions
             * Must be exactly revision 1 with a refcount of 5
         * KeyValue object B
             * Must not contain key “bar” 
-            * Must have a timestamp greater than 5 and less than 100
+            * Key “foo” must have a timestamp greater than 5 and less than 100
             * Revision of the object itself must be 1
         * The local clock on the data store must be less than 200
 
 Finalization Action
 * Defines follow-on activities that must occur if the transaction successfully commits
-* Similar to dsNet intents but stronger durability guarantees
-* Data Stores are not allowed to forget transaction state until all Finalization Actions are known to have completed
-* Provides “at least once” guarantee
-* Must tolerate multiple concurrent and delayed executions
+* Similar to dsNet intents but with stronger durability guarantees
+    * Data Stores are not allowed to forget transaction state until all Finalization Actions are known to have completed
+* Provides “at least once” guarantees
 * Good for short-duration activities
 
 Aspen: Derived Components
@@ -132,31 +151,123 @@ Aspen: Derived Components
 
 Derived Component: Tiered Key Value List (TKVL)
 * Aspen’s analogue to the dsNet’s distributed index
-    * Same basic structure and use case
+    * Same basic structure and usage
     * B-tree-like hierarchy of linked lists used to quickly locate sorted content
-* Operations within a tier are immediately consistent
 * Tier structure is maintained asynchronously via Finalization Actions
-    * Similar error navigation handling mechanisms to dsNet index
-* Key Differences
-    * Multi-object transactions prevent race conditions during node join/split
-    * Uses KeyValue objects for mitigating write amplification and contention
+    * Similar navigation error handling mechanisms as the dsNet index
+* Major Differences
+    * Multi-object transactions prevent race conditions during node splits & joins
+    * KeyValue objects are used to mitigate write amplification and contention
 
 Derived Component: Durable Task
 * Used for longer-running activities where a Finalization Action would be a poor fit
 * Provides “exactly once” guarantees
 * General Idea
-    * The state for a long-running task is stored in an object
+    * The state for a longer-running task is stored in an object
     * Each time the task preforms an exactly-once operation, it includes an update to the task state in the transaction
         * Either the update will succeed and the task state will reflect this or the operation will fail and must be tried again
-        * Protects against multiple potential error scenarios, including concurrent execution attempts
-    * Checkpoints may also be periodically made to speed recovery in the event of failure
+        * Protects against multiple potential error scenarios, including concurrent task execution 
     * If the host running the task dies, another node can use the task state to pick up where it left off
+        * Periodic state checkpoints may be used to speed up the recovery process
 
 Derived Component: Durable Service
 * Similar to Durable Tasks but intended for long-lived services where a single instance should be running at all times
-* Has a state object similar to tasks but uses a “Master Lease” strategy to ensure a single executor at all times
+* Has a state object similar to tasks but additionally uses a “Master Lease” strategy to ensure a single executor at all times
 * Leases are maintained by updating the state object on a regular basis
 * All transactions performed on behalf of the service include a timestamp requirement
     * Storage nodes will vote to abort the transaction if their local clock exceeds the lease timeout
-    * Prevents a number of timing-related error scenarios
+    * Neatly avoids a number of timing-related pitfalls
+
+AmoebaFS
+
+* The original, inode-based POSIX file system was designed for the efficient organization and use of discrete, high-latency blocks of storage
+* This is a surprisingly good fit for an Aspen-based solution
+    * Objects provide similar latency and update characteristics as disk blocks
+    * The underlying object model opens up opportunities that would be difficult to achieve otherwise
+        * More on this later
+
+Inode Table
+* Like most POSIX file systems, AmoebaFS relies on a top-level Inode table to hold pointers to all of the files in the file system
+* Potentially a great number of concurrent readers/writers
+    * TKVL is a good fit for this use case
+* For conflict avoidance we take a page from the dsNet’s distributed rebuilder
+    * The range of possible 64-bit Inode numbers is treated like a sparse namespace
+    * Each client jumps to a random location at startup and allocates inodes monotonically from there
+    * On collision, jump to another random location and start over
+
+Inodes
+* Each Inode is stored in a separate Data object
+* The Inode object alone is sufficient to fully define most file types
+    * Block Devices, Character Devices, FIFOs, and UnixSockets store no data
+    * SymLinks are small enough to directly embed the link content
+* Files & Directories require embedded links to additional data structures
+    * Many potential solutions
+    * The “right” implementation approach to use depends on workload and operational environment
+    * Multiple implementation approaches can coexist simultaneously
+
+File & Directory Implementations
+* Many potential implementation approaches
+    * The “right” implementation approach to use depends on both the workload and runtime environment
+* Multiple implementation approaches can coexist simultaneously
+* Can mix-and-match
+
+Directories (default approach)
+* Directories are often modified by concurrently running processes
+    * Ex: cron job kicks off multiple concurrent rotations of files in /var/log
+* TKVL structure is a good fit for concurrent use
+* However, the caveat is that efficient concurrent support requires non-conflicting updates
+    * To ensure this, the directory’s mtime must be updated out-of-band via Finalization Actions rather than directly in the insertion/removal transactions themselves
+    * Doing so is technically a deviation from the POSIX standard but it’s unlikely to matter and is easily disabled if needed
+* Stored content is (Name, Inode Number, cached SerializedObjectPointer)
+    * The pointer is an optimization used to avoid needing to skip the Inode table lookup for most file accesses
+    * Reallocation of Inode (move to a different storage pool) could cause lookup failure via cached pointer
+        * Inode table is still the ultimate source of truth so if retry from here before declaring failure
+
+Files (default approach)
+* Similar to Directories, Files could use a TKVL for indexing their content
+    * BUT the TKVL is optimized for concurrent use and, in practice, files are rarely used this way
+* A better default solution would use a lighter-weight implementation that places an emphasis on
+    * Compactness for read efficiency
+    * Append operations (since the vast majority files are written linearly)
+* The default file implementation therefore uses a structure similar to the TKVL but with different tradeoffs
+    * Data objects instead of KeyValue objects for compactness
+    * Full index structure is modified as part of each transaction instead of through Finalization Actions
+    * The Inode is updated with each write transaction
+        * Ensures mtime, size, and the pointer to the root index node are always perfectly accurate
+        * Also guarantees correctness in the presence of concurrent writers
+            * Forces all writes to be serialized
+            * Though the efficiency in this case will be terrible
+            * If concurrent writes will be common, a different file implementation should be used
+
+File Creation
+* Single Transaction
+    * Allocate new Inode Data Object
+    * Insert (InodeNumber -> NewInodePointer) into Inode table TKVL
+    * Insert (FileName -> (InodeNumber, NewInodePointer)) into Directory TKVL
+
+File Deletion
+* Potentially a long-running task (consider deleting a 500TB file)
+* Must be able to resume operation if driving node dies
+* Good fit for a DurableTask
+* Deletion Approach
+    * Single transaction
+        * Removes the Inode from the Directory TKVL
+        * Removes the Inode from the Inode TKVL
+        * Creates the deletion task with an embedded pointer to the to-be-deleted Inode
+    * Deletion task recursively frees all data and index segments
+        * State is periodically checkpointed in the durable task object for recovery purposes
+    * When all content pointed to by the Inode is removed
+        * The durable task marks itself as complete and exits
+
+File Content Migration
+* Migrating file content can be useful for all kinds of on-the-fly optimizations such as:
+    * Move content from one geographic location to another
+    * Move content from high-performance media to slower media: SSD -> HDD -> Tape
+    * Re-IDA file content, say from 5 way replication to 10/16 erasure coding
+    * Time-to-first byte optimization, 3-way replicate first 50 meg at each site with the rest 10/16 erasure coded and geo-dispersed
+    * Write optimizations such as always write new, smaller segments to SSD then migrate to larger, HDD-backed segments in the background
+    * Background deduplication
+    * …
+* Similar to File Deletion, these can be implemented as tasks to ensure eventual completion
+    * Likely controlled by one or more Durable Services for coordination and failure detection
 
