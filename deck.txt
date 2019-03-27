@@ -3,7 +3,7 @@ Aspen/AmoebaFS slide deck
 Background
 * Started as a hobby project in 2005 for building a reliable distributed file system on top of disparate, heterogenous storage capacity present in dynamic environments
 * Attempting to use existing systems failed miserably so I started looking into building one from scratch
-    * This led me down a rabbit hole and an explosion in complexity
+    * This led down a rabbit hole and an explosion in complexity
     * It quickly became clear that conventional tools and techniques weren’t going to get the job done
 * Periodically revisited the issue looking for something that would work
 * About six years ago I started developing Aspen, a new distributed object system that had some of the basic characteristics I’d been looking for
@@ -12,7 +12,7 @@ Background
 Taking a Different Tack
 * Previous presentations discussed the low-level details of how this system works
     * Lesson Learned: Nobody cares
-* This time my intent is to try and describe what Aspen is and why I’ve been pursuing it
+* This time my intent is to try and describe what Aspen is and why it’s useful
 
 Approach
 * Focus on a  real-world problem & Aspen-based solution rather than abstract concepts
@@ -196,28 +196,28 @@ Inode Table
     * On collision, jump to another random location and start over
 
 Inodes
-* Each Inode is stored in a separate Data object
-* The Inode object alone is sufficient to fully define most file types
+* Stored as Data Objects
+* Inode object alone is sufficient to fully define several file types
     * Block Devices, Character Devices, FIFOs, and UnixSockets store no data
     * SymLinks are small enough to directly embed the link content
 * Files & Directories require embedded links to additional data structures
     * Many potential solutions
     * The “right” implementation approach to use depends on workload and operational environment
     * Multiple implementation approaches can coexist simultaneously
-
-File & Directory Implementations
-* Many potential implementation approaches
-    * The “right” implementation approach to use depends on both the workload and runtime environment
-* Multiple implementation approaches can coexist simultaneously
-* Can mix-and-match
+        * Read-only optimized
+        * Concurrent read-write optimized
+        * Write optimized
+        * Copy on write
+        * Snapshotting
+        * …
 
 Directories (default approach)
 * Directories are often modified by concurrently running processes
     * Ex: cron job kicks off multiple concurrent rotations of files in /var/log
 * TKVL structure is a good fit for concurrent use
 * However, the caveat is that efficient concurrent support requires non-conflicting updates
-    * To ensure this, the directory’s mtime must be updated out-of-band via Finalization Actions rather than directly in the insertion/removal transactions themselves
-    * Doing so is technically a deviation from the POSIX standard but it’s unlikely to matter and is easily disabled if needed
+    * So the directory’s mtime must be updated out-of-band with file insertion/removal transactions
+    * Implemented via a Finalization Action
 * Stored content is (Name, Inode Number, cached SerializedObjectPointer)
     * The pointer is an optimization used to avoid needing to skip the Inode table lookup for most file accesses
     * Reallocation of Inode (move to a different storage pool) could cause lookup failure via cached pointer
@@ -228,7 +228,7 @@ Files (default approach)
     * BUT the TKVL is optimized for concurrent use and, in practice, files are rarely used this way
 * A better default solution would use a lighter-weight implementation that places an emphasis on
     * Compactness for read efficiency
-    * Append operations (since the vast majority files are written linearly)
+    * Append-to-file operations (since the vast majority files are written linearly)
 * The default file implementation therefore uses a structure similar to the TKVL but with different tradeoffs
     * Data objects instead of KeyValue objects for compactness
     * Full index structure is modified as part of each transaction instead of through Finalization Actions
@@ -236,21 +236,20 @@ Files (default approach)
         * Ensures mtime, size, and the pointer to the root index node are always perfectly accurate
         * Also guarantees correctness in the presence of concurrent writers
             * Forces all writes to be serialized
-            * Though the efficiency in this case will be terrible
+                * Though the efficiency in this case will be terrible
             * If concurrent writes will be common, a different file implementation should be used
 
 File Creation
-* Single Transaction
+* Single Transaction:
     * Allocate new Inode Data Object
     * Insert (InodeNumber -> NewInodePointer) into Inode table TKVL
     * Insert (FileName -> (InodeNumber, NewInodePointer)) into Directory TKVL
 
 File Deletion
 * Potentially a long-running task (consider deleting a 500TB file)
-* Must be able to resume operation if driving node dies
-* Good fit for a DurableTask
-* Deletion Approach
-    * Single transaction
+* Must be able to resume operation if the driving node dies
+* Good fit for a DurableTask:
+    * Initiating transaction:
         * Removes the Inode from the Directory TKVL
         * Removes the Inode from the Inode TKVL
         * Creates the deletion task with an embedded pointer to the to-be-deleted Inode
@@ -260,14 +259,13 @@ File Deletion
         * The durable task marks itself as complete and exits
 
 File Content Migration
-* Migrating file content can be useful for all kinds of on-the-fly optimizations such as:
+* Similar to File Deletion, these can be implemented as tasks to ensure eventual completion
+    * Monitored by a Durable Service for scheduling and failure detection/recovery
+* Many potential uses:
     * Move content from one geographic location to another
     * Move content from high-performance media to slower media: SSD -> HDD -> Tape
-    * Re-IDA file content, say from 5 way replication to 10/16 erasure coding
-    * Time-to-first byte optimization, 3-way replicate first 50 meg at each site with the rest 10/16 erasure coded and geo-dispersed
-    * Write optimizations such as always write new, smaller segments to SSD then migrate to larger, HDD-backed segments in the background
-    * Background deduplication
+    * Re-IDA file content
+    * Convert from write-optimized to read-optimized implementation or vice versa
+    * Always write new file segments to SSD then migrate to HDD-backed stores in the background
+    * Background file deduplication
     * …
-* Similar to File Deletion, these can be implemented as tasks to ensure eventual completion
-    * Likely controlled by one or more Durable Services for coordination and failure detection
-
