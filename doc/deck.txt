@@ -21,7 +21,8 @@ Approach
 Problem: Build a Distributed File System emphasizing flexibility & on-the-fly adaptation
 *  Scratches a personal itch
     * There are lots of distributed files systems but none of them have the properties I want
-* Many of the properties I’m interested are also good fit for hybrid cloud environments
+* Many of the properties I’m interested in are also good fit for hybrid cloud environments
+    * Potentially useful to IBM in addition to being a personal project
 * A functional prototype currently exists
 
 Desired Properties
@@ -30,7 +31,7 @@ Desired Properties
     * Added/removed sites, storage nodes, backing media
     * Evolving workloads
     * Evolving feature sets (snapshotting, copy-on-write, deduplication, etc)
-* Effective use of heterogenous media
+* Effective use of heterogenous storage nodes and backing media
     * Persistent RAM, NVMe, SSD, HDD, Tape
 * Transparent, fine-grained content control. Such as:
     * Move content from one geographic location to another
@@ -112,7 +113,7 @@ Object Pointer
     * Optional location of the object within each store (such as a file offset or hash key)
 * Approximately 50 bytes in size when encoded
 
-Object Allocaters
+Object Allocaters. ** Graphic showing index node allocation **
 * Abstract interface used to allocate objects from storage pools
 * Decouples application-level logic from storage pool management
     * Allows pool management policy to be configured at deployment & run time
@@ -126,6 +127,7 @@ Transactions
 * Optimistic Concurrency Control
 * Multiple Objects (CASN)
 * Supports 1RTT 
+* Provides “at most once” guarantees
 * Flexible commit criteria
     * Example commit criteria for a single transaction:
         * Data object A
@@ -156,8 +158,8 @@ Derived Component: Tiered Key Value List (TKVL)
 * Tier structure is maintained asynchronously via Finalization Actions
     * Similar navigation error handling mechanisms as the dsNet index
 * Major Differences
-    * Multi-object transactions prevent race conditions during node splits & joins
-    * KeyValue objects are used to mitigate write amplification and contention
+    * Node splits & joins use multi-object transactions to prevent race conditions
+    * Write amplification and contention are mitigated via KeyValue objects rather than delegation 
 
 Derived Component: Durable Task
 * Used for longer-running activities where a Finalization Action would be a poor fit
@@ -171,8 +173,8 @@ Derived Component: Durable Task
         * Periodic state checkpoints may be used to speed up the recovery process
 
 Derived Component: Durable Service
-* Similar to Durable Tasks but intended for long-lived services where a single instance should be running at all times
-* Has a state object similar to tasks but additionally uses a “Master Lease” strategy to ensure a single executor at all times
+* Similar to Durable Tasks but intended for long-lived services that must be running at all times
+* Has a state object similar to tasks but additionally uses a “Master Lease” strategy to ensure a single executor
 * Leases are maintained by updating the state object on a regular basis
 * All transactions performed on behalf of the service include a timestamp requirement
     * Storage nodes will vote to abort the transaction if their local clock exceeds the lease timeout
@@ -183,7 +185,8 @@ AmoebaFS
 * The original, inode-based POSIX file system was designed for the efficient organization and use of discrete, high-latency blocks of storage
 * This is a surprisingly good fit for an Aspen-based solution
     * Objects provide similar latency and update characteristics as disk blocks
-    * The underlying object model opens up opportunities that would be difficult to achieve otherwise
+    * Aspen’s underlying object model meshes well with this approach
+        * Allows for a number of optimizations that would be difficult to achieve otherwise
         * More on this later
 
 Inode Table
@@ -202,11 +205,11 @@ Inodes
     * SymLinks are small enough to directly embed the link content
 * Files & Directories require embedded links to additional data structures
     * Many potential solutions
-    * The “right” implementation approach to use depends on workload and operational environment
+    * The “right” implementation approach to use depends on both the workload and operational environment
     * Multiple implementation approaches can coexist simultaneously
         * Read-only optimized
         * Concurrent read-write optimized
-        * Write optimized
+        * Append-to-file optimized
         * Copy on write
         * Snapshotting
         * …
@@ -237,7 +240,7 @@ Files (default approach)
         * Also guarantees correctness in the presence of concurrent writers
             * Forces all writes to be serialized
                 * Though the efficiency in this case will be terrible
-            * If concurrent writes will be common, a different file implementation should be used
+                * If concurrent writes will be common, a different file implementation should be used
 
 File Creation
 * Single Transaction:
@@ -246,7 +249,7 @@ File Creation
     * Insert (FileName -> (InodeNumber, NewInodePointer)) into Directory TKVL
 
 File Deletion
-* Potentially a long-running task (consider deleting a 500TB file)
+* Potentially a long-running task (e.g. deleting a 500TB file)
 * Must be able to resume operation if the driving node dies
 * Good fit for a DurableTask:
     * Initiating transaction:
@@ -255,12 +258,12 @@ File Deletion
         * Creates the deletion task with an embedded pointer to the to-be-deleted Inode
     * Deletion task recursively frees all data and index segments
         * State is periodically checkpointed in the durable task object for recovery purposes
-    * When all content pointed to by the Inode is removed
-        * The durable task marks itself as complete and exits
+    * Deletion task marks itself as complete and exits once all content pointed to by the Inode is freed
 
 File Content Migration
-* Similar to File Deletion, these can be implemented as tasks to ensure eventual completion
-    * Monitored by a Durable Service for scheduling and failure detection/recovery
+* Similar to File Deletion
+    * Implemented as tasks to ensure eventual completion
+    * Managed by a Durable Service for scheduling and failure detection/recovery
 * Many potential uses:
     * Move content from one geographic location to another
     * Move content from high-performance media to slower media: SSD -> HDD -> Tape
@@ -269,3 +272,31 @@ File Content Migration
     * Always write new file segments to SSD then migrate to HDD-backed stores in the background
     * Background file deduplication
     * …
+
+Object Allocations
+* Fine-grained control over data placement is provided by configuring Object Allocaters used in AmoebaFS
+* Allocater configurations are attached to directories
+* Default allocaters for all object types are set a the root level
+* If an allocater for an object type isn’t assigned to a directory, it inherits the allocater from its nearest parent
+* Types of allocaters
+    * Inode objects
+    * Inode TKVL tree objects
+        * Optional per-tier configuration
+    * Directory TKVL tree objects
+        * Optional per-tier configuration
+    * File content objects
+        * Optional range configuration
+    * File content tree objects
+        * Optional per-tier configuration
+
+Object Allocations
+* Allocater configuration is largely decoupled from deployment issues
+* Data Stores can be freely migrated between nodes, backing media, and backend implementations
+* So, the system can be configured with end-game data stores and allocaters regardless of the roll-out strategy
+    * Start with single-system deployment
+    * Migrate to a small, local cluster for acceptance testing
+    * Migrate over time to:
+        * Hybrid cloud deployment
+        * SSD-backed inodes
+        * Geo-dispersed, tape-backed archival directories
+        * …
