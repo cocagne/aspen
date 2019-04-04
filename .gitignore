@@ -6,6 +6,8 @@ t2
 t3
 t4
 
+*.png
+
 local/
 
 # Intellij
