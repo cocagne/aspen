@@ -77,7 +77,7 @@ Aspen Primer
 
 Storage Pools
 * Contain a small group of Data Stores that share object slices/replicas
-    * Thus pools define the data dependency relationships between stores
+    * Which constrains the data dependency relationships between stores
 * Only as wide as the largest IDA intended for use with the pool
 
 Data Stores
@@ -111,7 +111,7 @@ Object Pointer
     * Containing Storage Pool
     * Stores within the pool hosting the object slices/replicas
     * Optional location of the object within each store (such as a file offset or hash key)
-* Approximately 50 bytes in size when encoded
+* Approximately 50 bytes in size when encoded 
 
 Object Allocaters. ** Graphic showing index node allocation **
 * Abstract interface used to allocate objects from storage pools
@@ -248,31 +248,6 @@ File Creation
     * Insert (InodeNumber -> NewInodePointer) into Inode table TKVL
     * Insert (FileName -> (InodeNumber, NewInodePointer)) into Directory TKVL
 
-File Deletion
-* Potentially a long-running task (e.g. deleting a 500TB file)
-* Must be able to resume operation if the driving node dies
-* Good fit for a DurableTask:
-    * Initiating transaction:
-        * Removes the Inode from the Directory TKVL
-        * Removes the Inode from the Inode TKVL
-        * Creates the deletion task with an embedded pointer to the to-be-deleted Inode
-    * Deletion task recursively frees all data and index segments
-        * State is periodically checkpointed in the durable task object for recovery purposes
-    * Deletion task marks itself as complete and exits once all content pointed to by the Inode is freed
-
-File Content Migration
-* Similar to File Deletion
-    * Implemented as tasks to ensure eventual completion
-    * Managed by a Durable Service for scheduling and failure detection/recovery
-* Many potential uses:
-    * Move content from one geographic location to another
-    * Move content from high-performance media to slower media: SSD -> HDD -> Tape
-    * Re-IDA file content
-    * Convert from write-optimized to read-optimized implementation or vice versa
-    * Always write new file segments to SSD then migrate to HDD-backed stores in the background
-    * Background file deduplication
-    * …
-
 Object Allocations
 * Fine-grained control over data placement is provided by configuring Object Allocaters used in AmoebaFS
 * Allocater configurations are attached to directories
@@ -300,3 +275,29 @@ Object Allocations
         * SSD-backed inodes
         * Geo-dispersed, tape-backed archival directories
         * …
+
+File Deletion
+* Potentially a long-running task (e.g. deleting a 500TB file)
+* Must be able to resume operation if the driving node dies
+* Good fit for a DurableTask:
+    * Initiating transaction:
+        * Removes the Inode from the Directory TKVL
+        * Removes the Inode from the Inode TKVL
+        * Creates the deletion task with an embedded pointer to the to-be-deleted Inode
+    * Deletion task recursively frees all data and index segments
+        * State is periodically checkpointed in the durable task object for recovery purposes
+    * Deletion task marks itself as complete and exits once all content pointed to by the Inode is freed
+
+File Content Migration
+* Similar to File Deletion
+    * Implemented as tasks to ensure eventual completion
+    * Managed by a Durable Service for scheduling and failure detection/recovery
+* Many potential uses:
+    * Move content from one geographic location to another
+    * Move content from high-performance media to slower media: SSD -> HDD -> Tape
+    * Re-IDA file content
+    * Convert from write-optimized to read-optimized implementation or vice versa
+    * Always write new file segments to SSD then migrate to HDD-backed stores in the background
+    * Background file deduplication
+    * …
+
