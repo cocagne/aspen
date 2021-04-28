@@ -13,7 +13,7 @@ trait ObjectReader {
 
   def receivedResponseFrom(storeId: DataStoreID): Boolean
 
-  def noResponses: Set[DataStoreID] 
+  def noResponses: Set[DataStoreID]
 
   def rereadCandidates: Map[DataStoreID, HLCTimestamp]
 
